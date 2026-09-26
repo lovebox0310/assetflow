@@ -1,0 +1,88 @@
+name: issue-label-automation
+
+on:
+  issues:
+    types: [opened]
+  pull_request:
+    types: [opened, closed]
+
+permissions:
+  issues: write
+  pull-requests: read
+
+jobs:
+  label-issue-open:
+    if: github.event_name == 'issues' && github.event.action == 'opened'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add default labels to new issue
+        uses: actions-ecosystem/action-add-labels@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          labels: sprint:1,status:ready
+
+  label-pr-open:
+    if: github.event_name == 'pull_request' && github.event.action == 'opened'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark linked issues as needs-review
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const body = context.payload.pull_request.body || "";
+            const matches = body.match(/#(\d+)/g) || [];
+            const issueNumbers = [...new Set(matches.map(v => Number(v.slice(1))))];
+
+            for (const issue_number of issueNumbers) {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number,
+                  name: 'status:in-progress'
+                });
+              } catch (e) {
+                core.info(`skip remove status:in-progress for #${issue_number}: ${e.message}`);
+              }
+
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+                labels: ['status:needs-review']
+              });
+            }
+
+  label-pr-merged:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark linked issues as done
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const body = context.payload.pull_request.body || "";
+            const matches = body.match(/#(\d+)/g) || [];
+            const issueNumbers = [...new Set(matches.map(v => Number(v.slice(1))))];
+
+            for (const issue_number of issueNumbers) {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number,
+                  name: 'status:needs-review'
+                });
+              } catch (e) {
+                core.info(`skip remove status:needs-review for #${issue_number}: ${e.message}`);
+              }
+
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+                labels: ['status:done']
+              });
+            }
