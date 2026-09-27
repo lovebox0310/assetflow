@@ -583,15 +583,16 @@
           f.formatPercent(d.totals.liquidRatio) +
           "만 지금 쓸 수 있습니다. 나머지는 지출 배정분과 세금 적립분이라 비상금 계산에서 제외합니다. " +
           "세금 계좌는 매월 " +
-          f.formatKRW(d.vat.planMonthly) +
-          "씩 적립하지만, 신고 시 카드매출 발행세액공제 " +
+          f.formatKRW(d.vat.accrualMonthly) +
+          "씩 적립하지만 실제 고지액은 월 " +
+          f.formatKRW(d.vat.actualMonthly) +
+          "입니다. 매입세액 " +
+          f.formatKRW(d.vat.input.purchaseTax) +
+          "과 카드 발행세액공제 " +
           f.formatKRW(d.vat.cardCreditAnnual) +
-          "이 차감되어 실제 고지액은 연 " +
-          f.formatKRW(d.vat.actualAnnual) +
-          "입니다. 남는 " +
+          "(연)가 차감되므로, 1년간 " +
           f.formatKRW(d.vat.surplusAnnual) +
-          "은 Filing 후 투자금으로 이체합니다. " +
-          "(사업소득 기준 10%는 법적 산식이 아니므로 공급대가·매입세액 확인이 필요합니다.)";
+          "이 쌓입니다. Filing 후 이 금액을 투자금으로 이체하세요.";
 
         // 차트 (ECharts 대체 목업)
         var W = 640, H = 260, padL = 56, padR = 16, padT = 24, padB = 32;

@@ -81,8 +81,8 @@
     autoTransfer: {
       label: "자동이체",
       amount: 12400000,
-      // 아래 monthlyExpense 의 필수지출 합계와 같은 값이어야 한다 (§28.7 단일 출처)
-      monthlyEssential: 1653753
+      // 아래 expenseItems 의 합계(2,053,753)와 같은 값이어야 한다 (§28.7 단일 출처)
+      monthlyEssential: 2053753
     },
     // 세금 Filing 후 잔액을 투자금으로 이체한다
     vat: { label: "부가가치세", amount: 28500000 },
@@ -113,32 +113,41 @@
     { key: "samsungfire", label: "보험/삼성화재해상보험", amount: 17413, essential: true, vatDeductible: false },
     { key: "donation-sdc", label: "기부금/세이브더칠드런", amount: 20000, essential: false, vatDeductible: false },
     { key: "donation-child", label: "기부금/어린이재단", amount: 10000, essential: false, vatDeductible: false },
-    { key: "donation-barn", label: "기부금/함께하는사랑밭", amount: 10000, essential: false, vatDeductible: false }
+    { key: "donation-barn", label: "기부금/함께하는사랑밭", amount: 10000, essential: false, vatDeductible: false },
+    { key: "employmentInsurance", label: "고용보험", amount: 70000, essential: true, vatDeductible: false },
+    { key: "taxFee", label: "세금/수수료", amount: 330000, essential: true, vatDeductible: false }
+    // [미확인] 이 2개 항목의 성격. 금액은 사용자 확인값.
+    //   고용보험 70,000원 - 보험료이므로 매입세액 공제 불가
+    //   세금/수수료 330,000원 - 종합소득세 0원인 달에 대체로 발생하는 금액.
+    //     무엇에 대한 수수료인지 미확인 (신고 대리인료 / 세액계산서 발급 / 기타)
   ];
 
-  var monthlyExpense = expenseItems.reduce(function (a, e) {
+  var expenseSum = expenseItems.reduce(function (a, e) {
     return a + e.amount;
   }, 0);
+  var monthlyExpense = expenseSum;
+
+  // 매입세액 공제 가능 항목 합계 (비과세 항목은 대상이 아님)
+  var nonDeductible = expenseItems
+    .filter(function (e) {
+      return !e.vatDeductible;
+    })
+    .reduce(function (a, e) {
+      return a + e.amount;
+    }, 0);
 
   /* ---------- 부가가치세 실제 산식 ----------
    * 부가가치세법 제46조 신용카드등 사용에 따른 세액공제를 반영한다.
    *
    * 용어 혼동 주의:
-   *   공급가액(부가세 제외 매출) = 1,454만  -> 10% 를 또 곱하면 이중 계상
-   *   공급대가(부가세 포함 매출) = 1,600만  -> 10/110 = 145만
-   * 10/110 은 세액 추출 단계로는 맞지만 매입세액과 카드 발행세액공제를
-   * 빠뜨리므로 실제 납부세액보다 크다.
+   *   공급가액(부가세 제외 매출) -> 10% 를 또 곱하면 이중 계상
+   *   공급대가(부가세 포함 매출) -> 10/110 으로 세액을 뽑는다
+   * 사업소득은 필요경비를 차감한 세후 순수익이므로 공급대가가 아니다.
+   * 부가가치세는 공급대가(매출)에서 낸다.
    *
    * 신고 단위: 반기(6개월). 예정고지 4/10월, 확정고지 7월/다음해 1월.
    *   예정고지세액 = 직전 반기 실제 납부세액 x 1/3
    *   확정고지세액 = 당기 실제 납부세액 - 당기 예정고지세액
-   *
-   * [중요] 사업소득은 필요경비를 차감한 세후 순수익이므로 공급대가가 아니다.
-   * 부가가치세는 공급대가(매출)에서 낸다. 사업소득 x 10% 은 현행 적립 관행일
-   * 뿐 법적 산식이 아니며, 실제 납부세액을 확정하려면 아래 두 값이 필요하다.
-   *   grossSales  - 월 공급대가 (부가세 포함)
-   *   purchaseTax - 월 매입세액 (세금계산서 기준)
-   * 두 값이 없으므로 납부세액은 현행 적립액을 계획 기준으로 쓴다.
    */
 
   // 국세청 실무에 맞게 원 미만을 절삭한다
@@ -162,59 +171,44 @@
   };
 
   var vatInput = {
-    // [미확인] 실제 신고 기준이 되는 두 값. 없으면 실제 납부세액을 확정할 수 없다.
-    grossSales: null, // 월 공급대가 (부가세 포함 매출)
-    purchaseTax: null, // 월 매입세액 (세금계산서 기준)
+    // 실제 신고 기준 값 (사용자 확인)
+    grossSales: 9020000, // 월 공급대가 = 세금계산서 발행액 (부가세 포함)
+    purchaseTax: 320000, // 월 매입세액 (실제 인정분)
     exemptSales: 0, // 면세/과세제외 매출
-    monthlyEmploymentInsurance: null, // 월 고용보험 (미확인)
+    monthlyEmploymentInsurance: 70000, // 월 고용보험 (지출 목록에 포함)
 
     // 실제 운영값
     businessIncome: 8200000, // 사업소득 (월, 세후 순수익)
-    monthlyAccrual: 820000, // 월 CMA 적립액 = 사업소득 x 10% (현행 방식)
+    monthlyAccrual: 820000, // 월 CMA 적립액 (매출세액 기준)
     cardSupplyAmount: 5000000, // 카드매출 공급대가 (월 평균)
     isHospitality: false // 컴퓨터수리업 -> 2.6% 대상 아님, 1.3% 적용
   };
 
-  /* ----- 추정값: grossSales / purchaseTax 가 없을 때 쓰는 임시 산식 ----- */
+  /* ----- 실제 신고 산식 ----- */
 
-  // 사업소득은 필요경비를 차감한 순수익이라 공급대가가 아니다.
-  // 최소 공급대가 = 사업소득 + 지출 (전부 과세라 가정)
-  var expenseSum = expenseItems.reduce(function (a, e) {
-    return a + e.amount;
-  }, 0);
-  var minGrossSales = vatInput.businessIncome + expenseSum;
-  var vatMinOnSales = floorWon((minGrossSales * 10) / 110);
+  // 매출세액 = 공급대가 x 10/110
+  // 9,020,000 / 11 = 820,000. 현행 적립액과 일치하나 근거가 다르다
+  //   (적립액은 '사업소득 x 10%' 로 계산했으나 결과가 우연히 같았다)
+  var vatOnSalesMonthly = floorWon((vatInput.grossSales * 10) / 110);
 
-  // 지출 중 매입세액을 받을 수 없는 항목 (보험·기부금·대출이자 등 비과세)
-  var nonDeductible = expenseItems
-    .filter(function (e) {
-      return !e.vatDeductible;
-    })
-    .reduce(function (a, e) {
-      return a + e.amount;
-    }, 0);
-  var purchaseTaxMax = floorWon(((expenseSum - nonDeductible) * 10) / 110);
-
-  // 사업소득 x 10% (현행 방식, 법적 근거 없음)
-  var vatApproxMonthly = floorWon(vatInput.businessIncome * 0.1);
+  // 납부세액(공제 전) = 매출세액 - 매입세액
+  var vatPayableMonthly = vatOnSalesMonthly - vatInput.purchaseTax;
+  var vatPayableAnnual = vatPayableMonthly * 12;
 
   /* ----- 카드 발행세액공제: 카드매출만으로 계산된다 ----- */
 
-  // 공제액은 연 한도 이내. 납부세액 상한은 납부세액 확정 후 적용한다.
+  // 공제액은 연 한도 이내. 공제액은 납부세액을 초과할 수 없다(환급 불가).
   var cardRate = vatInput.isHospitality
     ? taxPolicy.cardCreditRateHospitality
     : taxPolicy.cardCreditRate;
   var cardCreditRaw = floorWon(vatInput.cardSupplyAmount * 12 * cardRate);
   var cardCreditByLimit = Math.min(cardCreditRaw, taxPolicy.annualCap);
-  var cardCreditAnnual = cardCreditByLimit;
+  var cardCreditAnnual = Math.min(cardCreditByLimit, vatPayableAnnual);
   var cardCreditMonthly = floorWon(cardCreditAnnual / 12);
 
-  /* ----- 납부세액 ----- */
+  /* ----- 실제 납부세액 ----- */
 
-  // 실제 신고값이 없으므로 현행 적립액을 계획 기준으로 쓴다.
-  var vatPlanMonthly = vatInput.monthlyAccrual;
-  var vatPlanAnnual = vatPlanMonthly * 12;
-  var vatActualAnnual = vatPlanAnnual - cardCreditAnnual;
+  var vatActualAnnual = vatPayableAnnual - cardCreditAnnual;
   var vatActualMonthly = floorWon(vatActualAnnual / 12);
 
   // 반기 단위 고지 (정기면 1기, 추가면 2기)
@@ -224,9 +218,18 @@
   var vatAssessmentNotice = floorWon(halfActual / 3);
   var vatFinalNotice = halfActual - vatAssessmentNotice;
 
-  // Filing 후 세금 계좌에 남는 금액 = 카드 발행세액공제분
+  // 적립액과 실제 납부세액의 차이.
+  // 적립액은 매출세액 기준이라 매입세액과 카드공제를 반영하지 않아
+  // 실제로는 납부세액보다 많이 쌓인다. 이 차액이 Filing 후 투자금으로 이체된다.
   var vatSurplusMonthly = vatInput.monthlyAccrual - vatActualMonthly;
   var vatSurplusAnnual = vatInput.monthlyAccrual * 12 - vatActualAnnual;
+  var vatSurplusShareOfAccrual = (vatSurplusAnnual / (vatInput.monthlyAccrual * 12)) * 100;
+
+  // 사업소득(순수익)과 공급대가(매출)의 관계 점검
+  // 공급대가 - 지출 = 예상 사업소득. 실제 사업소득과 다르면 원인을 확인한다.
+  var impliedIncomeFromSales = vatInput.grossSales - expenseSum;
+  var incomeGap = incomeInput.businessIncome - impliedIncomeFromSales;
+
 
   /* ---------- Filing 일정 ---------- */
 
@@ -342,12 +345,11 @@
       input: vatInput,
       policy: taxPolicy,
       hasActualFilingData: vatInput.grossSales !== null && vatInput.purchaseTax !== null,
-      minGrossSales: minGrossSales,
-      onSalesMinMonthly: vatMinOnSales,
-      purchaseTaxMax: purchaseTaxMax,
-      approxMonthly: vatApproxMonthly,
-      planMonthly: vatPlanMonthly,
-      planAnnual: vatPlanAnnual,
+      onSalesMonthly: vatOnSalesMonthly,
+      payableMonthly: vatPayableMonthly,
+      payableAnnual: vatPayableAnnual,
+      accrualMonthly: vatInput.monthlyAccrual,
+      accrualAnnual: vatInput.monthlyAccrual * 12,
       actualAnnual: vatActualAnnual,
       actualMonthly: vatActualMonthly,
       assessmentNotice: vatAssessmentNotice,
@@ -357,9 +359,12 @@
       cardCreditMonthly: cardCreditMonthly,
       cardCreditRaw: cardCreditRaw,
       cardCreditCappedByLimit: cardCreditByLimit < cardCreditRaw,
-      cardCreditCappedByPayable: false,
+      cardCreditCappedByPayable: cardCreditAnnual < cardCreditByLimit,
       surplusMonthly: vatSurplusMonthly,
       surplusAnnual: vatSurplusAnnual,
+      surplusShareOfAccrual: vatSurplusShareOfAccrual,
+      impliedIncomeFromSales: impliedIncomeFromSales,
+      incomeGap: incomeGap,
       filings: filings,
       upcoming: upcoming
     },
@@ -369,12 +374,14 @@
       total: monthlyExpense,
       deductibleTotal: expenseSum - nonDeductible,
       nonDeductibleTotal: nonDeductible,
-      // 필수지출에 들어 있지 않은 항목. 이게 빠진 채로 비상금 유지 개월을 계산하면
-      // 유지 개월이 실제보다 부풀려진다. 금액은 사용자 확인이 필요하다.
+      // 미확정 항목. 종합소득세는 보통 0원이지만 연말에 발생할 수 있다.
       notIncluded: [
-        { key: "employmentInsurance", label: "고용보험", amount: null, note: "사업주 전체부담" },
-        { key: "incomeTax", label: "종합소득세", amount: null, note: "연말정산 후 확정" },
-        { key: "localTax", label: "지방세", amount: null, note: "소득세의 10%" }
+        {
+          key: "incomeTax",
+          label: "종합소득세",
+          amount: null,
+          note: "보통 0원이나 납부되는 달이 있다"
+        }
       ],
       emergencyIncomplete: true
     },
