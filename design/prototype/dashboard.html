@@ -300,6 +300,10 @@
                 <div class="card__body">
                   <p class="stat" id="vatCountdown">—</p>
                   <p class="stat__detail" id="vatDetail"></p>
+                  <p class="notice notice--warn" style="margin-top: var(--space-3)">
+                    <span aria-hidden="true">!</span>
+                    <span id="cardCreditNote"></span>
+                  </p>
                 </div>
               </article>
             </div>
@@ -584,15 +588,33 @@
           "만 지금 쓸 수 있습니다. 나머지는 지출 배정분과 세금 적립분이라 비상금 계산에서 제외합니다. " +
           "세금 계좌는 매월 " +
           f.formatKRW(d.vat.accrualMonthly) +
-          "씩 적립하지만 실제 고지액은 월 " +
-          f.formatKRW(d.vat.actualMonthly) +
+          "(매출세액)씩 적립하지만 반기 실제 고지서는 예정 " +
+          f.formatKRW(d.vat.actualNotice) +
+          " + 확정 " +
+          f.formatKRW(d.vat.actualFinal) +
+          " = " +
+          f.formatKRW(d.vat.actualHalfTotal) +
           "입니다. 매입세액 " +
           f.formatKRW(d.vat.input.purchaseTax) +
-          "과 카드 발행세액공제 " +
-          f.formatKRW(d.vat.cardCreditAnnual) +
-          "(연)가 차감되므로, 1년간 " +
+          "이 차감된 금액이므로, 1년간 " +
           f.formatKRW(d.vat.surplusAnnual) +
           "이 쌓입니다. Filing 후 이 금액을 투자금으로 이체하세요.";
+
+        // 카드 발행세액공제를 신청하지 않은 경우, 그만큼 납부가 줄어든다
+        var cardNote = document.getElementById("cardCreditNote");
+        if (cardNote) {
+          cardNote.textContent = d.vat.cardCreditClaimed
+            ? "카드 발행세액공제 " +
+              f.formatKRW(d.vat.cardCreditAnnual) +
+              "(연) 반영됨."
+            : "카드 발행세액공제 미신청. 신청하면 연 " +
+              f.formatKRW(d.vat.unclaimedCreditAnnual) +
+              "이 줄어들어 월 납부가 " +
+              f.formatKRW(d.vat.actualMonthly) +
+              " → " +
+              f.formatKRW(d.vat.actualMonthlyIfClaimed) +
+              "이 됩니다.";
+        }
 
         // 차트 (ECharts 대체 목업)
         var W = 640, H = 260, padL = 56, padR = 16, padT = 24, padB = 32;
