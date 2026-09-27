@@ -30,4 +30,14 @@ samples/card/*-raw.*
 samples/card/*-original.*
 samples/card/*-실명.*
 *카드번호*
+
+# Cards statements dropped straight into samples/card/ have not been through
+# the anonymization checklist, so they are blocked regardless of their name.
+# Anonymized copies belong in samples/card/anonymized/ , which stays tracked.
+# Without this, a real file named e.g. samsungcard_detail_202601.xlsx would be
+# committed silently, which is how personal financial data leaks.
 samples/card/*.xls
+samples/card/*.xlsx
+samples/card/*.xlsb
+samples/card/*.xlsm
+samples/card/*.csv
