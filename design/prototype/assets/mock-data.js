@@ -78,12 +78,47 @@
 
   var cash = {
     // 월 초에 그달 고정비 전액을 이체, 기간 내 실제 사용액만큼 남는다
-    autoTransfer: { label: "자동이체", amount: 12400000, monthlyEssential: 6700000 },
+    autoTransfer: {
+      label: "자동이체",
+      amount: 12400000,
+      // 아래 monthlyExpense 의 필수지출 합계와 같은 값이어야 한다 (§28.7 단일 출처)
+      monthlyEssential: 1653753
+    },
     // 세금 Filing 후 잔액을 투자금으로 이체한다
     vat: { label: "부가가치세", amount: 28500000 },
     // 순수 사용가능. 비상금 유지 개월의 분자가 된다
     investable: { label: "투자금", amount: 38000000 }
   };
+
+  /* ---------- 월 수입 ---------- */
+
+  // 사업소득은 필요경비를 차감한 세후 순수익이다.
+  // 부가가치세 산정 기준(공급대가)이 아니므로 여기서 10%를 뽑지 않는다.
+  var incomeInput = {
+    businessIncome: 8200000 // 개인사업 수입 (월)
+  };
+
+  /* ---------- 월 지출 ---------- */
+
+  // 실제 지출 내역. 합계는 자동이체 monthlyEssential 과 일치해야 한다.
+  // vatDeductible: 매입세액 공제가 가능한지 여부 (추정 분류, 세금계산서 확인 필요)
+  //   보험서비스, 기부금, 대출이자는 비과세여서 매입세액을 받을 수 없다.
+  var expenseItems = [
+    { key: "education", label: "고정지출/교육비", amount: 1000000, essential: true, vatDeductible: true },
+    { key: "loan", label: "고정지출/대출상환및이자", amount: 317180, essential: true, vatDeductible: false },
+    { key: "association", label: "공제/중소기업중앙회", amount: 150000, essential: true, vatDeductible: true },
+    { key: "family", label: "고정지출/가족회비", amount: 50000, essential: true, vatDeductible: false },
+    { key: "telecom", label: "통신비", amount: 45000, essential: true, vatDeductible: true },
+    { key: "dbinsurance", label: "보험/DB손해보험", amount: 34160, essential: true, vatDeductible: false },
+    { key: "samsungfire", label: "보험/삼성화재해상보험", amount: 17413, essential: true, vatDeductible: false },
+    { key: "donation-sdc", label: "기부금/세이브더칠드런", amount: 20000, essential: false, vatDeductible: false },
+    { key: "donation-child", label: "기부금/어린이재단", amount: 10000, essential: false, vatDeductible: false },
+    { key: "donation-barn", label: "기부금/함께하는사랑밭", amount: 10000, essential: false, vatDeductible: false }
+  ];
+
+  var monthlyExpense = expenseItems.reduce(function (a, e) {
+    return a + e.amount;
+  }, 0);
 
   /* ---------- 부가가치세 실제 산식 ----------
    * 부가가치세법 제46조 신용카드등 사용에 따른 세액공제를 반영한다.
@@ -97,8 +132,13 @@
    * 신고 단위: 반기(6개월). 예정고지 4/10월, 확정고지 7월/다음해 1월.
    *   예정고지세액 = 직전 반기 실제 납부세액 x 1/3
    *   확정고지세액 = 당기 실제 납부세액 - 당기 예정고지세액
-   * 월 1,200,000원 적립은 연 14,400,000원으로 예정고지를 충당하며,
-   * Filing 후 남는 잔액은 카드 발행세액공제분이다.
+   *
+   * [중요] 사업소득은 필요경비를 차감한 세후 순수익이므로 공급대가가 아니다.
+   * 부가가치세는 공급대가(매출)에서 낸다. 사업소득 x 10% 은 현행 적립 관행일
+   * 뿐 법적 산식이 아니며, 실제 납부세액을 확정하려면 아래 두 값이 필요하다.
+   *   grossSales  - 월 공급대가 (부가세 포함)
+   *   purchaseTax - 월 매입세액 (세금계산서 기준)
+   * 두 값이 없으므로 납부세액은 현행 적립액을 계획 기준으로 쓴다.
    */
 
   // 국세청 실무에 맞게 원 미만을 절삭한다
@@ -122,35 +162,59 @@
   };
 
   var vatInput = {
-    // 직전 연도 월평균
-    grossSales: 16000000, // 공급대가 (부가세 포함)
-    exemptSales: 2000000, // 면세/과세제외 공급대가. 세액 없음, 카드공제 기준에서도 제외
-    purchaseTax: 254545, // 매입세액 (공제)
-    monthlyDeposit: 1200000, // CMA 월 적립액
-    monthlyEmploymentInsurance: 1450000, // 고용보험 (적립 시 차감)
-    cardSupplyAmount: 10000000, // 카드매출 공급대가(부가세 포함)
-    isHospitality: false // 음식점·숙박업 등 2.6% 업종 여부
+    // [미확인] 실제 신고 기준이 되는 두 값. 없으면 실제 납부세액을 확정할 수 없다.
+    grossSales: null, // 월 공급대가 (부가세 포함 매출)
+    purchaseTax: null, // 월 매입세액 (세금계산서 기준)
+    exemptSales: 0, // 면세/과세제외 매출
+    monthlyEmploymentInsurance: null, // 월 고용보험 (미확인)
+
+    // 실제 운영값
+    businessIncome: 8200000, // 사업소득 (월, 세후 순수익)
+    monthlyAccrual: 820000, // 월 CMA 적립액 = 사업소득 x 10% (현행 방식)
+    cardSupplyAmount: 5000000, // 카드매출 공급대가 (월 평균)
+    isHospitality: false // 컴퓨터수리업 -> 2.6% 대상 아님, 1.3% 적용
   };
 
-  // 매출세액 = 공급대가 x 10/110  (부가세 포함 매출에서 세액만 뽑는다)
-  var vatOnSalesMonthly = floorWon((vatInput.grossSales * 10) / 110);
+  /* ----- 추정값: grossSales / purchaseTax 가 없을 때 쓰는 임시 산식 ----- */
 
-  // 납부세액(공제 전) = 매출세액 - 매입세액
-  var vatPayableMonthly = vatOnSalesMonthly - vatInput.purchaseTax;
-  var vatPayableAnnual = vatPayableMonthly * 12;
+  // 사업소득은 필요경비를 차감한 순수익이라 공급대가가 아니다.
+  // 최소 공급대가 = 사업소득 + 지출 (전부 과세라 가정)
+  var expenseSum = expenseItems.reduce(function (a, e) {
+    return a + e.amount;
+  }, 0);
+  var minGrossSales = vatInput.businessIncome + expenseSum;
+  var vatMinOnSales = floorWon((minGrossSales * 10) / 110);
 
-  // 카드 발행세액공제: 공급대가 x 공제율, 연 한도 이내.
-  // 공제액은 납부세액을 초과할 수 없다(환급 불가).
+  // 지출 중 매입세액을 받을 수 없는 항목 (보험·기부금·대출이자 등 비과세)
+  var nonDeductible = expenseItems
+    .filter(function (e) {
+      return !e.vatDeductible;
+    })
+    .reduce(function (a, e) {
+      return a + e.amount;
+    }, 0);
+  var purchaseTaxMax = floorWon(((expenseSum - nonDeductible) * 10) / 110);
+
+  // 사업소득 x 10% (현행 방식, 법적 근거 없음)
+  var vatApproxMonthly = floorWon(vatInput.businessIncome * 0.1);
+
+  /* ----- 카드 발행세액공제: 카드매출만으로 계산된다 ----- */
+
+  // 공제액은 연 한도 이내. 납부세액 상한은 납부세액 확정 후 적용한다.
   var cardRate = vatInput.isHospitality
     ? taxPolicy.cardCreditRateHospitality
     : taxPolicy.cardCreditRate;
   var cardCreditRaw = floorWon(vatInput.cardSupplyAmount * 12 * cardRate);
   var cardCreditByLimit = Math.min(cardCreditRaw, taxPolicy.annualCap);
-  var cardCreditAnnual = Math.min(cardCreditByLimit, vatPayableAnnual);
+  var cardCreditAnnual = cardCreditByLimit;
   var cardCreditMonthly = floorWon(cardCreditAnnual / 12);
 
-  // 공제 적용 후 실제 납부
-  var vatActualAnnual = vatPayableAnnual - cardCreditAnnual;
+  /* ----- 납부세액 ----- */
+
+  // 실제 신고값이 없으므로 현행 적립액을 계획 기준으로 쓴다.
+  var vatPlanMonthly = vatInput.monthlyAccrual;
+  var vatPlanAnnual = vatPlanMonthly * 12;
+  var vatActualAnnual = vatPlanAnnual - cardCreditAnnual;
   var vatActualMonthly = floorWon(vatActualAnnual / 12);
 
   // 반기 단위 고지 (정기면 1기, 추가면 2기)
@@ -160,14 +224,9 @@
   var vatAssessmentNotice = floorWon(halfActual / 3);
   var vatFinalNotice = halfActual - vatAssessmentNotice;
 
-  // 10/110 만 계산했을 때의 적립 필요액 (매입세액/카드공제 미반영)
-  var vatApproxMonthly = vatOnSalesMonthly;
-
-  // Filing 후 세금 계좌에 남는 금액.
-  // 적립액이 납부세액을 정확히 충당하므로 잔액은 카드공제분이다.
-  var vatSurplusMonthly = vatInput.monthlyDeposit - vatActualMonthly;
-  var vatSurplusAnnual = vatInput.monthlyDeposit * 12 - vatActualAnnual;
-  var vatOverApproxYear = (vatApproxMonthly - vatActualMonthly) * 12;
+  // Filing 후 세금 계좌에 남는 금액 = 카드 발행세액공제분
+  var vatSurplusMonthly = vatInput.monthlyAccrual - vatActualMonthly;
+  var vatSurplusAnnual = vatInput.monthlyAccrual * 12 - vatActualAnnual;
 
   /* ---------- Filing 일정 ---------- */
 
@@ -215,8 +274,9 @@
 
   var totalCash = cash.investable.amount + cash.autoTransfer.amount + cash.vat.amount;
 
-  var monthlyIncome = 8400000;
-  var monthlyExpense = 7160000;
+  // 월 수지 = 사업소득 - 지출 합계
+  // 세금(부가가치세·고용보험·종합소득세)은 이 지출 목록에 포함되지 않는다.
+  var monthlyIncome = incomeInput.businessIncome;
   var monthlyBalance = monthlyIncome - monthlyExpense;
 
   // 비상금 유지 개월 = 투자금 / 월 필수지출
@@ -274,14 +334,20 @@
       current: cash.investable.amount,
       targetMonths: emergencyTargetMonths,
       targetAmount: emergencyTarget,
-      reached: emergencyReached
+      reached: emergencyReached,
+      // 분모에 고용보험·종합소득세·지방세가 빠져 있다 (expenses.notIncluded)
+      incomplete: true
     },
     vat: {
       input: vatInput,
       policy: taxPolicy,
-      onSalesMonthly: vatOnSalesMonthly,
-      payableMonthly: vatPayableMonthly,
-      payableAnnual: vatPayableAnnual,
+      hasActualFilingData: vatInput.grossSales !== null && vatInput.purchaseTax !== null,
+      minGrossSales: minGrossSales,
+      onSalesMinMonthly: vatMinOnSales,
+      purchaseTaxMax: purchaseTaxMax,
+      approxMonthly: vatApproxMonthly,
+      planMonthly: vatPlanMonthly,
+      planAnnual: vatPlanAnnual,
       actualAnnual: vatActualAnnual,
       actualMonthly: vatActualMonthly,
       assessmentNotice: vatAssessmentNotice,
@@ -291,13 +357,26 @@
       cardCreditMonthly: cardCreditMonthly,
       cardCreditRaw: cardCreditRaw,
       cardCreditCappedByLimit: cardCreditByLimit < cardCreditRaw,
-      cardCreditCappedByPayable: cardCreditAnnual < cardCreditByLimit,
+      cardCreditCappedByPayable: false,
       surplusMonthly: vatSurplusMonthly,
       surplusAnnual: vatSurplusAnnual,
-      approxMonthly: vatApproxMonthly,
-      overApproxYear: vatOverApproxYear,
       filings: filings,
       upcoming: upcoming
+    },
+    income: incomeInput,
+    expenses: {
+      items: expenseItems,
+      total: monthlyExpense,
+      deductibleTotal: expenseSum - nonDeductible,
+      nonDeductibleTotal: nonDeductible,
+      // 필수지출에 들어 있지 않은 항목. 이게 빠진 채로 비상금 유지 개월을 계산하면
+      // 유지 개월이 실제보다 부풀려진다. 금액은 사용자 확인이 필요하다.
+      notIncluded: [
+        { key: "employmentInsurance", label: "고용보험", amount: null, note: "사업주 전체부담" },
+        { key: "incomeTax", label: "종합소득세", amount: null, note: "연말정산 후 확정" },
+        { key: "localTax", label: "지방세", amount: null, note: "소득세의 10%" }
+      ],
+      emergencyIncomplete: true
     },
     composition: composition,
     cashflow: cashflow
