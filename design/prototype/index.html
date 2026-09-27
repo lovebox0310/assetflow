@@ -206,8 +206,9 @@
               </div>
               <p class="screen__path">/dashboard</p>
               <p class="screen__desc">
-                핵심 카드 4종(순자산, 월 수지, 비상금 유지 개월, 자산 구성비)과 월별 현금흐름
-                추이. 로딩/빈값/오류 상태를 전환으로 확인합니다.
+                핵심 카드 5종(순자산, 월 수지, 비상금 유지 개월, 투자 가능 현금,
+                부가가치세), 자산 구성비, 현금 3계좌, 월별 현금흐름. 로딩/빈값/오류 상태를
+                전환으로 확인합니다.
               </p>
               <p class="screen__meta">
                 <span class="tag">Issue 3</span>
@@ -238,7 +239,7 @@
         <section class="group" aria-labelledby="h-mvp">
           <div class="group__head">
             <h2 class="group__title" id="h-mvp">MVP 나머지 — IA만 확정</h2>
-            <span class="tag tag--info">6개 화면</span>
+            <span class="tag tag--info">7개 화면</span>
           </div>
           <div class="screen-grid">
             <article class="screen">
@@ -282,6 +283,19 @@
               <p class="screen__path">/emergency-fund</p>
               <p class="screen__desc">
                 유지 개월 추이, 목표 대비 갭, 월 필수지출 조정으로 재계산합니다.
+                투자금 잔액만 분자에 넣습니다.
+              </p>
+            </article>
+
+            <article class="screen">
+              <div class="screen__top">
+                <h3 class="screen__name">부가가치세</h3>
+                <span class="tag tag--info">추가</span>
+              </div>
+              <p class="screen__path">/tax/vat</p>
+              <p class="screen__desc">
+                Filing 카운트다운, 매출세액·매입세액 입력, 법정 고지세액 대비 적립액 점검,
+                Filing 후 잔액을 투자금으로 이체. 자동 이체는 MVP 밖입니다.
               </p>
             </article>
 

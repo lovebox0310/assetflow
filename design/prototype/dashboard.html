@@ -20,7 +20,12 @@
       }
       @media (min-width: 992px) {
         .cards-grid {
-          grid-template-columns: repeat(4, 1fr);
+          grid-template-columns: repeat(3, 1fr);
+        }
+      }
+      @media (min-width: 1200px) {
+        .cards-grid {
+          grid-template-columns: repeat(5, 1fr);
         }
       }
 
@@ -115,6 +120,75 @@
         color: var(--color-text-inverse);
         font-weight: var(--font-weight-medium);
       }
+
+      /* 현금 3계좌 */
+      .cash-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: var(--space-3);
+      }
+      @media (min-width: 576px) {
+        .cash-grid {
+          grid-template-columns: repeat(3, 1fr);
+        }
+      }
+      .cash-item {
+        padding: var(--space-4);
+        border: 1px solid var(--color-border-secondary);
+        border-radius: var(--radius-card);
+        background: var(--color-fill-quaternary);
+      }
+      .cash-item--investable {
+        border-color: var(--color-primary-border);
+        background: var(--color-primary-bg);
+      }
+      .cash-item--locked {
+        border-style: dashed;
+      }
+      .cash-item__top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-2);
+      }
+      .cash-item__label {
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-bold);
+      }
+      .cash-item__amount {
+        margin-top: var(--space-2);
+        font-size: var(--font-size-lg);
+        font-weight: var(--font-weight-bold);
+        font-variant-numeric: tabular-nums;
+      }
+      .cash-item__desc {
+        margin-top: var(--space-1);
+        font-size: var(--font-size-xs);
+        color: var(--color-text-secondary);
+      }
+      .cash-item__pct {
+        margin-top: var(--space-2);
+        font-size: var(--font-size-xs);
+        color: var(--color-text-tertiary);
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* 구성비에서 현금 계열 음영 구분 */
+      .bar-list__fill--cash {
+        background: var(--color-primary);
+        opacity: 0.55;
+      }
+      .bar-list__fill--investable {
+        background: var(--color-primary);
+        opacity: 1;
+      }
+      .bar-list__row--group {
+        margin-top: var(--space-4);
+        padding-top: var(--space-3);
+        border-top: 1px solid var(--color-border-secondary);
+        font-weight: var(--font-weight-bold);
+        color: var(--color-text-secondary);
+      }
     </style>
   </head>
   <body>
@@ -192,11 +266,12 @@
                 </div>
               </article>
 
-              <!-- 카드 3: 비상금 유지 개월 = 보유 현금 / 월 필수지출 -->
+              <!-- 카드 3: 비상금 유지 개월 = 투자금 / 월 필수지출
+                   자동이체 잔액과 부가가치세 잔액은 분자에서 제외한다. -->
               <article class="card">
                 <div class="card__head">
                   <h3 class="card__label">비상금 유지 개월</h3>
-                  <span class="tag tag--info" id="emergencyTag">—</span>
+                  <span class="tag tag--warning" id="emergencyTag">—</span>
                 </div>
                 <div class="card__body">
                   <p class="stat" id="emergencyMonths">—</p>
@@ -204,15 +279,57 @@
                 </div>
               </article>
 
-              <!-- 카드 4: 자산 구성비 = 유형별 비율(합계 100%) -->
+              <!-- 카드 4: 투자 가능 현금 = 지금 즉시 쓸 수 있는 금액 -->
               <article class="card">
                 <div class="card__head">
-                  <h3 class="card__label">자산 구성비</h3>
+                  <h3 class="card__label">투자 가능 현금</h3>
+                  <span class="tag tag--info" id="liquidTag">현금의 —</span>
                 </div>
                 <div class="card__body">
-                  <ul class="bar-list" id="composition"></ul>
+                  <p class="stat" id="investable">—</p>
+                  <p class="stat__detail" id="investableDetail"></p>
                 </div>
               </article>
+
+              <!-- 카드 5: 부가가치세 Filing 카운트다운 -->
+              <article class="card">
+                <div class="card__head">
+                  <h3 class="card__label">부가가치세</h3>
+                  <span class="tag tag--info" id="vatTag">—</span>
+                </div>
+                <div class="card__body">
+                  <p class="stat" id="vatCountdown">—</p>
+                  <p class="stat__detail" id="vatDetail"></p>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section aria-labelledby="h-composition" style="margin-top: var(--space-8)">
+            <div class="card">
+              <div class="card__head">
+                <h2 id="h-composition" class="card__label">자산 구성비</h2>
+                <span class="text-sm muted">현금은 계좌 성격에 따라 3분할</span>
+              </div>
+              <div class="card__body">
+                <ul class="bar-list" id="composition"></ul>
+              </div>
+            </div>
+          </section>
+
+          <section aria-labelledby="h-cash" style="margin-top: var(--space-8)">
+            <div class="card">
+              <div class="card__head">
+                <h2 id="h-cash" class="card__label">현금 3계좌</h2>
+                <span class="text-sm muted">지금 쓸 수 있는 돈은 일부뿐입니다</span>
+              </div>
+              <div class="card__body">
+                <div class="cash-grid" id="cashGrid"></div>
+                <p class="notice" style="margin-top: var(--space-4)">
+                  <span aria-hidden="true">i</span>
+                  <span id="cashNote"></span>
+                </p>
+              </div>
             </div>
           </section>
 
@@ -308,7 +425,7 @@
           " − 지출 " +
           f.formatCompactKR(d.totals.monthlyExpense);
 
-        // 카드 3
+        // 카드 3: 비상금 유지 개월 (투자금 기준)
         document.getElementById("emergencyMonths").textContent = f.formatOneDecimal(
           d.emergency.months,
           "개월"
@@ -317,38 +434,149 @@
         eTag.textContent = d.emergency.reached ? "목표 달성" : "목표 미달";
         eTag.className = "tag " + (d.emergency.reached ? "tag--success" : "tag--warning");
         document.getElementById("emergencyDetail").textContent =
-          "현금 " +
+          "투자금 " +
           f.formatCompactKR(d.emergency.current) +
+          " ÷ 월 필수지출 " +
+          f.formatCompactKR(d.cash.autoTransfer.monthlyEssential) +
           " · 목표 " +
           d.emergency.targetMonths +
           "개월(" +
           f.formatCompactKR(d.emergency.targetAmount) +
           ")";
 
-        // 카드 4
+        // 카드 4: 투자 가능 현금
+        document.getElementById("investable").textContent = f.formatCompactKR(
+          d.cash.investable.amount
+        );
+        document.getElementById("liquidTag").textContent =
+          "현금의 " + f.formatPercent(d.totals.liquidRatio);
+        document.getElementById("investableDetail").textContent =
+          "총 현금 " +
+          f.formatCompactKR(d.totals.totalCash) +
+          " 중 지금 쓸 수 있는 금액";
+
+        // 카드 5: 부가가치세 Filing 카운트다운
+        var up = d.vat.upcoming;
+        var asOfM = d.asOfMonth;
+        var monthDiff =
+          (parseInt(up.month.slice(0, 4), 10) - parseInt(asOfM.slice(0, 4), 10)) * 12 +
+          (parseInt(up.month.slice(5, 7), 10) - parseInt(asOfM.slice(5, 7), 10));
+        document.getElementById("vatCountdown").textContent = monthDiff + "개월 후";
+        document.getElementById("vatTag").textContent = up.label;
+        document.getElementById("vatDetail").textContent =
+          f.formatMonthKo(up.month) +
+          " " +
+          up.day +
+          "일 · 잔액 " +
+          f.formatCompactKR(d.cash.vat.amount) +
+          " → 투자금 이체";
+
+        // 자산 구성비: 금융자산 3종 + 현금 3분할
         var comp = document.getElementById("composition");
-        d.composition.forEach(function (c) {
+        var cashStartIndex = d.composition.findIndex(function (c) { return c.isCash; });
+        d.composition.forEach(function (c, idx) {
           var li = document.createElement("li");
           li.className = "bar-list__item";
           var row = document.createElement("div");
-          row.className = "bar-list__row";
+          row.className = "bar-list__row" + (idx === cashStartIndex ? " bar-list__row--group" : "");
           var name = document.createElement("span");
           name.textContent = c.label;
           var val = document.createElement("span");
           val.className = "num";
-          val.textContent = f.formatPercent(c.percent);
+          val.textContent =
+            f.formatPercent(c.pctOfTotal) + " · " + f.formatCompactKR(c.amount);
           row.appendChild(name);
           row.appendChild(val);
           var track = document.createElement("div");
           track.className = "bar-list__track";
           var fill = document.createElement("div");
-          fill.className = "bar-list__fill";
-          fill.style.width = c.percent.toFixed(1) + "%";
+          fill.className =
+            "bar-list__fill" +
+            (c.key === "cash-투자금"
+              ? " bar-list__fill--investable"
+              : c.isCash
+              ? " bar-list__fill--cash"
+              : "");
+          // 전체 자산 대비 비중으로 너비를 그린다
+          fill.style.width = c.pctOfTotal.toFixed(1) + "%";
           track.appendChild(fill);
           li.appendChild(row);
           li.appendChild(track);
           comp.appendChild(li);
         });
+
+        // 현금 3계좌
+        var cashMeta = [
+          {
+            key: "investable",
+            label: d.cash.investable.label,
+            amount: d.cash.investable.amount,
+            desc: "순수 사용가능. 비상금과 투자의 기준",
+            tag: "지금 사용 가능",
+            tagClass: "tag--success"
+          },
+          {
+            key: "autoTransfer",
+            label: d.cash.autoTransfer.label,
+            amount: d.cash.autoTransfer.amount,
+            desc: "카드비·세금·공과금·고정지출·임대료·기부금 배정분",
+            tag: "월중 소진",
+            tagClass: "tag--warning"
+          },
+          {
+            key: "vat",
+            label: d.cash.vat.label,
+            amount: d.cash.vat.amount,
+            desc: "한투 발행어음 CMA. Filing 후 잔액을 투자금으로 이체",
+            tag: "Filing 대기",
+            tagClass: "tag--info"
+          }
+        ];
+        var grid = document.getElementById("cashGrid");
+        cashMeta.forEach(function (c) {
+          var box = document.createElement("div");
+          box.className =
+            "cash-item cash-item--" + c.key + (c.key !== "investable" ? " cash-item--locked" : "");
+          var top = document.createElement("div");
+          top.className = "cash-item__top";
+          var label = document.createElement("span");
+          label.className = "cash-item__label";
+          label.textContent = c.label;
+          var tag = document.createElement("span");
+          tag.className = "tag " + c.tagClass;
+          tag.textContent = c.tag;
+          top.appendChild(label);
+          top.appendChild(tag);
+          var amt = document.createElement("p");
+          amt.className = "cash-item__amount";
+          amt.textContent = f.formatCompactKR(c.amount);
+          var desc = document.createElement("p");
+          desc.className = "cash-item__desc";
+          desc.textContent = c.desc;
+          var pct = document.createElement("p");
+          pct.className = "cash-item__pct";
+          pct.textContent =
+            "현금의 " + f.formatPercent((c.amount / d.totals.totalCash) * 100);
+          box.appendChild(top);
+          box.appendChild(amt);
+          box.appendChild(desc);
+          box.appendChild(pct);
+          grid.appendChild(box);
+        });
+
+        document.getElementById("cashNote").textContent =
+          "현금 " +
+          f.formatCompactKR(d.totals.totalCash) +
+          " 중 " +
+          f.formatPercent(d.totals.liquidRatio) +
+          "만 지금 쓸 수 있습니다. 나머지는 지출 배정분과 세금 적립분이라 비상금 계산에서 제외합니다. " +
+          "월 적립액 " +
+          f.formatKRW(d.vat.input.monthlyDeposit) +
+          "은 법정 고지세액 " +
+          f.formatKRW(d.vat.statutoryMonthly) +
+          "보다 " +
+          f.formatKRW(d.vat.overDepositMonthly) +
+          " 많습니다.";
 
         // 차트 (ECharts 대체 목업)
         var W = 640, H = 260, padL = 56, padR = 16, padT = 24, padB = 32;
