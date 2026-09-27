@@ -401,6 +401,13 @@ a:hover {
   color: var(--color-text-secondary);
 }
 
+/* 주의가 필요한 안내 (예: 적용받지 못한 공제, 미확정 항목) */
+.notice--warn {
+  border-color: var(--color-warning-border);
+  background: var(--color-warning-bg);
+  color: var(--color-text-primary);
+}
+
 /* 상태 표시 (Issue 4 로딩/빈값/오류) */
 .state {
   display: none;

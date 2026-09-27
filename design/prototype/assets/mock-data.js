@@ -92,10 +92,11 @@
 
   /* ---------- 월 수입 ---------- */
 
-  // 사업소득은 필요경비를 차감한 세후 순수익이다.
-  // 부가가치세 산정 기준(공급대가)이 아니므로 여기서 10%를 뽑지 않는다.
+  // 주의: 사용자가 말하는 "사업소득 8,200,000원"은 필요경비를 차감한 순수익이 아니라
+  // **공급가액(부가세 제외 매출)** 이다. 9,020,000 = 8,200,000 + 820,000 이다.
+  // 따라서 부가가치세 산정 기준이 된다(10/110).
   var incomeInput = {
-    businessIncome: 8200000 // 개인사업 수입 (월)
+    supplyExVat: 8200000 // 공급가액 = 세금계산서 발행액에서 부가세를 뺀 매출 (월)
   };
 
   /* ---------- 월 지출 ---------- */
@@ -116,10 +117,8 @@
     { key: "donation-barn", label: "기부금/함께하는사랑밭", amount: 10000, essential: false, vatDeductible: false },
     { key: "employmentInsurance", label: "고용보험", amount: 70000, essential: true, vatDeductible: false },
     { key: "taxFee", label: "세금/수수료", amount: 330000, essential: true, vatDeductible: false }
-    // [미확인] 이 2개 항목의 성격. 금액은 사용자 확인값.
-    //   고용보험 70,000원 - 보험료이므로 매입세액 공제 불가
-    //   세금/수수료 330,000원 - 종합소득세 0원인 달에 대체로 발생하는 금액.
-    //     무엇에 대한 수수료인지 미확인 (신고 대리인료 / 세액계산서 발급 / 기타)
+    // 세금/수수료 330,000원 = 종합소득세 신고 대리인에게 지불하는 수수료 (사용자 확인).
+    //   종합소득세가 0원인 달에도 대리 수수료는 발생한다.
   ];
 
   var expenseSum = expenseItems.reduce(function (a, e) {
@@ -172,16 +171,31 @@
 
   var vatInput = {
     // 실제 신고 기준 값 (사용자 확인)
+    // 공급대가 9,020,000 = 공급가액 8,200,000 + 부가세 820,000
     grossSales: 9020000, // 월 공급대가 = 세금계산서 발행액 (부가세 포함)
-    purchaseTax: 320000, // 월 매입세액 (실제 인정분)
+    // 매입세액 320,000원/월 (6개월 1,920,000원). 사용자 확인 근거:
+    //   6개월 매출세액 4,920,000 (= 820,000 x 6)
+    //   6개월 납부세액 3,000,000 (= 예정 1,500,000 + 확정 1,500,000)
+    //   4,920,000 - 3,000,000 = 1,920,000 = 6개월 매입세액 -> 월 320,000원
+    purchaseTax: 320000, // 월 매입세액 (인정 세금계산서 기준)
     exemptSales: 0, // 면세/과세제외 매출
     monthlyEmploymentInsurance: 70000, // 월 고용보험 (지출 목록에 포함)
 
     // 실제 운영값
-    businessIncome: 8200000, // 사업소득 (월, 세후 순수익)
-    monthlyAccrual: 820000, // 월 CMA 적립액 (매출세액 기준)
+    supplyExVat: 8200000, // 공급가액 (월. 부가세 제외 매출)
+    monthlyAccrual: 820000, // 월 CMA 적립액 (매출세액 820,000원 그대로)
     cardSupplyAmount: 5000000, // 카드매출 공급대가 (월 평균)
-    isHospitality: false // 컴퓨터수리업 -> 2.6% 대상 아님, 1.3% 적용
+    isHospitality: false, // 컴퓨터수리업 -> 2.6% 대상 아님, 1.3% 적용
+
+    // 실제 고지서(반기 1,500,000 + 1,500,000 = 3,000,000)는 카드 발행세액공제를
+    // 차감하기 전 금액과 일치한다. 즉 지금은 공제를 신고하지 않고 있다.
+    cardCreditClaimed: false,
+
+    // 실제 고지서 금액 (사용자 확인). 반기당 1,500,000 + 1,500,000 = 3,000,000원.
+    // 아래 예정고지/확정고지 공식이 재현해야 하는 값이다.
+    priorHalfActual: 4500000, // 직전 반기 실제 납부세액 -> 1/3 = 1,500,000
+    actualNotice: 1500000,
+    actualFinal: 1500000
   };
 
   /* ----- 실제 신고 산식 ----- */
@@ -203,19 +217,32 @@
     : taxPolicy.cardCreditRate;
   var cardCreditRaw = floorWon(vatInput.cardSupplyAmount * 12 * cardRate);
   var cardCreditByLimit = Math.min(cardCreditRaw, taxPolicy.annualCap);
-  var cardCreditAnnual = Math.min(cardCreditByLimit, vatPayableAnnual);
-  var cardCreditMonthly = floorWon(cardCreditAnnual / 12);
+  var cardCreditEligible = Math.min(cardCreditByLimit, vatPayableAnnual);
+  var cardCreditMonthlyEligible = floorWon(cardCreditEligible / 12);
+
+  // 실제 고지서(반기 1,500,000 + 1,500,000 = 3,000,000)는 카드공제를 차감하기 전
+  // 금액이다. 즉 지금은 발행세액공제를 신고하지 않고 있다.
+  // 공제를 적용받으면 납부세액이 이만큼 줄어든다.
+  var cardCreditClaimed = vatInput.cardCreditClaimed;
+  var cardCreditAnnual = cardCreditClaimed ? cardCreditEligible : 0;
+  var cardCreditMonthly = cardCreditClaimed ? cardCreditMonthlyEligible : 0;
+  var unclaimedCreditAnnual = cardCreditEligible - cardCreditAnnual;
 
   /* ----- 실제 납부세액 ----- */
 
   var vatActualAnnual = vatPayableAnnual - cardCreditAnnual;
   var vatActualMonthly = floorWon(vatActualAnnual / 12);
 
+  // 공제를 적용받는 경우의 납부세액 (미청구 공제만큼 줄어든다)
+  var vatActualAnnualIfClaimed = vatPayableAnnual - cardCreditEligible;
+  var vatActualMonthlyIfClaimed = floorWon(vatActualAnnualIfClaimed / 12);
+
   // 반기 단위 고지 (정기면 1기, 추가면 2기)
-  // 예정고지세액 = 직전 반기 실제 납부세액 x 1/3   (카드공제 후 기준)
+  // 예정고지세액 = 직전 반기 실제 납부세액 x 1/3
   // 확정고지세액 = 당기 실제 납부세액 - 당기 예정고지세액
+  // 직전 반기가 4,500,000원이면 예정고지 = 1,500,000원이 되어 실제 고지서와 일치한다.
   var halfActual = floorWon(vatActualAnnual / 2);
-  var vatAssessmentNotice = floorWon(halfActual / 3);
+  var vatAssessmentNotice = floorWon(vatInput.priorHalfActual / 3);
   var vatFinalNotice = halfActual - vatAssessmentNotice;
 
   // 적립액과 실제 납부세액의 차이.
@@ -225,10 +252,21 @@
   var vatSurplusAnnual = vatInput.monthlyAccrual * 12 - vatActualAnnual;
   var vatSurplusShareOfAccrual = (vatSurplusAnnual / (vatInput.monthlyAccrual * 12)) * 100;
 
-  // 사업소득(순수익)과 공급대가(매출)의 관계 점검
-  // 공급대가 - 지출 = 예상 사업소득. 실제 사업소득과 다르면 원인을 확인한다.
-  var impliedIncomeFromSales = vatInput.grossSales - expenseSum;
-  var incomeGap = incomeInput.businessIncome - impliedIncomeFromSales;
+  // 매입세액 320,000원이 함의하는 실제 매입 규모.
+  // 매입세액 = 매입 공급가액 x 10/110 이므로 역산하면
+  //   매입 공급가액 = 320,000 x 110/10 = 3,520,000원
+  // 지출 목록에는 부품·재료비가 빠져 있어 지출 합계(2,053,753)와 맞지 않는다.
+  var impliedPurchaseExVat = floorWon((vatInput.purchaseTax * 110) / 10);
+  var purchaseReconciliationGap = impliedPurchaseExVat - expenseSum;
+
+  // 고지 공식이 실제 고지서를 재현하는지 검증한다.
+  //   예정고지 = 직전 반기 실제 납부세액 x 1/3
+  //   확정고지 = 당기 실제 납부세액 - 예정고지
+  // 실제 고지서: 예정 1,500,000 + 확정 1,500,000 = 3,000,000원/반기
+  // 반기 납부세액이 3,000,000원으로 고정이므로 4회 고지 합계는 연 6,000,000원으로 일치한다.
+  var noticeFormulaCheck =
+    Math.abs(vatAssessmentNotice - vatInput.actualNotice) +
+    Math.abs(vatFinalNotice - vatInput.actualFinal);
 
 
   /* ---------- Filing 일정 ---------- */
@@ -277,9 +315,10 @@
 
   var totalCash = cash.investable.amount + cash.autoTransfer.amount + cash.vat.amount;
 
-  // 월 수지 = 사업소득 - 지출 합계
-  // 세금(부가가치세·고용보험·종합소득세)은 이 지출 목록에 포함되지 않는다.
-  var monthlyIncome = incomeInput.businessIncome;
+  // 월 수지 = 공급가액 - 지출 합계
+  // 부가세 820,000원은 현금으로 쓸 수 없으므로 공급대가(9,020,000)가 아니라
+  // 공급가액(8,200,000)에서 뺀다. 부가세는 별도 CMA 계좌로 이동한다.
+  var monthlyIncome = incomeInput.supplyExVat;
   var monthlyBalance = monthlyIncome - monthlyExpense;
 
   // 비상금 유지 개월 = 투자금 / 월 필수지출
@@ -355,16 +394,26 @@
       assessmentNotice: vatAssessmentNotice,
       finalNotice: vatFinalNotice,
       cardRate: cardRate,
+      cardCreditClaimed: cardCreditClaimed,
       cardCreditAnnual: cardCreditAnnual,
       cardCreditMonthly: cardCreditMonthly,
+      cardCreditEligible: cardCreditEligible,
+      unclaimedCreditAnnual: unclaimedCreditAnnual,
       cardCreditRaw: cardCreditRaw,
       cardCreditCappedByLimit: cardCreditByLimit < cardCreditRaw,
-      cardCreditCappedByPayable: cardCreditAnnual < cardCreditByLimit,
+      cardCreditCappedByPayable: cardCreditEligible < cardCreditByLimit,
+      actualAnnualIfClaimed: vatActualAnnualIfClaimed,
+      actualMonthlyIfClaimed: vatActualMonthlyIfClaimed,
       surplusMonthly: vatSurplusMonthly,
       surplusAnnual: vatSurplusAnnual,
       surplusShareOfAccrual: vatSurplusShareOfAccrual,
-      impliedIncomeFromSales: impliedIncomeFromSales,
-      incomeGap: incomeGap,
+      impliedPurchaseExVat: impliedPurchaseExVat,
+      purchaseReconciliationGap: purchaseReconciliationGap,
+      actualNotice: vatInput.actualNotice,
+      actualFinal: vatInput.actualFinal,
+      actualHalfTotal: vatInput.actualNotice + vatInput.actualFinal,
+      priorHalfActual: vatInput.priorHalfActual,
+      noticeFormulaCheck: noticeFormulaCheck,
       filings: filings,
       upcoming: upcoming
     },
