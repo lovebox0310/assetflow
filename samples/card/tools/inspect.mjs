@@ -19,7 +19,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { inflateRawSync } from "node:zlib";
 import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
-import { detect, describeEnc } from "./lib/detect.mjs";
+import { detect } from "./lib/detect.mjs";
 
 const CONTRACT = fileURLToPath(new URL("../card-columns.json", import.meta.url));
 const contract = JSON.parse(readFileSync(CONTRACT, "utf8"));
@@ -214,9 +214,33 @@ function inspect(path) {
 
   if (fmt.kind === "csv") {
     const text = decodeText(readFileSync(path));
-    const lines = text.split(/\r?\n/).filter((l) => l.trim());
-    info.header = lines[0] ? splitCsvLine(lines[0]) : [];
-    info.rowCount = Math.max(0, lines.length - 1);
+    // 빈 줄을 지우면 행 번호가 어긋난다(현대 CSV 는 헤더 앞에 빈 줄이 있다).
+    // 그래서 전체 행을 유지하고 점수 매길 때만 건너뛴다.
+    const lines = text.split(/\r?\n/);
+    const nonEmpty = (l) => l.trim() !== "";
+    // CSV 도 헤더가 첫 행이 아닐 수 있다(삼성 19행, 현대 8행). xlsx 쪽과 같은
+    // 점수 방식으로 헤더 후보 행을 찾는다. 첫 행을 헤더라 부르면 조사 결과가
+    // 처음부터 틀린다.
+    let headerIdx = -1, headerCells = [], matches = [];
+    lines.slice(0, 50).forEach((l, ri) => {
+      if (!nonEmpty(l)) return;
+      const cells = splitCsvLine(l);
+      const m = cells.map(matchField).filter(Boolean);
+      if (m.length >= 3 && m.length > matches.length) {
+        headerIdx = ri; headerCells = cells; matches = m;
+      }
+    });
+    info.headerRowNumber = headerIdx >= 0 ? headerIdx + 1 : null;
+    info.header = headerCells;
+    info.rowCount = Math.max(0, lines.filter(nonEmpty).length - (headerIdx + 1));
+    info.matched = [...new Set(matches.map((m) => m.key))];
+    // 합계성 행(합계/소계)도 세어 알린다. 거래에 더하면 안 되는 행이다.
+    const totalRows = lines.slice(headerIdx + 1)
+      .filter(nonEmpty)
+      .map((l) => splitCsvLine(l))
+      .filter((cells) => looksLikeTotalRow(cells));
+    info.totalLikeRowCount = totalRows.length;
+    info.totalLikeSamples = totalRows.slice(0, 3).map((r) => r.filter(Boolean).join(" | "));
     return info;
   }
 
@@ -286,7 +310,7 @@ for (const f of files) {
   console.log("\n=== " + info.file + " ===");
   console.log("  형식 " + info.formatLabel + " / " + info.size.toLocaleString() + "B");
   if (info.extMismatch) { console.log("  주의: " + info.extMismatch); problems++; }
-  if (info.enc) console.log("  암호화 " + describeEnc(info.enc));
+  if (info.encrypted) console.log("  암호화 " + info.note);
 
   if (info.blocked) {
     console.log("  읽을 수 없다: " + info.blocked);
@@ -296,8 +320,12 @@ for (const f of files) {
     continue;
   }
   if (info.kind === "csv") {
-    console.log("  헤더 " + JSON.stringify(info.header));
+    console.log("  헤더 " + (info.headerRowNumber ? info.headerRowNumber + "행째 " : "") + JSON.stringify(info.header));
     console.log("  데이터 " + info.rowCount + "행");
+    if (info.totalLikeRowCount) {
+      console.log("  합계성 행 " + info.totalLikeRowCount + "개 (파서에서 제외해야 함)");
+      if (!headerOnly) info.totalLikeSamples.forEach((x) => console.log("      " + x));
+    }
   }
   for (const s of info.sheetDetail || []) {
     console.log("\n  [시트] " + s.sheet);
@@ -314,22 +342,35 @@ for (const f of files) {
       console.log("    깨진 문자열 참조 " + s.danglingRefs + "건 (sharedStrings 불일치)");
       problems++;
     }
+    // '필수'는 '파일에 컬럼이 있어야 함'을 뜻한다. source 가 'user' 인 필드
+    // (예: expenseKind = 용도구분)는 파일에 없는 사용자 입력값이라 여기서
+    // 요구하면 모든 파일이 '필수 필드 누락' 으로 실패한다.
+    // source 가 'columnOrDerived' 인 필드(공급가액)도 컬럼이 없을 수 있다.
     const missing = Object.entries(contract.fields)
-      .filter(([, spec]) => spec.required)
+      .filter(([, spec]) => spec.required && spec.source === "column")
       .map(([k]) => k)
       .filter((k) => !s.matched.includes(k));
     if (missing.length) {
       console.log("    필수 필드 누락 " + missing.join(", "));
       problems++;
     } else {
-      console.log("    필수 필드 충족");
+      const derived = Object.entries(contract.fields)
+        .filter(([k, spec]) => spec.required && spec.source === "columnOrDerived" && !s.matched.includes(k))
+        .map(([k]) => k);
+      console.log("    필수 필드 충족" + (derived.length
+        ? " (컬럼 없이 파생: " + derived.join(", ") + " — derivation 규칙을 써야 한다)"
+        : ""));
     }
   }
   if (info.kind === "csv") {
-    const matched = info.header.map(matchField).filter(Boolean).map((m) => m.key);
-    const missing = Object.keys(contract.fields).filter((k) => !matched.includes(k));
+    const matched = info.matched || [];
+    const missing = Object.entries(contract.fields)
+      .filter(([, spec]) => spec.required && spec.source === "column")
+      .map(([k]) => k)
+      .filter((k) => !matched.includes(k));
     console.log("  매칭 필드 " + (matched.length ? matched.join(", ") : "없음"));
     if (missing.length) { console.log("  필수 필드 누락 " + missing.join(", ")); problems++; }
+    else console.log("  필수 필드 충족 (컬럼 기준)");
   }
 }
 

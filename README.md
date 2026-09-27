@@ -29,12 +29,16 @@ node samples/card/tools/inspect.mjs samples/card/anonymized/synthetic-sample.xls
 ```
 
 **Card statements arrive encrypted, and the extension lies.** A real Samsung Card
-file was named `.xlsx` but was an ECMA-376 Agile Encryption package (AES-128-CBC,
-SHA1, spinCount 100000, password protected), so it is a CFB container and not a
+file was named `.xlsx` but was an ECMA-376 Agile Encryption package
+(password protected), so it is a CFB container and not a
 zip at all. The tool detects the real format from magic bytes instead of trusting
 the extension, because otherwise the only clue is an unhelpful "not a zip" error.
-The agreed approach is to take the password and decrypt in the browser, so the
-original file and the password never reach the server.
+
+**Encryption policy (user decision).** Encrypted files are read only when they
+open with the exact password the user typed, or when they arrive already
+decrypted. Password input is the only allowed mechanism: a wrong password is
+reported as a failure, and no retry loops, brute forcing, or workaround logic
+may be built. The file and the password never reach the server.
 
 **Never commit a real card statement.** Card numbers, member names and merchant
 names are personal financial data. Only anonymized copies under
