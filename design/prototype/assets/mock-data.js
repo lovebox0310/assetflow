@@ -295,7 +295,6 @@
   ];
 
   var asOfDate = "2026-09-30";
-
   function nextFiling(fromIso, list) {
     for (var i = 0; i < list.length; i++) {
       if (list[i].month > fromIso.slice(0, 7)) return list[i];
@@ -366,6 +365,15 @@
   composition.forEach(function (c) {
     if (c.pctOfTotal === undefined) c.pctOfTotal = (c.amount / totalAssets) * 100;
   });
+
+  /* ---------- 카드내역 (§29) ----------
+   * 카드 엑셀/CSV 임포트 결과만 저장한다. 지출 항목과는 다른 증빙 계층이다:
+   * 카드 부가세 합계가 세금계산서 매입세액(320,000원/월)과 맞지 않는 갭은
+   * 알려진 문제로 그대로 둔다(card-columns.json reconciliation.knownGap).
+   * 초기값은 비어 있다. 가져온 적이 없는 상태가 정상 상태다.
+   */
+  var cardImports = [];
+  var cardMerchantRules = {};
 
   global.AF = global.AF || {};
   var data = {
@@ -452,7 +460,12 @@
       emergencyIncomplete: true
     },
     composition: composition,
-    cashflow: cashflow
+    cashflow: cashflow,
+    // 카드내역 (§29). 파서가 뱉은 정규화 행만 저장한다. 원본 파일은 저장하지 않는다.
+    card: {
+      imports: cardImports,
+      merchantRules: cardMerchantRules
+    }
   };
   global.AF.data = data;
 
@@ -627,6 +640,112 @@
   // 어떤 화면이든 로드 직전에 저장값을 읽는다 (대시보드/설정 포함).
   global.AF.storage.load();
   global.AF.recompute();
+
+  /* ------------------------------------------------------------------
+   * 카드내역 저장소 (§29, 프로토타입 한정)
+   * 지출 저장소와 같은 규약을 쓴다: 로드 시 읽고, 값을 바꾼 뒤에만 저장하고,
+   * 깨진 값은 조용히 무시하지 말고 걸러낸다. 행마다 최소 필드를 검증하고
+   * 숫자는 정수로 되돌린다. 합계는 저장하지 않는다 — 행이 단일 출처고
+   * 합계는 화면이 행에서 다시 계산한다(저장합과 행의 어긋남 원천 차단).
+   * ------------------------------------------------------------------ */
+  var CARD_KEY = "assetflow.cardImports.v1";
+  var EXPENSE_KINDS = ["business", "personal"];
+
+  function snapRow(r) {
+    return {
+      rowKey: r.rowKey,
+      approvedAt: typeof r.approvedAt === "string" ? r.approvedAt : "",
+      merchantName: r.merchantName,
+      grossAmount: Math.round(r.grossAmount),
+      // 역산 공급가액은 파서 규칙(gross - vat)으로 다시 만든다. 저장값을 믿지 않는다.
+      supplyExVat: Math.round(r.grossAmount) - Math.round(r.vat),
+      vat: Math.round(r.vat),
+      expenseKind: EXPENSE_KINDS.indexOf(r.expenseKind) >= 0 ? r.expenseKind : "unclassified",
+      reversal: r.reversal === "매입취소" ? "매입취소" : "매입",
+      cardMasked: typeof r.cardMasked === "string" ? r.cardMasked : null,
+      approvedAmount: typeof r.approvedAmount === "number" ? Math.round(r.approvedAmount) : null,
+      installmentCount: typeof r.installmentCount === "number" ? Math.round(r.installmentCount) : null,
+      memberRelation: typeof r.memberRelation === "string" ? r.memberRelation : null,
+      approvalNo: typeof r.approvalNo === "string" ? r.approvalNo : null
+    };
+  }
+
+  function applyCardSnapshot(snap) {
+    if (!snap || !Array.isArray(snap.imports)) return false;
+    var imports = snap.imports
+      .filter(function (imp) {
+        return imp && typeof imp.id === "string" && Array.isArray(imp.rows);
+      })
+      .map(function (imp) {
+        return {
+          id: imp.id,
+          company: imp.company === "hyundaicard" ? "hyundaicard" : "samsungcard",
+          title: typeof imp.title === "string" ? imp.title : "",
+          importedAt: typeof imp.importedAt === "string" ? imp.importedAt : "",
+          period: typeof imp.period === "string" ? imp.period : "",
+          // 교차검증 결과는 증빙으로 남긴다. 합계 값 자체는 저장하지 않는다.
+          crossCheck: imp.crossCheck && typeof imp.crossCheck === "object" ? imp.crossCheck : null,
+          rows: imp.rows
+            .filter(function (r) {
+              return r && typeof r.merchantName === "string" &&
+                typeof r.grossAmount === "number" && typeof r.vat === "number" &&
+                typeof r.rowKey === "string";
+            })
+            .map(snapRow)
+        };
+      })
+      .filter(function (imp) { return imp.rows.length > 0; });
+
+    var rules = {};
+    if (snap.merchantRules && typeof snap.merchantRules === "object") {
+      Object.keys(snap.merchantRules).forEach(function (k) {
+        if (EXPENSE_KINDS.indexOf(snap.merchantRules[k]) >= 0) rules[k] = snap.merchantRules[k];
+      });
+    }
+
+    data.card.imports = imports;
+    data.card.merchantRules = rules;
+    return true;
+  }
+
+  global.AF.cardStorage = {
+    key: CARD_KEY,
+    load: function () {
+      var raw;
+      try {
+        raw = global.localStorage.getItem(CARD_KEY);
+      } catch (err) {
+        return false;
+      }
+      if (!raw) return false;
+      try {
+        return applyCardSnapshot(JSON.parse(raw));
+      } catch (err) {
+        return false;
+      }
+    },
+    save: function () {
+      try {
+        global.localStorage.setItem(CARD_KEY, JSON.stringify({
+          imports: data.card.imports,
+          merchantRules: data.card.merchantRules
+        }));
+        return true;
+      } catch (err) {
+        return false;
+      }
+    },
+    reset: function () {
+      data.card.imports = [];
+      data.card.merchantRules = {};
+      try {
+        global.localStorage.removeItem(CARD_KEY);
+      } catch (err) { /* 저장소를 못 쓰는 환경이면 무시 */ }
+      return data;
+    }
+  };
+
+  global.AF.cardStorage.load();
 
   global.AF.fmt = {
     formatCompactKR: formatCompactKR,
