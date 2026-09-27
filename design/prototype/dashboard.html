@@ -467,7 +467,9 @@
           f.formatMonthKo(up.month) +
           " " +
           up.day +
-          "일 · 잔액 " +
+          "일 · 고지액 " +
+          f.formatKRW(up.tax) +
+          " · 잔액 " +
           f.formatCompactKR(d.cash.vat.amount) +
           " → 투자금 이체";
 
@@ -570,13 +572,17 @@
           " 중 " +
           f.formatPercent(d.totals.liquidRatio) +
           "만 지금 쓸 수 있습니다. 나머지는 지출 배정분과 세금 적립분이라 비상금 계산에서 제외합니다. " +
-          "월 적립액 " +
+          "월 " +
           f.formatKRW(d.vat.input.monthlyDeposit) +
-          "은 법정 고지세액 " +
-          f.formatKRW(d.vat.statutoryMonthly) +
-          "보다 " +
-          f.formatKRW(d.vat.overDepositMonthly) +
-          " 많습니다.";
+          "씩 적립하면 연 " +
+          f.formatKRW(d.vat.input.monthlyDeposit * 12) +
+          "입니다. 신고 시 신용카드 발행세액공제 " +
+          f.formatKRW(d.vat.cardCreditAnnual) +
+          "이 차감되어 실제 납부세액은 " +
+          f.formatKRW(d.vat.actualAnnual) +
+          "이고, 남은 " +
+          f.formatKRW(d.vat.surplusAnnual) +
+          "이 잔액으로 투자금에 이체됩니다.";
 
         // 차트 (ECharts 대체 목업)
         var W = 640, H = 260, padL = 56, padR = 16, padT = 24, padB = 32;
