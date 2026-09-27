@@ -225,7 +225,8 @@
 
         document.getElementById("name").value = d.user.name;
         document.getElementById("email").value = d.user.email;
-        document.getElementById("essential").value = String(d.totals.monthlyExpense);
+        // 월 필수지출은 자동이체 계좌 설정값을 단일 출처로 삼는다 (§28.7)
+        document.getElementById("essential").value = String(d.cash.autoTransfer.monthlyEssential);
 
         var form = document.querySelector("form");
         var alertBox = document.getElementById("saveAlert");

@@ -5,7 +5,7 @@
  * 카드 계산식 출처: project.md §23 "표시 규칙"
  *   순자산           = 총자산 - 총부채
  *   월 수지          = 월 총수입 - 월 총지출
- *   비상금 유지 개월  = 보유 현금 / 월 필수지출
+ *   비상금 유지 개월  = 투자금 잔액 / 월 필수지출  (§28.7, 총 현금이 아님)
  *   자산 구성비      = 자산 유형별 비율(합계 100%)
  *
  * 현금 3계좌 분리는 사용자 운영 방식에 따른 것이다.
@@ -85,35 +85,101 @@
     investable: { label: "투자금", amount: 38000000 }
   };
 
-  /* ---------- 부가가치세 실제 산식 ---------- */
+  /* ---------- 부가가치세 실제 산식 ----------
+   * 부가가치세법 제46조 신용카드등 사용에 따른 세액공제를 반영한다.
+   *
+   * 용어 혼동 주의:
+   *   공급가액(부가세 제외 매출) = 1,454만  -> 10% 를 또 곱하면 이중 계상
+   *   공급대가(부가세 포함 매출) = 1,600만  -> 10/110 = 145만
+   * 10/110 은 세액 추출 단계로는 맞지만 매입세액과 카드 발행세액공제를
+   * 빠뜨리므로 실제 납부세액보다 크다.
+   *
+   * 신고 단위: 반기(6개월). 예정고지 4/10월, 확정고지 7월/다음해 1월.
+   *   예정고지세액 = 직전 반기 실제 납부세액 x 1/3
+   *   확정고지세액 = 당기 실제 납부세액 - 당기 예정고지세액
+   * 월 1,200,000원 적립은 연 14,400,000원으로 예정고지를 충당하며,
+   * Filing 후 남는 잔액은 카드 발행세액공제분이다.
+   */
+
+  // 국세청 실무에 맞게 원 미만을 절삭한다
+  function floorWon(v) {
+    return Math.floor(v);
+  }
+
+  // 공제율/한도는 세법 개정으로 바뀐다. 상수로 박지 말고 정책 객체로 분리한다.
+  var taxPolicy = {
+    // 2026-12-31까지 적용되는 우대제도 (부가가치세법 제46조)
+    cardCreditRate: 0.013, // 일반 1.3%
+    cardCreditRateHospitality: 0.026, // 음식점·숙박업 등 2.6%
+    annualCap: 10000000, // 연 1,000만원
+    // 2026 세제개편안(2026-08-03 발표). 2027-01-01부터 예정이며 확정 여부 확인 필요
+    planned2027: {
+      rate: 0.012, // 1.3% -> 1.2%
+      annualCap: 5000000, // 1,000만원 -> 500만원
+      untilYear: 2029,
+      note: "개편안 확정 시 반영. 미확정 상태"
+    }
+  };
 
   var vatInput = {
     // 직전 연도 월평균
-    taxableSales: 14000000, // 과세 매출세액
-    purchaseTax: 3200000, // 매입세액
-    exemptSales: 2000000, // 면세/과세제외 매출 (참고용, 별도 세액 없음)
+    grossSales: 16000000, // 공급대가 (부가세 포함)
+    exemptSales: 2000000, // 면세/과세제외 공급대가. 세액 없음, 카드공제 기준에서도 제외
+    purchaseTax: 254545, // 매입세액 (공제)
     monthlyDeposit: 1200000, // CMA 월 적립액
-    monthlyEmploymentInsurance: 1450000 // 고용보험 (적립 시 차감)
+    monthlyEmploymentInsurance: 1450000, // 고용보험 (적립 시 차감)
+    cardSupplyAmount: 10000000, // 카드매출 공급대가(부가세 포함)
+    isHospitality: false // 음식점·숙박업 등 2.6% 업종 여부
   };
 
-  // 납부세액 = 과세 매출세액 - 매입세액
-  // 10/110 근사가 아닌 실제 신고 기준을 쓴다.
-  //   근사(월 매출/11) = 1,272,727원
-  //   실제(월 납부/12)  =   900,000원
-  // 적립액이 법정 고지세액을 초과하므로 과다 적립 중이다.
-  var vatPayableMonthly = vatInput.taxableSales - vatInput.purchaseTax;
-  var vatStatutoryMonthly = vatPayableMonthly / 12;
-  var vatOverDepositMonthly = vatInput.monthlyDeposit - vatStatutoryMonthly;
-  var vatApproxMonthly = vatInput.taxableSales / 11; // 비교용 근사치
+  // 매출세액 = 공급대가 x 10/110  (부가세 포함 매출에서 세액만 뽑는다)
+  var vatOnSalesMonthly = floorWon((vatInput.grossSales * 10) / 110);
+
+  // 납부세액(공제 전) = 매출세액 - 매입세액
+  var vatPayableMonthly = vatOnSalesMonthly - vatInput.purchaseTax;
+  var vatPayableAnnual = vatPayableMonthly * 12;
+
+  // 카드 발행세액공제: 공급대가 x 공제율, 연 한도 이내.
+  // 공제액은 납부세액을 초과할 수 없다(환급 불가).
+  var cardRate = vatInput.isHospitality
+    ? taxPolicy.cardCreditRateHospitality
+    : taxPolicy.cardCreditRate;
+  var cardCreditRaw = floorWon(vatInput.cardSupplyAmount * 12 * cardRate);
+  var cardCreditByLimit = Math.min(cardCreditRaw, taxPolicy.annualCap);
+  var cardCreditAnnual = Math.min(cardCreditByLimit, vatPayableAnnual);
+  var cardCreditMonthly = floorWon(cardCreditAnnual / 12);
+
+  // 공제 적용 후 실제 납부
+  var vatActualAnnual = vatPayableAnnual - cardCreditAnnual;
+  var vatActualMonthly = floorWon(vatActualAnnual / 12);
+
+  // 반기 단위 고지 (정기면 1기, 추가면 2기)
+  // 예정고지세액 = 직전 반기 실제 납부세액 x 1/3   (카드공제 후 기준)
+  // 확정고지세액 = 당기 실제 납부세액 - 당기 예정고지세액
+  var halfActual = floorWon(vatActualAnnual / 2);
+  var vatAssessmentNotice = floorWon(halfActual / 3);
+  var vatFinalNotice = halfActual - vatAssessmentNotice;
+
+  // 10/110 만 계산했을 때의 적립 필요액 (매입세액/카드공제 미반영)
+  var vatApproxMonthly = vatOnSalesMonthly;
+
+  // Filing 후 세금 계좌에 남는 금액.
+  // 적립액이 납부세액을 정확히 충당하므로 잔액은 카드공제분이다.
+  var vatSurplusMonthly = vatInput.monthlyDeposit - vatActualMonthly;
+  var vatSurplusAnnual = vatInput.monthlyDeposit * 12 - vatActualAnnual;
+  var vatOverApproxYear = (vatApproxMonthly - vatActualMonthly) * 12;
 
   /* ---------- Filing 일정 ---------- */
 
-  // 확정신고 1/7월, 예정신고 4/10월. Filing 후 잔액을 투자금으로 이체.
+  // 1기 = 1~6월 실적, 2기 = 7~12월 실적
+  //   1기 예정고지 4월 / 1기 확정고지 7월
+  //   2기 예정고지 10월 / 2기 확정고지 다음해 1월
+  // 고지액은 위에서 계산한 예정고지/확정고지 값을 그대로 쓴다.
   var filings = [
-    { id: "2026-01", label: "1기 확정", month: "2026-01", day: 25, tax: 10800000 },
-    { id: "2026-04", label: "1기 예정", month: "2026-04", day: 25, tax: 10800000 },
-    { id: "2026-07", label: "2기 확정", month: "2026-07", day: 25, tax: 10800000 },
-    { id: "2026-10", label: "2기 예정", month: "2026-10", day: 25, tax: 10800000 }
+    { id: "2026-01", label: "2기 확정", kind: "final", month: "2026-01", day: 25, tax: vatFinalNotice },
+    { id: "2026-04", label: "1기 예정", kind: "notice", month: "2026-04", day: 25, tax: vatAssessmentNotice },
+    { id: "2026-07", label: "1기 확정", kind: "final", month: "2026-07", day: 25, tax: vatFinalNotice },
+    { id: "2026-10", label: "2기 예정", kind: "notice", month: "2026-10", day: 25, tax: vatAssessmentNotice }
   ];
 
   var asOfDate = "2026-09-30";
@@ -212,11 +278,24 @@
     },
     vat: {
       input: vatInput,
+      policy: taxPolicy,
+      onSalesMonthly: vatOnSalesMonthly,
       payableMonthly: vatPayableMonthly,
-      statutoryMonthly: vatStatutoryMonthly,
-      overDepositMonthly: vatOverDepositMonthly,
+      payableAnnual: vatPayableAnnual,
+      actualAnnual: vatActualAnnual,
+      actualMonthly: vatActualMonthly,
+      assessmentNotice: vatAssessmentNotice,
+      finalNotice: vatFinalNotice,
+      cardRate: cardRate,
+      cardCreditAnnual: cardCreditAnnual,
+      cardCreditMonthly: cardCreditMonthly,
+      cardCreditRaw: cardCreditRaw,
+      cardCreditCappedByLimit: cardCreditByLimit < cardCreditRaw,
+      cardCreditCappedByPayable: cardCreditAnnual < cardCreditByLimit,
+      surplusMonthly: vatSurplusMonthly,
+      surplusAnnual: vatSurplusAnnual,
       approxMonthly: vatApproxMonthly,
-      overApproxYear: (vatApproxMonthly - vatStatutoryMonthly) * 12,
+      overApproxYear: vatOverApproxYear,
       filings: filings,
       upcoming: upcoming
     },
