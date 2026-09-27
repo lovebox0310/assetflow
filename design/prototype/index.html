@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>전체 IA 맵 · AssetFlow 프로토타입</title>
+    <link rel="stylesheet" href="assets/tokens.css" />
+    <link rel="stylesheet" href="assets/base.css" />
+    <style>
+      .hero {
+        padding: var(--space-12) 0 var(--space-8);
+      }
+      .hero__title {
+        font-size: var(--font-size-xl);
+      }
+      .hero__desc {
+        margin-top: var(--space-3);
+        max-width: 640px;
+        color: var(--color-text-secondary);
+      }
+      .hero__actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        margin-top: var(--space-6);
+      }
+
+      .scope-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-3);
+        margin-top: var(--space-4);
+        font-size: var(--font-size-xs);
+        color: var(--color-text-secondary);
+      }
+
+      .group {
+        margin-top: var(--space-8);
+      }
+      .group__head {
+        display: flex;
+        align-items: baseline;
+        gap: var(--space-2);
+        margin-bottom: var(--space-4);
+        padding-bottom: var(--space-2);
+        border-bottom: 1px solid var(--color-border-secondary);
+      }
+      .group__title {
+        font-size: var(--font-size-base);
+      }
+
+      .screen-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: var(--space-4);
+      }
+      @media (min-width: 576px) {
+        .screen-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+      @media (min-width: 992px) {
+        .screen-grid {
+          grid-template-columns: repeat(3, 1fr);
+        }
+      }
+
+      .screen {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        padding: var(--space-4);
+        background: var(--color-bg-container);
+        border: 1px solid var(--color-border-secondary);
+        border-radius: var(--radius-card);
+        box-shadow: var(--shadow-1);
+      }
+      .screen:hover {
+        border-color: var(--color-primary-border);
+        box-shadow: var(--shadow-2);
+      }
+      .screen__top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-2);
+      }
+      .screen__name {
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-bold);
+      }
+      .screen__path {
+        margin-top: var(--space-1);
+        font-size: var(--font-size-xs);
+        color: var(--color-text-tertiary);
+      }
+      .screen__desc {
+        flex: 1;
+        margin-top: var(--space-3);
+        font-size: var(--font-size-xs);
+        color: var(--color-text-secondary);
+      }
+      .screen__meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-1);
+        margin-top: var(--space-3);
+      }
+      .screen__cta {
+        margin-top: var(--space-4);
+      }
+
+      .excluded {
+        margin-top: var(--space-8);
+      }
+      .excluded__list {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: var(--space-2);
+        margin-top: var(--space-3);
+      }
+      @media (min-width: 768px) {
+        .excluded__list {
+          grid-template-columns: repeat(3, 1fr);
+        }
+      }
+      .excluded__item {
+        padding: var(--space-3) var(--space-4);
+        background: var(--color-fill-quaternary);
+        border-radius: var(--radius-input);
+        font-size: var(--font-size-xs);
+        color: var(--color-text-secondary);
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">본문 바로가기</a>
+
+    <div class="proto-bar">
+      정적 목업입니다. 전체 MVP 정보구조(IA) 맵입니다.
+      <a href="README.md">사용법</a>
+    </div>
+
+    <header class="app-header">
+      <div class="container app-header__inner">
+        <a class="app-header__brand" href="index.html">
+          <span aria-hidden="true">◧</span> AssetFlow
+        </a>
+        <nav class="app-nav" aria-label="주요 메뉴">
+          <a class="app-nav__link" href="index.html" aria-current="page">IA 맵</a>
+          <a class="app-nav__link" href="login.html">로그인</a>
+          <a class="app-nav__link" href="dashboard.html">대시보드</a>
+          <a class="app-nav__link" href="settings.html">설정</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="app-main" id="main">
+      <div class="container">
+        <section class="hero">
+          <h1 class="hero__title">AssetFlow 정보구조 맵</h1>
+          <p class="hero__desc">
+            개인 사용자가 현금흐름, 자산, 미래 지출, 투자 시뮬레이션을 통합 관리하는 반응형 웹
+            서비스의 전체 MVP 구조입니다. 스프린트 1 범위는 3개 화면이며, 나머지는 정보구조만
+            확정해 이후 스프린트 순서를 정합니다.
+          </p>
+          <div class="hero__actions">
+            <a class="btn btn--primary" href="dashboard.html">대시보드 목업 보기</a>
+            <a class="btn" href="login.html">로그인 목업 보기</a>
+            <a class="btn" href="settings.html">설정 목업 보기</a>
+          </div>
+          <ul class="scope-legend">
+            <li><span class="tag tag--success">스프린트 1</span> 목업 구현됨</li>
+            <li><span class="tag tag--info">MVP</span> IA만 확정</li>
+            <li><span class="tag">MVP 제외</span> 범위 밖</li>
+          </ul>
+        </section>
+
+        <section class="group" aria-labelledby="h-s1">
+          <div class="group__head">
+            <h2 class="group__title" id="h-s1">스프린트 1 — 목업 구현</h2>
+            <span class="tag tag--success">3개 화면</span>
+          </div>
+          <div class="screen-grid">
+            <article class="screen">
+              <div class="screen__top">
+                <h3 class="screen__name">로그인</h3>
+                <span class="tag tag--success">구현됨</span>
+              </div>
+              <p class="screen__path">/login</p>
+              <p class="screen__desc">
+                이메일 + 비밀번호. 실패 시 계정 유무를 노출하지 않는 공통 메시지를 사용합니다.
+                소셜 로그인은 MVP 제외입니다.
+              </p>
+              <p class="screen__meta">
+                <span class="tag">Issue 2</span>
+                <span class="tag">WCAG AA</span>
+              </p>
+              <p class="screen__cta"><a class="btn" href="login.html">목업 열기</a></p>
+            </article>
+
+            <article class="screen">
+              <div class="screen__top">
+                <h3 class="screen__name">대시보드</h3>
+                <span class="tag tag--success">구현됨</span>
+              </div>
+              <p class="screen__path">/dashboard</p>
+              <p class="screen__desc">
+                핵심 카드 4종(순자산, 월 수지, 비상금 유지 개월, 자산 구성비)과 월별 현금흐름
+                추이. 로딩/빈값/오류 상태를 전환으로 확인합니다.
+              </p>
+              <p class="screen__meta">
+                <span class="tag">Issue 3</span>
+                <span class="tag">Issue 4</span>
+                <span class="tag">ECharts</span>
+              </p>
+              <p class="screen__cta"><a class="btn" href="dashboard.html">목업 열기</a></p>
+            </article>
+
+            <article class="screen">
+              <div class="screen__top">
+                <h3 class="screen__name">설정 (프로필)</h3>
+                <span class="tag tag--success">구현됨</span>
+              </div>
+              <p class="screen__path">/settings</p>
+              <p class="screen__desc">
+                프로필 최소 항목과 비상금 계산 기준(월 필수지출, 목표 개월)을 관리합니다.
+              </p>
+              <p class="screen__meta">
+                <span class="tag">Issue 2</span>
+                <span class="tag">GET /api/v1/me</span>
+              </p>
+              <p class="screen__cta"><a class="btn" href="settings.html">목업 열기</a></p>
+            </article>
+          </div>
+        </section>
+
+        <section class="group" aria-labelledby="h-mvp">
+          <div class="group__head">
+            <h2 class="group__title" id="h-mvp">MVP 나머지 — IA만 확정</h2>
+            <span class="tag tag--info">6개 화면</span>
+          </div>
+          <div class="screen-grid">
+            <article class="screen">
+              <div class="screen__top">
+                <h3 class="screen__name">자산</h3>
+                <span class="tag tag--info">MVP</span>
+              </div>
+              <p class="screen__path">/assets</p>
+              <p class="screen__desc">
+                현금/주식/부동산/연금 계좌 등록·수정·목록. 자산 유형별 합계와 구성비 확인.
+              </p>
+            </article>
+
+            <article class="screen">
+              <div class="screen__top">
+                <h3 class="screen__name">지출</h3>
+                <span class="tag tag--info">MVP</span>
+              </div>
+              <p class="screen__path">/expenses</p>
+              <p class="screen__desc">
+                고정지출과 이벤트성 지출을 분리 관리. 고정 여부가 비상금 분모를 결정합니다.
+              </p>
+            </article>
+
+            <article class="screen">
+              <div class="screen__top">
+                <h3 class="screen__name">지출 전망</h3>
+                <span class="tag tag--info">MVP</span>
+              </div>
+              <p class="screen__path">/forecast</p>
+              <p class="screen__desc">
+                3/6/12개월 단위 예상 잔액 곡선. 기간 전환은 세그먼트 컨트롤로 제공합니다.
+              </p>
+            </article>
+
+            <article class="screen">
+              <div class="screen__top">
+                <h3 class="screen__name">비상금</h3>
+                <span class="tag tag--info">MVP</span>
+              </div>
+              <p class="screen__path">/emergency-fund</p>
+              <p class="screen__desc">
+                유지 개월 추이, 목표 대비 갭, 월 필수지출 조정으로 재계산합니다.
+              </p>
+            </article>
+
+            <article class="screen">
+              <div class="screen__top">
+                <h3 class="screen__name">투자 시뮬레이션</h3>
+                <span class="tag tag--info">MVP</span>
+              </div>
+              <p class="screen__path">/simulation</p>
+              <p class="screen__desc">
+                보수/기준/공격 3개 시나리오 비교가 MVP 성공 기준입니다. 비교는 탭 또는 3열.
+              </p>
+            </article>
+
+            <article class="screen">
+              <div class="screen__top">
+                <h3 class="screen__name">CSV 업로드</h3>
+                <span class="tag tag--info">MVP</span>
+              </div>
+              <p class="screen__path">/import</p>
+              <p class="screen__desc">
+                1종 포맷만 지원. 업로드 전 컬럼 매핑과 오류 행 사전 보기가 필요합니다.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section class="excluded" aria-labelledby="h-excluded">
+          <div class="group__head">
+            <h2 class="group__title" id="h-excluded">MVP 제외</h2>
+            <span class="tag">범위 밖</span>
+          </div>
+          <ul class="excluded__list">
+            <li class="excluded__item">토스 API 연동</li>
+            <li class="excluded__item">한국투자증권 API 연동</li>
+            <li class="excluded__item">다중 사용자 공유</li>
+            <li class="excluded__item">소셜 로그인</li>
+            <li class="excluded__item">다크 모드</li>
+            <li class="excluded__item">비밀번호 재설정</li>
+          </ul>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>
