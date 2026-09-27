@@ -6,7 +6,7 @@ Frontend:
 - React 16
 - TypeScript
 - antd 4
-- ag-grid 21
+- ag-grid 21 (폐기: 현 MVP는 antd Table 사용. 대용량 표 필요 시 도입)
 - webpack
 
 Backend:
