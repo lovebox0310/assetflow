@@ -22,3 +22,12 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# Card statement work area: real statements must never be committed.
+# Only anonymized copies under samples/card/anonymized/ are tracked.
+samples/card/raw/
+samples/card/*-raw.*
+samples/card/*-original.*
+samples/card/*-실명.*
+*카드번호*
+samples/card/*.xls

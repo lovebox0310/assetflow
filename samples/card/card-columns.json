@@ -1,0 +1,116 @@
+{
+  "$comment": "카드매입 엑셀 컬럼 규격. FE(SheetJS)와 BE(Apache POI)가 같은 파일을 읽어 이 규격을 검증한다. 규격 변경 시 양쪽 파서를 같이 고친다. 카드사별 프로파일은 실제 샘플을 확인한 뒤에만 추가한다(추측 금지).",
+  "version": "1.0.0",
+  "updatedAt": "2026-09-27",
+
+  "fields": {
+    "approvedAt": {
+      "label": "승인일자",
+      "type": "date",
+      "required": true,
+      "note": "매출 인정일자. 결제일이 아니라 승인일자를 쓴다(반품·청구 시 승인 취소가 별도 발생).",
+      "headerAliases": ["승인일자", "승인 일자", "매출일자", "거래일자", "사용일자"]
+    },
+    "merchantName": {
+      "label": "가맹점명",
+      "type": "string",
+      "required": true,
+      "note": "비용 성분 추정에 쓴다. 업태와 실제 수입이 다를 수 있으므로 자동 분류하지 않는다.",
+      "headerAliases": ["가맹점명", "가맹점", "가맹점명(가맹점주명)", "상호"]
+    },
+    "supplyExVat": {
+      "label": "공급가액",
+      "type": "currency",
+      "required": true,
+      "note": "부가세 제외 금액. 매입 규모 역산에 쓴다. 총액(공급대가)으로 대체하지 않는다.",
+      "headerAliases": ["공급가액", "공급가액(원)", "과세공급가액", "공급가액(부가세별도)"]
+    },
+    "vat": {
+      "label": "세액",
+      "type": "currency",
+      "required": true,
+      "note": "과세세액. 인정 매입세액 대조에 쓴다. 일반세액과 경비율계산세액이 섞이면 taxKind로 구분한다.",
+      "headerAliases": ["세액", "세액(원)", "부가세", "과세세액"]
+    },
+    "grossAmount": {
+      "label": "공급대가",
+      "type": "currency",
+      "required": true,
+      "derive": "supplyExVat + vat",
+      "note": "합계로만 있고 공급가액/세액 분해가 안 되는 카드사는 쓰지 않는다. 분해가 안 되면 그 카드사는 미지원으로 명시한다.",
+      "headerAliases": ["공급대가", "이용금액", "승인금액", "결제금액", "합계금액", "매출금액"]
+    }
+  },
+
+  "optionalFields": {
+    "installmentCount": {
+      "label": "할부횟수",
+      "type": "integer",
+      "required": false,
+      "note": "할부 결제의 진행 단계. 현금흐름에 반영하려면 원금/이자 분리 규칙이 추가로 필요하다.",
+      "headerAliases": ["할부", "할부횟수", "할부선택"]
+    },
+    "approvalNo": {
+      "label": "승인번호",
+      "type": "string",
+      "required": false,
+      "note": "중복 적재 방지 키. 같은 승인번호가 두 번 들어오면 한 건만 반영한다.",
+      "headerAliases": ["승인번호", "승인번호(일련번호)", "거래번호"]
+    },
+    "cardCompany": {
+      "label": "카드사",
+      "type": "string",
+      "required": false,
+      "note": "어느 카드사 파일인지 식별한다. 파일명이 신뢰할 수 있으면 파일명을 우선한다.",
+      "headerAliases": ["카드사", "카드사명", "발급사"]
+    },
+    "taxKind": {
+      "label": "세액구분",
+      "type": "enum",
+      "required": false,
+      "values": ["과세", "영세", "면세", "일반세액계산", "경비율계산"],
+      "note": "영세/면세 거래는 매입세액이 0이므로 역산 매입 규모에 섞지 않는다. 경비율계산세액은 실제 지급세액과 다를 수 있다.",
+      "headerAliases": ["과세구분", "세액구분", "부가세구분"]
+    },
+    "reversal": {
+      "label": "취소구분",
+      "type": "enum",
+      "required": false,
+      "values": ["매입", "매입취소", "출제", "출제취소"],
+      "note": "매입취소는 공급가액·세액에서 차감한다. 무조건 합산하면 매입 규모가 부풀려진다.",
+      "headerAliases": ["구분", "취소구분", "거래구분", "전표구분"]
+    }
+  },
+
+  "rowRoles": {
+    "note": "한국 카드 명세서에는 표가 아닌 행이 섞인다. 파서는 행 역할을 판별해 건너뛴다.",
+    "metadata": ["카드사", "카드번호", "회원명", "조회기간", "출력일시", "결제기간"],
+    "header": ["승인일자", "가맹점명", "공급가액", "세액"],
+    "subtotal": "가맹점별 소계 행. 거래 건이 아니므로 합계에 넣지 않는다.",
+    "grandTotal": ["총 합계", "합계", "총 건수", "건수", "소계", "전체합계"],
+    "note": "가맹점명이 비어 있고 금액만 있는 행, '외국계'/'캐피탈' 같은 섹션 표시 행도 데이터가 아니다."
+  },
+
+  "validation": {
+    "supplyExVatPlusVatEqualsGross": true,
+    "note": "공급가액 + 세액 = 공급대가 를 행마다 검사한다. 어긋나면 해당 행을 저장하지 않고 사용자에게 보여준다. 조용히 한쪽만 믿으면 역산 매입 규모가 틀어진다.",
+    "negativeAllowed": {
+      "reversal": true,
+      "note": "매입취소 행만 음수를 허용한다. 그 외 음수는 오류로 본다."
+    }
+  },
+
+  "reconciliation": {
+    "note": "이 규격의 목적은 §28.7 매입 대조다. 파싱 결과로 매입세액 합계가 VAT 신고서의 purchaseTax와 맞아야 한다.",
+    "expectPurchaseTaxMonthly": 320000,
+    "expectImpliedPurchaseExVatMonthly": 3520000,
+    "cardSupplyAmountMonthly": 5000000,
+    "tolerance": 1
+  },
+
+  "companies": {
+    "$comment": "실제 샘플을 검사해 채운다. 형식을 추측해 미리 채우지 않는다.",
+    "verified": [],
+    "pending": ["카드사명을 여기에 적는다"]
+  }
+}
