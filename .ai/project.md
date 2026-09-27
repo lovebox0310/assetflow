@@ -1374,8 +1374,13 @@ jobs:
 	- **매입세액과 지출 목록을 대조한다** (`purchaseReconciliationGap`)
 		- 매입세액 = 매입 공급가액 x 10/110 이므로 역산하면 매입 규모가 드러난다
 		- 역산한 매입 규모가 지출 목록 합계보다 크면 지출 목록이 불완전하다
-		- 원자재·부품비가 빠져 있으면 월 수지와 비상금이 실제보다 부풀려진다
-		- `impliedPurchaseExVat` / `purchaseReconciliationGap` 으로 코드에 노출한다
+		- 업태와 실제 수입은 다를 수 있다. 업태만 보고 비용 성분을 추측하지 않는다
+		  (예: 업태가 컴퓨터수리업이어도 실제 수입이 소프트웨어 개발 용역일 수 있다)
+		- 성분을 확인할 수 없으면 임의로 분류하지 말고 '미분류'로 두고 양쪽 값을 모두 제시한다
+		- `impliedPurchaseExVat` / `purchaseReconciliationGap` / `unclassifiedBusinessCost` /
+		  `emergencyMonthsOnPurchases` 로 코드에 노출한다
+		- 세금계산서로 확인된 매입 규모는 실재하는 현금 유출이므로,
+		  목록 기준 수지/비상금은 낙관적인 값이다. 보수적 값을 함께 보여준다
 
 - [ ] **지출 목록은 확정 가능한 세금을 포함한다** (§28.8)
 	- 월 필수지출에 고용보험·종합소득세·지방세 등 recurring 세금을 포함한다

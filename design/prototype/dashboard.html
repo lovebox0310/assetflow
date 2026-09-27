@@ -276,6 +276,10 @@
                 <div class="card__body">
                   <p class="stat" id="emergencyMonths">—</p>
                   <p class="stat__detail" id="emergencyDetail"></p>
+                  <p class="notice notice--warn" style="margin-top: var(--space-3)">
+                    <span aria-hidden="true">!</span>
+                    <span id="unclassifiedNote"></span>
+                  </p>
                 </div>
               </article>
 
@@ -457,6 +461,19 @@
             return x.label;
           }).join("·") +
           " 미반영";
+
+        // 세금계산서로 확인된 매입 규모가 지출 목록보다 크면 실제 비상금은 더 짧다
+        var unclassNote = document.getElementById("unclassifiedNote");
+        if (unclassNote) {
+          unclassNote.textContent =
+            "지출 목록에는 잡히지 않지만 매입 세금계산서가 있는 사업 비용이 월 " +
+            f.formatKRW(d.vat.unclassifiedBusinessCost) +
+            " 있습니다. 이걸 포함하면 월 사업 비용은 " +
+            f.formatKRW(d.vat.monthlyBusinessCost) +
+            ", 비상금은 " +
+            f.formatOneDecimal(d.vat.emergencyMonthsOnPurchases, "개월") +
+            "로 줄어듭니다. 업태는 컴퓨터수리업이지만 실제 수입은 소프트웨어 개발 용역이라 내용 확인이 필요합니다.";
+        }
 
         // 카드 4: 투자 가능 현금
         document.getElementById("investable").textContent = f.formatCompactKR(

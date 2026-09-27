@@ -255,9 +255,21 @@
   // 매입세액 320,000원이 함의하는 실제 매입 규모.
   // 매입세액 = 매입 공급가액 x 10/110 이므로 역산하면
   //   매입 공급가액 = 320,000 x 110/10 = 3,520,000원
-  // 지출 목록에는 부품·재료비가 빠져 있어 지출 합계(2,053,753)와 맞지 않는다.
+  //
+  // 업태는 컴퓨터수리업이지만 실제 수입은 소프트웨어 개발 용역이다.
+  // 따라서 부품비가 반드시 있는 것은 아니다. 다만 인정 매입세액에는 실제 세금계산서가
+  // 있으므로 매입 규모 3,520,000원/월은 실재하는 현금 유출이다.
+  // 지출 목록(2,053,753원)만으로 수지를 계산하면 이 금액이 통째로 빠진다.
   var impliedPurchaseExVat = floorWon((vatInput.purchaseTax * 110) / 10);
   var purchaseReconciliationGap = impliedPurchaseExVat - expenseSum;
+
+  // 세금계산서로 확인된 매입 규모 3,520,000원이 월 사업 비용의 하한이다.
+  // 목록에 잡히지 않은 금액은 성격을 확인할 수 없으므로 임의로 분류하지 않고
+  // '미분류' 로 둔다. 목록만으로 계산한 수지와 비상금은 낙관적이다.
+  var unclassifiedBusinessCost = purchaseReconciliationGap;
+  var monthlyBusinessCost = expenseSum + unclassifiedBusinessCost;
+  var monthlySurplusOnPurchases = incomeInput.supplyExVat - monthlyBusinessCost;
+  var emergencyMonthsOnPurchases = cash.investable.amount / monthlyBusinessCost;
 
   // 고지 공식이 실제 고지서를 재현하는지 검증한다.
   //   예정고지 = 직전 반기 실제 납부세액 x 1/3
@@ -409,6 +421,10 @@
       surplusShareOfAccrual: vatSurplusShareOfAccrual,
       impliedPurchaseExVat: impliedPurchaseExVat,
       purchaseReconciliationGap: purchaseReconciliationGap,
+      unclassifiedBusinessCost: unclassifiedBusinessCost,
+      monthlyBusinessCost: monthlyBusinessCost,
+      monthlySurplusOnPurchases: monthlySurplusOnPurchases,
+      emergencyMonthsOnPurchases: emergencyMonthsOnPurchases,
       actualNotice: vatInput.actualNotice,
       actualFinal: vatInput.actualFinal,
       actualHalfTotal: vatInput.actualNotice + vatInput.actualFinal,
