@@ -1,7 +1,7 @@
 # 프로젝트 운영 기준 (AI + Agile)
 
 ## 1) 기술 스택
-현행 기준 (레거시 호환):
+현행 기준 (레거시 호환, 신규 화면에 적용 금지):
 Frontend:
 - React 16
 - TypeScript
@@ -18,14 +18,18 @@ Backend:
 - Build Tool: Maven
 - API: REST
 
-권장 기준 (2026, 한국 실무 다수 패턴):
+권장 기준 (2026, 한국 실무 다수 패턴) - 확정:
 Frontend:
-- React 18+
+- React 18
 - TypeScript (strict)
 - Vite (신규/개선 화면 우선)
-- Next.js (SSR/SEO 요구 화면이 있을 때 선택)
+- Next.js (SSR/SEO 요구 화면이 있을 때 선택) - AssetFlow는 해당 없음
 - 상태 관리: TanStack Query + 최소 전역 상태
-- UI: antd 유지 가능, 공통 컴포넌트는 Storybook으로 문서화
+- UI: antd 6
+	- antd 4에서 6으로 상향: 하위 호환 없음, React 18+ 필수
+- 스타일: antd ConfigProvider theme 토큰만 사용. 유틸리티 CSS/CSS-in-JS 미도입
+- 차트: Apache ECharts(Apache-2.0) + echarts-for-react(MIT)
+- 공통 컴포넌트: Storybook으로 문서화
 
 Backend:
 - Language: Java 21 (LTS 권장)
@@ -1235,3 +1239,64 @@ jobs:
 ## 의존 이슈
 - Issue 1
 ```
+
+## 28) 프론트엔드 디자인·스타일 기준 확정 (스프린트 1 선행)
+
+확정일: 2026-09-27
+적용 범위: Issue 3(와이어프레임) ~ Issue 4(카드 4종), 이후 전 화면
+
+### 28.1 스타일 전략
+- 유틸리티 CSS(Tailwind 등) 미도입
+- 런타임 CSS-in-JS(styled-components, Emotion) 미도입
+- 커스텀은 antd ConfigProvider의 theme 토큰으로 처리한다
+- 레이아웃은 antd Grid(Row/Col) + Grid.useBreakpoint()를 사용한다
+- 전역 CSS는 global.css 1개(리셋, font-family, body 배경)만 유지한다
+- 근거: antd 6가 CSS Modules를 사용하므로 별도 스타일 시스템 병용 시 토큰 충돌 위험
+
+### 28.2 디자인 토큰
+구조 토큰(확정):
+- fontFamily: -apple-system, BlinkMacSystemFont, "Segoe UI", Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif
+	- 근거: §12 비용 제약상 웹폰트 로딩 비용 회피
+- 숫자 표기: font-variant-numeric: tabular-nums (금액/숫자 세로 정렬)
+- 간격: 4px 기준 4 / 8 / 12 / 16 / 24 / 32 / 48
+- borderRadius: 4(입력) / 6(카드, antd 기본) / 8(컨테이너)
+- boxShadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.08)
+- 컨테이너: max-width 1200px, gutter 데스크톱 24px / 모바일 16px
+- 반응형: antd 기본 분할 유지 (xs<576 / sm>=576 / md>=768 / lg>=992 / xl>=1200)
+
+색상 토큰(보류):
+- colorPrimary은 v1에서 antd 기본값 #1677ff을 사용한다
+- 브랜드 컬러는 프로토타입 리뷰 후 ConfigProvider 1줄로 교체한다
+- 상태 색상은 antd 시드: 성공 #52c41a / 경고 #faad14 / 위험 #ff4d4f
+
+### 28.3 통화·날짜 포맷
+- 새 의존성 없이 Intl 내장만 사용한다 (dayjs는 antd 6가 이미 번들)
+- 구현 위치: apps/frontend/src/utils/formatters.ts 단일 모듈
+- 규칙:
+	- 카드 대용량 금액: 축약 표기 (1.4억)
+	- 상세 금액: 통화 기호 포함, 소수점 0자리 (142,850,000원)
+	- 월 수지: 부호 포함 (+1,240,000원)
+	- 비상금 유지 개월: 소수점 1자리 (7.2개월)
+	- 구성비: 소수점 1자리 (32.0%)
+	- 날짜: ko-KR (2026년 9월), 차트 축은 2026.09 축약
+- Issue 6 API 명세에 금액 단위(원 단위 정수) 명칭 규칙을 포함한다
+
+### 28.4 다크 모드
+- MVP 범위에서 제외한다 (§15 포함 범위에 없음)
+- 추가 시 antd theme.darkAlgorithm 전환으로 1줄이면 충분하다
+- 규칙: 하드코딩 색상값 금지. antd 토큰 참조만 사용한다
+
+### 28.5 접근성 기준
+- 기준: WCAG 2.1 AA
+- 본문 텍스트 대비 4.5:1, 큰 텍스트 3:1
+- 포커스 표시 제거 금지
+- 폼 라벨은 프로그램적으로 연결한다
+- 오류 메시지는 role="alert"를 사용한다
+- 전 기능을 키보드로 도달할 수 있어야 한다
+- Storybook에 a11y 체크를 추가한다
+
+### 28.6 리스크 기록
+- antd는 shadcn/Radix 대비 접근성 지원이 약하다.
+  28.5 기준을 antd 채택의 선행 조건으로 보고 매 Storybook 스토리에 검증한다
+- 이 문서에는 기술 부채 관리 전용 섹션이 없으므로,
+  DoD의 "남은 리스크와 후속 과제가 기록되어 있다"에 28.5 위반분을 매번 남긴다
