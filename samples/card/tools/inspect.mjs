@@ -7,14 +7,19 @@
 // 외부 의존성이 없다. pom.xml/package.json 이 없는 이 저장소 상태에서
 // xlsx 를 읽으려면 zlib 내장 기능만으로 zip 을 풀어야 한다.
 //
+// 형식은 확장자가 아니라 내용(매직 바이트)으로 판별한다.
+// 삼성카드는 .xlsx 확장자로 암호화 파일을 주었으므로, 확장자를 믿으면
+// 원인이 보이지 않는 오류만 난다.
+//
 // 사용법:
-//   node samples/card/tools/inspect-xlsx.mjs <파일...>
-//   node samples/card/tools/inspect-xlsx.mjs --header <파일...>
+//   node samples/card/tools/inspect.mjs <파일...>
+//   node samples/card/tools/inspect.mjs --header <파일...>
 
-import { readFileSync, existsSync, statSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { inflateRawSync } from "node:zlib";
-import { basename, extname } from "node:path";
+import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
+import { detect, describeEnc } from "./lib/detect.mjs";
 
 const CONTRACT = fileURLToPath(new URL("../card-columns.json", import.meta.url));
 const contract = JSON.parse(readFileSync(CONTRACT, "utf8"));
@@ -154,27 +159,69 @@ function looksLikeTotalRow(cells) {
   return (contract.rowRoles.grandTotal || []).some((t) => joined.includes(t));
 }
 
-function inspect(path) {
-  const ext = extname(path).toLowerCase();
-  const info = { file: basename(path), size: statSync(path).size };
-
-  if (ext === ".csv") {
-    info.kind = "csv";
-    const text = readFileSync(path, "utf8").replace(/^\uFEFF/, "");
-    const lines = text.split(/\r?\n/).filter((l) => l.trim());
-    info.header = lines[0] ? lines[0].split(",") : [];
-    info.rowCount = Math.max(0, lines.length - 1);
-    return info;
+/** BOM 에 따라 텍스트를 디코딩한다. UTF-16 CSV 가 실제로 나온다 */
+function decodeText(buf) {
+  if (buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) return buf.subarray(3).toString("utf8");
+  if (buf[0] === 0xff && buf[1] === 0xfe) return buf.toString("utf16le");
+  if (buf[0] === 0xfe && buf[1] === 0xff) {
+    const sw = Buffer.from(buf.subarray(2));
+    sw.swap16();
+    return sw.toString("utf16le");
   }
-  if (ext !== ".xlsx") {
-    if (ext === ".xls") info.unsupported = "구형 .xls 는 이 도구가 읽지 못한다. xlsx 로 다시 저장하거나 POI 를 쓴다.";
-    else info.unsupported = "지원 확장자가 아니다: " + ext;
+  return buf.toString("utf8");
+}
+
+function splitCsvLine(line) {
+  // 따옴표 안의 쉼표와 이스케이프된 따옴표를 처리한다
+  const out = [];
+  let cur = "", q = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (q) {
+      if (c === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else q = false; }
+      else cur += c;
+    } else if (c === '"') q = true;
+    else if (c === ",") { out.push(cur); cur = ""; }
+    else cur += c;
+  }
+  out.push(cur);
+  return out.map((s) => s.trim());
+}
+
+function inspect(path) {
+  const info = { file: basename(path) };
+
+  // 확장자가 아니라 내용으로 형식을 먼저 판별한다
+  const fmt = detect(path);
+  info.kind = fmt.kind;
+  info.size = fmt.size;
+  info.formatLabel = fmt.label;
+  info.encrypted = fmt.encrypted;
+  info.enc = fmt.enc;
+  info.note = fmt.note;
+  info.actionable = fmt.actionable;
+
+  // 확장자가 내용과 다르면 반드시 드러낸다. 조용히 처리하면 원인을 놓친다
+  const claimedXlsx = fmt.ext === ".xlsx";
+  if (claimedXlsx && fmt.kind !== "xlsx") info.extMismatch = ".xlsx 로 확장되어 있으나 실제로는 " + fmt.label;
+  if (fmt.ext === ".csv" && fmt.kind !== "csv") info.extMismatch = ".csv 로 확장되어 있으나 실제로는 " + fmt.label;
+  if (fmt.ext === ".xls" && fmt.kind !== "xls") info.extMismatch = ".xls 로 확장되어 있으나 실제로는 " + fmt.label;
+
+  if (fmt.kind === "encrypted-xlsx") { info.blocked = "암호화"; return info; }
+  if (fmt.kind === "xls") { info.blocked = "구형 바이너리 .xls 미지원"; return info; }
+  if (fmt.kind === "unknown") { info.blocked = "형식 판별 실패"; return info; }
+  if (fmt.kind === "empty") { info.blocked = "빈 파일"; return info; }
+
+  if (fmt.kind === "csv") {
+    const text = decodeText(readFileSync(path));
+    const lines = text.split(/\r?\n/).filter((l) => l.trim());
+    info.header = lines[0] ? splitCsvLine(lines[0]) : [];
+    info.rowCount = Math.max(0, lines.length - 1);
     return info;
   }
 
   const b = readFileSync(path);
   const parts = zipEntries(b);
-  info.kind = "xlsx";
   info.sheets = sheetNames(b, parts);
   const sst = sharedStrings(b, parts);
 
@@ -217,7 +264,7 @@ const headerOnly = argv.includes("--header");
 const files = argv.filter((a) => !a.startsWith("--"));
 
 if (!files.length) {
-  console.error("사용법: node samples/card/tools/inspect-xlsx.mjs [--header] <파일...>");
+  console.error("사용법: node samples/card/tools/inspect.mjs [--header] <파일...>");
   process.exit(2);
 }
 
@@ -237,8 +284,17 @@ for (const f of files) {
   }
 
   console.log("\n=== " + info.file + " ===");
-  console.log("  형식 " + info.kind + " / " + info.size.toLocaleString() + "B");
-  if (info.unsupported) { console.log("  주의: " + info.unsupported); problems++; }
+  console.log("  형식 " + info.formatLabel + " / " + info.size.toLocaleString() + "B");
+  if (info.extMismatch) { console.log("  주의: " + info.extMismatch); problems++; }
+  if (info.enc) console.log("  암호화 " + describeEnc(info.enc));
+
+  if (info.blocked) {
+    console.log("  읽을 수 없다: " + info.blocked);
+    if (info.note) console.log("  " + info.note);
+    info.actionable.forEach((a) => console.log("    - " + a));
+    problems++;
+    continue;
+  }
   if (info.kind === "csv") {
     console.log("  헤더 " + JSON.stringify(info.header));
     console.log("  데이터 " + info.rowCount + "행");
@@ -280,6 +336,8 @@ for (const f of files) {
 console.log("\n" + (problems
   ? "확인이 필요한 항목 " + problems + "건. 아래는 사람이 판단해야 한다:"
   : "모든 파일이 필수 필드를 충족한다. 카드사 프로파일을 채울 수 있다."));
+console.log("- 확장자가 내용과 다르면 카드사가 이상한 포맷을 준 것이다. 프로파일에 기록한다.");
+console.log("- 암호화 파일이면 비밀번호 처리 방식을 먼저 정한다 (card-columns.json 의 encryption 참고).");
 console.log("- 헤더 이름이 규격과 다르면 card-columns.json 의 headerAliases 에 추가한다.");
 console.log("- 매칭이 안 되는 열이 있으면 실제 헤더 문자열을 그대로 적어 카드사 프로파일을 만든다.");
 console.log("- 합계성 행 패턴이 다르면 rowRoles.grandTotal 에 추가한다.");

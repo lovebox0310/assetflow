@@ -88,7 +88,7 @@
     "header": ["승인일자", "가맹점명", "공급가액", "세액"],
     "subtotal": "가맹점별 소계 행. 거래 건이 아니므로 합계에 넣지 않는다.",
     "grandTotal": ["총 합계", "합계", "총 건수", "건수", "소계", "전체합계"],
-    "note": "가맹점명이 비어 있고 금액만 있는 행, '외국계'/'캐피탈' 같은 섹션 표시 행도 데이터가 아니다."
+    "dataRowNote": "가맹점명이 비어 있고 금액만 있는 행, '외국계'/'캐피탈' 같은 섹션 표시 행도 데이터가 아니다."
   },
 
   "validation": {
@@ -98,6 +98,34 @@
       "reversal": true,
       "note": "매입취소 행만 음수를 허용한다. 그 외 음수는 오류로 본다."
     }
+  },
+
+  "encryption": {
+    "$comment": "카드사 명세서는 통상 비밀번호로 암호화되어 온다. 삼성카드가 .xlsx 확장자로 ECMA-376 Agile Encryption 파일을 준 사례가 있다. 사용자 결정: 비밀번호를 입력받아 브라우저에서 해독한다.",
+    "expected": true,
+    "schemes": ["agile", "standard"],
+    "whereToDecrypt": "FE",
+    "rule": "원본 파일과 비밀번호는 서버로 보내지 않는다. FE 에서 해독해 정규화된 행만 전송한다. 비밀번호를 서버가 받아야 한다면 해독은 FE 로 옮길 이유가 없어진다.",
+    "keySource": "password",
+    "seenInTheWild": {
+      "samsungcard": {
+        "extension": ".xlsx",
+        "container": "CFB (OLE2)",
+        "scheme": "agile",
+        "version": "4.4",
+        "cipher": "AES-128-CBC",
+        "keyBits": 128,
+        "hash": "SHA1",
+        "hashSize": 20,
+        "spinCount": 100000,
+        "saltSize": 16,
+        "blockSize": 16,
+        "integrity": "HMAC 값 포함",
+        "note": "대부분의 Office 파일은 SHA-512 인데 삼성은 SHA-1 이다. SHA-1/256/512 를 모두 지원해야 한다."
+      }
+    },
+    "wrongPassword": "verifier 비교로 먼저 검증하고, 실패하면 '비밀번호가 틀렸습니다'만 알린다. 복호화 실패를 파일 손상으로 보고하지 않는다.",
+    "note": "spinCount 가 100000 이므로 해시 반복을 10만 번 돌려야 한다. SubtleCrypto 를 10만 번 await 하면 느리므로 해시 반복은 순수 JS 로, AES 연산만 Web Crypto 를 쓴다."
   },
 
   "reconciliation": {
@@ -111,6 +139,8 @@
   "companies": {
     "$comment": "실제 샘플을 검사해 채운다. 형식을 추측해 미리 채우지 않는다.",
     "verified": [],
-    "pending": ["카드사명을 여기에 적는다"]
+    "pending": [
+      "삼성카드: 파일 형식은 확인했다(암호화 Agile AES-128-CBC/SHA1). 다만 암호화 때문에 컬럼 헤더를 아직 못 읽었다. 복호화 가능한 샘플이 있어야 헤더와 합계 행 패턴을 확정한다."
+    ]
   }
 }
