@@ -485,3 +485,16 @@ a:hover {
 .row-2 { display: flex; align-items: center; gap: var(--space-2); }
 .muted { color: var(--color-text-secondary); }
 .text-sm { font-size: var(--font-size-xs); }
+
+/* 화면 하단 안내 */
+.app-footer {
+  margin-top: var(--space-8);
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--color-border-secondary);
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-xs);
+}
+
+.app-footer p {
+  margin: 0;
+}

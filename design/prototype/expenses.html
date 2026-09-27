@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>지출 목업 · AssetFlow 프로토타입</title>
+    <link rel="stylesheet" href="assets/tokens.css" />
+    <link rel="stylesheet" href="assets/base.css" />
+    <style>
+      /* 이 화면은 값의 단일 출처다. 대시보드와 설정은 여기서 계산된 값을 읽는다. */
+      .layout-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: var(--space-6);
+        align-items: start;
+      }
+      @media (min-width: 1200px) {
+        .layout-grid {
+          grid-template-columns: 1fr 320px;
+        }
+      }
+
+      .item-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-variant-numeric: tabular-nums;
+      }
+      .item-table th,
+      .item-table td {
+        padding: var(--space-2) var(--space-3);
+        text-align: left;
+        border-bottom: 1px solid var(--color-border-secondary);
+        vertical-align: middle;
+      }
+      .item-table th {
+        font-size: var(--font-size-xs);
+        color: var(--color-text-secondary);
+        font-weight: 500;
+        white-space: nowrap;
+      }
+      .item-table .num {
+        text-align: right;
+        white-space: nowrap;
+      }
+      .item-table tfoot td {
+        border-bottom: none;
+        border-top: 2px solid var(--color-border);
+        font-weight: 600;
+      }
+      .item-table tbody tr:hover {
+        background: var(--color-fill-quaternary);
+      }
+      .item-table input[type="text"],
+      .item-table input[type="number"] {
+        width: 100%;
+        min-width: 0;
+        padding: var(--space-1) var(--space-2);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-input);
+        background: var(--color-bg-container);
+        color: var(--color-text);
+        font: inherit;
+        font-size: var(--font-size-sm);
+      }
+      .item-table input[type="number"] {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      .item-table input:focus-visible,
+      .row-btn:focus-visible {
+        outline: 2px solid var(--color-primary);
+        outline-offset: 1px;
+      }
+      .item-table input[aria-invalid="true"] {
+        border-color: var(--color-danger);
+      }
+      .cell-num {
+        width: 130px;
+      }
+      .cell-flag {
+        width: 88px;
+        white-space: nowrap;
+      }
+      .cell-act {
+        width: 44px;
+      }
+      .row-btn {
+        width: 28px;
+        height: 28px;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-input);
+        background: var(--color-bg-container);
+        color: var(--color-text-secondary);
+        cursor: pointer;
+        line-height: 1;
+      }
+      .row-btn:hover {
+        color: var(--color-danger);
+        border-color: var(--color-danger-border);
+      }
+
+      /* 합계 패널 */
+      .sum-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--space-2);
+        padding: var(--space-2) 0;
+      }
+      .sum-row + .sum-row {
+        border-top: 1px solid var(--color-border-secondary);
+      }
+      .sum-row--total {
+        border-top: 2px solid var(--color-border);
+        border-bottom: none;
+        font-weight: 600;
+        padding-top: var(--space-3);
+      }
+      .sum-label {
+        color: var(--color-text-secondary);
+        font-size: var(--font-size-sm);
+      }
+      .sum-row--total .sum-label {
+        color: var(--color-text);
+      }
+      .sum-value {
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .sum-formula {
+        color: var(--color-text-tertiary);
+        font-size: var(--font-size-xs);
+      }
+
+      .section__title {
+        font-size: var(--font-size-base);
+        margin-bottom: var(--space-1);
+      }
+      .section__desc {
+        margin-bottom: var(--space-4);
+        color: var(--color-text-secondary);
+        font-size: var(--font-size-xs);
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        padding-top: var(--space-4);
+        border-top: 1px solid var(--color-border-secondary);
+      }
+      .sticky {
+        position: sticky;
+        top: var(--space-4);
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">본문 바로가기</a>
+
+    <div class="proto-bar">
+      정적 목업입니다. 실제 구현은 React + antd 6 + ECharts로 이관합니다.
+      <a href="README.md">사용법</a> ·
+      <a href="index.html">전체 IA</a>
+    </div>
+
+    <header class="app-header">
+      <div class="container app-header__inner">
+        <a class="app-header__brand" href="dashboard.html">
+          <span aria-hidden="true">◧</span> AssetFlow
+        </a>
+        <nav class="app-nav" aria-label="주요 메뉴">
+          <a class="app-nav__link" href="dashboard.html">대시보드</a>
+          <a class="app-nav__link" href="expenses.html" aria-current="page">지출</a>
+          <a class="app-nav__link" href="settings.html">설정</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="app-main" id="main">
+      <div class="container">
+        <h1 class="page-title">지출</h1>
+        <p class="page-desc" id="who">—</p>
+        <p class="page-desc">
+          대시보드의 비상금 유지 개월, 여유 현금, 월 수지가 전부 이 화면에서
+          계산됩니다. 값을 여기서 고치면 다른 화면이 따라옵니다.
+        </p>
+
+        <div class="layout-grid" style="margin-top: var(--space-6)">
+          <div>
+            <section class="card" aria-labelledby="h-items">
+              <div class="card__head">
+                <h2 class="card__label" id="h-items">월 지출 항목</h2>
+                <span class="tag tag--info" id="itemCount">—</span>
+              </div>
+              <div class="card__body">
+                <table class="item-table">
+                  <caption class="sr-only">
+                    월 지출 항목 목록. 이름, 금액, 필수지출 여부, 매입세액 공제 여부를
+                    편집할 수 있습니다.
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">항목</th>
+                      <th scope="col" class="num cell-num">월 금액(원)</th>
+                      <th scope="col" class="cell-flag">필수</th>
+                      <th scope="col" class="cell-flag">매입세액</th>
+                      <th scope="col" class="cell-act"><span class="sr-only">삭제</span></th>
+                    </tr>
+                  </thead>
+                  <tbody id="items"></tbody>
+                  <tfoot>
+                    <tr>
+                      <th scope="row">목록 합계</th>
+                      <td class="num" id="sumTotal">—</td>
+                      <td colspan="3" class="sum-formula" id="sumFormula"></td>
+                    </tr>
+                  </tfoot>
+                </table>
+
+                <div class="actions">
+                  <button type="button" class="btn btn--primary" id="addItem">
+                    항목 추가
+                  </button>
+                  <button type="button" class="btn" id="resetAll">
+                    초기값으로 되돌리기
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <section class="card" aria-labelledby="h-unfixed" style="margin-top: var(--space-6)">
+              <div class="card__head">
+                <h2 class="card__label" id="h-unfixed">아직 금액이 없는 항목</h2>
+                <span class="tag tag--warning">분모 불완전</span>
+              </div>
+              <div class="card__body">
+                <p class="section__desc">
+                  금액이 0원인 항목이 아닙니다. 0원을 넣으면 지표가 실제보다 좋아집니다.
+                  확정된 금액을 넣을 때까지 비상금 계산에서 빠지고, 화면에는
+                  "세금 미반영" 경고가 남습니다.
+                </p>
+                <table class="item-table">
+                  <caption class="sr-only">
+                    금액이 확정되지 않은 항목 목록
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">항목</th>
+                      <th scope="col" class="num cell-num">월 금액(원)</th>
+                      <th scope="col">비고</th>
+                    </tr>
+                  </thead>
+                  <tbody id="unfixed"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="card" aria-labelledby="h-recon" style="margin-top: var(--space-6)">
+              <div class="card__head">
+                <h2 class="card__label" id="h-recon">매입 세금계산서와 대조</h2>
+                <span class="tag tag--info" id="reconTag">—</span>
+              </div>
+              <div class="card__body">
+                <p class="section__desc">
+                  매입세액은 실제 세금계산서에서 나온 값이므로 역산한 매입 규모는
+                  확실합니다. 목록에 잡히지 않은 사업 비용이 남아 있을 수 있습니다.
+                </p>
+                <div class="sum-row">
+                  <span class="sum-label">매입세액에서 역산한 월 매입 규모</span>
+                  <span class="sum-value" id="reconImplied">—</span>
+                </div>
+                <div class="sum-row">
+                  <span class="sum-label">지출 목록 합계</span>
+                  <span class="sum-value" id="reconList">—</span>
+                </div>
+                <div class="sum-row sum-row--total">
+                  <span class="sum-label" id="reconDiffLabel">목록에 없는 사업 비용</span>
+                  <span class="sum-value" id="reconDiff">—</span>
+                </div>
+                <p class="notice notice--warn" style="margin-top: var(--space-4)">
+                  <span aria-hidden="true">!</span>
+                  <span id="reconNote"></span>
+                </p>
+              </div>
+            </section>
+          </div>
+
+          <aside class="sticky">
+            <section class="card" aria-labelledby="h-sum">
+              <div class="card__head">
+                <h2 class="card__label" id="h-sum">다른 화면이 읽는 값</h2>
+              </div>
+              <div class="card__body">
+                <div class="sum-row">
+                  <span class="sum-label">필수지출 합계</span>
+                  <span class="sum-value" id="sumEssential">—</span>
+                </div>
+                <div class="sum-row">
+                  <span class="sum-label">선택지출 합계</span>
+                  <span class="sum-value" id="sumOptional">—</span>
+                </div>
+                <div class="sum-row">
+                  <span class="sum-label">확정된 미반영 항목</span>
+                  <span class="sum-value" id="sumUnfixed">—</span>
+                </div>
+                <div class="sum-row sum-row--total">
+                  <span class="sum-label">월 필수지출 (비상금 분모)</span>
+                  <span class="sum-value" id="sumDenominator">—</span>
+                </div>
+                <p class="sum-formula" id="denominatorFormula" style="margin-top: var(--space-2)"></p>
+
+                <div class="sum-row" style="margin-top: var(--space-4)">
+                  <span class="sum-label">월 총지출</span>
+                  <span class="sum-value" id="sumMonthlyExpense">—</span>
+                </div>
+                <div class="sum-row">
+                  <span class="sum-label">월 수지</span>
+                  <span class="sum-value" id="sumMonthlyBalance">—</span>
+                </div>
+                <div class="sum-row">
+                  <span class="sum-label">비상금 유지 개월</span>
+                  <span class="sum-value" id="sumEmergency">—</span>
+                </div>
+                <p class="sum-formula" id="emergencyFormula" style="margin-top: var(--space-2)"></p>
+
+                <p class="notice notice--warn" style="margin-top: var(--space-4)">
+                  <span aria-hidden="true">!</span>
+                  <span id="incompleteNote"></span>
+                </p>
+              </div>
+            </section>
+          </aside>
+        </div>
+      </div>
+    </main>
+
+    <footer class="app-footer">
+      <div class="container">
+        <p>
+          저장은 이 브라우저(localStorage)에만 남고 서버로 전송되지 않습니다.
+          실제 구현에서는 서버 저장 + 이력 관리가 필요합니다.
+        </p>
+      </div>
+    </footer>
+
+    <script src="assets/mock-data.js"></script>
+    <script>
+      (function () {
+        "use strict";
+        var AF = window.AF;
+        var d = AF.data;
+        var f = AF.fmt;
+        var store = AF.storage;
+
+        document.getElementById("who").textContent = d.user.name + " · " + d.asOf;
+
+        // 저장은 데이터 계층이 맡는다. 모든 화면이 같은 값을 읽도록 (§28.7)
+        function persist() {
+          store.save();
+        }
+
+        /* ---------- 항목 편집 ---------- */
+        var uid = 0;
+        function newKey() {
+          return "item-" + Date.now().toString(36) + "-" + ++uid;
+        }
+
+        function cellCheckbox(row, checked, label, onToggle) {
+          var td = document.createElement("td");
+          // th 와 같은 폭을 유지해야 열이 어긋나지 않는다
+          td.className = "cell-flag";
+          var input = document.createElement("input");
+          input.type = "checkbox";
+          input.checked = checked;
+          input.setAttribute("aria-label", label + " " + row._item.label);
+          input.addEventListener("change", function () {
+            onToggle(input.checked);
+            refresh();
+            persist();
+          });
+          td.appendChild(input);
+          return td;
+        }
+
+        function renderItems() {
+          var body = document.getElementById("items");
+          body.textContent = "";
+
+          d.expenses.items.forEach(function (item) {
+            var tr = document.createElement("tr");
+            tr._item = item;
+
+            var nameTd = document.createElement("td");
+            var name = document.createElement("input");
+            name.type = "text";
+            name.value = item.label;
+            name.setAttribute("aria-label", "항목 이름");
+            name.addEventListener("input", function () {
+              item.label = name.value;
+              // 이름이 바뀌면 다른 입력의 aria-label 도 갱신해야 한다
+              amt.setAttribute("aria-label", item.label + " 월 금액");
+              del.setAttribute("aria-label", item.label + " 삭제");
+              refresh();
+              persist();
+            });
+            nameTd.appendChild(name);
+
+            var amtTd = document.createElement("td");
+            amtTd.className = "num cell-num";
+            var amt = document.createElement("input");
+            amt.type = "number";
+            amt.inputMode = "numeric";
+            amt.min = "0";
+            amt.step = "1000";
+            amt.value = String(item.amount);
+            amt.setAttribute("aria-label", item.label + " 월 금액");
+            var amtError = document.createElement("p");
+            amtError.className = "field__error";
+            amtError.hidden = true;
+            function readAmount() {
+              var n = Number(amt.value);
+              var bad = amt.value.trim() === "" || !isFinite(n) || n < 0;
+              amt.setAttribute("aria-invalid", String(bad));
+              amtError.hidden = !bad;
+              amtError.textContent = "0 이상의 정수 원";
+              if (bad) return;
+              item.amount = Math.floor(n);
+              refresh();
+              persist();
+            }
+            amt.addEventListener("input", readAmount);
+            amtTd.appendChild(amt);
+            amtTd.appendChild(amtError);
+
+            tr.appendChild(nameTd);
+            tr.appendChild(amtTd);
+            tr.appendChild(
+              cellCheckbox(tr, item.essential, "필수지출", function (v) { item.essential = v; })
+            );
+            tr.appendChild(
+              cellCheckbox(tr, item.vatDeductible, "매입세액 공제", function (v) {
+                item.vatDeductible = v;
+              })
+            );
+
+            var actTd = document.createElement("td");
+            actTd.className = "cell-act";
+            var del = document.createElement("button");
+            del.type = "button";
+            del.className = "row-btn";
+            del.textContent = "×";
+            del.setAttribute("aria-label", item.label + " 삭제");
+            del.addEventListener("click", function () {
+              d.expenses.items = d.expenses.items.filter(function (x) { return x !== item; });
+              render();
+              persist();
+            });
+            actTd.appendChild(del);
+            tr.appendChild(actTd);
+
+            body.appendChild(tr);
+          });
+
+          document.getElementById("itemCount").textContent = d.expenses.items.length + "개 항목";
+        }
+
+        function renderUnfixed() {
+          var body = document.getElementById("unfixed");
+          body.textContent = "";
+          d.expenses.notIncluded.forEach(function (x) {
+            var tr = document.createElement("tr");
+            tr._item = x;
+
+            var nameTd = document.createElement("td");
+            nameTd.textContent = x.label;
+
+            var amtTd = document.createElement("td");
+            amtTd.className = "num cell-num";
+            var amt = document.createElement("input");
+            amt.type = "number";
+            amt.inputMode = "numeric";
+            amt.min = "0";
+            amt.step = "1000";
+            amt.placeholder = "미확정";
+            amt.value = x.amount === null || x.amount === undefined ? "" : String(x.amount);
+            amt.setAttribute("aria-label", x.label + " 월 금액");
+            amt.addEventListener("input", function () {
+              var raw = amt.value.trim();
+              if (raw === "") {
+                x.amount = null;
+              } else {
+                var n = Number(raw);
+                if (isFinite(n) && n >= 0) {
+                  x.amount = Math.floor(n);
+                } else {
+                  // 잘못된 값은 미확정으로 되돌린다. 조용히 무시하지 않는다.
+                  amt.setAttribute("aria-invalid", "true");
+                  amtError.hidden = false;
+                  refresh();
+                  return;
+                }
+              }
+              amt.setAttribute("aria-invalid", "false");
+              amtError.hidden = true;
+              refresh();
+              persist();
+            });
+            var amtError = document.createElement("p");
+            amtError.className = "field__error";
+            amtError.hidden = true;
+            amtError.textContent = "0 이상의 정수 원, 또는 비워서 미확정";
+            amtTd.appendChild(amt);
+            amtTd.appendChild(amtError);
+
+            var noteTd = document.createElement("td");
+            noteTd.className = "sum-formula";
+            noteTd.textContent = x.note || "";
+
+            tr.appendChild(nameTd);
+            tr.appendChild(amtTd);
+            tr.appendChild(noteTd);
+            body.appendChild(tr);
+          });
+        }
+
+        /* ---------- 다른 화면이 읽는 값 갱신 ---------- */
+        function refresh() {
+          AF.recompute();
+          var e = d.expenses;
+          var v = d.vat;
+
+          document.getElementById("sumTotal").textContent = f.formatKRW(e.total);
+          document.getElementById("sumFormula").textContent =
+            "필수 " + f.formatKRW(e.essentialTotal) +
+            " + 선택 " + f.formatKRW(e.total - e.essentialTotal);
+
+          document.getElementById("sumEssential").textContent = f.formatKRW(e.essentialTotal);
+          document.getElementById("sumOptional").textContent =
+            f.formatKRW(e.total - e.essentialTotal);
+          document.getElementById("sumUnfixed").textContent =
+            f.formatKRW(e.notIncludedAmount) +
+            (e.emergencyIncomplete ? " + 미확정" : "");
+
+          document.getElementById("sumDenominator").textContent =
+            f.formatKRW(d.cash.autoTransfer.monthlyEssential);
+          document.getElementById("denominatorFormula").textContent =
+            "필수 " + f.formatKRW(e.essentialTotal) +
+            " + 확정 미반영 " + f.formatKRW(e.notIncludedAmount) +
+            (e.emergencyIncomplete ? " · 미확정 항목이 빠진 상태" : "");
+
+          document.getElementById("sumMonthlyExpense").textContent =
+            f.formatKRW(d.totals.monthlyExpense);
+          document.getElementById("sumMonthlyBalance").textContent =
+            f.formatSignedKRW(d.totals.monthlyBalance);
+          document.getElementById("sumEmergency").textContent =
+            f.formatOneDecimal(d.emergency.months, "개월");
+          document.getElementById("emergencyFormula").textContent =
+            f.formatCompactKR(d.emergency.current) + " ÷ " +
+            f.formatCompactKR(d.cash.autoTransfer.monthlyEssential) +
+            " · 목표 " + d.emergency.targetMonths + "개월(" +
+            f.formatCompactKR(d.emergency.targetAmount) + ")";
+
+          var note = document.getElementById("incompleteNote");
+          if (e.emergencyIncomplete) {
+            note.textContent =
+              e.notIncluded.filter(function (x) { return x.amount === null; })
+                .map(function (x) { return x.label; }).join("·") +
+              " 금액이 미확정이라 비상금 분모에서 빠져 있습니다. " +
+              f.formatOneDecimal(d.emergency.months, "개월") +
+              "은 실제보다 길게 나옵니다.";
+          } else {
+            note.textContent = "모든 세금 항목 금액이 확정되어 분모가 완전합니다.";
+          }
+
+          // 매입 대조
+          document.getElementById("reconImplied").textContent = f.formatKRW(v.impliedPurchaseExVat);
+          document.getElementById("reconList").textContent = f.formatKRW(e.total);
+          document.getElementById("reconDiff").textContent =
+            v.unclassifiedBusinessCost > 0
+              ? f.formatKRW(v.unclassifiedBusinessCost)
+              : f.formatKRW(v.overStatedList);
+          document.getElementById("reconDiffLabel").textContent =
+            v.unclassifiedBusinessCost > 0 ? "목록에 없는 사업 비용" : "목록이 매입 규모를 초과";
+          document.getElementById("reconTag").textContent =
+            "비상금 " + f.formatOneDecimal(v.emergencyMonthsOnPurchases, "개월") + " (보수적)";
+          document.getElementById("reconNote").textContent =
+            "매입 규모를 기준으로 비상금을 계산하면 " +
+            f.formatOneDecimal(v.emergencyMonthsOnPurchases, "개월") +
+            "입니다. 업태는 컴퓨터수리업이지만 실제 수입은 소프트웨어 개발 용역이라, " +
+            "부품비인지 다른 비용인지 확인이 필요합니다.";
+        }
+
+        // 그리기만 한다. 저장은 값을 바꾼 뒤에만 해 단일 책임을 지킨다.
+        // 덕분에 화면만 열어도 저장소가 생기지 않는다.
+        function render() {
+          renderItems();
+          renderUnfixed();
+          refresh();
+        }
+
+        document.getElementById("addItem").addEventListener("click", function () {
+          d.expenses.items.push({
+            key: newKey(),
+            label: "새 항목",
+            amount: 0,
+            essential: true,
+            vatDeductible: false
+          });
+          render();
+          persist();
+          var inputs = document.querySelectorAll("#items tr:last-child input[type=text]");
+          if (inputs.length) inputs[0].focus();
+        });
+
+        document.getElementById("resetAll").addEventListener("click", function () {
+          store.reset();
+          render();
+        });
+
+        // 저장값 적용은 mock-data.js 가 로드 시 이미 끝났다. 여기서는 그리기만 한다.
+        render();
+      })();
+    </script>
+  </body>
+</html>

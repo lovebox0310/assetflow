@@ -69,6 +69,7 @@
         </a>
         <nav class="app-nav" aria-label="주요 메뉴">
           <a class="app-nav__link" href="dashboard.html">대시보드</a>
+          <a class="app-nav__link" href="expenses.html">지출</a>
           <a class="app-nav__link" href="settings.html" aria-current="page">설정</a>
         </nav>
       </div>
@@ -141,23 +142,35 @@
                 </p>
 
                 <div class="field">
-                  <label class="field__label field__label--required" for="essential">
-                    월 필수지출
+                  <label class="field__label" for="essentialReadonly">
+                    월 필수지출 (지출 화면에서 계산)
                   </label>
                   <input
                     class="field__control"
-                    id="essential"
-                    name="essential"
-                    type="number"
-                    inputmode="numeric"
-                    min="0"
-                    step="10000"
-                    required
-                    aria-describedby="essential-help"
+                    id="essentialReadonly"
+                    name="essentialReadonly"
+                    type="text"
+                    readonly
+                    aria-describedby="essentialHelp"
                   />
-                  <p class="field__help" id="essential-help">
-                    고정지출 + 최소 생활비. 원 단위 정수로 입력합니다.
+                  <p class="field__help" id="essentialHelp">
+                    지출 화면이 단일 출처입니다. 필수지출 합계 +
+                    확정된 미반영 항목으로 계산되므로 여기서 고칠 수 없습니다.
+                    <a href="expenses.html">지출 화면에서 수정</a>
                   </p>
+                </div>
+                <!-- 계산 근거를 보여준다 -->
+                <div class="field">
+                  <label class="field__label" for="essentialBreakdown">
+                    계산 근거
+                  </label>
+                  <input
+                    class="field__control"
+                    id="essentialBreakdown"
+                    name="essentialBreakdown"
+                    type="text"
+                    readonly
+                  />
                 </div>
 
                 <div class="field">
@@ -225,8 +238,14 @@
 
         document.getElementById("name").value = d.user.name;
         document.getElementById("email").value = d.user.email;
-        // 월 필수지출은 자동이체 계좌 설정값을 단일 출처로 삼는다 (§28.7)
-        document.getElementById("essential").value = String(d.cash.autoTransfer.monthlyEssential);
+        // 월 필수지출은 지출 화면이 단일 출처다 (§28.7). 여기서는 읽기만 한다.
+        document.getElementById("essentialReadonly").value = f.formatKRW(
+          d.cash.autoTransfer.monthlyEssential
+        );
+        document.getElementById("essentialBreakdown").value =
+          "필수 " + f.formatKRW(d.expenses.essentialTotal) +
+          " + 확정 미반영 " + f.formatKRW(d.expenses.notIncludedAmount) +
+          (d.expenses.emergencyIncomplete ? " (미확정 항목 제외됨)" : "");
 
         var form = document.querySelector("form");
         var alertBox = document.getElementById("saveAlert");
