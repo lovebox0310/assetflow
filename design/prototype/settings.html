@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>설정(프로필) 목업 · AssetFlow 프로토타입</title>
+    <link rel="stylesheet" href="assets/tokens.css" />
+    <link rel="stylesheet" href="assets/base.css" />
+    <style>
+      .layout-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: var(--space-6);
+        align-items: start;
+      }
+      @media (min-width: 992px) {
+        .layout-grid {
+          grid-template-columns: 1fr 300px;
+        }
+      }
+      .section__title {
+        font-size: var(--font-size-base);
+        margin-bottom: var(--space-1);
+      }
+      .section__desc {
+        margin-bottom: var(--space-4);
+        color: var(--color-text-secondary);
+        font-size: var(--font-size-xs);
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        padding-top: var(--space-4);
+        border-top: 1px solid var(--color-border-secondary);
+      }
+      .summary__row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--space-2);
+      }
+      .summary__row + .summary__row {
+        margin-top: var(--space-3);
+        padding-top: var(--space-3);
+        border-top: 1px solid var(--color-border-secondary);
+      }
+      .summary__label {
+        color: var(--color-text-secondary);
+      }
+      .summary__value {
+        font-weight: var(--font-weight-bold);
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">본문 바로가기</a>
+
+    <div class="proto-bar">
+      정적 목업입니다. 실제 구현은 React + antd 6로 이관합니다.
+      <a href="README.md">사용법</a> ·
+      <a href="index.html">전체 IA</a>
+    </div>
+
+    <header class="app-header">
+      <div class="container app-header__inner">
+        <a class="app-header__brand" href="dashboard.html">
+          <span aria-hidden="true">◧</span> AssetFlow
+        </a>
+        <nav class="app-nav" aria-label="주요 메뉴">
+          <a class="app-nav__link" href="dashboard.html">대시보드</a>
+          <a class="app-nav__link" href="settings.html" aria-current="page">설정</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="app-main" id="main">
+      <div class="container">
+        <h1 class="page-title">설정</h1>
+        <p class="page-desc">계정 정보와 비상금 기준을 관리합니다.</p>
+
+        <div class="layout-grid" style="margin-top: var(--space-6)">
+          <div class="stack-6">
+            <section class="card" aria-labelledby="h-profile">
+              <div class="card__body">
+                <h2 class="section__title" id="h-profile">프로필</h2>
+                <p class="section__desc">스프린트 1 최소 항목입니다.</p>
+
+                <div class="form-alert" role="alert" hidden id="saveAlert">
+                  <span aria-hidden="true">!</span>
+                  <span>이름과 이메일은 모두 입력해야 합니다.</span>
+                </div>
+
+                <form novalidate>
+                  <div class="field">
+                    <label class="field__label field__label--required" for="name">이름</label>
+                    <input
+                      class="field__control"
+                      id="name"
+                      name="name"
+                      type="text"
+                      autocomplete="name"
+                      required
+                      aria-describedby="name-error"
+                    />
+                    <p class="field__error" id="name-error" hidden>
+                      <span aria-hidden="true">!</span> 이름을 입력해 주세요.
+                    </p>
+                  </div>
+
+                  <div class="field">
+                    <label class="field__label field__label--required" for="email">이메일</label>
+                    <input
+                      class="field__control"
+                      id="email"
+                      name="email"
+                      type="email"
+                      autocomplete="username"
+                      inputmode="email"
+                      required
+                      aria-describedby="email-error"
+                    />
+                    <p class="field__error" id="email-error" hidden>
+                      <span aria-hidden="true">!</span> 이메일 형식이 올바르지 않습니다.
+                    </p>
+                  </div>
+
+                  <div class="actions">
+                    <button type="submit" class="btn btn--primary">저장</button>
+                    <button type="reset" class="btn">취소</button>
+                  </div>
+                </form>
+              </div>
+            </section>
+
+            <section class="card" aria-labelledby="h-emergency">
+              <div class="card__body">
+                <h2 class="section__title" id="h-emergency">비상금 기준</h2>
+                <p class="section__desc">
+                  대시보드의 "비상금 유지 개월" 계산에 쓰이는 분모입니다.
+                </p>
+
+                <div class="field">
+                  <label class="field__label field__label--required" for="essential">
+                    월 필수지출
+                  </label>
+                  <input
+                    class="field__control"
+                    id="essential"
+                    name="essential"
+                    type="number"
+                    inputmode="numeric"
+                    min="0"
+                    step="10000"
+                    required
+                    aria-describedby="essential-help"
+                  />
+                  <p class="field__help" id="essential-help">
+                    고정지출 + 최소 생활비. 원 단위 정수로 입력합니다.
+                  </p>
+                </div>
+
+                <div class="field">
+                  <label class="field__label" for="target">목표 개월</label>
+                  <input
+                    class="field__control"
+                    id="target"
+                    name="target"
+                    type="number"
+                    inputmode="numeric"
+                    min="1"
+                    max="24"
+                    step="1"
+                    value="6"
+                    aria-describedby="target-help"
+                  />
+                  <p class="field__help" id="target-help">권장 6개월입니다.</p>
+                </div>
+
+                <div class="notice" role="status">
+                  <span aria-hidden="true">i</span>
+                  <span>
+                    MVP 범위 밖 항목입니다. 개인 자산 공유·다중 계정·다크 모드는 제외되어 있습니다.
+                  </span>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <aside class="card" aria-labelledby="h-summary">
+            <div class="card__body">
+              <h2 class="section__title" id="h-summary">계정 요약</h2>
+              <p class="section__desc">GET /api/v1/me 응답 예시</p>
+              <div class="summary__row">
+                <span class="summary__label">이름</span>
+                <span class="summary__value" id="sumName">김민수</span>
+              </div>
+              <div class="summary__row">
+                <span class="summary__label">이메일</span>
+                <span class="summary__value" id="sumEmail">demo@assetflow.kr</span>
+              </div>
+              <div class="summary__row">
+                <span class="summary__label">가입일</span>
+                <span class="summary__value" id="sumJoined">2026-09-01</span>
+              </div>
+              <div class="summary__row">
+                <span class="summary__label">플랜</span>
+                <span class="tag tag--info">무료</span>
+              </div>
+              <div class="actions">
+                <a class="btn btn--block" href="login.html">로그아웃</a>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </main>
+
+    <script src="assets/mock-data.js"></script>
+    <script>
+      (function () {
+        "use strict";
+        var d = window.AF.data;
+        var f = window.AF.fmt;
+
+        document.getElementById("name").value = d.user.name;
+        document.getElementById("email").value = d.user.email;
+        document.getElementById("essential").value = String(d.totals.monthlyExpense);
+
+        var form = document.querySelector("form");
+        var alertBox = document.getElementById("saveAlert");
+        var name = document.getElementById("name");
+        var email = document.getElementById("email");
+        var nameError = document.getElementById("name-error");
+        var emailError = document.getElementById("email-error");
+        var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+        form.addEventListener("submit", function (e) {
+          e.preventDefault();
+          var nameBad = name.value.trim() === "";
+          var emailBad = !EMAIL_RE.test(email.value.trim());
+          name.setAttribute("aria-invalid", String(nameBad));
+          email.setAttribute("aria-invalid", String(emailBad));
+          nameError.hidden = !nameBad;
+          emailError.hidden = !emailBad;
+          alertBox.hidden = !(nameBad || emailBad);
+          if (nameBad || emailBad) { (nameBad ? name : email).focus(); return; }
+
+          document.getElementById("sumName").textContent = name.value.trim();
+          document.getElementById("sumEmail").textContent = email.value.trim();
+          alertBox.hidden = true;
+        });
+      })();
+    </script>
+  </body>
+</html>
