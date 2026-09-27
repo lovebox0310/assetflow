@@ -368,7 +368,7 @@
   });
 
   global.AF = global.AF || {};
-  global.AF.data = {
+  var data = {
     user: { email: "demo@assetflow.kr", name: "김민수" },
     asOf: asOfDate,
     asOfMonth: asOfDate.slice(0, 7),
@@ -389,7 +389,8 @@
       targetMonths: emergencyTargetMonths,
       targetAmount: emergencyTarget,
       reached: emergencyReached,
-      // 분모에 고용보험·종합소득세·지방세가 빠져 있다 (expenses.notIncluded)
+      // 초기값. recompute() 가 emergencyIncomplete 로 덮어쓴다.
+      // 고용보험은 지출 목록에 이미 들어 있고, 종합소득세만 미확정이다.
       incomplete: true
     },
     vat: {
@@ -453,6 +454,179 @@
     composition: composition,
     cashflow: cashflow
   };
+  global.AF.data = data;
+
+  /* ---------- 재계산 ----------
+   * 지출 항목이 단일 출처다. 항목을 편집하면 파생값을 전부 다시 계산한다.
+   *   expenseItems
+   *     -> 합계 / 매입세액 분류 합계
+   *     -> monthlyBalance, monthlyExpense
+   *     -> emergencyMonths (월 필수지출 = 지출 합계)
+   *     -> 매입 규모 대조 (purchaseReconciliationGap 등)
+   *
+   * 새 항목을 추가하면 필수지출 여부(essential)로 비상금 분자가 바뀐다.
+   * 매입 대조는 세금계산서로 확인된 매입 규모를 상한으로 본다.
+   *   목록 합계가 매입 규모를 넘어서면 목록이 과대하다는 뜻이므로 경고한다.
+   */
+  global.AF.recompute = function () {
+    var sum = data.expenses.items.reduce(function (a, e) { return a + e.amount; }, 0);
+    var nonDed = data.expenses.items
+      .filter(function (e) { return !e.vatDeductible; })
+      .reduce(function (a, e) { return a + e.amount; }, 0);
+
+    data.expenses.total = sum;
+    data.expenses.deductibleTotal = sum - nonDed;
+    data.expenses.nonDeductibleTotal = nonDed;
+    data.expenses.essentialTotal = data.expenses.items
+      .filter(function (e) { return e.essential; })
+      .reduce(function (a, e) { return a + e.amount; }, 0);
+
+    // 미확정 항목에 확정 금액이 들어가면 지출에 합산한다
+    var notIncludedAmount = data.expenses.notIncluded.reduce(function (a, x) {
+      return a + (x.amount === null || x.amount === undefined ? 0 : x.amount);
+    }, 0);
+    data.expenses.notIncludedAmount = notIncludedAmount;
+    data.expenses.notIncludedTotal = sum + notIncludedAmount;
+    data.expenses.emergencyIncomplete = data.expenses.notIncluded.some(function (x) {
+      return x.amount === null || x.amount === undefined;
+    });
+
+    // 월 필수지출 = 필수 항목 + 확정된 미포함 항목
+    data.cash.autoTransfer.monthlyEssential =
+      data.expenses.essentialTotal + notIncludedAmount;
+
+    data.totals.monthlyExpense = data.expenses.notIncludedTotal;
+    data.totals.monthlyBalance = data.totals.monthlyIncome - data.totals.monthlyExpense;
+
+    data.emergency.months = data.cash.investable.amount / data.cash.autoTransfer.monthlyEssential;
+    data.emergency.targetAmount =
+      data.emergency.targetMonths * data.cash.autoTransfer.monthlyEssential;
+    data.emergency.reached = data.cash.investable.amount >= data.emergency.targetAmount;
+    data.emergency.incomplete = data.expenses.emergencyIncomplete;
+
+    // 매입 규모 대조
+    var v = data.vat;
+    var gap = v.impliedPurchaseExVat - sum;
+    v.purchaseReconciliationGap = gap;
+    v.unclassifiedBusinessCost = gap > 0 ? gap : 0;
+    v.overStatedList = gap < 0 ? -gap : 0;
+    // 보수적으로 두 값을 모두 만족해야 하므로 큰 쪽을 쓴다.
+    // 목록이 매입 규모를 넘으면 작은 값은 비상금을 부풀리게 만든다.
+    v.monthlyBusinessCost = Math.max(sum, v.impliedPurchaseExVat);
+    v.monthlySurplusOnPurchases = data.totals.monthlyIncome - v.monthlyBusinessCost;
+    v.emergencyMonthsOnPurchases = data.cash.investable.amount / v.monthlyBusinessCost;
+    return data;
+  };
+
+  // 원본 보존: 초기값 복구에 사용한다
+  global.AF.seed = {
+    items: expenseItems.map(function (e) {
+      return { key: e.key, label: e.label, amount: e.amount, essential: e.essential, vatDeductible: e.vatDeductible };
+    }),
+    notIncluded: data.expenses.notIncluded.map(function (x) {
+      return { key: x.key, label: x.label, amount: x.amount, note: x.note };
+    })
+  };
+
+  /* ------------------------------------------------------------------
+   * 지출 저장소 (프로토타입 한정)
+   * 지출 화면이 단일 출처지만, 입력값을 모든 화면이 함께 봐야 한다.
+   * 그래서 저장/복구는 데이터 계층이 담당하고 화면은 save/reset만 호출한다.
+   * 실제 구현에서는 이 계층이 서버 API로 교체된다 (§28.7).
+   * ------------------------------------------------------------------ */
+  var STORAGE_KEY = "assetflow.expenses.v1";
+
+  function copySeed() {
+    return {
+      items: global.AF.seed.items.map(function (e) { return Object.assign({}, e); }),
+      notIncluded: global.AF.seed.notIncluded.map(function (x) { return Object.assign({}, x); })
+    };
+  }
+
+  function applySnapshot(snap) {
+    if (!snap || !Array.isArray(snap.items) || !Array.isArray(snap.notIncluded)) return false;
+
+    // 항목 하나하나를 값 검증한다. 깨진 값 하나가 화면 전체를 죽이면 안 된다.
+    var items = snap.items
+      .filter(function (e) { return e && typeof e.label === "string"; })
+      .map(function (e) {
+        return {
+          key: typeof e.key === "string" ? e.key : newKey(),
+          label: e.label,
+          amount: Number.isFinite(+e.amount) && +e.amount >= 0 ? Math.round(+e.amount) : 0,
+          essential: e.essential !== false,
+          vatDeductible: e.vatDeductible !== false
+        };
+      });
+
+    var notIncluded = snap.notIncluded
+      .filter(function (x) { return x && typeof x.label === "string"; })
+      .map(function (x) {
+        var amt = x.amount === null || x.amount === undefined || x.amount === ""
+          ? null
+          : (Number.isFinite(+x.amount) && +x.amount >= 0 ? Math.round(+x.amount) : null);
+        return {
+          key: typeof x.key === "string" ? x.key : newKey(),
+          label: x.label,
+          amount: amt,
+          note: typeof x.note === "string" ? x.note : ""
+        };
+      });
+
+    if (!items.length) return false;
+    data.expenses.items = items;
+    data.expenses.notIncluded = notIncluded;
+    return true;
+  }
+
+  function newKey() {
+    return "e" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  }
+
+  global.AF.storage = {
+    key: STORAGE_KEY,
+    seed: copySeed,
+    // 저장된 값이 있으면 적용하고 true. 없으면 false.
+    load: function () {
+      var raw;
+      try {
+        raw = global.localStorage.getItem(STORAGE_KEY);
+      } catch (err) {
+        // 사생활 모드 등으로 막혀 있으면 시드값으로 진행한다
+        return false;
+      }
+      if (!raw) return false;
+      try {
+        return applySnapshot(JSON.parse(raw));
+      } catch (err) {
+        return false;
+      }
+    },
+    save: function () {
+      try {
+        global.localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          items: data.expenses.items,
+          notIncluded: data.expenses.notIncluded
+        }));
+        return true;
+      } catch (err) {
+        return false;
+      }
+    },
+    reset: function () {
+      var snap = copySeed();
+      data.expenses.items = snap.items;
+      data.expenses.notIncluded = snap.notIncluded;
+      try {
+        global.localStorage.removeItem(STORAGE_KEY);
+      } catch (err) { /* 저장소를 못 쓰는 환경이면 무시 */ }
+      return data;
+    }
+  };
+
+  // 어떤 화면이든 로드 직전에 저장값을 읽는다 (대시보드/설정 포함).
+  global.AF.storage.load();
+  global.AF.recompute();
 
   global.AF.fmt = {
     formatCompactKR: formatCompactKR,

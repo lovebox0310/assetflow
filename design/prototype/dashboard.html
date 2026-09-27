@@ -207,6 +207,7 @@
         </a>
         <nav class="app-nav" aria-label="주요 메뉴">
           <a class="app-nav__link" href="dashboard.html" aria-current="page">대시보드</a>
+          <a class="app-nav__link" href="expenses.html">지출</a>
           <a class="app-nav__link" href="settings.html">설정</a>
         </nav>
       </div>
@@ -457,10 +458,14 @@
           "개월(" +
           f.formatCompactKR(d.emergency.targetAmount) +
           ") · 분모에 " +
-          d.expenses.notIncluded.map(function (x) {
-            return x.label;
-          }).join("·") +
-          " 미반영";
+          (d.expenses.emergencyIncomplete
+            ? // 아직 금액이 없는 항목만 이름만 나열한다
+              d.expenses.notIncluded.filter(function (x) {
+                return x.amount === null || x.amount === undefined;
+              }).map(function (x) {
+                return x.label;
+              }).join("·") + " 미반영"
+            : f.formatKRW(d.expenses.notIncludedAmount) + " 미반영 항목 포함");
 
         // 세금계산서로 확인된 매입 규모가 지출 목록보다 크면 실제 비상금은 더 짧다
         var unclassNote = document.getElementById("unclassifiedNote");
