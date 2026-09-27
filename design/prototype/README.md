@@ -20,9 +20,31 @@ design/prototype/index.html
 | `login.html` | 이메일 로그인, 오류 상태 | Issue 2 |
 | `dashboard.html` | 핵심 카드 4종 + 현금흐름 차트 | Issue 3, Issue 4 |
 | `settings.html` | 프로필 + 비상금 계산 기준 | Issue 2 |
+| `expenses.html` | 지출 항목 + 카드내역 가져오기 | Issue 3, §29 |
 | `assets/tokens.css` | 디자인 토큰 (원시 색상값은 이 파일에만 존재) | §28.2 |
 | `assets/base.css` | 레이아웃, 공통 컴포넌트 | §28.1 |
 | `assets/mock-data.js` | 더미 데이터 + 포맷터 | §28.3 |
+| `assets/card-import.js` | 카드 파서 번들 (자동 생성, 손으로 고치지 않는다) | §29 |
+
+## 카드내역 가져오기 (§29)
+
+`expenses.html`에서 카드사 CSV를 올려 정규화 행으로 가져온다.
+
+- 파서·형식 판별·카드사 판별은 `assets/card-import.js`가 한다. 이 파일은
+  `samples/card/tools/build-card-import-bundle.mjs`가 만든 **자동 생성 파일**이다.
+  파서 원본은 `apps/frontend/src/lib/card/`에 있고, 이 번들은 그 사본이다.
+  파일이 안 열리면(ESM import 오류 등) 번들을 다시 생성한다.
+- 흐름: CSV 선택 → 매직 바이트 판별 → 카드사 판별(계약의 `detect` 시그니처) →
+  파싱 → 가맹점별 용도구분 → 가져오기.
+- 암호화된 파일(비밀번호로 잠긴 문서)은 여지 않는다. 카드사에서 암호화 없는
+  CSV로 받거나 엑셀에서 다시 저장해서 올린다. 비밀번호 입력란도 없다 —
+  열기 구현이 없는데 입력만 두면 사용자를 속인다.
+- 가맹점 용도(업무용/개인용)는 규칙으로 저장되어 다음 명세부터 자동 적용된다.
+  미분류 행은 어느 합계에도 들어가지 않는다.
+- 가져온 내역은 `assetflow.cardImports.v1` 키로 localStorage에 남는다.
+  지출 항목(`assetflow.expenses.v1`)과 별개 계층이고, 지출 지표에는 자동으로
+  섞이지 않는다. 카드 부가세 합계가 세금계산서 매입세액(320,000원/월)과
+  직접 대조되지 않는 갭은 알려진 문제로 그대로 둔다.
 
 ## 리뷰할 것
 
