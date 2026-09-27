@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>로그인 목업 · AssetFlow 프로토타입</title>
+    <link rel="stylesheet" href="assets/tokens.css" />
+    <link rel="stylesheet" href="assets/base.css" />
+    <style>
+      .auth {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: calc(100vh - var(--header-height));
+        padding: var(--space-6) var(--space-4);
+      }
+      .auth__card {
+        width: 100%;
+        max-width: 400px;
+        padding: var(--space-8);
+      }
+      .auth__head {
+        margin-bottom: var(--space-6);
+        text-align: center;
+      }
+      .auth__title {
+        font-size: var(--font-size-xl);
+      }
+      .auth__desc {
+        margin-top: var(--space-2);
+        color: var(--color-text-secondary);
+      }
+      .auth__foot {
+        margin-top: var(--space-6);
+        padding-top: var(--space-4);
+        border-top: 1px solid var(--color-border-secondary);
+        font-size: var(--font-size-xs);
+        color: var(--color-text-tertiary);
+        text-align: center;
+      }
+      .auth__hint {
+        display: block;
+        margin-top: var(--space-2);
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">본문 바로가기</a>
+
+    <div class="proto-bar">
+      정적 목업입니다. 실제 구현은 React + antd 6로 이관합니다.
+      <a href="README.md">사용법</a> ·
+      <a href="index.html">전체 IA</a>
+    </div>
+
+    <header class="app-header">
+      <div class="container app-header__inner">
+        <a class="app-header__brand" href="index.html">
+          <span aria-hidden="true">◧</span> AssetFlow
+        </a>
+        <nav class="app-nav" aria-label="주요 메뉴">
+          <a class="app-nav__link" href="login.html" aria-current="page">로그인</a>
+          <a class="app-nav__link" href="dashboard.html">대시보드</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="app-main" id="main">
+      <div class="auth">
+        <section class="card auth__card" aria-labelledby="auth-title">
+          <div class="auth__head">
+            <h1 class="auth__title" id="auth-title">로그인</h1>
+            <p class="auth__desc">이메일과 비밀번호로 접속합니다.</p>
+          </div>
+
+          <!-- project.md §21: 로그인 실패 시 계정 유무를 노출하지 않는 공통 메시지 -->
+          <div class="form-alert" id="formAlert" role="alert" hidden>
+            <span aria-hidden="true">!</span>
+            <span>이메일 또는 비밀번호를 확인해 주세요. 입력하신 정보가 맞지 않습니다.</span>
+          </div>
+
+          <form novalidate>
+            <div class="field">
+              <label class="field__label field__label--required" for="email">이메일</label>
+              <input
+                class="field__control"
+                id="email"
+                name="email"
+                type="email"
+                autocomplete="username"
+                inputmode="email"
+                placeholder="you@example.com"
+                required
+                aria-describedby="email-help email-error"
+              />
+              <p class="field__help" id="email-help">비밀번호 재설정에 사용할 주소입니다.</p>
+              <p class="field__error" id="email-error" hidden>
+                <span aria-hidden="true">!</span> 이메일 형식이 올바르지 않습니다.
+              </p>
+            </div>
+
+            <div class="field">
+              <label class="field__label field__label--required" for="password">비밀번호</label>
+              <input
+                class="field__control"
+                id="password"
+                name="password"
+                type="password"
+                autocomplete="current-password"
+                minlength="8"
+                required
+                aria-describedby="password-help password-error"
+              />
+              <p class="field__help" id="password-help">8자 이상 입력합니다.</p>
+              <p class="field__error" id="password-error" hidden>
+                <span aria-hidden="true">!</span> 비밀번호는 8자 이상이어야 합니다.
+              </p>
+            </div>
+
+            <button type="submit" class="btn btn--primary btn--block">로그인</button>
+          </form>
+
+          <p class="auth__foot">
+            계정이 없나요? <a href="#">회원가입</a>
+            <a class="auth__hint" href="#">비밀번호를 잊으셨나요?</a>
+          </p>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      (function () {
+        "use strict";
+        var form = document.querySelector("form");
+        var alertBox = document.getElementById("formAlert");
+        var email = document.getElementById("email");
+        var password = document.getElementById("password");
+        var emailError = document.getElementById("email-error");
+        var passwordError = document.getElementById("password-error");
+
+        var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+        function setError(input, errEl, bad) {
+          input.setAttribute("aria-invalid", String(bad));
+          errEl.hidden = !bad;
+          return !bad;
+        }
+
+        form.addEventListener("submit", function (e) {
+          e.preventDefault();
+          var emailOk = setError(email, emailError, !EMAIL_RE.test(email.value.trim()));
+          var pwOk = setError(password, passwordError, password.value.length < 8);
+          if (!emailOk) { email.focus(); return; }
+          if (!pwOk) { password.focus(); return; }
+          alertBox.hidden = true;
+          // 목업: 실제 Issue 2 구현에서 POST /api/v1/auth/login 호출
+          window.location.href = "dashboard.html";
+        });
+
+        // 목업 리뷰용: 오류 상태 즉시 확인
+        alertBox.hidden = false;
+      })();
+    </script>
+  </body>
+</html>

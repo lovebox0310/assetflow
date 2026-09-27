@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>대시보드 목업 · AssetFlow 프로토타입</title>
+    <link rel="stylesheet" href="assets/tokens.css" />
+    <link rel="stylesheet" href="assets/base.css" />
+    <style>
+      /* 차트 전용. 원시 색상값은 tokens.css에만 둔다 (§28.4) */
+      .cards-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: var(--space-4);
+      }
+      @media (min-width: 576px) {
+        .cards-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+      @media (min-width: 992px) {
+        .cards-grid {
+          grid-template-columns: repeat(4, 1fr);
+        }
+      }
+
+      .bar-list__item + .bar-list__item {
+        margin-top: var(--space-3);
+      }
+      .bar-list__row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--space-2);
+        font-size: var(--font-size-sm);
+      }
+      .bar-list__track {
+        height: 8px;
+        margin-top: var(--space-1);
+        border-radius: var(--radius-input);
+        background: var(--color-fill-quaternary);
+        overflow: hidden;
+      }
+      .bar-list__fill {
+        height: 100%;
+        border-radius: var(--radius-input);
+        background: var(--color-primary);
+      }
+      .bar-list__fill--muted {
+        background: var(--color-text-tertiary);
+      }
+
+      .chart {
+        width: 100%;
+        height: auto;
+        overflow: visible;
+      }
+      .chart__grid {
+        stroke: var(--color-border-secondary);
+        stroke-width: 1;
+      }
+      .chart__axis-text {
+        fill: var(--color-text-tertiary);
+        font-size: 10px;
+        font-variant-numeric: tabular-nums;
+      }
+      .chart__bar {
+        fill: var(--color-primary);
+        opacity: 0.55;
+      }
+      .chart__bar--last {
+        fill: var(--color-primary);
+        opacity: 1;
+      }
+      .chart__value-text {
+        fill: var(--color-text-secondary);
+        font-size: 10px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
+      .chart__baseline {
+        stroke: var(--color-border);
+        stroke-width: 1;
+      }
+
+      .state-switch {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--space-2);
+        padding: var(--space-3) var(--space-4);
+        margin-bottom: var(--space-6);
+        border: 1px dashed var(--color-border);
+        border-radius: var(--radius-card);
+        background: var(--color-fill-quaternary);
+        font-size: var(--font-size-xs);
+      }
+      .state-switch__label {
+        font-weight: var(--font-weight-bold);
+        color: var(--color-text-secondary);
+      }
+      .state-switch__btn {
+        height: 28px;
+        padding-inline: var(--space-3);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-input);
+        background: var(--color-bg-container);
+        font-family: inherit;
+        font-size: var(--font-size-xs);
+        cursor: pointer;
+      }
+      .state-switch__btn[aria-pressed="true"] {
+        background: var(--color-primary);
+        border-color: var(--color-primary);
+        color: var(--color-text-inverse);
+        font-weight: var(--font-weight-medium);
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">본문 바로가기</a>
+
+    <div class="proto-bar">
+      정적 목업입니다. 실제 구현은 React + antd 6 + ECharts로 이관합니다.
+      <a href="README.md">사용법</a> ·
+      <a href="index.html">전체 IA</a>
+    </div>
+
+    <header class="app-header">
+      <div class="container app-header__inner">
+        <a class="app-header__brand" href="dashboard.html">
+          <span aria-hidden="true">◧</span> AssetFlow
+        </a>
+        <nav class="app-nav" aria-label="주요 메뉴">
+          <a class="app-nav__link" href="dashboard.html" aria-current="page">대시보드</a>
+          <a class="app-nav__link" href="settings.html">설정</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="app-main" id="main">
+      <div class="container">
+        <div class="row-2" style="justify-content: space-between; flex-wrap: wrap">
+          <div>
+            <h1 class="page-title">대시보드</h1>
+            <p class="page-desc" id="asOf"></p>
+          </div>
+          <a class="btn" href="settings.html">프로필 설정</a>
+        </div>
+
+        <!-- Issue 4 AC: 로딩/빈값/오류 상태가 각각 구분되어 노출 -->
+        <div class="state-switch" style="margin-top: var(--space-6)">
+          <span class="state-switch__label">상태 미리보기</span>
+          <button type="button" class="state-switch__btn" data-state="data" aria-pressed="true">
+            데이터
+          </button>
+          <button type="button" class="state-switch__btn" data-state="loading" aria-pressed="false">
+            로딩
+          </button>
+          <button type="button" class="state-switch__btn" data-state="empty" aria-pressed="false">
+            빈 데이터
+          </button>
+          <button type="button" class="state-switch__btn" data-state="error" aria-pressed="false">
+            오류
+          </button>
+        </div>
+
+        <div id="panel-data">
+          <section aria-labelledby="h-summary">
+            <h2 id="h-summary" class="sr-only">핵심 지표</h2>
+            <div class="cards-grid">
+              <!-- 카드 1: 순자산 = 총자산 - 총부채 -->
+              <article class="card">
+                <div class="card__head">
+                  <h3 class="card__label">순자산</h3>
+                </div>
+                <div class="card__body">
+                  <p class="stat" id="netWorth">—</p>
+                  <p class="stat__detail" id="netWorthDetail"></p>
+                </div>
+              </article>
+
+              <!-- 카드 2: 월 수지 = 월 총수입 - 월 총지출 -->
+              <article class="card">
+                <div class="card__head">
+                  <h3 class="card__label">월 수지</h3>
+                  <span class="tag tag--success" id="balanceTag">흑자</span>
+                </div>
+                <div class="card__body">
+                  <p class="stat stat--positive" id="monthlyBalance">—</p>
+                  <p class="stat__detail" id="monthlyBalanceDetail"></p>
+                </div>
+              </article>
+
+              <!-- 카드 3: 비상금 유지 개월 = 보유 현금 / 월 필수지출 -->
+              <article class="card">
+                <div class="card__head">
+                  <h3 class="card__label">비상금 유지 개월</h3>
+                  <span class="tag tag--info" id="emergencyTag">—</span>
+                </div>
+                <div class="card__body">
+                  <p class="stat" id="emergencyMonths">—</p>
+                  <p class="stat__detail" id="emergencyDetail"></p>
+                </div>
+              </article>
+
+              <!-- 카드 4: 자산 구성비 = 유형별 비율(합계 100%) -->
+              <article class="card">
+                <div class="card__head">
+                  <h3 class="card__label">자산 구성비</h3>
+                </div>
+                <div class="card__body">
+                  <ul class="bar-list" id="composition"></ul>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section aria-labelledby="h-cashflow" style="margin-top: var(--space-8)">
+            <div class="card">
+              <div class="card__head">
+                <h2 id="h-cashflow" class="card__label">월별 현금흐름 (최근 6개월)</h2>
+                <span class="tag tag--info">ECharts 이관 예정</span>
+              </div>
+              <div class="card__body">
+                <!-- 실제 구현은 Apache ECharts. 목업은 인라인 SVG로 대체 -->
+                <svg
+                  class="chart"
+                  id="cashflowChart"
+                  viewBox="0 0 640 260"
+                  role="img"
+                  aria-labelledby="h-cashflow chart-desc"
+                >
+                  <desc id="chart-desc"></desc>
+                </svg>
+                <table class="sr-only">
+                  <caption>월별 현금흐름 상세</caption>
+                  <thead>
+                    <tr><th scope="col">월</th><th scope="col">순현금흐름</th></tr>
+                  </thead>
+                  <tbody id="cashflowTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="state" id="panel-loading" role="status" aria-live="polite">
+          <div class="spinner" aria-hidden="true"></div>
+          <p class="state__title">불러오는 중</p>
+          <p class="state__desc">요약 정보를 가져오고 있습니다.</p>
+        </div>
+
+        <div class="state" id="panel-empty">
+          <p class="state__icon" aria-hidden="true">◌</p>
+          <p class="state__title">아직 등록된 데이터가 없습니다</p>
+          <p class="state__desc">
+            자산과 고정지출을 입력하면 대시보드가 채워집니다. 첫 입력은 10분 안에 끝낼 수 있습니다.
+          </p>
+          <p style="margin-top: var(--space-6)">
+            <a class="btn btn--primary" href="settings.html">프로필부터 시작하기</a>
+          </p>
+        </div>
+
+        <div class="state state--danger" id="panel-error">
+          <p class="state__icon" aria-hidden="true">!</p>
+          <p class="state__title" role="alert">요약 정보를 불러오지 못했습니다</p>
+          <p class="state__desc">
+            네트워크 상태를 확인한 뒤 다시 시도해 주세요. 문제가 계속되면 잠시 후 다시 시도됩니다.
+          </p>
+          <p style="margin-top: var(--space-6)">
+            <button type="button" class="btn">다시 시도</button>
+          </p>
+        </div>
+      </div>
+    </main>
+
+    <script src="assets/mock-data.js"></script>
+    <script>
+      (function () {
+        "use strict";
+        var d = window.AF.data;
+        var f = window.AF.fmt;
+
+        document.getElementById("asOf").textContent =
+          "기준일 " + f.formatMonthKo(d.asOf.slice(0, 7)) + " · 더미 데이터";
+
+        // 카드 1
+        document.getElementById("netWorth").textContent =
+          f.formatCompactKR(d.totals.netWorth);
+        document.getElementById("netWorthDetail").textContent =
+          "총자산 " +
+          f.formatCompactKR(d.totals.assets) +
+          " − 총부채 " +
+          f.formatCompactKR(d.totals.liabilities);
+
+        // 카드 2
+        var bal = d.totals.monthlyBalance;
+        document.getElementById("monthlyBalance").textContent = f.formatSignedKRW(bal);
+        document.getElementById("monthlyBalance").className =
+          "stat " + (bal >= 0 ? "stat--positive" : "stat--negative");
+        document.getElementById("balanceTag").textContent = bal >= 0 ? "흑자" : "적자";
+        document.getElementById("balanceTag").className =
+          "tag " + (bal >= 0 ? "tag--success" : "tag--danger");
+        document.getElementById("monthlyBalanceDetail").textContent =
+          "수입 " +
+          f.formatCompactKR(d.totals.monthlyIncome) +
+          " − 지출 " +
+          f.formatCompactKR(d.totals.monthlyExpense);
+
+        // 카드 3
+        document.getElementById("emergencyMonths").textContent = f.formatOneDecimal(
+          d.emergency.months,
+          "개월"
+        );
+        var eTag = document.getElementById("emergencyTag");
+        eTag.textContent = d.emergency.reached ? "목표 달성" : "목표 미달";
+        eTag.className = "tag " + (d.emergency.reached ? "tag--success" : "tag--warning");
+        document.getElementById("emergencyDetail").textContent =
+          "현금 " +
+          f.formatCompactKR(d.emergency.current) +
+          " · 목표 " +
+          d.emergency.targetMonths +
+          "개월(" +
+          f.formatCompactKR(d.emergency.targetAmount) +
+          ")";
+
+        // 카드 4
+        var comp = document.getElementById("composition");
+        d.composition.forEach(function (c) {
+          var li = document.createElement("li");
+          li.className = "bar-list__item";
+          var row = document.createElement("div");
+          row.className = "bar-list__row";
+          var name = document.createElement("span");
+          name.textContent = c.label;
+          var val = document.createElement("span");
+          val.className = "num";
+          val.textContent = f.formatPercent(c.percent);
+          row.appendChild(name);
+          row.appendChild(val);
+          var track = document.createElement("div");
+          track.className = "bar-list__track";
+          var fill = document.createElement("div");
+          fill.className = "bar-list__fill";
+          fill.style.width = c.percent.toFixed(1) + "%";
+          track.appendChild(fill);
+          li.appendChild(row);
+          li.appendChild(track);
+          comp.appendChild(li);
+        });
+
+        // 차트 (ECharts 대체 목업)
+        var W = 640, H = 260, padL = 56, padR = 16, padT = 24, padB = 32;
+        var pts = d.cashflow;
+        var max = Math.max.apply(null, pts.map(function (p) { return p.amount; }));
+        var innerW = W - padL - padR;
+        var innerH = H - padT - padB;
+        var slot = innerW / pts.length;
+        var barW = Math.min(48, slot * 0.5);
+
+        var svg = document.getElementById("cashflowChart");
+        var ns = "http://www.w3.org/2000/svg";
+        function el(tag, attrs, text) {
+          var n = document.createElementNS(ns, tag);
+          for (var k in attrs) { if (attrs[k] !== null) n.setAttribute(k, attrs[k]); }
+          if (text !== undefined) n.textContent = text;
+          return n;
+        }
+
+        // 그리드 4단
+        for (var g = 0; g <= 4; g++) {
+          var y = padT + (innerH / 4) * g;
+          svg.appendChild(el("line", { x1: padL, y1: y, x2: W - padR, y2: y, "class": "chart__grid" }));
+          var v = max - (max / 4) * g;
+          svg.appendChild(
+            el("text", { x: padL - 8, y: y + 3, "text-anchor": "end", "class": "chart__axis-text" },
+               f.formatCompactKR(v))
+          );
+        }
+
+        pts.forEach(function (p, i) {
+          var h = (p.amount / max) * innerH;
+          var x = padL + slot * i + (slot - barW) / 2;
+          var y = padT + innerH - h;
+          var isLast = i === pts.length - 1;
+          svg.appendChild(
+            el("rect", { x: x, y: y, width: barW, height: h, rx: 4,
+                         "class": "chart__bar" + (isLast ? " chart__bar--last" : "") })
+          );
+          svg.appendChild(
+            el("text", { x: x + barW / 2, y: y - 6, "text-anchor": "middle", "class": "chart__value-text" },
+               f.formatCompactKR(p.amount))
+          );
+          svg.appendChild(
+            el("text", { x: x + barW / 2, y: H - 12, "text-anchor": "middle", "class": "chart__axis-text" },
+               f.formatMonthAxis(p.month))
+          );
+
+          var tr = document.createElement("tr");
+          var th = document.createElement("th");
+          th.scope = "row";
+          th.textContent = f.formatMonthKo(p.month);
+          var td = document.createElement("td");
+          td.className = "num";
+          td.textContent = f.formatSignedKRW(p.amount);
+          tr.appendChild(th);
+          tr.appendChild(td);
+          document.getElementById("cashflowTableBody").appendChild(tr);
+        });
+
+        svg.appendChild(
+          el("line", { x1: padL, y1: padT + innerH, x2: W - padR, y2: padT + innerH, "class": "chart__baseline" })
+        );
+        document.getElementById("chart-desc").textContent =
+          "최근 6개월 월별 순현금흐름 막대 차트. 전 구간 흑자이며 최고치는 " +
+          f.formatMonthKo(pts.reduce(function (m, p) { return p.amount > m.amount ? p : m; }, pts[0]).month) + ".";
+
+        // 상태 전환
+        var panels = {
+          data: document.getElementById("panel-data"),
+          loading: document.getElementById("panel-loading"),
+          empty: document.getElementById("panel-empty"),
+          error: document.getElementById("panel-error")
+        };
+        var buttons = document.querySelectorAll(".state-switch__btn");
+        function apply(name) {
+          Object.keys(panels).forEach(function (k) {
+            panels[k].style.display = k === name ? "" : "none";
+          });
+          buttons.forEach(function (b) {
+            b.setAttribute("aria-pressed", String(b.dataset.state === name));
+          });
+        }
+        buttons.forEach(function (b) {
+          b.addEventListener("click", function () { apply(b.dataset.state); });
+        });
+      })();
+    </script>
+  </body>
+</html>
