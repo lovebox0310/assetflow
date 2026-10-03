@@ -10,11 +10,25 @@ This repository tracks planning and execution artifacts for Sprint 1.
 - `samples/card/`: card statement Excel samples and the shared column contract
 - `.ai/project.md`: the canonical decision record (numbered sections, latest last)
 - `.ai/session-log.md`: chronological work log — what was done and what is left
-- `.ai/roles/`: AI role guides (analyst, architect, developer, reviewer, tester)
+- `.opencode/agent/`: AI subagents (analyst, architect, developer, reviewer, tester)
+- `.opencode/command/`: pipeline entry points — `/feature`, `/review`
 - `.github/workflows/`: automation workflows
 
 A document's path tells you what belongs in it. Records go into these files
 rather than new ones — see `.ai/project.md` §32 before adding a document.
+
+## AI roles
+
+Five roles run as separate subagents, not as prompt text in one session.
+Permissions enforce what each role may do: only `developer` can write files, and
+`reviewer` and `tester` are deliberately denied the developer's reasoning so the
+review stays independent. See `.ai/project.md` §33.
+
+- `/feature <requirement>` — runs all five in order
+- `/review <range>` — reviews the current diff, then verifies it
+
+Restart opencode after changing anything under `.opencode/`; config is read once
+at startup.
 
 ## Card statement import
 
