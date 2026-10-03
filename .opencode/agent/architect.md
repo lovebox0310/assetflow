@@ -1,7 +1,7 @@
 ---
 description: 분석 결과와 현재 코드로 구현 설계를 만든다. 파일 목록·계약 변경표·롤백·구현 순서를 낸다. 코드 수정 없음.
 mode: subagent
-color: cyan
+color: secondary
 permission:
   edit: deny
   bash:

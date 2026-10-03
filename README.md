@@ -20,12 +20,18 @@ rather than new ones — see `.ai/project.md` §32 before adding a document.
 ## AI roles
 
 Five roles run as separate subagents, not as prompt text in one session.
-Permissions enforce what each role may do: only `developer` can write files, and
-`reviewer` and `tester` are deliberately denied the developer's reasoning so the
-review stays independent. See `.ai/project.md` §33.
+Permissions enforce most of what each role may do: only `developer` can write
+files freely, and `reviewer` and `tester` are deliberately denied the developer's
+reasoning so the review stays independent. `tester` writes only on approval,
+because it needs to create throwaway verification scripts. See
+`.ai/project.md` §33 — including what the permissions do *not* enforce.
 
 - `/feature <requirement>` — runs all five in order
 - `/review <range>` — reviews the current diff, then verifies it
+
+Both pass the acceptance criteria (AC) to reviewer and tester, but never the
+developer's reasoning: what was asked is shared ground truth, why it was done
+that way is not.
 
 Restart opencode after changing anything under `.opencode/`; config is read once
 at startup.
