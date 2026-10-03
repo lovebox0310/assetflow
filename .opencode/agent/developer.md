@@ -1,7 +1,7 @@
 ---
 description: Architect의 설계대로 코드를 구현한다. 파일 수정·실행이 가능하다. 작업을 끝내면 변경 파일과 테스트 방법을 보고한다.
 mode: subagent
-color: green
+color: success
 permission:
   edit: allow
   bash: allow
