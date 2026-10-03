@@ -6,10 +6,15 @@ This repository tracks planning and execution artifacts for Sprint 1.
 
 - `apps/frontend/`: frontend implementation workspace
 - `apps/backend/`: backend implementation workspace
-- `design/prototype/`: static prototype (dashboard, expenses, settings, login)
+- `design/prototype/`: static prototype (index IA map, dashboard, expenses, assets, settings, login)
 - `samples/card/`: card statement Excel samples and the shared column contract
-- `.ai/` docs in root: role guides and sprint plans
+- `.ai/project.md`: the canonical decision record (numbered sections, latest last)
+- `.ai/session-log.md`: chronological work log — what was done and what is left
+- `.ai/roles/`: AI role guides (analyst, architect, developer, reviewer, tester)
 - `.github/workflows/`: automation workflows
+
+A document's path tells you what belongs in it. Records go into these files
+rather than new ones — see `.ai/project.md` §32 before adding a document.
 
 ## Card statement import
 

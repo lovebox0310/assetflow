@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>자산 목업 · AssetFlow 프로토타입</title>
+    <link rel="stylesheet" href="common/tokens.css" />
+    <link rel="stylesheet" href="common/base.css" />
+    <style>
+      /* 원시 색상값은 tokens.css에만 둔다 (§28.4) */
+
+      .layout-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: var(--space-6);
+        align-items: start;
+      }
+      @media (min-width: 1200px) {
+        .layout-grid {
+          grid-template-columns: 1fr 320px;
+        }
+      }
+      .sticky {
+        position: sticky;
+        top: var(--space-4);
+      }
+
+      .section__title {
+        font-size: var(--font-size-base);
+        margin-bottom: var(--space-1);
+      }
+      .section__desc {
+        margin-bottom: var(--space-4);
+        color: var(--color-text-secondary);
+        font-size: var(--font-size-xs);
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        padding-top: var(--space-4);
+        border-top: 1px solid var(--color-border-secondary);
+      }
+
+      /* 항목 표 (지출 화면과 같은 형태) */
+      .item-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-variant-numeric: tabular-nums;
+      }
+      .item-table th,
+      .item-table td {
+        padding: var(--space-2) var(--space-3);
+        text-align: left;
+        border-bottom: 1px solid var(--color-border-secondary);
+        vertical-align: middle;
+      }
+      .item-table th {
+        font-size: var(--font-size-xs);
+        color: var(--color-text-secondary);
+        font-weight: 500;
+        white-space: nowrap;
+      }
+      .item-table .num {
+        text-align: right;
+        white-space: nowrap;
+      }
+      .item-table tfoot td {
+        border-bottom: none;
+        border-top: 2px solid var(--color-border);
+        font-weight: 600;
+      }
+      .item-table tbody tr:hover {
+        background: var(--color-fill-quaternary);
+      }
+      .item-table input[type="text"],
+      .item-table input[type="number"] {
+        width: 100%;
+        min-width: 0;
+        padding: var(--space-1) var(--space-2);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-input);
+        background: var(--color-bg-container);
+        color: var(--color-text-primary);
+        font: inherit;
+        font-size: var(--font-size-sm);
+      }
+      .item-table input[type="number"] {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      .item-table input:focus-visible,
+      .row-btn:focus-visible {
+        outline: 2px solid var(--color-primary);
+        outline-offset: 1px;
+      }
+      .item-table input[aria-invalid="true"] {
+        border-color: var(--color-danger);
+      }
+      .item-table input:read-only {
+        background: var(--color-fill-quaternary);
+        color: var(--color-text-secondary);
+      }
+      .cell-num {
+        width: 140px;
+      }
+      .cell-act {
+        width: 44px;
+      }
+      .row-btn {
+        width: 28px;
+        height: 28px;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-input);
+        background: var(--color-bg-container);
+        color: var(--color-text-secondary);
+        cursor: pointer;
+        line-height: 1;
+      }
+      .row-btn:hover {
+        color: var(--color-danger);
+        border-color: var(--color-danger-border);
+      }
+
+      /* 현금 3계좌 */
+      .cash-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: var(--space-3);
+      }
+      @media (min-width: 576px) {
+        .cash-grid {
+          grid-template-columns: repeat(3, 1fr);
+        }
+      }
+      .cash-item {
+        padding: var(--space-4);
+        border: 1px solid var(--color-border-secondary);
+        border-radius: var(--radius-card);
+        background: var(--color-fill-quaternary);
+      }
+      .cash-item--investable {
+        border-color: var(--color-primary-border);
+        background: var(--color-primary-bg);
+      }
+      .cash-item--locked {
+        border-style: dashed;
+      }
+      .cash-item__top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-2);
+      }
+      .cash-item__label {
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-bold);
+      }
+      .cash-item__amount {
+        margin-top: var(--space-2);
+        font-size: var(--font-size-lg);
+        font-weight: var(--font-weight-bold);
+        font-variant-numeric: tabular-nums;
+      }
+      .cash-item__desc {
+        margin-top: var(--space-1);
+        font-size: var(--font-size-xs);
+        color: var(--color-text-secondary);
+      }
+      .cash-item__input {
+        width: 100%;
+        margin-top: var(--space-2);
+        padding: var(--space-1) var(--space-2);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-input);
+        background: var(--color-bg-container);
+        color: var(--color-text-primary);
+        font: inherit;
+        font-size: var(--font-size-lg);
+        font-weight: var(--font-weight-bold);
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+      }
+      .cash-item__input:focus-visible {
+        outline: 2px solid var(--color-primary);
+        outline-offset: 1px;
+      }
+      .cash-item__input[aria-invalid="true"] {
+        border-color: var(--color-danger);
+      }
+
+      /* 구성비 */
+      .bar-list__item + .bar-list__item {
+        margin-top: var(--space-3);
+      }
+      .bar-list__row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--space-2);
+        font-size: var(--font-size-sm);
+      }
+      .bar-list__track {
+        height: 8px;
+        margin-top: var(--space-1);
+        border-radius: var(--radius-input);
+        background: var(--color-fill-quaternary);
+        overflow: hidden;
+      }
+      .bar-list__fill {
+        height: 100%;
+        border-radius: var(--radius-input);
+        background: var(--color-primary);
+      }
+      .bar-list__fill--cash {
+        background: var(--color-primary);
+        opacity: 0.55;
+      }
+      .bar-list__row--group {
+        margin-top: var(--space-4);
+        padding-top: var(--space-3);
+        border-top: 1px solid var(--color-border-secondary);
+        font-weight: var(--font-weight-bold);
+        color: var(--color-text-secondary);
+      }
+
+      /* 요약 */
+      .sum-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--space-2);
+        padding: var(--space-2) 0;
+      }
+      .sum-row + .sum-row {
+        border-top: 1px solid var(--color-border-secondary);
+      }
+      .sum-row--total {
+        border-top: 2px solid var(--color-border);
+        border-bottom: none;
+        font-weight: 600;
+        padding-top: var(--space-3);
+      }
+      .sum-label {
+        color: var(--color-text-secondary);
+        font-size: var(--font-size-sm);
+      }
+      .sum-value {
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .sum-formula {
+        color: var(--color-text-tertiary);
+        font-size: var(--font-size-xs);
+      }
+
+      /* 상태 미리보기 (Issue 4) */
+      .state-switch {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--space-2);
+        padding: var(--space-3) var(--space-4);
+        margin-bottom: var(--space-6);
+        border: 1px dashed var(--color-border);
+        border-radius: var(--radius-card);
+        background: var(--color-fill-quaternary);
+        font-size: var(--font-size-xs);
+      }
+      .state-switch__label {
+        font-weight: var(--font-weight-bold);
+        color: var(--color-text-secondary);
+      }
+      .state-switch__btn {
+        height: 28px;
+        padding-inline: var(--space-3);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-input);
+        background: var(--color-bg-container);
+        font-family: inherit;
+        font-size: var(--font-size-xs);
+        cursor: pointer;
+      }
+      .state-switch__btn[aria-pressed="true"] {
+        background: var(--color-primary);
+        border-color: var(--color-primary);
+        color: var(--color-text-inverse);
+        font-weight: var(--font-weight-medium);
+      }
+
+      .save-note {
+        font-size: var(--font-size-xs);
+        color: var(--color-text-tertiary);
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">본문 바로가기</a>
+
+    <div class="proto-bar">
+      정적 목업입니다. 실제 구현은 React + antd 6로 이관합니다.
+      <a href="README.md">사용법</a> ·
+      <a href="index.html">전체 IA</a>
+    </div>
+
+    <header class="app-header">
+      <div class="container app-header__inner">
+        <a class="app-header__brand" href="dashboard.html">
+          <span aria-hidden="true">◧</span> AssetFlow
+        </a>
+        <nav class="app-nav" aria-label="주요 메뉴">
+          <a class="app-nav__link" href="dashboard.html">대시보드</a>
+          <a class="app-nav__link" href="expenses.html">지출</a>
+          <a class="app-nav__link" href="assets.html" aria-current="page">자산</a>
+          <a class="app-nav__link" href="settings.html">설정</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="app-main" id="main">
+      <div class="container">
+        <h1 class="page-title">자산</h1>
+        <p class="page-desc" id="who">—</p>
+        <p class="page-desc">
+          자산과 부채의 값은 이 화면이 단일 출처입니다. 대시보드의 순자산,
+          자산 구성비, 비상금 유지 개월이 전부 여기서 계산된 값을 읽습니다.
+        </p>
+
+        <div class="state-switch" role="group" aria-label="상태 미리보기">
+          <span class="state-switch__label">상태 미리보기</span>
+          <button type="button" class="state-switch__btn" data-state="data" aria-pressed="true">
+            데이터
+          </button>
+          <button type="button" class="state-switch__btn" data-state="loading" aria-pressed="false">
+            로딩
+          </button>
+          <button type="button" class="state-switch__btn" data-state="empty" aria-pressed="false">
+            빈 데이터
+          </button>
+          <button type="button" class="state-switch__btn" data-state="error" aria-pressed="false">
+            오류
+          </button>
+        </div>
+
+        <div class="layout-grid">
+          <div id="panel-data">
+            <div class="stack-6">
+              <!-- 금융자산: 여기서 단일 출처 -->
+              <section class="card" aria-labelledby="h-assets">
+                <div class="card__head">
+                  <h2 class="card__label" id="h-assets">금융자산</h2>
+                  <span class="tag tag--info" id="assetsTag">—</span>
+                </div>
+                <div class="card__body">
+                  <p class="section__desc">
+                    주식·부동산·연금 등 금전 자산입니다. 항목을 더할 수 있습니다.
+                  </p>
+                  <table class="item-table">
+                    <caption class="sr-only">금융자산 항목과 금액</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">항목</th>
+                        <th scope="col" class="num">금액(원)</th>
+                        <th scope="col" class="cell-act">
+                          <span class="sr-only">삭제</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody id="assetsBody"></tbody>
+                    <tfoot>
+                      <tr>
+                        <td>금융자산 합계</td>
+                        <td class="num" id="assetsSum">—</td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                  <div class="actions">
+                    <button type="button" class="btn" id="addAsset">항목 추가</button>
+                    <span class="save-note" id="assetsNote"></span>
+                  </div>
+                </div>
+              </section>
+
+              <!-- 부채 -->
+              <section class="card" aria-labelledby="h-liab">
+                <div class="card__head">
+                  <h2 class="card__label" id="h-liab">부채</h2>
+                  <span class="tag" id="liabTag">—</span>
+                </div>
+                <div class="card__body">
+                  <p class="section__desc">
+                    대출·카드값 등 갚아야 할 돈입니다. 부채가 없으면 0원으로 표시됩니다.
+                  </p>
+                  <table class="item-table">
+                    <caption class="sr-only">부채 항목과 금액</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">항목</th>
+                        <th scope="col" class="num">금액(원)</th>
+                        <th scope="col" class="cell-act">
+                          <span class="sr-only">삭제</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody id="liabBody"></tbody>
+                    <tfoot>
+                      <tr>
+                        <td>부채 합계</td>
+                        <td class="num" id="liabSum">—</td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                  <div class="actions">
+                    <button type="button" class="btn" id="addLiab">항목 추가</button>
+                    <span class="save-note" id="liabNote"></span>
+                  </div>
+                </div>
+              </section>
+
+              <!-- 현금 3계좌 (§28.7) -->
+              <section class="card" aria-labelledby="h-cash">
+                <div class="card__head">
+                  <h2 class="card__label" id="h-cash">현금 3계좌</h2>
+                  <span class="tag tag--info">총 현금 <span id="cashTotal">—</span></span>
+                </div>
+                <div class="card__body">
+                  <p class="section__desc">
+                    현금을 하나로 합치면 안 됩니다. 계좌마다 쓸 수 있는 성격이 다릅니다.
+                    투자금만 지금 쓸 수 있고, 나머지 둘은 성격이 정해져 있습니다(§28.7).
+                  </p>
+                  <div class="cash-grid">
+                    <div class="cash-item cash-item--investable">
+                      <div class="cash-item__top">
+                        <span class="cash-item__label">투자금</span>
+                        <span class="tag tag--success">지금 사용 가능</span>
+                      </div>
+                      <label class="sr-only" for="investableAmount">투자금 잔액(원)</label>
+                      <input
+                        class="cash-item__input"
+                        id="investableAmount"
+                        type="number"
+                        inputmode="numeric"
+                        min="0"
+                        step="10000"
+                        aria-describedby="investableHelp investableError"
+                      />
+                      <p class="field__error" id="investableError" hidden>
+                        <span aria-hidden="true">!</span> 0 이상의 정수 원
+                      </p>
+                      <p class="cash-item__desc" id="investableHelp">
+                        비상금 유지 개월의 분자입니다. 여기서 고치면 대시보드가
+                        따라옵니다.
+                      </p>
+                    </div>
+
+                    <div class="cash-item cash-item--locked">
+                      <div class="cash-item__top">
+                        <span class="cash-item__label">자동이체</span>
+                        <span class="tag">월중 소진</span>
+                      </div>
+                      <p class="cash-item__amount" id="autoTransferAmount">—</p>
+                      <p class="cash-item__desc">
+                        월 초에 그달 지출 합계만큼 이체되고 기간 내 소진됩니다.
+                        <a href="expenses.html">지출 화면이 단일 출처</a>이므로 여기서
+                        고칠 수 없습니다.
+                      </p>
+                    </div>
+
+                    <div class="cash-item cash-item--locked">
+                      <div class="cash-item__top">
+                        <span class="cash-item__label">부가가치세</span>
+                        <span class="tag">Filing 대기</span>
+                      </div>
+                      <p class="cash-item__amount" id="vatAmount">—</p>
+                      <p class="cash-item__desc">
+                        매출세액을 Filing 때까지 적립 보관합니다. Filing 후 잔액은
+                        투자금으로 이체됩니다. 일정 연동 화면은 아직 IA 만 있습니다.
+                      </p>
+                    </div>
+                  </div>
+                  <p class="notice" style="margin-top: var(--space-4)">
+                    <span aria-hidden="true">i</span>
+                    <span>
+                      총 현금 중 지금 쓸 수 있는 비율이 대시보드의
+                      <strong>투자 가능 현금</strong> 카드입니다. 자동이체 잔액까지
+                      분자에 넣으면 쓸 수 없는 돈으로 비상금이 부풀려집니다.
+                    </span>
+                  </p>
+                </div>
+              </section>
+
+              <!-- 자산 구성비 -->
+              <section class="card" aria-labelledby="h-comp">
+                <div class="card__head">
+                  <h2 class="card__label" id="h-comp">자산 구성비</h2>
+                  <span class="tag">전체 자산 기준</span>
+                </div>
+                <div class="card__body">
+                  <ul class="bar-list" id="composition"></ul>
+                  <p class="sum-formula" id="compositionNote"></p>
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <div id="panel-loading" class="state" style="display: none">
+            <div class="spinner" aria-hidden="true"></div>
+            <p class="state__title">불러오는 중</p>
+            <p class="state__desc">자산 내역을 불러오고 있습니다.</p>
+          </div>
+
+          <div id="panel-empty" class="state" style="display: none">
+            <p class="state__icon" aria-hidden="true">◫</p>
+            <p class="state__title">아직 등록된 자산이 없습니다</p>
+            <p class="state__desc">
+              금융자산을 입력하면 순자산과 비상금 유지 개월이 계산됩니다.
+            </p>
+          </div>
+
+          <div id="panel-error" class="state state--danger" style="display: none">
+            <p class="state__icon" aria-hidden="true">!</p>
+            <p class="state__title">자산 정보를 불러오지 못했습니다</p>
+            <p class="state__desc">네트워크 상태를 확인한 뒤 다시 시도해 주세요.</p>
+          </div>
+
+          <aside class="sticky" id="panel-aside">
+            <section class="card" aria-labelledby="h-sum">
+              <div class="card__head">
+                <h2 class="card__label" id="h-sum">다른 화면이 읽는 값</h2>
+              </div>
+              <div class="card__body">
+                <div class="sum-row">
+                  <span class="sum-label">총자산</span>
+                  <span class="sum-value" id="sumTotalAssets">—</span>
+                </div>
+                <div class="sum-row">
+                  <span class="sum-label">총부채</span>
+                  <span class="sum-value" id="sumTotalLiab">—</span>
+                </div>
+                <div class="sum-row sum-row--total">
+                  <span class="sum-label">순자산</span>
+                  <span class="sum-value" id="sumNetWorth">—</span>
+                </div>
+                <p class="sum-formula" id="netWorthFormula" style="margin-top: var(--space-2)"></p>
+
+                <div class="sum-row" style="margin-top: var(--space-4)">
+                  <span class="sum-label">총 현금</span>
+                  <span class="sum-value" id="sumTotalCash">—</span>
+                </div>
+                <div class="sum-row">
+                  <span class="sum-label">투자 가능 현금</span>
+                  <span class="sum-value" id="sumInvestable">—</span>
+                </div>
+                <div class="sum-row">
+                  <span class="sum-label">지금 쓸 수 있는 비율</span>
+                  <span class="sum-value" id="sumLiquidRatio">—</span>
+                </div>
+
+                <div class="sum-row" style="margin-top: var(--space-4)">
+                  <span class="sum-label">비상금 유지 개월</span>
+                  <span class="sum-value" id="sumEmergency">—</span>
+                </div>
+                <p class="sum-formula" id="emergencyFormula" style="margin-top: var(--space-2)"></p>
+
+                <div class="actions">
+                  <button type="button" class="btn btn--block" id="resetAll">
+                    초기값 복구
+                  </button>
+                </div>
+                <p class="save-note" style="margin-top: var(--space-2)">
+                  저장은 이 브라우저(localStorage)에만 남습니다.
+                </p>
+              </div>
+            </section>
+          </aside>
+        </div>
+      </div>
+    </main>
+
+    <footer class="app-footer">
+      <div class="container">
+        <p>
+          저장은 이 브라우저(localStorage)에만 남고 서버로 전송되지 않습니다.
+          실제 구현에서는 서버 저장 + 이력 관리가 필요합니다.
+        </p>
+      </div>
+    </footer>
+
+    <script src="common/mock-data.js"></script>
+    <script>
+      (function () {
+        "use strict";
+        var AF = window.AF;
+        var d = AF.data;
+        var f = AF.fmt;
+        var store = AF.assetStorage;
+
+        document.getElementById("who").textContent = d.user.name + " · " + d.asOf;
+
+        // 저장은 데이터 계층이 맡는다. 모든 화면이 같은 값을 읽도록 (§28.10)
+        function persist() {
+          store.save();
+        }
+
+        // 값을 바꾼 뒤에는 재계산을 먼저 한다. 합계는 행에서 다시 만들어야 한다.
+        function commit() {
+          AF.recompute();
+          refresh();
+          persist();
+        }
+
+        var uid = 0;
+        function newKey() {
+          return "asset-" + Date.now().toString(36) + "-" + ++uid;
+        }
+
+        function sumOf(list) {
+          return list.reduce(function (a, r) { return a + r.amount; }, 0);
+        }
+
+        /* ---------- 편집 가능한 목록 (금융자산 / 부채) ---------- */
+
+        function renderList(opts) {
+          var body = document.getElementById(opts.bodyId);
+          // 목록을 캐시하지 않는다. reset() 이 data.assets 를 새 배열로 교체하므로
+          // 렌더 시점에 읽어야 복구 후 목록이 그려진다.
+          var list = opts.getList();
+          body.textContent = "";
+
+          list.forEach(function (row) {
+            var tr = document.createElement("tr");
+
+            var nameTd = document.createElement("td");
+            var name = document.createElement("input");
+            name.type = "text";
+            name.value = row.label;
+            name.setAttribute("aria-label", opts.itemNoun + " 이름");
+            name.addEventListener("input", function () {
+              row.label = name.value;
+              // 이름이 바뀌면 같은 행의 다른 입력 라벨도 갱신해야 한다
+              amt.setAttribute("aria-label", row.label + " 금액");
+              del.setAttribute("aria-label", row.label + " 삭제");
+              commit();
+            });
+            nameTd.appendChild(name);
+
+            var amtTd = document.createElement("td");
+            amtTd.className = "num cell-num";
+            var amt = document.createElement("input");
+            amt.type = "number";
+            amt.inputMode = "numeric";
+            amt.min = "0";
+            amt.step = "10000";
+            amt.value = String(row.amount);
+            amt.setAttribute("aria-label", row.label + " 금액");
+            var amtError = document.createElement("p");
+            amtError.className = "field__error";
+            amtError.hidden = true;
+            amtError.innerHTML = '<span aria-hidden="true">!</span> 0 이상의 정수 원';
+            function readAmount() {
+              var n = Number(amt.value);
+              var bad = amt.value.trim() === "" || !isFinite(n) || n < 0;
+              amt.setAttribute("aria-invalid", String(bad));
+              amtError.hidden = !bad;
+              if (bad) return;
+              row.amount = Math.floor(n);
+              commit();
+            }
+            amt.addEventListener("input", readAmount);
+            amtTd.appendChild(amt);
+            amtTd.appendChild(amtError);
+
+            var delTd = document.createElement("td");
+            delTd.className = "cell-act";
+            var del = document.createElement("button");
+            del.type = "button";
+            del.className = "row-btn";
+            del.textContent = "×";
+            del.setAttribute("aria-label", row.label + " 삭제");
+            del.addEventListener("click", function () {
+              var idx = opts.getList().indexOf(row);
+              if (idx < 0) return;
+              opts.getList().splice(idx, 1);
+              renderList(opts);
+              commit();
+              // 지우면 남은 행이 없으므로 다시 넣을 자리를 만들어 준다
+              if (!opts.getList().length) document.getElementById(opts.addId).focus();
+            });
+            delTd.appendChild(del);
+
+            tr.appendChild(nameTd);
+            tr.appendChild(amtTd);
+            tr.appendChild(delTd);
+            body.appendChild(tr);
+          });
+        }
+
+        /* ---------- 파생값 갱신 ---------- */
+
+        function refresh() {
+          var t = d.totals;
+
+          var assetSum = sumOf(d.assets);
+          var liabSum = sumOf(d.liabilities);
+
+          document.getElementById("assetsSum").textContent = f.formatKRW(assetSum);
+          document.getElementById("liabSum").textContent = f.formatKRW(liabSum);
+          document.getElementById("assetsTag").textContent =
+            d.assets.length + "개 항목";
+          document.getElementById("liabTag").textContent = d.liabilities.length
+            ? d.liabilities.length + "개 항목"
+            : "없음";
+          document.getElementById("assetsNote").textContent = d.assets.length
+            ? ""
+            : "항목을 모두 지웠습니다. 다시 추가할 수 있습니다.";
+          document.getElementById("liabNote").textContent = d.liabilities.length
+            ? ""
+            : "부채가 없습니다. 순자산이 총자산과 같습니다.";
+
+          document.getElementById("cashTotal").textContent = f.formatCompactKR(t.totalCash);
+          document.getElementById("autoTransferAmount").textContent = f.formatCompactKR(
+            d.cash.autoTransfer.amount
+          );
+          document.getElementById("vatAmount").textContent = f.formatCompactKR(
+            d.cash.vat.amount
+          );
+
+          document.getElementById("sumTotalAssets").textContent = f.formatKRW(t.assets);
+          document.getElementById("sumTotalLiab").textContent = f.formatKRW(t.liabilities);
+          document.getElementById("sumNetWorth").textContent = f.formatKRW(t.netWorth);
+          document.getElementById("netWorthFormula").textContent =
+            f.formatCompactKR(t.assets) + " − " + f.formatCompactKR(t.liabilities) +
+            " = " + f.formatCompactKR(t.netWorth);
+
+          document.getElementById("sumTotalCash").textContent = f.formatKRW(t.totalCash);
+          document.getElementById("sumInvestable").textContent = f.formatCompactKR(
+            d.cash.investable.amount
+          );
+          document.getElementById("sumLiquidRatio").textContent = f.formatPercent(
+            t.liquidRatio
+          );
+          document.getElementById("sumEmergency").textContent = f.formatOneDecimal(
+            d.emergency.months,
+            "개월"
+          );
+          document.getElementById("emergencyFormula").textContent =
+            f.formatCompactKR(d.cash.investable.amount) + " ÷ 월 필수지출 " +
+            f.formatCompactKR(d.cash.autoTransfer.monthlyEssential);
+
+          renderComposition();
+        }
+
+        function renderComposition() {
+          var ul = document.getElementById("composition");
+          ul.textContent = "";
+          var rows = d.composition;
+          var cashStart = rows.findIndex(function (c) { return c.isCash; });
+
+          rows.forEach(function (c, idx) {
+            var li = document.createElement("li");
+            li.className = "bar-list__item";
+
+            var row = document.createElement("div");
+            row.className = "bar-list__row" + (idx === cashStart ? " bar-list__row--group" : "");
+            var name = document.createElement("span");
+            name.textContent = c.label;
+            var val = document.createElement("span");
+            val.className = "num";
+            val.textContent =
+              f.formatPercent(c.pctOfTotal) + " · " + f.formatCompactKR(c.amount);
+            row.appendChild(name);
+            row.appendChild(val);
+
+            var track = document.createElement("div");
+            track.className = "bar-list__track";
+            var fill = document.createElement("div");
+            fill.className = "bar-list__fill" + (c.isCash ? " bar-list__fill--cash" : "");
+            fill.style.width = Math.max(0, Math.min(100, c.pctOfTotal)) + "%";
+            track.appendChild(fill);
+
+            li.appendChild(row);
+            li.appendChild(track);
+            ul.appendChild(li);
+          });
+
+          document.getElementById("compositionNote").textContent =
+            "비율 합계 " +
+            f.formatPercent(
+              rows.reduce(function (a, c) { return a + c.pctOfTotal; }, 0)
+            ) +
+            ". 현금은 3계좌로 나눠 표기합니다 — 하나로 합치면 쓸 수 없는 돈이 섞입니다.";
+        }
+
+        /* ---------- 항목 추가 ---------- */
+
+        var assetOpts = {
+          getList: function () { return d.assets; },
+          bodyId: "assetsBody",
+          addId: "addAsset",
+          itemNoun: "금융자산"
+        };
+        var liabOpts = {
+          getList: function () { return d.liabilities; },
+          bodyId: "liabBody",
+          addId: "addLiab",
+          itemNoun: "부채"
+        };
+
+        function addRow(opts, label) {
+          opts.getList().push({ key: newKey(), label: label, amount: 0 });
+          renderList(opts);
+          commit();
+          var rows = document.querySelectorAll("#" + opts.bodyId + " tr");
+          var last = rows[rows.length - 1];
+          if (last) last.querySelector('input[type="text"]').focus();
+        }
+
+        document.getElementById("addAsset").addEventListener("click", function () {
+          addRow(assetOpts, "새 자산");
+        });
+
+        document.getElementById("addLiab").addEventListener("click", function () {
+          addRow(liabOpts, "새 부채");
+        });
+
+        /* ---------- 투자금 (비상금 분자) ---------- */
+
+        var investable = document.getElementById("investableAmount");
+        var investableError = document.getElementById("investableError");
+        investable.value = String(d.cash.investable.amount);
+        investable.addEventListener("input", function () {
+          var n = Number(investable.value);
+          var bad = investable.value.trim() === "" || !isFinite(n) || n < 0;
+          investable.setAttribute("aria-invalid", String(bad));
+          investableError.hidden = !bad;
+          if (bad) return;
+          d.cash.investable.amount = Math.floor(n);
+          // 투자금은 비상금 분자다. 분모(월 필수지출)는 지출 화면이 소유한다.
+          d.emergency.months =
+            d.cash.investable.amount / d.cash.autoTransfer.monthlyEssential;
+          d.emergency.current = d.cash.investable.amount;
+          d.emergency.targetAmount =
+            d.emergency.targetMonths * d.cash.autoTransfer.monthlyEssential;
+          d.emergency.reached = d.cash.investable.amount >= d.emergency.targetAmount;
+          commit();
+        });
+
+        /* ---------- 초기값 복구 ---------- */
+
+        document.getElementById("resetAll").addEventListener("click", function () {
+          store.reset();
+          // reset() 이 배열을 새 것으로 교체하므로 반드시 다시 그린다
+          renderList(assetOpts);
+          renderList(liabOpts);
+          investable.value = String(d.cash.investable.amount);
+          investable.setAttribute("aria-invalid", "false");
+          investableError.hidden = true;
+          // 여기서는 저장하지 않는다. reset 은 저장소를 지우는 동작인데
+          // 곧바로 save 하면 시드값이 새로 기록되어 복구가 흔적을 남긴다.
+          AF.recompute();
+          refresh();
+        });
+
+        /* ---------- 상태 미리보기 (Issue 4) ---------- */
+
+        var panels = {
+          data: document.getElementById("panel-data"),
+          loading: document.getElementById("panel-loading"),
+          empty: document.getElementById("panel-empty"),
+          error: document.getElementById("panel-error")
+        };
+        var aside = document.getElementById("panel-aside");
+        var buttons = document.querySelectorAll(".state-switch__btn");
+        function apply(name) {
+          // 요약 패널은 데이터 상태에서만 의미가 있다
+          Object.keys(panels).forEach(function (k) {
+            panels[k].style.display = k === name ? "" : "none";
+          });
+          aside.style.display = name === "data" ? "" : "none";
+          buttons.forEach(function (b) {
+            b.setAttribute("aria-pressed", String(b.dataset.state === name));
+          });
+        }
+        buttons.forEach(function (b) {
+          b.addEventListener("click", function () { apply(b.dataset.state); });
+        });
+
+        /* ---------- 첫 렌더 ---------- */
+
+        renderList(assetOpts);
+        renderList(liabOpts);
+        refresh();
+      })();
+    </script>
+  </body>
+</html>
