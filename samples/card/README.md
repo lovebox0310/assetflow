@@ -59,7 +59,7 @@ file:// 에서 ES 모듈은 막혀 파서를 직접 import 할 수 없다. 그�
 
 - `tools/build-card-import-bundle.mjs` 가 진짜 원본
   (card-common.mjs, parse-samsung.mjs, parse-hyundai.mjs, card-columns.json)을
-  읽어 `design/prototype/assets/card-import.js` 하나로 묶는다. `window.AFCard`
+  읽어 `design/prototype/common/card-import.js` 하나로 묶는다. `window.AFCard`
   로 노출한다.
 - 모듈은 각자 IIFE 로 감싼다. 삼성과 현대 파서는 같은 이름의 내부 함수를
   가지는데 한 스코프에 풀면 나중 선언이 앞 것을 덮어써 삼성 합계 추출이

@@ -23,7 +23,7 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 
 const ROOT = "D:/study/assetflow";
-const OUT = ROOT + "/design/prototype/assets/card-import.js";
+const OUT = ROOT + "/design/prototype/common/card-import.js";
 
 // 공용 함수 주입 목록은 card-common.mjs 의 export 와 동기화해 둔다.
 const COMMON_API = [

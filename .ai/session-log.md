@@ -1,0 +1,142 @@
+# 작업 진행 로그
+
+시간순 작업 기록입니다. **영구 결정은 `.ai/project.md` 에 있습니다.** 여기엔
+"지금 무엇을 했고 무엇이 남았는가" 만 적습니다.
+
+- 항목 하나의 근거와 규약은 `project.md` 의 해당 장(§)을 따릅니다
+- 새 항목은 위(최신)에 추가합니다
+- 커밋은 아직 하지 않았습니다. 상태는 `git status` 로 확인합니다
+
+> **이 파일 하나로 부족하다고 새 문서를 만들지 않습니다.** 기록할 곳이 없으면
+> `project.md` 에 다음 장을 추가합니다. 판단 기준은 `project.md` §32 다.
+> 문서의 성격은 **경로**로 구분합니다(§32.2). `.ai/` 루트에 새 파일을 늘리지
+> 말고, 분류가 필요하면 전용 폴더를 만듭니다
+
+---
+
+## 2026-09-30 — /assets 자산 입력·조회 화면
+
+### 무엇을 했나
+
+작업 2건을 한 세션에서 처리했습니다.
+
+| # | 작업 | 산출물 | project.md |
+|---|---|---|---|
+| 1 | 패키지 매니저를 pnpm 으로 통일 | 문서만 | §30 |
+| 2 | /assets 자산 입력·조회 화면 구현 | `assets.html` + `mock-data.js` 확장 | §31 |
+| 3 | 문서 관리 규약 + 폴더 구분 | `.ai/roles/` | §32 |
+
+작업 2는 IA 맵을 훑고 다음 작업으로 자산을 골라 진행했습니다.
+
+### 작업 1 요약 (pnpm)
+
+- `package.json` 은 **만들지 않았습니다.** 지금 박아두는 버전 숫자는 검증된 값이 아니고,
+  FE 스캐폴딩과 함께 넣는 편이 맞습니다
+- 적용: `apps/frontend/README.md` 의 명령을 전부 pnpm 으로 교체, 락 파일은
+  `pnpm-lock.yaml` 하나만 허용
+- 예외: `samples/card/tools/*.mjs` 는 의존성이 없어 `node` 직접 실행 유지 (§30.4)
+
+### 작업 2 요약 (자산 화면)
+
+- 금융자산·부채 행을 편집·추가·삭제하고, 투자금을 고칠 수 있습니다
+- 자동이체·부가가치세 잔액은 **읽기 전용**입니다. 지출 화면과 Filing 로직이
+  각각 단일 출처라 여기서 고쳐 쓰면 근거가 사라집니다 (§31.2)
+- 합계·구성비는 저장하지 않고 `AF.recompute()` 가 행에서 다시 만듭니다 (§31.1)
+- 저장은 `assetflow.assets.v1` 에 목록 2개와 투자금만. 편집 뒤에만 저장합니다
+- 데이터/로딩/빈 데이터/오류 상태 4종을 상태 미리보기 버튼으로 전환해 볼 수 있습니다
+
+### 고친 실제 결함 4건
+
+모두 기존 결함이며, 이번 화면을 만들며 드러났습니다.
+
+| 대상 | 증상 | 원인 |
+|---|---|---|
+| `assets.html` | 금액을 바꿔도 총액이 그대로 | 편집 시 `AF.recompute()` 호출 누락 |
+| `assets.html` | 초기값 복구 후 목록이 0행 | `reset()` 이 배열을 새로 만들는데 화면은 옛 배열을 참조 |
+| `assets.html` | 초기값 복구 후에도 저장소가 남음 | 복구 직후 곧바로 재저장 (리팩터링 중 생긴 회귀) |
+| `mock-data.js` | Filing 을 바꿔도 대시보드 카운트다운이 낡음 | `vat.upcoming` 을 로드 시 1회만 계산 |
+
+`dashboard.html` 의 "다음 Filing" 크래시는 위 마지막 항목의 같은 원인이었습니다.
+마지막 Filing 이 지나면 `nextFiling()` 이 `null` 인데, `up.month` 를 바로 읽고 있었습니다.
+`AF.recompute()` 가 `upcoming` 을 함께 다시 정하도록 고쳤고, 화면도 `null` 일 때
+"예정 없음" 을 안내하도록 가드를 넣었습니다.
+
+### 바로잡은 판단 1건
+
+저장 로더가 **빈 배열을 손상으로 보고 시드로 되돌리고 있었습니다.** 사용자가
+항목을 전부 지워도 새로고침하면 되살아나는 상태였습니다.
+
+- 빈 배열 = 사용자가 지운 정상 상태로 존중
+- 비어 있지 않은데 살아남는 행이 0개 = 손상으로 보고 시드 복구
+
+### 검증
+
+| 대상 | 명령 | 결과 |
+|---|---|---|
+| 카드 파서 3종 | `node samples/card/tools/test-*.mjs` | PASS |
+| mock-data 저장·계산 | temp `verify-af.mjs` | ALL PASS |
+| 자산 화면 렌더·인터랙션 | temp `verify-assets-page.mjs` | ALL PASS |
+| 6개 화면 부트 | temp `verify-all-pages.mjs` | ALL PASS |
+| 번들 최신성 | `build-card-import-bundle.mjs` 재생성 | 불변 |
+
+`verify-assets-page.mjs` 는 대시보드 인라인 스크립트를 **실제로 실행**해
+`upcoming === null` 에서 예외가 나지 않고 뒤 패널까지 그려지는지 봅니다.
+가드를 정규식으로만 검사하면 이런 결함을 못 잡습니다.
+
+### 변경 파일 (미커밋)
+
+```
+  M .ai/project.md                    §30, §31, §32 추가
+  M README.md                         문서 색인 + 폴더 구조
+  M apps/frontend/README.md           pnpm 명령
+  M design/prototype/README.md        자산 화면 절 + 다음 Filing 절 + 경로
+  M design/prototype/dashboard.html    upcoming 가드 + 내비게이션 + 경로
+  M design/prototype/expenses.html    내비게이션 + 경로
+  M design/prototype/index.html       IA 카드 상태 + 경로
+  M design/prototype/login.html       경로
+  M design/prototype/settings.html    내비게이션 + 경로
+  M samples/card/README.md            번들 경로
+  M samples/card/tools/build-card-import-bundle.mjs   번들 출력 경로
+  M samples/card/tools/test-card-ui.mjs               번들·mock-data 경로
+  R .ai/{analyst,architect,developer,reviewer,tester}.md
+   -> .ai/roles/                     폴더 구분 (git mv, 이력 보존)
+  R design/prototype/assets/{base.css,card-import.js,tokens.css}
+   -> design/prototype/common/       이름 충돌 해소 (git mv, 이력 보존)
+  RM design/prototype/assets/mock-data.js
+   -> design/prototype/common/       위와 함께 이동 + §31 변경
+?? .ai/session-log.md                신규
+?? design/prototype/assets.html      신규 (자산 화면)
+```
+
+### 문서 구조 변경 (작업 3)
+
+문서가 늘어날 때마다 무엇이 최신인지 알 수 없게 되는 문제를 규약으로 막았다.
+
+- `.ai/project.md` §32 신설 — 기록은 계속하되 **파일은 늘리지 않는다**
+  - 기본은 기존 문서에 장(§)을 덧붙임. `session-log.md` 는 시간순 이력 전용
+  - 새 문서 허용 조건 5개, 금지 파일 목록, 분기 점검 절차
+- **역할 가이드 5종을 `.ai/roles/` 로 이동.** `.ai/` 루트에 성격이 다른 파일
+  7개가 나란히 있어 경로로 구분되지 않았다. 이제 **경로가 곧 문서의 성격**이다
+  - 이동 전후로 이 경로를 참조하던 곳이 없어 링크 수정이 필요 없었다
+  - `git mv` 를 써서 이력을 보존했다 (git 이 R 로 인식)
+  - `project.md` 와 `session-log.md` 는 가장 자주 참조되므로 루트에 남겼다
+
+
+### 남은 것
+
+- [ ] 커밋 (브랜치 규칙은 `CONTRIBUTING.md`: `feature/*`)
+- [ ] 화면 증거 캡처 — `project.md` §9 가 UI PR 에 캡처를 요구합니다.
+      대시보드와 자산 화면의 모바일(360px) / 데스크톱(1200px) 4장이 필요합니다
+- [ ] 검증 스크립트 3개를 저장소로 올릴지 결정 — 기준선 숫자가 화면에 박혀 있어
+      올리면 이후 값 변경 때마다 근거가 사라집니다. §29.7 에도 같은 판단이 남습니다
+- [ ] `settings.html` 의 비상금 목표 개월 입력이 무동작인 기존 결함 (이번 세션 범위 밖)
+- [ ] 대시보드 오류 패널의 재시도 버튼이 비활성인 기존 결함 (이번 세션 범위 밖)
+- [ ] §32.5 분기 점검 — 이번엔 스프린트 마무리 시점에 수행한다
+
+### 이 로그의 쓰임
+
+- 새 항목은 **위(최신)에** 추가합니다
+- 항목마다 다음을 적습니다: 무엇을 했나 / 고친 결함 / 검증 결과 / 남은 것
+- 결정의 **근거**는 여기 적지 않고 `project.md` 의 해당 § 로만 링크합니다.
+  같은 내용을 두 곳에 쓰면 어느 쪽이 최신인지 알 수 없게 됩니다
+- 검증 명령은 실행한 그대로 적습니다. 통과했다고 적힌 명령만 다시 돌리면 됩니다

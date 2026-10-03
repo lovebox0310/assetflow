@@ -1,7 +1,7 @@
 // 카드내역 업로드 UI 연결 검증.
 //
 // 검증하는 것:
-//   1. 번들(assets/card-import.js)이 생성기로 다시 만들어져도 바이트가 같은가
+//   1. 번들(common/card-import.js)이 생성기로 다시 만들어져도 바이트가 같은가
 //   2. 번들에 암호 구현이 없는가(정책) + ESM 잔존이 없는가
 //   3. expenses.html 이 업로드 흐름(판별→파싱→가맹점 분류→가져오기)을 담는가
 //   4. mock-data.js 의 카드 저장소가 실제로 돌아가는가 — vm 으로 실행해
@@ -26,7 +26,7 @@ const read = (p) => readFileSync(ROOT + "/" + p, "utf8");
 const CONTRACT = JSON.parse(read("samples/card/card-columns.json"));
 
 /* ---- 1. 번들 재현성 ---- */
-const BUNDLE = "design/prototype/assets/card-import.js";
+const BUNDLE = "design/prototype/common/card-import.js";
 const before = readFileSync(ROOT + "/" + BUNDLE);
 try {
   execFileSync("node", [ROOT + "/samples/card/tools/build-card-import-bundle.mjs"], { encoding: "utf8" });
@@ -57,7 +57,7 @@ chk("계약이 번들에 실려 있다", bundle.includes('"samsungcard"') && bun
 const exp = read("design/prototype/expenses.html");
 chk("업로드 섹션이 있다", exp.includes("카드내역 가져오기"));
 chk("파일 입력이 있다", /id="cardFile"[^>]*accept="\.csv/.test(exp));
-chk("번들을 로드한다", exp.includes('src="assets/card-import.js"'));
+chk("번들을 로드한다", exp.includes('src="common/card-import.js"'));
 chk("형식 판별을 먼저 한다", exp.includes("detectFileKind"));
 chk("카드사 판별을 한다", exp.includes("detectCompanyFromRows"));
 chk("암호화(CFB) 파일은 열지 않고 안내한다",
@@ -75,7 +75,7 @@ chk("용도구분 3값을 모두 제공한다",
 chk("status/alert 영역이 있다", exp.includes('id="cardStatus"') && exp.includes('id="cardError"'));
 
 /* ---- 4. mock-data.js 카드 저장소 ---- */
-const mock = read("design/prototype/assets/mock-data.js");
+const mock = read("design/prototype/common/mock-data.js");
 chk("카드 저장 키가 있다", mock.includes("assetflow.cardImports.v1"));
 chk("로드 시 저장값을 읽는다", mock.includes("cardStorage.load()"));
 chk("행에서 supplyExVat 를 다시 계산한다",
@@ -102,7 +102,7 @@ const sandbox = {
 };
 createContext(sandbox);
 runInContext(read(BUNDLE), sandbox, { filename: BUNDLE });
-runInContext(read("design/prototype/assets/mock-data.js"), sandbox, { filename: "mock-data.js" });
+runInContext(read("design/prototype/common/mock-data.js"), sandbox, { filename: "mock-data.js" });
 const w = sandbox.window;
 chk("vm 실행 성공", typeof w.AFCard === "object" && typeof w.AF.data === "object");
 
@@ -231,7 +231,7 @@ if (existsSync(REAL_HYUNDAI)) {
 {
   const dec = new TextDecoder("utf-8", { fatal: true });
   const files = [
-    "design/prototype/expenses.html", "design/prototype/assets/mock-data.js",
+    "design/prototype/expenses.html", "design/prototype/common/mock-data.js",
     BUNDLE, "samples/card/card-columns.json",
     "samples/card/tools/build-card-import-bundle.mjs",
     "apps/frontend/src/lib/card/card-common.mjs",

@@ -317,54 +317,79 @@
 
   /* ---------- 계산 ---------- */
 
-  var totalAssets =
-    assets.reduce(function (s, a) { return s + a.amount; }, 0) +
-    cash.investable.amount + cash.autoTransfer.amount + cash.vat.amount;
-
-  var totalLiabilities = liabilities.reduce(function (s, l) { return s + l.amount; }, 0);
-  var netWorth = totalAssets - totalLiabilities;
-
-  var totalCash = cash.investable.amount + cash.autoTransfer.amount + cash.vat.amount;
-
   // 월 수지 = 공급가액 - 지출 합계
   // 부가세 820,000원은 현금으로 쓸 수 없으므로 공급대가(9,020,000)가 아니라
   // 공급가액(8,200,000)에서 뺀다. 부가세는 별도 CMA 계좌로 이동한다.
   var monthlyIncome = incomeInput.supplyExVat;
   var monthlyBalance = monthlyIncome - monthlyExpense;
 
+  /* ---------- 자산/부채 계산 ----------
+   * 자산 화면이 자산·부채 값의 단일 출처다 (§28.10). 지출 화면이 지출의
+   * 단일 출처인 것과 같은 규약이다. 항목을 편집하면 총액·순자산·구성비를
+   * 여기서 다시 계산하므로, 대시보드는 하드코딩된 값이 아니라 이 결과를 읽는다.
+   */
+
+  // 현금 3계좌 순서. 합계와 구성비 분할이 이 배열을 따른다.
+  var CASH_KEYS = ["investable", "autoTransfer", "vat"];
+  var emergencyTargetMonths = 6;
+
+  function sumAmounts(list) {
+    return list.reduce(function (s, a) { return s + a.amount; }, 0);
+  }
+
+  function totalCashOf() {
+    return CASH_KEYS.reduce(function (s, k) { return s + cash[k].amount; }, 0);
+  }
+
+  // 현금은 성격이 다르므로 하나의 막대가 아니라 3분할로 표기한다.
+  // pctOfTotal = 전체 자산 대비 비중, pctOfCash = 현금 중 비중
+  function buildComposition(totalAssets, totalCash) {
+    var rows = assets
+      .map(function (a) {
+        return { key: a.key, label: a.label, amount: a.amount };
+      })
+      .sort(function (a, b) { return b.amount - a.amount; });
+
+    CASH_KEYS.forEach(function (k) {
+      var c = cash[k];
+      rows.push({
+        key: "cash-" + c.label,
+        label: "현금 · " + c.label,
+        amount: c.amount,
+        isCash: true,
+        pctOfTotal: (c.amount / totalAssets) * 100,
+        pctOfCash: (c.amount / totalCash) * 100
+      });
+    });
+    rows.forEach(function (r) {
+      if (r.pctOfTotal === undefined) r.pctOfTotal = (r.amount / totalAssets) * 100;
+    });
+    return rows;
+  }
+
+  function computeAssetTotals() {
+    var totalCash = totalCashOf();
+    var totalAssets = sumAmounts(assets) + totalCash;
+    return {
+      assets: totalAssets,
+      liabilities: sumAmounts(liabilities),
+      netWorth: totalAssets - sumAmounts(liabilities),
+      totalCash: totalCash,
+      // 현금이 0원일 때 나눗셈 전에 끊는다. 빈 자산 목록에서 NaN 이 새지 않게.
+      liquidRatio: totalCash ? (cash.investable.amount / totalCash) * 100 : 0
+    };
+  }
+
   // 비상금 유지 개월 = 투자금 / 월 필수지출
   // 자동이체 잔액과 부가가치세 잔액은 분자에서 제외한다.
   //   자동이체 - 이미 이번 달 지출에 배정된 돈
   //   부가가치세 - Filing 전까지 인출 불가
   var emergencyMonths = cash.investable.amount / cash.autoTransfer.monthlyEssential;
-  var emergencyTargetMonths = 6;
   var emergencyTarget = emergencyTargetMonths * cash.autoTransfer.monthlyEssential;
   var emergencyReached = cash.investable.amount >= emergencyTarget;
 
-  // 현금 중 지금 쓸 수 있는 비율
-  var liquidRatio = (cash.investable.amount / totalCash) * 100;
-
-  var composition = assets
-    .map(function (a) {
-      return { key: a.key, label: a.label, amount: a.amount };
-    })
-    .sort(function (a, b) { return b.amount - a.amount; });
-
-  // 현금은 성격이 다르므로 하나의 막대가 아니라 3분할로 표기한다.
-  // pctOfTotal = 전체 자산 대비 비중, pctOfCash = 현금 중 비중
-  [cash.investable, cash.autoTransfer, cash.vat].forEach(function (c) {
-    composition.push({
-      key: "cash-" + c.label,
-      label: "현금 · " + c.label,
-      amount: c.amount,
-      isCash: true,
-      pctOfTotal: (c.amount / totalAssets) * 100,
-      pctOfCash: (c.amount / totalCash) * 100
-    });
-  });
-  composition.forEach(function (c) {
-    if (c.pctOfTotal === undefined) c.pctOfTotal = (c.amount / totalAssets) * 100;
-  });
+  var AT = computeAssetTotals();
+  var composition = buildComposition(AT.assets, AT.totalCash);
 
   /* ---------- 카드내역 (§29) ----------
    * 카드 엑셀/CSV 임포트 결과만 저장한다. 지출 항목과는 다른 증빙 계층이다:
@@ -381,15 +406,19 @@
     asOf: asOfDate,
     asOfMonth: asOfDate.slice(0, 7),
     totals: {
-      assets: totalAssets,
-      liabilities: totalLiabilities,
-      netWorth: netWorth,
-      totalCash: totalCash,
-      liquidRatio: liquidRatio,
+      assets: AT.assets,
+      liabilities: AT.liabilities,
+      netWorth: AT.netWorth,
+      totalCash: AT.totalCash,
+      liquidRatio: AT.liquidRatio,
       monthlyIncome: monthlyIncome,
       monthlyExpense: monthlyExpense,
       monthlyBalance: monthlyBalance
     },
+    // 자산 화면이 단일 출처다 (§28.10). 배열 자체를 노출해 항목을 편집하게 하고,
+    // 합계는 저장하지 않는다 — 행이 단일 출처고 합계는 recompute() 가 다시 만든다.
+    assets: assets,
+    liabilities: liabilities,
     cash: cash,
     emergency: {
       months: emergencyMonths,
@@ -482,6 +511,21 @@
    *   목록 합계가 매입 규모를 넘어서면 목록이 과대하다는 뜻이므로 경고한다.
    */
   global.AF.recompute = function () {
+    // 자산 화면이 단일 출처 (§28.10). 자산·부채를 편집하면 총액·순자산·구성비를
+    // 여기서 다시 만든다. 지출 편집과 같은 규약이다.
+    var T = computeAssetTotals();
+    data.totals.assets = T.assets;
+    data.totals.liabilities = T.liabilities;
+    data.totals.netWorth = T.netWorth;
+    data.totals.totalCash = T.totalCash;
+    data.totals.liquidRatio = T.liquidRatio;
+    data.composition = buildComposition(T.assets, T.totalCash);
+
+    // Filing 을 편집하면 다음 고지도 다시 계산한다. 로드 시 1회만 정해두면
+    //Filing 화면에서 일정을 바꿔도 대시보드 카운트다운이 낡어 있고,
+    // 마지막 일정이 지나면 null 인 상태를 아무도 못 본다.
+    data.vat.upcoming = nextFiling(data.asOf, data.vat.filings);
+
     var sum = data.expenses.items.reduce(function (a, e) { return a + e.amount; }, 0);
     var nonDed = data.expenses.items
       .filter(function (e) { return !e.vatDeductible; })
@@ -538,7 +582,15 @@
     }),
     notIncluded: data.expenses.notIncluded.map(function (x) {
       return { key: x.key, label: x.label, amount: x.amount, note: x.note };
-    })
+    }),
+    assets: assets.map(function (a) {
+      return { key: a.key, label: a.label, amount: a.amount };
+    }),
+    liabilities: liabilities.map(function (l) {
+      return { key: l.key, label: l.label, amount: l.amount };
+    }),
+    // 투자금은 자산 화면에서 고칠 수 있다. 복구 기준값이 필요하다.
+    investable: cash.investable.amount
   };
 
   /* ------------------------------------------------------------------
@@ -637,7 +689,112 @@
     }
   };
 
+  /* ------------------------------------------------------------------
+   * 자산 저장소 (§28.10, 프로토타입 한정)
+   * 지출 저장소와 같은 규약을 쓴다: 로드 시 읽고, 값을 바꾼 뒤에만 저장하고,
+   * 깨진 값은 조용히 무시하지 말고 걸러낸다. 숫자는 정수로 되돌리고 음수는
+   * 0으로 봉정한다. 합계는 저장하지 않는다 — 행이 단일 출처고 합계는
+   * recompute() 가 다시 만든다(저장합과 행의 어긋남 원천 차단).
+   * ------------------------------------------------------------------ */
+  var ASSET_KEY = "assetflow.assets.v1";
+
+  function copyAssetSeed() {
+    return {
+      assets: global.AF.seed.assets.map(function (a) { return Object.assign({}, a); }),
+      liabilities: global.AF.seed.liabilities.map(function (l) { return Object.assign({}, l); })
+    };
+  }
+
+  // 이름이 없는 행과 음수·문자 금액을 걸러낸다.
+  // 배열이 아예 비어 있으면 "사용자가 전부 지운 정상 상태"로 존중한다.
+  // 비어 있지 않는데 살아남은 행이 하나도 없으면 저장소가 깨진 것으로 보고 fallback.
+  function cleanAssetRows(list, fallback) {
+    if (!Array.isArray(list)) return fallback;
+    if (!list.length) return [];
+    var rows = list
+      .filter(function (r) { return r && typeof r.label === "string" && r.label.trim() !== ""; })
+      .map(function (r) {
+        return {
+          key: typeof r.key === "string" && r.key ? r.key : newKey(),
+          label: r.label,
+          amount: Number.isFinite(+r.amount) && +r.amount >= 0 ? Math.round(+r.amount) : 0
+        };
+      });
+    return rows.length ? rows : fallback;
+  }
+
+  function applyAssetSnapshot(snap) {
+    if (!snap || typeof snap !== "object") return false;
+    var hasAssets = Array.isArray(snap.assets);
+    var hasLiabilities = Array.isArray(snap.liabilities);
+    var hasInvestable = snap.cash && Number.isFinite(+snap.cash.investable);
+    if (!hasAssets && !hasLiabilities && !hasInvestable) return false;
+
+    // 자산 항목이 아예 비어 있으면 사용자가 지운 것으로 존중한다.
+    // 비어 있지 않은데 유효한 행이 하나도 없으면 시드로 되돌린다.
+    if (hasAssets) {
+      assets = cleanAssetRows(snap.assets, copyAssetSeed().assets);
+      data.assets = assets;
+    }
+    // 부채가 없는 것은 정상 상태다. 부채를 0으로 강제하면 사용자의 실제를 덮는다.
+    if (hasLiabilities) {
+      liabilities = cleanAssetRows(snap.liabilities, []);
+      data.liabilities = liabilities;
+    }
+    // 투자금은 비상금 유지 개월의 분자다. 사용자가 고를 수 있게 한다.
+    if (hasInvestable) {
+      cash.investable.amount = Math.max(0, Math.round(+snap.cash.investable));
+    }
+    return true;
+  }
+
+  global.AF.assetStorage = {
+    key: ASSET_KEY,
+    seed: copyAssetSeed,
+    load: function () {
+      var raw;
+      try {
+        raw = global.localStorage.getItem(ASSET_KEY);
+      } catch (err) {
+        return false;
+      }
+      if (!raw) return false;
+      try {
+        return applyAssetSnapshot(JSON.parse(raw));
+      } catch (err) {
+        return false;
+      }
+    },
+    save: function () {
+      try {
+        global.localStorage.setItem(ASSET_KEY, JSON.stringify({
+          assets: data.assets,
+          liabilities: data.liabilities,
+          // 자동이체·부가가치세 잔액은 여기서 고치지 않는다(§28.7). 투자금만 보낸다.
+          cash: { investable: data.cash.investable.amount }
+        }));
+        return true;
+      } catch (err) {
+        return false;
+      }
+    },
+    reset: function () {
+      var snap = copyAssetSeed();
+      data.assets = snap.assets;
+      data.liabilities = snap.liabilities;
+      assets = snap.assets;
+      liabilities = snap.liabilities;
+      data.cash.investable.amount = global.AF.seed.investable;
+      try {
+        global.localStorage.removeItem(ASSET_KEY);
+      } catch (err) { /* 저장소를 못 쓰는 환경이면 무시 */ }
+      return data;
+    }
+  };
+
   // 어떤 화면이든 로드 직전에 저장값을 읽는다 (대시보드/설정 포함).
+  // 자산 저장소를 먼저 읽어야 recompute() 가 저장된 값으로 합계를 만든다.
+  global.AF.assetStorage.load();
   global.AF.storage.load();
   global.AF.recompute();
 
