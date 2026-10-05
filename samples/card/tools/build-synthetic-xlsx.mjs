@@ -15,6 +15,12 @@
 
 import { writeFileSync } from "node:fs";
 import { deflateRawSync } from "node:zlib";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+
+// 저장소 절대경로를 박지 않는다. 이 생성기는 CI 에서도 돌아야 한다.
+const HERE = dirname(fileURLToPath(import.meta.url));
+const ROOT = resolve(HERE, "..", "..", "..");
 
 /* ---------- CRC32 (ZIP 무결성용) ---------- */
 const CRC_TABLE = (() => {
@@ -184,11 +190,11 @@ const novat = [
   ...NOVAT_DATA,
 ];
 
-const OUT = "D:/study/assetflow/samples/card/anonymized/";
+const OUT = resolve(ROOT, "samples", "card", "anonymized");
 const a = buildXlsx(full, "거래내역");
-writeFileSync(OUT + "synthetic-sample.xlsx", a);
+writeFileSync(resolve(OUT, "synthetic-sample.xlsx"), a);
 const b = buildXlsx(novat, "거래내역");
-writeFileSync(OUT + "synthetic-novat.xlsx", b);
+writeFileSync(resolve(OUT, "synthetic-novat.xlsx"), b);
 
 console.log("생성 완료");
 console.log("  synthetic-sample.xlsx   " + a.length + "B  " + full.length + "행 x " + FULL_HEADER.length + "열 (헤더 5행, 합계성 2행)");

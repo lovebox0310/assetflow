@@ -12,30 +12,37 @@
 // 이 저장소 밖(다운로드 폴더)에 있으므로 없으면 그 검사만 건너뛴다.
 
 import { readFileSync, existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { createContext, runInContext } from "node:vm";
 
-const ROOT = "D:/study/assetflow";
+// 저장소 절대경로를 박지 않는다. 이 파일은 로컬에서도 CI 에서도 같은 명령으로
+// 돌아야 하고, 앞사람의 D:\ 경로가 그대로 박히면 다른 머신에서 전부 깨진다.
+const HERE = dirname(fileURLToPath(import.meta.url));
+const ROOT = resolve(HERE, "..", "..", "..");
+const TOOLS = resolve(ROOT, "samples", "card", "tools");
 let pass = 0, fail = 0;
 const failures = [];
 function chk(name, cond, detail) {
   if (cond) pass++;
   else { fail++; failures.push(name + (detail ? " — " + String(detail).slice(0, 160) : "")); }
 }
-const read = (p) => readFileSync(ROOT + "/" + p, "utf8");
+const at = (p) => resolve(ROOT, ...p.split("/"));
+const read = (p) => readFileSync(at(p), "utf8");
 const CONTRACT = JSON.parse(read("samples/card/card-columns.json"));
 
 /* ---- 1. 번들 재현성 ---- */
 const BUNDLE = "design/prototype/common/card-import.js";
-const before = readFileSync(ROOT + "/" + BUNDLE);
+const before = readFileSync(at(BUNDLE));
 try {
-  execFileSync("node", [ROOT + "/samples/card/tools/build-card-import-bundle.mjs"], { encoding: "utf8" });
+  execFileSync("node", [resolve(TOOLS, "build-card-import-bundle.mjs")], { encoding: "utf8" });
   chk("번들 생성기 실행됨", true);
 } catch (e) {
   chk("번들 생성기 실행됨", false, e.message.split("\n")[0]);
 }
 chk("번들이 생성기로 바이트 단위로 재현된다",
-  Buffer.compare(before, readFileSync(ROOT + "/" + BUNDLE)) === 0);
+  Buffer.compare(before, readFileSync(at(BUNDLE))) === 0);
 
 /* ---- 2. 번들 정책·정합성 ---- */
 const bundle = read(BUNDLE);
@@ -117,7 +124,7 @@ function stripRow(r) {
     memberRelation: r.memberRelation, approvalNo: r.approvalNo
   };
 }
-const hyundaiAnon = readFileSync(ROOT + "/samples/card/anonymized/hyundaicard-personal-anon.csv");
+const hyundaiAnon = readFileSync(at("samples/card/anonymized/hyundaicard-personal-anon.csv"));
 const parsed = w.AFCard.parseHyundaiCardStatement(hyundaiAnon, w.AFCard.contract);
 chk("vm 안 현대 파싱 75건", parsed.rows.length === 75, parsed.rows.length);
 chk("vm 안 교차검증 통과", parsed.crossCheck && parsed.crossCheck.grossOk && parsed.crossCheck.vatOk);
@@ -200,7 +207,7 @@ chk("저장 스냅샷에 합계 필드가 없다(행이 단일 출처)",
 
 /* ---- 5. 카드사 판별 ---- */
 const { parseCsv } = w.AFCard;
-const samsungAnonText = readFileSync(ROOT + "/samples/card/anonymized/samsungcard-personal-anon.csv").toString("utf8");
+const samsungAnonText = readFileSync(at("samples/card/anonymized/samsungcard-personal-anon.csv")).toString("utf8");
 const detS = w.AFCard.detectCompanyFromRows(parseCsv(samsungAnonText.replace(/^\uFEFF/, "")), CONTRACT);
 chk("삼성 픽스처 판별", detS.company === "samsungcard" && detS.headerRowNumber === 19,
   JSON.stringify(detS));
@@ -210,9 +217,13 @@ chk("현대 픽스처 판별", detH.company === "hyundaicard" && detH.headerRowN
 const detUnknown = w.AFCard.detectCompanyFromRows(parseCsv("a,b,c\n1,2,3\n4,5,6\n"), CONTRACT);
 chk("무관한 CSV 는 카드사 미확인", detUnknown.company === null, JSON.stringify(detUnknown));
 
-// 실제 파일은 이 저장소 밖에 있다. 있을 때만 판별을 본다(PII 미출력).
-const REAL_SAMSUNG = "C:/Users/H/Downloads/samsungcard_detail_202601(개인사업자용 카드이용내역서).csv";
-const REAL_HYUNDAI = "C:/Users/H/Downloads/hyundaicard_202605041336031708166977_1070(Sheet0).csv";
+// 실제 파일은 이 저장소 밖에 있다(개인정보라 커밋하지 않는다).
+// 있을 때만 판별을 본다(PII 미출력). 없으면 조용히 건너뛴다.
+// 경로를 ASSETFLOW_CARD_REAL_DIR 로 받는 이유: 앞사람의 D:\Downloads 는
+// 이 저장소를 처음 보는 사람에게 존재하지 않는 경로다.
+const REAL_DIR = process.env.ASSETFLOW_CARD_REAL_DIR || "";
+const REAL_SAMSUNG = REAL_DIR ? resolve(REAL_DIR, "samsungcard_detail_202601(개인사업자용 카드이용내역서).csv") : "";
+const REAL_HYUNDAI = REAL_DIR ? resolve(REAL_DIR, "hyundaicard_202605041336031708166977_1070(Sheet0).csv") : "";
 let realNote = "실제 파일 없음: 판별 건너뜀";
 if (existsSync(REAL_SAMSUNG)) {
   const t = readFileSync(REAL_SAMSUNG).toString("utf8").slice(1); // BOM 제거
@@ -239,7 +250,7 @@ if (existsSync(REAL_HYUNDAI)) {
   ];
   let bad = 0;
   for (const file of files) {
-    try { dec.decode(readFileSync(ROOT + "/" + file)); }
+    try { dec.decode(readFileSync(at(file))); }
     catch (e) { console.log("  FAIL UTF-8 " + file); bad++; }
   }
   chk("수정 파일 UTF-8 무결성", bad === 0, bad + "건");

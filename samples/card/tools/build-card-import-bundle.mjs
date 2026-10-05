@@ -21,9 +21,16 @@
 // 열리며, 이 프로토타입은 평문 CSV 만 읽는다.
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 
-const ROOT = "D:/study/assetflow";
-const OUT = ROOT + "/design/prototype/common/card-import.js";
+// 저장소 절대경로를 박지 않는다. 이 생성기는 CI 에서도 돌아야 한다.
+// 주의: 아래 경로 문자열(슬래시)은 번들 주석에 그대로 들어가므로 손대면
+// 커밋된 card-import.js 와 바이트가 어긋나 재현성 검사가 깨진다.
+const HERE = dirname(fileURLToPath(import.meta.url));
+const ROOT = resolve(HERE, "..", "..", "..");
+const at = (p) => resolve(ROOT, ...p.split("/"));
+const OUT = at("design/prototype/common/card-import.js");
 
 // 공용 함수 주입 목록은 card-common.mjs 의 export 와 동기화해 둔다.
 const COMMON_API = [
@@ -60,11 +67,13 @@ function wrapModule(body, label, exports, varName) {
   );
 }
 
-const strip = (s) => s.replace(ROOT + "/", "");
-const cardCommon = readFileSync(ROOT + "/apps/frontend/src/lib/card/card-common.mjs", "utf8");
-const samsung = readFileSync(ROOT + "/apps/frontend/src/lib/card/parse-samsung.mjs", "utf8");
-const hyundai = readFileSync(ROOT + "/apps/frontend/src/lib/card/parse-hyundai.mjs", "utf8");
-const contract = JSON.parse(readFileSync(ROOT + "/samples/card/card-columns.json", "utf8"));
+// 번들 주석에 들어가는 원본 경로는 저장소 루트 기준 슬래시 경로 그대로다.
+// (ROOT 를 절대경로로 바꿨으므로 여기서 ROOT 를 다시 붙이지 않는다.)
+const strip = (s) => s;
+const cardCommon = readFileSync(at("apps/frontend/src/lib/card/card-common.mjs"), "utf8");
+const samsung = readFileSync(at("apps/frontend/src/lib/card/parse-samsung.mjs"), "utf8");
+const hyundai = readFileSync(at("apps/frontend/src/lib/card/parse-hyundai.mjs"), "utf8");
+const contract = JSON.parse(readFileSync(at("samples/card/card-columns.json"), "utf8"));
 
 const out = `/* 자동 생성 파일 — 손으로 고치지 않는다.
  * 원본: apps/frontend/src/lib/card/{card-common,parse-samsung,parse-hyundai}.mjs
@@ -78,11 +87,11 @@ const out = `/* 자동 생성 파일 — 손으로 고치지 않는다.
 (function (global) {
   "use strict";
   var common = (function () {
-${toClassic(cardCommon, strip(ROOT + "/apps/frontend/src/lib/card/card-common.mjs"))}
+${toClassic(cardCommon, strip("apps/frontend/src/lib/card/card-common.mjs"))}
     return { ${COMMON_API.map((n) => n + ": " + n).join(", ")} };
   })();
-${wrapModule(toClassic(samsung, strip(ROOT + "/apps/frontend/src/lib/card/parse-samsung.mjs")), "parse-samsung.mjs", ["parseSamsungCardStatement"], "samsungModule")}
-${wrapModule(toClassic(hyundai, strip(ROOT + "/apps/frontend/src/lib/card/parse-hyundai.mjs")), "parse-hyundai.mjs", ["parseHyundaiCardStatement"], "hyundaiModule")}
+${wrapModule(toClassic(samsung, strip("apps/frontend/src/lib/card/parse-samsung.mjs")), "parse-samsung.mjs", ["parseSamsungCardStatement"], "samsungModule")}
+${wrapModule(toClassic(hyundai, strip("apps/frontend/src/lib/card/parse-hyundai.mjs")), "parse-hyundai.mjs", ["parseHyundaiCardStatement"], "hyundaiModule")}
 
   // 규격(card-columns.json)은 이 파일을 만들 때 읽어 들였다. 화면은 이 사본으로
   // 판별·파싱한다. 규격을 고치면 번들을 다시 생성한다.
@@ -119,12 +128,12 @@ const api = ["parseCsv", "parseSamsungCardStatement", "parseHyundaiCardStatement
 const lost = api.filter((k) => typeof AF[k] !== "function");
 if (lost.length) throw new Error("번들 API 누락: " + lost.join(", "));
 
-const samsungAnon = readFileSync(ROOT + "/samples/card/anonymized/samsungcard-personal-anon.csv");
+const samsungAnon = readFileSync(at("samples/card/anonymized/samsungcard-personal-anon.csv"));
 const r1 = AF.parseSamsungCardStatement(samsungAnon, AF.contract);
 if (r1.rows.length !== 18 || !r1.crossCheck || !r1.crossCheck.grossOk) {
   throw new Error("번들 안 삼성 파서 검증 실패: rows=" + r1.rows.length + " crossCheck=" + JSON.stringify(r1.crossCheck));
 }
-const hyundaiAnon = readFileSync(ROOT + "/samples/card/anonymized/hyundaicard-personal-anon.csv");
+const hyundaiAnon = readFileSync(at("samples/card/anonymized/hyundaicard-personal-anon.csv"));
 const r2 = AF.parseHyundaiCardStatement(hyundaiAnon, AF.contract);
 if (r2.rows.length !== 75 || !r2.crossCheck || !r2.crossCheck.grossOk) {
   throw new Error("번들 안 현대 파서 검증 실패: rows=" + r2.rows.length);
@@ -134,13 +143,16 @@ if (det.company !== "hyundaicard" || det.headerRowNumber !== 8) {
   throw new Error("번들 안 카드사 판별 실패: " + JSON.stringify(det));
 }
 let encNote = "암호화 판별(실제 파일 없음: 건너뜀)";
-const encPath = "C:/Users/H/Downloads/samsungcard_detail_202601.xlsx";
-if (existsSync(encPath)) {
+// 실제 암호화 xlsx 는 개인정보 파일이라 저장소에 없다. 있을 때만 판별한다.
+const encPath = process.env.ASSETFLOW_CARD_REAL_DIR
+  ? resolve(process.env.ASSETFLOW_CARD_REAL_DIR, "samsungcard_detail_202601.xlsx")
+  : "";
+if (encPath && existsSync(encPath)) {
   const enc = AF.detectFileKind(new Uint8Array(readFileSync(encPath)), ".xlsx");
   if (enc.kind !== "cfb") throw new Error("암호화 xlsx 판별 실패: " + JSON.stringify(enc));
   encNote = "암호화 판별(cfb) 통과";
 }
 
-console.log("생성 완료: " + OUT.replace(ROOT + "/", ""));
+console.log("생성 완료: design/prototype/common/card-import.js");
 console.log("  " + out.length.toLocaleString() + "B, 규격 v" + contract.version +
   ", 스모크: 삼성 18행/현대 75행/현대 판별 통과, " + encNote);
