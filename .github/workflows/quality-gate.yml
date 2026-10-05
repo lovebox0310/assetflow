@@ -1,0 +1,83 @@
+# 무인 진행 품질 게이트.
+#
+# 왜 이게 없었나:
+#   저장소에 실행 가능한 검증이 없었다. 사람이 로컬에서 손으로 열어 볼 수밖에
+#   없었고, 그 사람이 빠진 순간 깨진 상태로 머지된다. 카드 도구는 이식성 없는
+#   절대경로 때문에 로컬 밖에서는 아예 실행되지 않았다.
+#
+# 이 워크플로가 하는 일:
+#   1. 문법 검사 — 프로토타입 인라인 스크립트와 공통 데이터
+#   2. 프로토타입 회귀 테스트 — 계층 저장·수정 모드·확정/취소·6개 화면 기동
+#   3. 카드 파서·번들 테스트 — 픽스처 재현성까지
+#   4. 생성물 드리프트 — 커밋된 번들이 생성기와 어긋나는지
+#
+# 의존성은 없다. package.json 도 lock 파일도 요구하지 않는다(§30).
+# 앱(React/Spring) 빌드는 이 워크플로에 넣지 않는다 — 빌드 파일 자체가 아직 없다.
+# 만들어지는 날 여기 추가한다. 없는 걸 돌아가는 척하지 않는 게 이 워크플로의 요지다.
+
+name: quality-gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 버전: 저장소 문서에 정해진 최소 버전은 아직 없다(§30 은 패키지
+      # 관리자만 규정하고 Node 버전은 다루지 않는다). 여기서는 LTS 라인(22)을
+      # 고정한다. 테스트는 node:fs·node:url·node:path·node:vm·node:zlib
+      # ·node:child_process 만 쓰므로 18 이상이면 동작한다.
+      # 근거 없이 "저장소가 요구하는 버전" 이라 적지 않는다.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: 문법 검사 (프로토타입 공통 스크립트)
+        run: node --check design/prototype/common/mock-data.js
+
+      - name: 문법 검사 (카드 파서)
+        run: |
+          node --check apps/frontend/src/lib/card/card-common.mjs
+          node --check apps/frontend/src/lib/card/parse-samsung.mjs
+          node --check apps/frontend/src/lib/card/parse-hyundai.mjs
+
+      - name: 프로토타입 회귀 테스트
+        run: node design/prototype/tools/run-all.mjs
+
+      # 실제 카드 명세는 개인정보라 저장소에 없다.
+      # ASSETFLOW_CARD_REAL_DIR 을 주지 않으면 해당 검사는 "건너뜀" 으로 끝난다.
+      # 비어 있는 상태로 일부러 두어, 그 상태에서 통과하는 것을 확인한다.
+      - name: 카드 파서·번들 테스트 (개인정보 파일 없음)
+        run: |
+          node samples/card/tools/test-parse-samsung.mjs
+          node samples/card/tools/test-parse-hyundai.mjs
+          node samples/card/tools/test-card-ui.mjs
+
+      # 위 검사들은 픽스처를 다시 생성해 커밋본과 바이트 단위로 비교한다.
+      # 여기서 또 확인하는 이유: 생성기가 조용히 빈 파일을 만들면
+      # 바이트 비교는 "일치" 로 통과하고 아무도 눈치채지 못한다.
+      - name: 생성물이 커밋본과 같은지 확인
+        run: |
+          if [ -n "$(git status --porcelain -- samples/card/anonymized design/prototype/common/card-import.js)" ]; then
+            echo "::error::생성물이 커밋본과 다릅니다. 생성기를 실행하고 결과물을 커밋하세요."
+            git status --porcelain -- samples/card/anonymized design/prototype/common/card-import.js
+            git diff -- samples/card/anonymized design/prototype/common/card-import.js | head -100
+            exit 1
+          fi
+
+      - name: 결과 요약
+        run: echo "quality-gate 통과"

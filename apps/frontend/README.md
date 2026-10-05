@@ -24,13 +24,16 @@ Current status:
 When frontend scaffolding is added (React + TypeScript), use:
 
 ```bash
-npm install
-npm run dev
-npm run build
-npm run test
+pnpm install
+pnpm run dev
+pnpm run build
+pnpm run test
 ```
+
+`pnpm` is the project's only package manager (see §30 in `.ai/project.md`).
+Do not add `package-lock.json` or `yarn.lock`; the lock file is `pnpm-lock.yaml`.
 
 Notes for AI collaboration:
 
-- Use `npm run dev` for local checks while implementing UI.
-- Use `npm run build` before PR to catch type/build issues.
+- Use `pnpm run dev` for local checks while implementing UI.
+- Use `pnpm run build` before PR to catch type/build issues.
