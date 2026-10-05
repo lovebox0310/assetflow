@@ -70,17 +70,22 @@ function wrapModule(body, label, exports, varName) {
 // 번들 주석에 들어가는 원본 경로는 저장소 루트 기준 슬래시 경로 그대로다.
 // (ROOT 를 절대경로로 바꿨으므로 여기서 ROOT 를 다시 붙이지 않는다.)
 //
-// The parsers are inlined verbatim, so without this the bundle inherits
-// whatever line endings the checkout happens to have. The repository
-// commits CRLF sources, the committed bundle is LF, and the byte check
-// only agreed because both sides had been rewritten somewhere along the
-// way. Normalise here: the generator's output must not depend on who
-// checked the sources out. Embedded sources therefore carry LF inside the
-// string literals, which is also what keeps the bundle valid JavaScript.
-const strip = (s) => s.replace(/\r\n/g, "\n");
-const cardCommon = readFileSync(at("apps/frontend/src/lib/card/card-common.mjs"), "utf8");
-const samsung = readFileSync(at("apps/frontend/src/lib/card/parse-samsung.mjs"), "utf8");
-const hyundai = readFileSync(at("apps/frontend/src/lib/card/parse-hyundai.mjs"), "utf8");
+// strip is a label pass-through: every call site hands it a source path,
+// never source text, so nothing was ever stripped. Leave its signature
+// alone rather than quietly changing what it means to the three call sites.
+const strip = (s) => s;
+
+// The parsers get inlined verbatim, so the bundle would inherit whatever
+// line endings the checkout has. This repository commits the parsers as
+// CRLF and the bundle as LF, and the byte check only agreed because both
+// had been rewritten somewhere along the way -- it failed on the first
+// clean checkout. Normalise on the way in, so the bundle does not depend
+// on who checked the sources out. The sources land inside JavaScript string
+// literals, and LF is what keeps those literals intact.
+const readSource = (p) => readFileSync(at(p), "utf8").replace(/\r\n/g, "\n");
+const cardCommon = readSource("apps/frontend/src/lib/card/card-common.mjs");
+const samsung = readSource("apps/frontend/src/lib/card/parse-samsung.mjs");
+const hyundai = readSource("apps/frontend/src/lib/card/parse-hyundai.mjs");
 const contract = JSON.parse(readFileSync(at("samples/card/card-columns.json"), "utf8"));
 
 const out = `/* 자동 생성 파일 — 손으로 고치지 않는다.
