@@ -19,6 +19,12 @@
 // 모든 값은 이긴 지어낸 것이다. 실제 파일의 금액·가맹점·번호를 복사하지 않는다.
 
 import { writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+
+// 저장소 절대경로를 박지 않는다. 이 생성기는 CI 에서도 돌아야 한다.
+const HERE = dirname(fileURLToPath(import.meta.url));
+const ROOT = resolve(HERE, "..", "..", "..");
 
 const CARD = "9420-00**-****-0001";
 const HOLDER = "홍*길";
@@ -119,7 +125,7 @@ for (const r of ROWS) {
 while (lines.length < 41) lines.push(cells(pad12([]))); // 38~41 빈 행
 
 const out = "\ufeff" + lines.join("\r\n") + "\r\n";
-const DEST = "D:/study/assetflow/samples/card/anonymized/samsungcard-personal-anon.csv";
+const DEST = resolve(ROOT, "samples", "card", "anonymized", "samsungcard-personal-anon.csv");
 writeFileSync(DEST, out, "utf8");
 
 console.log("합성 픽스처 생성: " + DEST);

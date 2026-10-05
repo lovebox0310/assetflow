@@ -19,6 +19,12 @@
 // 재현되는지 검사한다.
 
 import { writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+
+// 저장소 절대경로를 박지 않는다. 이 생성기는 CI 에서도 돌아야 한다.
+const HERE = dirname(fileURLToPath(import.meta.url));
+const ROOT = resolve(HERE, "..", "..", "..");
 
 /* ---------- 합성 데이터 ---------- */
 
@@ -178,7 +184,7 @@ const content = [
   "",
 ].join("\n");
 
-const OUT = "D:/study/assetflow/samples/card/anonymized/hyundaicard-personal-anon.csv";
+const OUT = resolve(ROOT, "samples", "card", "anonymized", "hyundaicard-personal-anon.csv");
 writeFileSync(OUT, "\ufeff" + content, "utf8");
 
 console.log("생성 완료: " + OUT);

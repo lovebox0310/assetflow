@@ -9,13 +9,28 @@
 // 정답 기준은 card-columns.json 과 빌더 스크립트의 계산값이다. 손으로 쓴
 // 기대값이 파서와 같은 오독을 공유하지 않도록 합계는 코드에서 다시 계산한다.
 
-import { readFileSync } from "node:fs";
-import { parseHyundaiCardStatement, } from "file:///D:/study/assetflow/apps/frontend/src/lib/card/parse-hyundai.mjs";
-import { parseCsv } from "file:///D:/study/assetflow/apps/frontend/src/lib/card/card-common.mjs";
+import { readFileSync, existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+import { parseHyundaiCardStatement, } from "../../../apps/frontend/src/lib/card/parse-hyundai.mjs";
+import { parseCsv } from "../../../apps/frontend/src/lib/card/card-common.mjs";
 
-const CONTRACT = JSON.parse(readFileSync("D:/study/assetflow/samples/card/card-columns.json", "utf8"));
-const ANON = "D:/study/assetflow/samples/card/anonymized/hyundaicard-personal-anon.csv";
-const REAL = "C:/Users/H/Downloads/hyundaicard_202605041336031708166977_1070(Sheet0).csv";
+// 저장소 절대경로를 박지 않는다. 이 파일은 로컬에서도 CI 에서도 같은 명령으로
+// 돌아야 하고, 앞사람의 D:\ 경로가 그대로 박히면 다른 머신에서 전부 깨진다.
+const HERE = dirname(fileURLToPath(import.meta.url));
+const ROOT = resolve(HERE, "..", "..", "..");
+const TOOLS = resolve(ROOT, "samples", "card", "tools");
+const ANON_DIR = resolve(ROOT, "samples", "card", "anonymized");
+
+const CONTRACT = JSON.parse(readFileSync(resolve(ROOT, "samples", "card", "card-columns.json"), "utf8"));
+const ANON = resolve(ANON_DIR, "hyundaicard-personal-anon.csv");
+
+// 실제 카드 명세는 개인정보라 저장소에 넣지 않는다.
+// 로컬에서만 대조하려면 ASSETFLOW_CARD_REAL_DIR 을 그 파일이 있는 폴더로 지정한다.
+// 지정이 없으면 7번 검사는 "건너뜀" 으로 끝나고 CI 를 실패시키지 않는다.
+const REAL = process.env.ASSETFLOW_CARD_REAL_DIR
+  ? resolve(process.env.ASSETFLOW_CARD_REAL_DIR, "hyundaicard_202605041336031708166977_1070(Sheet0).csv")
+  : "";
 
 let pass = 0, fail = 0;
 const failures = [];
@@ -176,8 +191,10 @@ check("정상 행의 supplyExVat = 이용금액 - 부가세",
 }
 
 /* ---- 7. 실제 파일에도 같은 규칙이 통하는지 (PII 는 출력하지 않는다) ---- */
-let realNote = "(파일 없음: 건너뜀)";
-try {
+// 파일이 없는 것을 실패로 보지 않는다. 개인정보라 CI 에는 없는 게 정상이다.
+// 없는 상태에서 실패로 세면 아무도 고칠 수 없는 실패가 PR 을 막는다.
+let realNote = "(실제 파일 없음: 건너뜀)";
+if (REAL && existsSync(REAL)) try {
   const rb = readFileSync(REAL);
   const r7 = parseHyundaiCardStatement(rb, CONTRACT);
   const flat7 = JSON.stringify(r7.rows);
@@ -215,7 +232,7 @@ import { execFileSync } from "node:child_process";
 {
   const before = readFileSync(ANON);
   try {
-    execFileSync("node", ["D:/study/assetflow/samples/card/tools/build-anonymized-hyundai.mjs"], { encoding: "utf8" });
+    execFileSync("node", [resolve(TOOLS, "build-anonymized-hyundai.mjs")], { encoding: "utf8" });
   } catch (e) {
     check("build-anonymized-hyundai.mjs 실행됨", false, e.message.split("\n")[0]);
   }
