@@ -124,7 +124,12 @@ for (const r of ROWS) {
 }
 while (lines.length < 41) lines.push(cells(pad12([]))); // 38~41 빈 행
 
-const out = "\ufeff" + lines.join("\r\n") + "\r\n";
+// LF, like the hyundai fixture and like card-import.js. Emitting CRLF here
+// meant the committed fixture and the generator disagreed, and the byte
+// comparison only passed because core.autocrlf rewrote the checkout to
+// CRLF too. The bundle is built from this text, so CRLF would also end up
+// embedded inside a JavaScript string literal.
+const out = "\ufeff" + lines.join("\n") + "\n";
 const DEST = resolve(ROOT, "samples", "card", "anonymized", "samsungcard-personal-anon.csv");
 writeFileSync(DEST, out, "utf8");
 
