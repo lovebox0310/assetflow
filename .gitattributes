@@ -1,0 +1,20 @@
+# Generated artifacts are compared byte-for-byte against their generator,
+# so their bytes must not depend on who checks them out.
+#
+# core.autocrlf rewrites LF to CRLF on checkout. The generators always write
+# LF, so a clean clone ends up with CRLF on disk and the reproducibility
+# check fails with a byte count no generator edit can explain. It passes on
+# a workstation that happens to have already regenerated the file, which is
+# worse: the failure only shows up on the machine that has none of the
+# author's local state.
+#
+# -text means "take these bytes literally, never convert them". The generator
+# is the source of truth, so the bytes it writes are the bytes we commit.
+samples/card/anonymized/*            -text
+design/prototype/common/card-import.js -text
+
+# Note on the rest of the tree: this repository commits CRLF blobs. Do not
+# add a blanket "text=auto" rule to normalise it. The blobs are not
+# normalised today, so the first "git add --renormalize ." would rewrite
+# every file and bury a real change under thousands of line-ending diffs.
+# Migrating to LF is its own task, not a side effect of adding a test.
