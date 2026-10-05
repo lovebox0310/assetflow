@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>지출 목업 · AssetFlow 프로토타입</title>
-    <link rel="stylesheet" href="assets/tokens.css" />
-    <link rel="stylesheet" href="assets/base.css" />
+    <link rel="stylesheet" href="common/tokens.css" />
+    <link rel="stylesheet" href="common/base.css" />
     <style>
       /* 이 화면은 값의 단일 출처다. 대시보드와 설정은 여기서 계산된 값을 읽는다. */
       .layout-grid {
@@ -152,6 +152,46 @@
         position: sticky;
         top: var(--space-4);
       }
+
+      /* 카드내역 미리보기 */
+      .item-table select {
+        padding: var(--space-1) var(--space-2);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-input);
+        background: var(--color-bg-container);
+        color: var(--color-text);
+        font: inherit;
+        font-size: var(--font-size-sm);
+      }
+      .card-warn {
+        margin: 0 0 var(--space-2);
+        padding-left: var(--space-5);
+        color: var(--color-text-secondary);
+        font-size: var(--font-size-xs);
+      }
+      .card-warn li {
+        margin-bottom: var(--space-1);
+      }
+      .imp-card {
+        border: 1px solid var(--color-border-secondary);
+        border-radius: var(--radius-input);
+        padding: var(--space-3) var(--space-4);
+        margin-bottom: var(--space-3);
+      }
+      .imp-card__head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--space-2);
+        margin-bottom: var(--space-2);
+      }
+      .imp-card__title {
+        font-weight: 600;
+      }
+      .imp-card__meta {
+        color: var(--color-text-tertiary);
+        font-size: var(--font-size-xs);
+      }
     </style>
   </head>
   <body>
@@ -171,6 +211,7 @@
         <nav class="app-nav" aria-label="주요 메뉴">
           <a class="app-nav__link" href="dashboard.html">대시보드</a>
           <a class="app-nav__link" href="expenses.html" aria-current="page">지출</a>
+          <a class="app-nav__link" href="assets.html">자산</a>
           <a class="app-nav__link" href="settings.html">설정</a>
         </nav>
       </div>
@@ -283,6 +324,100 @@
                 </p>
               </div>
             </section>
+
+            <section class="card" aria-labelledby="h-card" style="margin-top: var(--space-6)">
+              <div class="card__head">
+                <h2 class="card__label" id="h-card">카드내역 가져오기</h2>
+                <span class="tag tag--info" id="cardPreviewTag" hidden>—</span>
+              </div>
+              <div class="card__body">
+                <p class="section__desc">
+                  카드사 CSV 파일을 이 브라우저에서 읽는다. 원본 파일은 서버로 전송되지
+                  않는다. 미리보기에서 가맹점별 용도(업무용/개인용)를 정하고 가져온다.
+                  가맹점 용도는 저장되어 다음 명세부터 자동 적용된다. 미분류 항목은
+                  어느 합계에도 들어가지 않는다.
+                </p>
+                <div class="field">
+                  <label class="field__label" for="cardFile">카드내역 CSV 파일</label>
+                  <input type="file" id="cardFile" class="field__control" accept=".csv,text/csv" />
+                  <p class="field__help">
+                    삼성카드·현대카드 CSV. 암호화된 파일(비밀번호로 잠긴 문서)은 이 화면이
+                    여지 않는다. 카드사에서 암호화 없는 CSV 로 받거나, 엑셀에서 열어
+                    암호화 없이 저장한 뒤 올린다.
+                  </p>
+                </div>
+                <p class="field__error" id="cardError" role="alert" hidden></p>
+                <p class="sum-formula" id="cardStatus" role="status" hidden></p>
+
+                <div id="cardPreview" hidden>
+                  <div class="sum-row">
+                    <span class="sum-label" id="cardPrevLabel">—</span>
+                    <span class="sum-value" id="cardPrevCount">—</span>
+                  </div>
+                  <div class="sum-row">
+                    <span class="sum-label">이용금액 합계 / 부가세 합계</span>
+                    <span class="sum-value" id="cardPrevSum">—</span>
+                  </div>
+                  <div class="sum-row">
+                    <span class="sum-label" id="cardPrevCrossLabel">명세 합계행 대조</span>
+                    <span class="sum-value" id="cardPrevCross">—</span>
+                  </div>
+
+                  <h3 class="section__title" style="margin-top: var(--space-4)">가맹점별 용도 구분</h3>
+                  <table class="item-table">
+                    <caption class="sr-only">
+                      미리보기의 가맹점 목록. 가맹점마다 업무용·개인용 여부를 고른다.
+                      고른 값은 규칙으로 저장되어 다음 명세부터 자동 적용된다.
+                    </caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">가맹점</th>
+                        <th scope="col" class="num cell-num">건수</th>
+                        <th scope="col" class="num cell-num">이용금액 합</th>
+                        <th scope="col" class="num cell-num">부가세 합</th>
+                        <th scope="col" class="cell-flag">취소</th>
+                        <th scope="col">용도구분</th>
+                      </tr>
+                    </thead>
+                    <tbody id="cardMerchants"></tbody>
+                  </table>
+                  <p class="sum-formula" id="cardMerchantMore" hidden></p>
+
+                  <h3 class="section__title" style="margin-top: var(--space-4)">확인이 필요한 행</h3>
+                  <p class="section__desc" id="cardWarnNone">
+                    경고가 없다. 행 합계가 명세 합계와 맞고, 읽지 못한 행도 없다.
+                  </p>
+                  <ul class="card-warn" id="cardWarnings"></ul>
+
+                  <div class="actions">
+                    <button type="button" class="btn btn--primary" id="cardImportBtn">
+                      가져오기
+                    </button>
+                    <button type="button" class="btn" id="cardPreviewCancel">취소</button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="card" aria-labelledby="h-imports" style="margin-top: var(--space-6)">
+              <div class="card__head">
+                <h2 class="card__label" id="h-imports">가져온 카드내역</h2>
+                <span class="tag tag--info" id="importsTag">—</span>
+              </div>
+              <div class="card__body">
+                <p class="section__desc">
+                  같은 거래(rowKey)를 다시 가져오면 건너뛴다. 카드 부가세 합계는
+                  세금계산서 매입세액과 별개 증빙이다 — 카드만으로 매입 대조가
+                  완성되지 않으며, 나머지는 현금영수증·세금계산서에서 나온다.
+                </p>
+                <div id="importsList"></div>
+                <div class="actions" id="importsActions" hidden>
+                  <button type="button" class="btn" id="cardResetAll">
+                    카드내역 전체 삭제
+                  </button>
+                </div>
+              </div>
+            </section>
           </div>
 
           <aside class="sticky">
@@ -343,7 +478,7 @@
       </div>
     </footer>
 
-    <script src="assets/mock-data.js"></script>
+    <script src="common/mock-data.js"></script>
     <script>
       (function () {
         "use strict";
@@ -619,6 +754,453 @@
 
         // 저장값 적용은 mock-data.js 가 로드 시 이미 끝났다. 여기서는 그리기만 한다.
         render();
+      })();
+    </script>
+    <script src="common/card-import.js"></script>
+    <script>
+      // 카드내역 가져오기 (§29). 파서·판별기는 AFCard(자동 생성 번들)가 담당하고
+      // 이 스크립트는 화면 흐름만 담당한다. 원본 파일은 서버로 전송되지 않는다.
+      (function () {
+        "use strict";
+        var AFCard = window.AFCard;
+        var AF = window.AF;
+        var d = AF.data;
+        var f = AF.fmt;
+        var store = AF.cardStorage;
+
+        var el = function (id) { return document.getElementById(id); };
+
+        function setStatus(msg) {
+          var s = el("cardStatus");
+          s.hidden = !msg;
+          s.textContent = msg || "";
+        }
+        function setError(msg) {
+          var e = el("cardError");
+          e.hidden = !msg;
+          e.textContent = msg || "";
+        }
+
+        var KIND_LABEL = { business: "업무용", personal: "개인용", unclassified: "미분류" };
+        var COMPANY_LABEL = { samsungcard: "삼성카드", hyundaicard: "현대카드" };
+
+        // ---------- 미리보기 상태 ----------
+        var preview = null; // { company, parsed, groups }
+
+        function rulesOf(merchant) {
+          return d.card.merchantRules[merchant] || "unclassified";
+        }
+
+        function groupByMerchant(rows) {
+          var map = new Map();
+          rows.forEach(function (r) {
+            var g = map.get(r.merchantName);
+            if (!g) {
+              g = { merchant: r.merchantName, count: 0, gross: 0, vat: 0, cancel: 0, kind: rulesOf(r.merchantName) };
+              map.set(r.merchantName, g);
+            }
+            g.count++;
+            g.gross += r.grossAmount;
+            g.vat += r.vat;
+            if (r.reversal === "매입취소") g.cancel++;
+          });
+          return [...map.values()].sort(function (a, b) { return Math.abs(b.gross) - Math.abs(a.gross); });
+        }
+
+        // 가맹점 용도를 고르면 규칙으로 저장한다(§29 계약의 merchantRule).
+        // 다음 명세부터 같은 가맹점에 자동 적용된다. 미분류로 되돌리면 규칙을 지운다.
+        function setMerchantRule(merchant, kind) {
+          if (kind === "unclassified") delete d.card.merchantRules[merchant];
+          else d.card.merchantRules[merchant] = kind;
+          store.save();
+          if (preview) {
+            preview.groups.forEach(function (g) {
+              if (g.merchant === merchant) g.kind = kind;
+            });
+            preview.parsed.rows.forEach(function (r) {
+              if (r.merchantName === merchant) r.expenseKind = kind;
+            });
+          }
+        }
+
+        // ---------- 파일 읽기 ----------
+        function decodeText(buf, kind) {
+          if (kind === "csv-utf16le") return new TextDecoder("utf-16le").decode(buf);
+          if (kind === "csv-utf16be") return new TextDecoder("utf-16be").decode(buf);
+          if (kind === "csv-utf8bom") return new TextDecoder("utf-8").decode(buf.subarray(3));
+          return new TextDecoder("utf-8").decode(buf);
+        }
+
+        async function handleFile(file) {
+          el("cardPreview").hidden = true;
+          el("cardPreviewTag").hidden = true;
+          el("cardWarnings").textContent = "";
+          setError("");
+          if (!file) { setStatus(""); return; }
+          setStatus("파일을 읽는 중…");
+
+          var buf = new Uint8Array(await file.arrayBuffer());
+          var ext = ("." + (file.name.split(".").pop() || "").toLowerCase());
+          var kind = AFCard.detectFileKind(buf, ext);
+
+          // 암호화 정책: 이 화면은 암호화 문서를 여는 기능이 없다. 우회도 없다.
+          // 암호 입력만 허용인데 열기 구현이 아직 없으므로 평문 경로로 안내한다.
+          if (kind.kind === "cfb") {
+            setStatus("");
+            setError(
+              "암호화된 문서거나 Office 컨테이너 파일이다(.xlsx 라고 적혀 있어도 zip 이 " +
+              "아니다). 이 화면은 비밀번호로 여는 기능이 아직 없으므로, 카드사에서 " +
+              "암호화 없는 CSV 로 받거나 엑셀에서 열어 암호화 없이 저장한 뒤 올린다."
+            );
+            return;
+          }
+          if (kind.kind === "zip-xlsx") {
+            setStatus("");
+            setError("평문 xlsx 는 아직 이 화면이 읽지 못한다. 엑셀에서 CSV 로 저장해서 올린다.");
+            return;
+          }
+          if (kind.kind === "empty" || kind.kind === "unknown") {
+            setStatus("");
+            setError("카드내역 파일이 아닌 것 같다. 파일이 손상되지 않았는지 확인한다.");
+            return;
+          }
+
+          var text = decodeText(buf, kind.kind);
+          var rows = AFCard.parseCsv(text);
+          var det = AFCard.detectCompanyFromRows(rows, AFCard.contract);
+          if (!det.company) {
+            setStatus("");
+            setError(
+              "카드사를 확인할 수 없다. 이 화면은 삼성카드·현대카드 CSV 만 읽는다. " +
+              "다른 카드사면 samples/card/card-columns.json 에 프로파일을 추가해야 한다."
+            );
+            return;
+          }
+
+          var parsed;
+          try {
+            parsed = det.company === "hyundaicard"
+              ? AFCard.parseHyundaiCardStatement(buf, AFCard.contract)
+              : AFCard.parseSamsungCardStatement(buf, AFCard.contract);
+          } catch (err) {
+            setStatus("");
+            setError("파싱 실패: " + err.message);
+            return;
+          }
+
+          // 저장된 가맹점 규칙을 먼저 적용한다.
+          parsed.rows.forEach(function (r) { r.expenseKind = rulesOf(r.merchantName); });
+          preview = { company: det.company, parsed: parsed, groups: groupByMerchant(parsed.rows) };
+          setError("");
+          setStatus(
+            COMPANY_LABEL[det.company] + " 명세로 읽었다. 헤더 " + parsed.header.rowNumber +
+            "행째. 가맹점별 용도를 확인하고 가져온다."
+          );
+          renderPreview();
+        }
+
+        // ---------- 미리보기 그리기 ----------
+        function renderPreview() {
+          var p = parsedSums();
+          el("cardPreviewTag").hidden = false;
+          el("cardPreviewTag").textContent = COMPANY_LABEL[preview.company];
+          el("cardPrevLabel").textContent =
+            COMPANY_LABEL[preview.company] + " · 헤더 " + preview.parsed.header.rowNumber + "행째 · 취소 " + p.cancelCount + "건";
+          el("cardPrevCount").textContent = p.rowCount + "건";
+          el("cardPrevSum").textContent =
+            f.formatKRW(p.grossSum) + " / " + f.formatKRW(p.vatSum);
+          var cc = preview.parsed.crossCheck;
+          if (!cc) {
+            el("cardPrevCrossLabel").textContent = "명세 합계행";
+            el("cardPrevCross").textContent = "합계행을 못 찾았다 (대조 불가)";
+          } else if (cc.grossOk && cc.vatOk && cc.countOk !== false) {
+            el("cardPrevCrossLabel").textContent = "명세 합계행 대조";
+            el("cardPrevCross").textContent = "일치 (총액·부가세" + (cc.countOk === true ? "·건수" : "") + ")";
+          } else {
+            el("cardPrevCrossLabel").textContent = "명세 합계행 대조";
+            el("cardPrevCross").textContent =
+              "불일치 — 이 파일을 그대로 믿으면 안 된다";
+          }
+
+          // 가맹점 표
+          var body = el("cardMerchants");
+          body.textContent = "";
+          var MAX_GROUPS = 100;
+          preview.groups.slice(0, MAX_GROUPS).forEach(function (g) {
+            var tr = document.createElement("tr");
+            var td1 = document.createElement("td");
+            td1.textContent = g.merchant;
+            tr.appendChild(td1);
+
+            var tdN = document.createElement("td");
+            tdN.className = "num cell-num";
+            tdN.textContent = String(g.count);
+            tr.appendChild(tdN);
+
+            var tdG = document.createElement("td");
+            tdG.className = "num cell-num";
+            tdG.textContent = f.formatKRW(g.gross);
+            tr.appendChild(tdG);
+
+            var tdV = document.createElement("td");
+            tdV.className = "num cell-num";
+            tdV.textContent = f.formatKRW(g.vat);
+            tr.appendChild(tdV);
+
+            var tdC = document.createElement("td");
+            tdC.className = "cell-flag";
+            tdC.textContent = g.cancel ? String(g.cancel) : "";
+            tr.appendChild(tdC);
+
+            var tdK = document.createElement("td");
+            var sel = document.createElement("select");
+            ["unclassified", "business", "personal"].forEach(function (k) {
+              var opt = document.createElement("option");
+              opt.value = k;
+              opt.textContent = KIND_LABEL[k];
+              opt.selected = g.kind === k;
+              sel.appendChild(opt);
+            });
+            sel.setAttribute("aria-label", g.merchant + " 용도구분");
+            sel.addEventListener("change", function () {
+              setMerchantRule(g.merchant, sel.value);
+              setStatus("가맹점 '" + g.merchant + "' 를 " + KIND_LABEL[sel.value] + "(으)로 저장했다. 다음 명세부터 자동 적용된다.");
+            });
+            tdK.appendChild(sel);
+            tr.appendChild(tdK);
+
+            body.appendChild(tr);
+          });
+          var more = el("cardMerchantMore");
+          if (preview.groups.length > MAX_GROUPS) {
+            more.hidden = false;
+            more.textContent = "…외 " + (preview.groups.length - MAX_GROUPS) + "개 가맹점. 가져온 뒤 가맹점 규칙으로 관리한다.";
+          } else {
+            more.hidden = true;
+          }
+
+          renderWarnings();
+          el("cardPreview").hidden = false;
+        }
+
+        function renderWarnings() {
+          var list = el("cardWarnings");
+          list.textContent = "";
+          var ws = preview.parsed.warnings;
+          el("cardWarnNone").hidden = ws.length > 0;
+          var MAX_W = 20;
+          ws.slice(0, MAX_W).forEach(function (w) {
+            var li = document.createElement("li");
+            li.textContent = w.row + "행 [" + w.code + "] " + w.message;
+            list.appendChild(li);
+          });
+          if (ws.length > MAX_W) {
+            var li = document.createElement("li");
+            li.textContent = "…외 " + (ws.length - MAX_W) + "건의 경고";
+            list.appendChild(li);
+          }
+        }
+
+        // 합계는 행에서 다시 계산한다. 저장된 합계를 믿지 않는다.
+        function parsedSums() {
+          var rows = preview.parsed.rows;
+          return {
+            rowCount: rows.length,
+            grossSum: rows.reduce(function (a, r) { return a + r.grossAmount; }, 0),
+            vatSum: rows.reduce(function (a, r) { return a + r.vat; }, 0),
+            cancelCount: rows.filter(function (r) { return r.reversal === "매입취소"; }).length
+          };
+        }
+
+        // ---------- 가져오기 ----------
+        function existingKeys() {
+          var keys = new Set();
+          d.card.imports.forEach(function (imp) {
+            imp.rows.forEach(function (r) { keys.add(r.rowKey); });
+          });
+          return keys;
+        }
+
+        el("cardImportBtn").addEventListener("click", function () {
+          if (!preview) return;
+          var keys = existingKeys();
+          var fresh = [];
+          var skipped = 0;
+          preview.parsed.rows.forEach(function (r) {
+            if (keys.has(r.rowKey)) { skipped++; return; }
+            keys.add(r.rowKey);
+            fresh.push(r);
+          });
+          if (!fresh.length) {
+            setStatus("이미 가져온 내역이다(중복 " + skipped + "건). 새로 저장하지 않았다.");
+            return;
+          }
+
+          var dates = fresh.map(function (r) { return r.approvedAt; }).sort();
+          var cc = preview.parsed.crossCheck;
+          var record = {
+            id: "imp-" + Date.now().toString(36),
+            company: preview.company,
+            title: AFCard.contract.companies[preview.company].title,
+            importedAt: d.asOf,
+            period: dates.length ? dates[0] + " ~ " + dates[dates.length - 1] : "",
+            crossCheck: cc ? { grossOk: !!cc.grossOk, vatOk: !!cc.vatOk, countOk: cc.countOk === null ? null : !!cc.countOk } : null,
+            rows: fresh.map(function (r) {
+              return {
+                rowKey: r.rowKey,
+                approvedAt: r.approvedAt,
+                merchantName: r.merchantName,
+                grossAmount: r.grossAmount,
+                supplyExVat: r.supplyExVat,
+                vat: r.vat,
+                expenseKind: r.expenseKind,
+                reversal: r.reversal,
+                cardMasked: r.cardMasked,
+                approvedAmount: r.approvedAmount,
+                installmentCount: r.installmentCount,
+                memberRelation: r.memberRelation,
+                approvalNo: r.approvalNo
+              };
+            })
+          };
+          d.card.imports.unshift(record);
+          store.save();
+          renderImports();
+
+          var unclassified = fresh.filter(function (r) { return r.expenseKind === "unclassified"; }).length;
+          setStatus(
+            "가져왔다: " + fresh.length + "건" +
+            (skipped ? " (중복 건너뜀 " + skipped + "건)" : "") +
+            (unclassified ? " · 미분류 " + unclassified + "건은 어느 합계에도 들어가지 않는다" : "")
+          );
+          clearPreview();
+        });
+
+        function clearPreview() {
+          preview = null;
+          el("cardPreview").hidden = true;
+          el("cardPreviewTag").hidden = true;
+          el("cardWarnings").textContent = "";
+          el("cardFile").value = "";
+        }
+
+        el("cardPreviewCancel").addEventListener("click", function () {
+          clearPreview();
+          setStatus("미리보기를 닫았다. 파일을 다시 선택하면 된다.");
+        });
+
+        // ---------- 가져온 내역 그리기 ----------
+        function importSums(imp) {
+          var rows = imp.rows;
+          var business = rows.filter(function (r) { return r.expenseKind === "business"; });
+          return {
+            rowCount: rows.length,
+            grossSum: rows.reduce(function (a, r) { return a + r.grossAmount; }, 0),
+            vatSum: rows.reduce(function (a, r) { return a + r.vat; }, 0),
+            businessVat: business.reduce(function (a, r) { return a + r.vat; }, 0),
+            businessGross: business.reduce(function (a, r) { return a + r.grossAmount; }, 0),
+            cancelCount: rows.filter(function (r) { return r.reversal === "매입취소"; }).length,
+            unclassifiedCount: rows.filter(function (r) { return r.expenseKind === "unclassified"; }).length,
+            personalCount: rows.filter(function (r) { return r.expenseKind === "personal"; }).length
+          };
+        }
+
+        function renderImports() {
+          var wrap = el("importsList");
+          wrap.textContent = "";
+          var imports = d.card.imports;
+          el("importsTag").textContent = imports.length ? imports.length + "회 가져옴" : "아직 없음";
+          el("importsActions").hidden = !imports.length;
+
+          if (!imports.length) {
+            var p = document.createElement("p");
+            p.className = "section__desc";
+            p.textContent = "아직 가져온 카드내역이 없다. 위에서 CSV 파일을 올린다.";
+            wrap.appendChild(p);
+            return;
+          }
+
+          imports.forEach(function (imp) {
+            var s = importSums(imp);
+            var card = document.createElement("div");
+            card.className = "imp-card";
+
+            var head = document.createElement("div");
+            head.className = "imp-card__head";
+            var title = document.createElement("span");
+            title.className = "imp-card__title";
+            title.textContent = COMPANY_LABEL[imp.company] + " · " + imp.period;
+            head.appendChild(title);
+            var meta = document.createElement("span");
+            meta.className = "imp-card__meta";
+            var cc = imp.crossCheck;
+            meta.textContent =
+              "가져온 날 " + imp.importedAt + " · " + s.rowCount + "건" +
+              (cc ? " · 명세 합계 " + (cc.grossOk && cc.vatOk && cc.countOk !== false ? "일치" : "불일치") : "");
+            head.appendChild(meta);
+            card.appendChild(head);
+
+            [
+              ["이용금액 합계 (취소 포함 순액)", f.formatKRW(s.grossSum)],
+              ["부가세 합계", f.formatKRW(s.vatSum)],
+              ["업무용 매입세액 (부가세 순액)", f.formatKRW(s.businessVat)],
+              ["업무용 지출 규모", f.formatKRW(s.businessGross)]
+            ].forEach(function (pair) {
+              var row = document.createElement("div");
+              row.className = "sum-row";
+              var l = document.createElement("span");
+              l.className = "sum-label";
+              l.textContent = pair[0];
+              var v = document.createElement("span");
+              v.className = "sum-value";
+              v.textContent = pair[1];
+              row.appendChild(l);
+              row.appendChild(v);
+              card.appendChild(row);
+            });
+
+            var note = document.createElement("p");
+            note.className = "sum-formula";
+            var parts2 = ["개인용 " + s.personalCount + "건"];
+            if (s.cancelCount) parts2.push("취소 " + s.cancelCount + "건");
+            if (s.unclassifiedCount) {
+              parts2.push("미분류 " + s.unclassifiedCount + "건 — 어느 합계에도 들어가지 않는다");
+            }
+            note.textContent = parts2.join(" · ");
+            card.appendChild(note);
+
+            var act = document.createElement("div");
+            act.className = "actions";
+            var del = document.createElement("button");
+            del.type = "button";
+            del.className = "row-btn";
+            del.textContent = "×";
+            del.setAttribute("aria-label", COMPANY_LABEL[imp.company] + " " + imp.period + " 내역 삭제");
+            del.addEventListener("click", function () {
+              d.card.imports = d.card.imports.filter(function (x) { return x !== imp; });
+              store.save();
+              renderImports();
+              setStatus("내역을 삭제했다. 같은 파일을 다시 가져올 수 있다.");
+            });
+            act.appendChild(del);
+            card.appendChild(act);
+
+            wrap.appendChild(card);
+          });
+        }
+
+        el("cardResetAll").addEventListener("click", function () {
+          store.reset();
+          renderImports();
+          setStatus("가져온 카드내역과 가맹점 규칙을 전부 지웠다.");
+        });
+
+        el("cardFile").addEventListener("change", function () {
+          handleFile(this.files && this.files[0]);
+        });
+
+        // 로드 시 저장값 적용은 mock-data.js 가 이미 끝냈다. 그리기만 한다.
+        renderImports();
       })();
     </script>
   </body>
