@@ -14,7 +14,39 @@
 
 ---
 
-## 2026-10-05 — 부채를 자산과 같은 화면으로 (기관·유형·금리·만기 + 상환 계획)
+## 2026-10-05 — 프론트엔드 스캐폴딩 (React 18 + Vite + TS)
+
+### 무엇을 했나
+
+FE 빌드가 없던 상태에서 `apps/frontend` 에 실행 가능한 스캐폴딩을 만들었습니다.
+기존에 있던 소스(Auth/페이지/API 타입)를 유지하면서, 도구체인만 추가했습니다.
+
+| # | 작업 | 산출물 |
+|---|---|---|
+| 1 | Vite + React 18 + TypeScript 설정 | `apps/frontend/package.json`, `tsconfig.json`, `vite.config.ts`, `index.html` |
+| 2 | 테스트 환경(Vitest + jsdom + RTL) | `vite.config.ts`, `*.test.ts(x)` 3건 |
+| 3 | README 갱신(pnpm/corepack) | `apps/frontend/README.md` |
+
+검증: `corepack pnpm run --dir apps/frontend typecheck` → PASS, `test` → 8건 PASS,
+`build` → PASS. 프로토타입 회귀도 그대로 PASS(3/3, 408건).
+
+### 결정과 근거
+
+- 패키지 매니저: **pnpm 단독**(§30). `packageManager` 필드로 pnpm@9.15.4 고정.
+  Windows의 Device Guard 문제 때문에 corepack 12.10.1 네이티브가 막혀 있던 환경도
+  9.15.4 체인으로 정리했다.
+- FE 버전: React 18.3.1 + Vite 8 + TS 5.9. 저장소 기존 계획(React 18, Vite)과 일치.
+- 계산은 단일 출처를 지킨다. `design/prototype/assets.html` 의 로직을 React 로
+  옮길 때는 계산 함수를 분리해 두 화면이 같은 코드를 쓰게 할 것(§34.6).
+
+### 남은 것
+
+- `design/prototype/assets.html` 의 금융자산·부채 UI/계산을 FE 컴포넌트로 이식.
+- 대시보드 카드(§23)의 파생값: 합계·순자산·비상금개월·투자가능현금·세금 잔액을
+  실제 데이터로 계산하도록 연결.
+
+---
+
 
 ### 무엇을 했나
 
