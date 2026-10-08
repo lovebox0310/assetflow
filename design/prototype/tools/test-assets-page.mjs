@@ -8,6 +8,7 @@
 // 기대값은 시드 데이터에서 계산한다. 합계 숫자를 손으로 박지 않는다.
 
 import { check, report, loadPage, createEnv, formatKRW, sum } from "./prototype-harness.mjs";
+import { readFileSync } from "node:fs";
 
 const KEY = "assetflow.assets.v3";
 const INVEST_CLASSES = ["stock", "etf", "bond", "fund"];
@@ -132,6 +133,9 @@ check("수정 모드에서 삭제 버튼이 뜬다",
 /* ================================================================ */
 
 const p3 = boot();
+// 되돌아갈 시드 값을 먼저 기억한다. 하드코딩하면 시드 고칠 때 조용히 무의미해진다.
+const seedDepCv3 =
+  assetByKey(p3.data.assets, keyOf(p3, "신한은행 정기예금")).currentValue;
 editMode(p3);
 type(p3, "신한은행 정기예금", "currentValue", "60000000");
 
@@ -150,8 +154,9 @@ check("안내 문구가 보인다", p3.el("modeHint").hidden === false, text(p3,
 p3.el("editCancel").click();
 check("취소 후 읽기 모드로 돌아온다", text(p3, "modeState") === "읽기", text(p3, "modeState"));
 check("취소하면 수정 전 값으로 되돌아간다",
-  assetByKey(p3.data.assets, keyOf(p3, "신한은행 정기예금")).currentValue === 50000000,
-  "실제 " + assetByKey(p3.data.assets, keyOf(p3, "신한은행 정기예금")).currentValue);
+  assetByKey(p3.data.assets, keyOf(p3, "신한은행 정기예금")).currentValue === seedDepCv3,
+  "기대 " + seedDepCv3 + " 실제 " +
+  assetByKey(p3.data.assets, keyOf(p3, "신한은행 정기예금")).currentValue);
 check("취소 후에도 저장소는 비어 있다", !p3.store.has(KEY));
 check("취소 후 다시 확정/취소가 막힌다", p3.el("editConfirm").disabled === true);
 check("취소하면 입력칸이 사라진다", treeInputs(p3).length === 0);
@@ -259,6 +264,8 @@ check("문자 입력을 거절한다", assetByKey(p10.data.assets, k10).currentV
 /* ================================================================ */
 
 const p11 = boot();
+// 되돌아갈 시드 값을 먼저 기억한다. 하드코딩하면 시드 고칠 때 조용히 무의미해진다.
+const seedIrpCv = assetByLabel(p11.data.assets, "삼성증권 IRP").currentValue;
 editMode(p11);
 type(p11, "삼성증권 IRP", "currentValue", "60000000");
 p11.answers.confirmQueue = [false];
@@ -272,8 +279,9 @@ p11.answers.confirmQueue = [true];
 dispatchKey(p11.document, "Escape");
 check("확인하면 읽기 모드로 돌아온다", text(p11, "modeState") === "읽기");
 check("Escape 취소로 값도 되돌아간다",
-  assetByLabel(p11.data.assets, "삼성증권 IRP").currentValue === 51500000,
-  "실제 " + assetByLabel(p11.data.assets, "삼성증권 IRP").currentValue);
+  assetByLabel(p11.data.assets, "삼성증권 IRP").currentValue === seedIrpCv,
+  "기대 " + seedIrpCv + " 실제 " +
+  assetByLabel(p11.data.assets, "삼성증권 IRP").currentValue);
 
 const p12 = boot();
 editMode(p12);
@@ -364,6 +372,10 @@ check("삭제 후에도 트리 행 수와 자산 수가 맞는다",
 /* ================================================================ */
 
 const p17 = boot();
+// 시드 값을 먼저 기억한다. 초기화는 이 값으로 되돌려야 한다.
+// 값을 하드코딩하면 예적금 시드를 고칠 때마다 이 검사가 조용히 의미를 잃는다.
+const seedDepCv =
+  assetByLabel(p17.data.assets, "신한은행 정기예금").currentValue;
 editMode(p17);
 type(p17, "신한은행 정기예금", "currentValue", "60000000");
 p17.el("resetAll").click();
@@ -371,9 +383,371 @@ check("초기화하면 읽기 모드로 돌아온다", text(p17, "modeState") ==
   text(p17, "modeState"));
 check("초기화하면 저장소가 비워진다", !p17.store.has(KEY));
 check("초기화하면 값도 시드로 돌아온다",
-  assetByLabel(p17.data.assets, "신한은행 정기예금").currentValue === 50000000);
+  assetByLabel(p17.data.assets, "신한은행 정기예금").currentValue === seedDepCv,
+  "기대 " + seedDepCv + " 실제 " +
+  assetByLabel(p17.data.assets, "신한은행 정기예금").currentValue);
 
 report("assets.html 계층·모드·저장 회귀");
+
+/* ================================================================ */
+/* 15. 예적금 수익률이 0 으로 무너지지 않는다 (2026-10-05 회귀)      */
+/* ================================================================ */
+
+const p18 = boot();
+const dep18 = assetByLabel(p18.data.assets, "신한은행 정기예금");
+
+check("시드 예적금의 수익률이 0 이 아니다", dep18.returnRate > 0,
+  "수익률 " + dep18.returnRate);
+check("시드 예적금 평가금액이 원금보다 크다",
+  dep18.currentValue > dep18.principalDeposit,
+  "평가 " + dep18.currentValue + " 원금 " + dep18.principalDeposit);
+check("시드 예적금 수익률이 파생값과 일치한다",
+  Math.abs(dep18.returnRate -
+    ((dep18.currentValue - dep18.principalDeposit) / dep18.principalDeposit) * 100) < 1e-9,
+  "수익률 " + dep18.returnRate);
+
+// 이것이 사용자 보고 그 자체다. 원금을 편집하면 예전에는 수익률이 0 이 되었다.
+// 편집은 확정 전 스냅샷 안에서 일어나야 하고, 값은 살아남아야 한다.
+editMode(p18);
+type(p18, "신한은행 정기예금", "principal", "40000000");
+const dep18b = assetByLabel(p18.data.assets, "신한은행 정기예금");
+check("원금을 편집해도 수익률이 0 이 아니다",
+  dep18b.returnRate > 0, "수익률 " + dep18b.returnRate);
+check("원금 편집 후 수익률이 파생값으로 갱신된다",
+  Math.abs(dep18b.returnRate -
+    ((dep18b.currentValue - dep18b.principalDeposit) / dep18b.principalDeposit) * 100) < 1e-9,
+  "수익률 " + dep18b.returnRate);
+check("원금 편집이 평가금액을 바꾸지는 않는다 (편집은 원금 만 건드린다)",
+  dep18b.currentValue === dep18.currentValue,
+  "평가 " + dep18b.currentValue + " (기대 " + dep18.currentValue + ")");
+check("수정 모드에서 예적금 수익률 칸은 입력 칸이 아니다",
+  p18.queries.inputsUnder(
+    p18.queries.rowsByClass("tree-level3")
+      .filter((r) => p18.queries.text(r).indexOf("신한은행 정기예금") >= 0)[0]
+  ).every((i) => i.dataset.field !== "returnRate"));
+
+report("assets.html 예적금 수익률 0% 회귀");
+
+/* ================================================================ */
+/* 16. 부채는 기관·유형·금리·만기와 함께 읽힌다 (읽기 모드)           */
+/* ================================================================ */
+
+/** 부채 tbody 안의 특정 태그를 찾는다. querySelector 가 없으므로 walk 로 찾는다. */
+const liabTags = (p, tag) => {
+  const out = [];
+  p.queries.walk(p.el("liabBody"), (el) => { if (el.tagName === tag) out.push(el); });
+  return out;
+};
+const liabRows = (p) => Array.from(p.el("liabBody").children);
+const liabCell = (p, rowIdx, colIdx) => p.queries.text(liabRows(p)[rowIdx].children[colIdx]);
+const liabField = (p, field) => liabTags(p, "INPUT").filter((i) => i.dataset.field === field)[0];
+const setSelect = (p, field, value) => {
+  const sel = liabTags(p, "SELECT").filter((s) => s.dataset.field === field)[0];
+  sel.value = value;
+  sel.dispatchEvent({ type: "change" });
+  return sel;
+};
+/** 평가금액 기준 자산 합계. 트리·요약 카드가 쓰는 값과 같은 기준이다. */
+const assetValueSum = (list) =>
+  list.reduce((a, x) => a + (x.currentValue != null ? x.currentValue : x.amount), 0);
+
+const p20 = boot();
+const debt20 = p20.data.liabilities[0];
+const instName20 = p20.data.institutions.filter((i) => i.id === debt20.institutionId)[0].name;
+const maturity20 = p20.AF.debt.maturityOf(p20.data.asOfMonth, debt20.termMonths);
+
+check("부채 표에 시드만큼 행이 있다",
+  liabRows(p20).length === p20.data.liabilities.length,
+  liabRows(p20).length + "행");
+// 하네스는 정적 마크업을 DOM 트리로 만들지 않는다(id 요소만 뒤늦게 만든다).
+// 표 머리글은 그러므로 소스에서 읽어 계약으로 삼는다 — 열 순서는 화면이 아니라
+// 마크업이 정한다.
+const debtHeadNames = (() => {
+  const src = readFileSync(new URL("../assets.html", import.meta.url), "utf8");
+  const thead = src.split('<tbody id="liabBody">')[0].split('<table class="item-table">').pop();
+  return Array.from(thead.matchAll(/<th scope="col"[^>]*>([\s\S]*?)<\/th>/g))
+    .map((m) => m[1].replace(/<[^>]+>/g, "").trim());
+})();
+check("부채 표 헤더는 항목·기관·유형·금액·금리·만기·월납입액·삭제 순이다",
+  debtHeadNames.join(",") === "항목,기관,유형,금액(원),금리(%),만기,월납입액(원),삭제",
+  debtHeadNames.join(","));
+check("부채 행이 칸을 여덟 개 쓴다", liabRows(p20)[0].children.length === 8,
+  "셀 " + liabRows(p20)[0].children.length + "개");
+check("부채 행이 기관 이름을 보여 준다", liabCell(p20, 0, 1) === instName20,
+  liabCell(p20, 0, 1) + " vs " + instName20);
+check("부채 행이 유형을 보여 준다", liabCell(p20, 0, 2) === debt20.debtType,
+  liabCell(p20, 0, 2));
+check("부채 행 금액은 천단위 숫자다", liabCell(p20, 0, 3) === formatKRW(debt20.amount),
+  liabCell(p20, 0, 3) + " vs " + formatKRW(debt20.amount));
+check("부채 행 금리는 소수 둘째 자리다", liabCell(p20, 0, 4) === debt20.rate.toFixed(2),
+  liabCell(p20, 0, 4));
+check("부채 행 만기는 남은 회차에서 나온다", liabCell(p20, 0, 5) === maturity20,
+  liabCell(p20, 0, 5) + " vs " + maturity20);
+check("부채 행 월납입액을 보여 준다",
+  liabCell(p20, 0, 6) === formatKRW(debt20.monthlyPayment), liabCell(p20, 0, 6));
+check("읽기 모드에서 부채 행에 입력칸이 없다",
+  liabTags(p20, "INPUT").length === 0 && liabTags(p20, "SELECT").length === 0,
+  "input " + liabTags(p20, "INPUT").length + " select " + liabTags(p20, "SELECT").length);
+check("읽기 모드에서 부채 삭제 버튼이 없다",
+  liabTags(p20, "BUTTON").length === 0,
+  "button " + liabTags(p20, "BUTTON").length);
+check("읽기 모드에서 부채 추가 버튼이 숨겨진다", p20.el("addLiab").hidden === true);
+
+/* ================================================================ */
+/* 17. 상환 계획은 행에서 파생된다 (저장하지 않는다)                  */
+/* ================================================================ */
+
+const plan20 = p20.AF.debt.plan(debt20, p20.data.asOfMonth);
+const planText20 = p20.queries.text(p20.el("liabPlan"));
+check("부채가 있으면 상환 계획이 보인다", p20.el("liabPlan").hidden === false);
+check("상환 계획에 만기가 있다", planText20.indexOf("만기 " + plan20.maturity) >= 0,
+  planText20);
+check("상환 계획에 남은 회차가 있다",
+  planText20.indexOf("남은 " + plan20.remaining + "회") >= 0, planText20);
+check("상환 계획의 다음 납입액이 이자와 원금으로 갈린다",
+  planText20.indexOf("이자 " + formatKRW(plan20.nextInterest) + "원") >= 0 &&
+    planText20.indexOf("원금 " + formatKRW(plan20.nextPrincipal) + "원") >= 0,
+  planText20);
+check("상환 계획의 남은 이자가 스케줄 합계와 같다",
+  planText20.indexOf("남은 이자 " + formatKRW(plan20.totalInterest) + "원") >= 0,
+  planText20);
+check("상환 계획의 총 납입액이 잔액과 이자의 합이다",
+  planText20.indexOf("총 납입액 " + formatKRW(plan20.totalPaid) + "원") >= 0,
+  planText20);
+check("계약 회차 그대로 갚으면 '예상 상환 완료'가 붙지 않는다",
+  planText20.indexOf("예상 상환 완료") === -1, planText20);
+
+/* ================================================================ */
+/* 18. 수정 모드에서만 부채 칸이 열린다                               */
+/* ================================================================ */
+
+const p21 = boot();
+const debt21 = p21.data.liabilities[0];
+editMode(p21);
+
+check("수정 모드에서 부채 입력칸이 생긴다",
+  liabTags(p21, "INPUT").length === p21.data.liabilities.length * 6,
+  "입력칸 " + liabTags(p21, "INPUT").length + "개");
+check("수정 모드에서 기관 선택 칸이 생긴다", liabTags(p21, "SELECT").length === 1,
+  "선택 칸 " + liabTags(p21, "SELECT").length + "개");
+check("부채 입력칸이 여섯 필드를 가진다",
+  ["label", "debtType", "amount", "rate", "termMonths", "monthlyPayment"].every((f) =>
+    liabField(p21, f) !== null));
+check("만기 칸은 달 입력으로 만든다", liabField(p21, "termMonths").type === "month",
+  liabField(p21, "termMonths").type);
+check("만기 칸 값이 남은 회차의 만기와 같다",
+  liabField(p21, "termMonths").value === maturity20,
+  liabField(p21, "termMonths").value + " vs " + maturity20);
+check("기관 칸은 시드 기관을 가리킨다",
+  liabTags(p21, "SELECT")[0].value === debt21.institutionId,
+  liabTags(p21, "SELECT")[0].value);
+check("수정 모드에서 부채 추가 버튼이 보인다", p21.el("addLiab").hidden === false);
+check("아직 안 바꿨으면 부채 쪽 확정도 막힌다", p21.el("editConfirm").disabled === true);
+
+/* ================================================================ */
+/* 19. 부채를 고쳐 확정하면 저장된다                                  */
+/* ================================================================ */
+
+const p22 = boot();
+editMode(p22);
+const key22 = p22.data.liabilities[0].key;
+p22.queries.type(p22.queries.findInput(key22, "amount"), "60000000");
+p22.queries.type(p22.queries.findInput(key22, "rate"), "3");
+p22.queries.type(p22.queries.findInput(key22, "monthlyPayment"), "300000");
+
+check("잔액 편집이 반영된다", p22.data.liabilities[0].amount === 60000000,
+  p22.data.liabilities[0].amount);
+check("금리 편집이 반영된다", p22.data.liabilities[0].rate === 3,
+  p22.data.liabilities[0].rate);
+check("월납입액 편집이 반영된다", p22.data.liabilities[0].monthlyPayment === 300000);
+check("부채 합계 칸이 새 잔액을 보여 준다",
+  text(p22, "liabSum") === formatKRW(60000000), text(p22, "liabSum"));
+check("요약 카드 총부채도 새 잔액을 보여 준다",
+  text(p22, "sumTotalLiab") === p22.AF.fmt.formatKRW(60000000), text(p22, "sumTotalLiab"));
+check("확정 전에는 부채도 저장되지 않는다", !p22.store.has(KEY),
+  "저장된 키: " + Array.from(p22.store.keys()).join(","));
+check("부채를 고쳐도 확정 버튼이 열린다", p22.el("editConfirm").disabled === false);
+
+p22.el("editConfirm").click();
+check("확정하면 부채가 저장소에 들어간다",
+  p22.saved(KEY).liabilities[0].amount === 60000000,
+  p22.saved(KEY).liabilities[0].amount);
+check("확정 후 부채 표가 읽기 모드로 돌아간다",
+  liabTags(p22, "INPUT").length === 0 && liabTags(p22, "SELECT").length === 0);
+check("확정 후 부채 합계 칸이 읽기 값과 같다",
+  text(p22, "liabSum") === formatKRW(60000000), text(p22, "liabSum"));
+
+const p23 = boot({ [KEY]: p22.store.get(KEY) });
+check("새로고침 후에도 부채 잔액이 유지된다",
+  p23.data.liabilities[0].amount === 60000000, p23.data.liabilities[0].amount);
+
+/* ================================================================ */
+/* 20. 부채를 고쳐 취소하면 표도 합계도 되돌아간다                     */
+/* ================================================================ */
+
+const p24 = boot();
+const totals24 = JSON.stringify(p24.data.totals);
+const seed24 = Object.assign({}, p24.data.liabilities[0]);
+editMode(p24);
+const key24 = p24.data.liabilities[0].key;
+p24.queries.type(p24.queries.findInput(key24, "amount"), "50000000");
+p24.queries.type(p24.queries.findInput(key24, "rate"), "9.5");
+p24.queries.type(p24.queries.findInput(key24, "termMonths"), "2031-01");
+setSelect(p24, "institutionId", "inst-other");
+
+check("취소 전에 값이 셋 다 바뀐다",
+  p24.data.liabilities[0].amount === 50000000 &&
+    p24.data.liabilities[0].rate === 9.5 &&
+    p24.data.liabilities[0].institutionId === "inst-other",
+  JSON.stringify(p24.data.liabilities[0]));
+p24.el("editCancel").click();
+
+const after24 = p24.data.liabilities[0];
+check("취소하면 잔액이 되돌아간다", after24.amount === seed24.amount,
+  after24.amount + " vs " + seed24.amount);
+check("취소하면 금리가 되돌아간다", after24.rate === seed24.rate,
+  after24.rate + " vs " + seed24.rate);
+check("취소하면 기간이 되돌아간다", after24.termMonths === seed24.termMonths,
+  after24.termMonths + " vs " + seed24.termMonths);
+check("취소하면 기관이 되돌아간다", after24.institutionId === seed24.institutionId,
+  after24.institutionId + " vs " + seed24.institutionId);
+check("취소하면 요약 수치 전체가 되돌아간다",
+  JSON.stringify(p24.data.totals) === totals24,
+  JSON.stringify(p24.data.totals));
+check("취소 후 총자산이 복구된 행에서 다시 나온다",
+  p24.data.totals.assets === assetValueSum(p24.data.assets) + p24.data.totals.totalCash,
+  "합계 " + p24.data.totals.assets + " 행 " +
+  (assetValueSum(p24.data.assets) + p24.data.totals.totalCash));
+check("취소 후 총부채가 복구된 행과 같다",
+  p24.data.totals.liabilities === p24.data.liabilities.reduce((a, l) => a + l.amount, 0),
+  p24.data.totals.liabilities);
+check("취소 후 부채 표가 읽기 모드로 돌아간다",
+  liabTags(p24, "INPUT").length === 0 && liabTags(p24, "SELECT").length === 0);
+
+/* ================================================================ */
+/* 21. 구조를 지워도 합계가 행을 따라간다 (닫힌 배열 회귀)             */
+/* ================================================================ */
+
+const p25 = boot();
+editMode(p25);
+// 기본값이 승인이므로 큐를 비워 두면 바로 지워진다.
+const groups25 = p25.data.groups.length;
+const assets25 = p25.data.assets.length;
+const liabs25 = p25.data.liabilities.length;
+clickRowAction(p25, "tree-level2", "일반자산", "×");
+check("그룹을 지우면 그 안의 자산도 같이 사라진다",
+  p25.data.groups.length < groups25 && p25.data.assets.length < assets25,
+  "그룹 " + p25.data.groups.length + "/" + groups25 +
+    " 자산 " + p25.data.assets.length + "/" + assets25);
+check("그룹 삭제 후에도 부채는 그대로다",
+  p25.data.liabilities.length === liabs25,
+  p25.data.liabilities.length + "건 (기대 " + liabs25 + ")");
+check("그룹 삭제 후 총자산이 남은 행에서 다시 나온다",
+  p25.data.totals.assets === assetValueSum(p25.data.assets) + p25.data.totals.totalCash,
+  "합계 " + p25.data.totals.assets + " 행 " +
+  (assetValueSum(p25.data.assets) + p25.data.totals.totalCash));
+check("그룹 삭제 후 요약 카드가 같은 숫자를 보여 준다",
+  text(p25, "sumTotalAssets") === p25.AF.fmt.formatKRW(p25.data.totals.assets),
+  text(p25, "sumTotalAssets"));
+check("그룹 삭제 후 트리 행과 남은 자산 수가 맞는다",
+  p25.queries.rowsByClass("tree-level3").length === p25.data.assets.length,
+  p25.queries.rowsByClass("tree-level3").length + "행 / " + p25.data.assets.length + "건");
+
+/* ================================================================ */
+/* 22. 만기 입력은 과거를 거절하고 빈 칸은 기간 없음이 된다             */
+/* ================================================================ */
+
+const p26 = boot();
+editMode(p26);
+const key26 = p26.data.liabilities[0].key;
+const month26 = () => p26.queries.findInput(key26, "termMonths");
+const seedTerm26 = p26.data.liabilities[0].termMonths;
+
+p26.queries.type(month26(), "2020-01");
+check("asOf 이전 만기는 거절한다",
+  p26.data.liabilities[0].termMonths === seedTerm26,
+  p26.data.liabilities[0].termMonths);
+check("거절한 만기는 aria-invalid 로 표시된다",
+  month26().getAttribute("aria-invalid") === "true");
+
+p26.queries.type(month26(), "");
+check("만기를 비우면 기간이 0이 된다", p26.data.liabilities[0].termMonths === 0,
+  p26.data.liabilities[0].termMonths);
+check("비운 만기 칸도 비워 있다", month26().value === "", JSON.stringify(month26().value));
+
+p26.el("editConfirm").click();
+check("기간이 없으면 읽기 만기 칸이 — 가 된다",
+  liabCell(p26, 0, 5) === "—", liabCell(p26, 0, 5));
+
+editMode(p26);
+p26.queries.type(month26(), "2030-06");
+check("정상 만기를 남은 회차로 받는다",
+  p26.data.liabilities[0].termMonths ===
+    (function (ym) {
+      const [y, m] = ym.split("-").map(Number);
+      const [sy, sm] = p26.data.asOfMonth.split("-").map(Number);
+      return (y * 12 + m) - (sy * 12 + sm);
+    })("2030-06"),
+  p26.data.liabilities[0].termMonths);
+check("만기를 고치면 만기 칸이 같이 바뀐다",
+  month26().value === "2030-06", month26().value);
+p26.el("editConfirm").click();
+check("고친 만기가 읽기 모드 만기 칸에 나온다",
+  liabCell(p26, 0, 5) === "2030-06", liabCell(p26, 0, 5));
+
+/* ================================================================ */
+/* 23. 기관을 바꾸면 읽기 모드에서 그 이름으로 나온다                   */
+/* ================================================================ */
+
+const p27 = boot();
+editMode(p27);
+setSelect(p27, "institutionId", "inst-other");
+check("기관 선택이 반영된다",
+  p27.data.liabilities[0].institutionId === "inst-other",
+  p27.data.liabilities[0].institutionId);
+p27.el("editConfirm").click();
+check("읽기 모드에서 기관 칸이 — 대신 실제 이름이다",
+  liabCell(p27, 0, 1) === "기타", liabCell(p27, 0, 1));
+
+/* ================================================================ */
+/* 24. 부채 추가 → 확정 → 취소                                        */
+/* ================================================================ */
+
+const p28 = boot();
+const seedCount28 = p28.data.liabilities.length;
+editMode(p28);
+p28.answers.promptQueue = ["새카드값"];
+p28.el("addLiab").click();
+check("부채가 추가된다", p28.data.liabilities.length === seedCount28 + 1,
+  p28.data.liabilities.length + "건");
+check("추가한 부채가 빈 값이 아니라 정제된 모양을 가진다",
+  p28.data.liabilities.some((l) => l.label === "새카드값" && l.amount === 0 &&
+    l.rate === 0 && l.termMonths === 0 && l.institutionId === "inst-other"));
+check("추가한 행도 입력칸으로 바로 편집할 수 있다",
+  liabTags(p28, "INPUT").length === p28.data.liabilities.length * 6,
+  "입력칸 " + liabTags(p28, "INPUT").length);
+p28.el("editCancel").click();
+check("추가 후 취소하면 되돌아간다",
+  p28.data.liabilities.length === seedCount28,
+  p28.data.liabilities.length + "건");
+
+editMode(p28);
+p28.answers.promptQueue = ["새카드값"];
+p28.el("addLiab").click();
+const added28 = p28.data.liabilities.filter((l) => l.label === "새카드값")[0];
+p28.queries.type(p28.queries.findInput(added28.key, "amount"), "1500000");
+p28.el("editConfirm").click();
+check("추가를 확정하면 저장된다",
+  p28.saved(KEY).liabilities.some((l) => l.label === "새카드값" && l.amount === 1500000));
+
+const p29 = boot({ [KEY]: p28.store.get(KEY) });
+check("새로고침 후에도 추가한 부채가 남는다",
+  p29.data.liabilities.some((l) => l.label === "새카드값" && l.amount === 1500000));
+check("부채가 둘이면 표에도 둘이다",
+  liabRows(p29).length === p29.data.liabilities.length,
+  liabRows(p29).length + "행");
+
+report("assets.html 부채 읽기·수정·상환계획");
 
 /* ---------------------------------------------------------------- */
 /* 도우미                                                            */
