@@ -2284,3 +2284,55 @@ erDiagram
 - **이 PC 에는 시스템 JDK 가 없다.** 확보한 것: Temurin 21 (`C:/Users/H/tools/jdk-21.0.12.1+1`), Gradle 배포판 (`C:/Users/H/tools/gradle-8.10`). IDEA 내장 JBR 25 는 Gradle 8.10 데몬과 호환되지 않는다(class file major 69, 직접 재현).
 - **JAVA_HOME 을 사용자 환경변수로 영구 등록했다**([Environment]::SetEnvironmentVariable User 범위, 레지스트리 검증). 새 터미널은 설정 없이 `./gradlew` 가 돌고, 이미 열린 셸은 다시 열어야 본다. 요청 오류 “JAVA_HOME is not set” 은 등록 전 열린 셸에서 나온 것이다.
 - 검증 기록: `./gradlew compileJava test` 통과(3 테스트), `bootRun` 기동 후 `POST /api/v1/auth/login` 200 응답 확인.
+---
+
+## 38) 대시보드 API 3종 명세 (2026-10-17 확정, Issue 6)
+
+구현: `apps/backend/src/main/java/com/assetflow/dashboard/`. 원장(mock)의 단일 출처는
+`MockDashboardSource` 이고 §36.2 기준선과 동일하다. DB 연결 시 교체되는 것은 이 클래스 하나다.
+
+### 38.1 공통 규칙
+- **성공 응답**은 항상 `{"code":"OK","message":...,"data":{}}` (ApiResponse, §25).
+- **실패 응답**은 항상 `{"code","message","details","timestamp"}` (ErrorResponse, §25).
+  timestamp 는 UTC ISO-8601. 401=`AUTH_REQUIRED`, 400=`INVALID_REQUEST`,
+  403=`PERMISSION_DENIED`(스프린트 1에 권한 계층이 없어 발생하지 않지만 포맷은 고정),
+  500=`INTERNAL_ERROR`.
+- **금액은 전부 원 단위 정수**(§28.3). **계산은 서버가 하지 않는다** — 순자산·구성비 등의
+  산식은 프론트 `metrics.ts` 단일 출처(§34.6)로 남고, 서버는 원장 행(rows)만 내려준다.
+  summary 응답 구조는 프론트 `DashboardData`(dashboardMock.ts)와 의도적으로 같다.
+
+### 38.2 GET /api/v1/me
+```
+요청: Authorization: Bearer <token>
+응답: data = { "id":1, "email":"user@example.com", "displayName":"사용자" }
+```
+현재는 토큰→사용자 조회의 모크(§21). 실제 조회는 스프린트 이슈 7에서 연결한다.
+
+### 38.3 GET /api/v1/dashboard/summary
+```
+요청: 인자 없음
+응답: data = { "asOf":"2026-10",
+        "assets":[ {"id","type":"cash|deposit|invest|realty","name","value"} ... ],
+        "liabilities":[ {"id","name","balance"} ],
+        "monthly": { "income", "expenses", "essentialExpenses", "essentialComplete" } }
+```
+기준값(§36.2): 총자산 761,200,000 · 부채 69,355,560 · income 8,200,000 ·
+expenses 4,960,000 · essentialExpenses 2,317,180 · essentialComplete true.
+
+### 38.4 GET /api/v1/dashboard/cashflow?months=3
+```
+요청: months = 1..12 (기본 3, 범위 밖은 400)
+응답: data = [ {"month":"2026-10","income":8200000,"expenses":4960000}, ... ]
+```
+최신 월(arr[0])부터 내림차순. month 형식은 'YYYY-MM'.
+
+### 38.5 접근 제어 (§25)
+`/api/v1/me`, `/api/v1/dashboard/**` 에는 `BearerTokenInterceptor` 가 적용된다:
+`Authorization: Bearer <비어있지 않은 토큰>` 이 없으면 401(AUTH_REQUIRED). `/api/v1/auth/**` 는
+로그인 자체라 제외. **실제 JWT 검증은 스프린트 이슈 7(토큰 발급이 백엔드가 되는 날)에서
+인터셉터를 대체한다** — 문서와 코드에 그 제한을 명시했다.
+
+### 38.6 검증 기록
+- `gradlew test`: 9건 통과(기존 3 + MockMvc standalone 6 — 정상응답 4, 401 2, 400 2 포함).
+- bootRun(8081 격리 포트) 스모크: summary/me/cashflow 200 · 토큰 없음 401 ·
+  months=13 400 — 응답 본문 전부 §25 표준 포맷 확인.
