@@ -73,8 +73,12 @@
        .item-table tbody tr:hover {
          background: var(--color-fill-quaternary);
        }
+       /* 부채 표는 셀마다 입력 양식이 다르다(텍스트·선택·날짜·금액).
+        * 읽기/수정 모드가 바뀌어도 칸 모양은 같은 자리를 유지해야 한다. */
        .item-table input[type="text"],
-       .item-table input[type="number"] {
+       .item-table input[type="number"],
+       .item-table input[type="month"],
+       .item-table select {
          width: 100%;
          min-width: 0;
          padding: var(--space-1) var(--space-2);
@@ -88,6 +92,13 @@
        .item-table input[type="number"] {
          text-align: right;
          font-variant-numeric: tabular-nums;
+       }
+       .item-table input[type="month"],
+       .item-table select {
+         font-variant-numeric: tabular-nums;
+       }
+       .item-table select {
+         cursor: pointer;
        }
        .item-table input:focus-visible,
        .row-btn:focus-visible {
@@ -106,6 +117,36 @@
        }
        .cell-act {
          width: 44px;
+       }
+       /* 부채 상환 계획. 표 아래에 파생값을 따로 둔다 — 표는 읽기 쉽게
+        * 유지하면서도 "이 대출이 앞으로 얼마를 더 갚느냐"는 한눈에 보여야 한다.
+        * 행에서 고치면 여기만 다시 그린다(입력 포커스를 뺏지 않는다). */
+       .liab-plan {
+         margin-top: var(--space-3);
+         padding: var(--space-3);
+         border: 1px solid var(--color-border-secondary);
+         border-radius: var(--radius-card);
+         background: var(--color-fill-quaternary);
+       }
+       .liab-plan__head {
+         margin: 0 0 var(--space-2);
+         font-size: var(--font-size-xs);
+         color: var(--color-text-secondary);
+       }
+       .liab-plan__item + .liab-plan__item {
+         margin-top: var(--space-3);
+         padding-top: var(--space-3);
+         border-top: 1px dashed var(--color-border-secondary);
+       }
+       .liab-plan__title {
+         margin-bottom: var(--space-1);
+         font-size: var(--font-size-sm);
+         font-weight: 600;
+       }
+       .liab-plan__row {
+         font-size: var(--font-size-sm);
+         color: var(--color-text-secondary);
+         font-variant-numeric: tabular-nums;
        }
        .tree-toggle {
          width: 24px;
@@ -570,14 +611,21 @@
                 </div>
                 <div class="card__body">
                   <p class="section__desc">
-                    대출·카드값 등 갚아야 할 돈입니다. 부채가 없으면 0원으로 표시됩니다.
+                    대출·카드값 등 갚아야 할 돈입니다. 기관·유형·금리·만기와 함께 보고,
+                    남은 기간의 상환 계획은 표 아래에서 따로 확인합니다.
+                    부채가 없으면 0원으로 표시됩니다.
                   </p>
                   <table class="item-table">
-                    <caption class="sr-only">부채 항목과 금액</caption>
+                    <caption class="sr-only">부채 항목과 기관·유형·금액·금리·만기·월납입액</caption>
                     <thead>
                       <tr>
                         <th scope="col">항목</th>
+                        <th scope="col">기관</th>
+                        <th scope="col">유형</th>
                         <th scope="col" class="num">금액(원)</th>
+                        <th scope="col" class="num">금리(%)</th>
+                        <th scope="col">만기</th>
+                        <th scope="col" class="num">월납입액(원)</th>
                         <th scope="col" class="cell-act">
                           <span class="sr-only">삭제</span>
                         </th>
@@ -587,13 +635,18 @@
                     <tfoot>
                       <tr>
                         <td>부채 합계</td>
+                        <td></td>
+                        <td></td>
                         <td class="num" id="liabSum">—</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
                         <td></td>
                       </tr>
                     </tfoot>
                   </table>
-                  <div class="actions">
-                    <button type="button" class="btn" id="addLiab">항목 추가</button>
+                  <div class="liab-plan" id="liabPlan" hidden></div>
+                  <div class="actions">항목 추가</button>
                     <span class="save-note" id="liabNote"></span>
                   </div>
                 </div>
@@ -790,6 +843,8 @@
          function commit() {
            AF.recompute();
            if (typeof renderAssetTree === "function") renderAssetTree();
+           // 부채 표도 다시 그린다. 입력 칸은 포커스 기록을 되살려 잃지 않는다.
+           if (typeof renderLiabRows === "function") renderLiabRows();
            refresh();
            if (editMode) {
              syncEditControls();
@@ -835,17 +890,19 @@ var treeState = {}; // tree key -> expanded
         var editMode = false;
         // 입력 중 리렌더로 포커스를 잃지 않기 위한 상태.
         var focusRestore = null;
-        // 수정 모드 진입 직전의 금융자산 트리 스냅샷. 취소할 때 되돌린다.
-        // 데이터 계층을 복제하지 않고 직렬화한 문자열로comparISON 한다 —
+        // 수정 모드 진입 직전의 전체 스냅샷. 취소할 때 되돌린다.
+        // 데이터 계층을 복제하지 않고 직렬화한 문자열로 비교한다 —
         // 이유: 추가/삭제/이름변경이 모두 같은 배열을 건드리므로 되돌릴 대상은
-        // "들어오기 전 상태" 하나뿐이다.
+        // "들어오기 전 상태" 하나뿐이다. 부채도 들어간다: 부채 칸을 고친 뒤
+        // 취소가 막혀 있으면 확정 하나로만 값이 굳어 버린다.
         var editBaseline = null;
 
         function snapshotOf() {
           return JSON.stringify({
             assets: d.assets,
             institutions: d.institutions,
-            groups: d.groups
+            groups: d.groups,
+            liabilities: d.liabilities
           });
         }
 
@@ -886,6 +943,7 @@ var treeState = {}; // tree key -> expanded
           if (!editMode) return;
           editMode = false;
           focusRestore = null;
+          liabFocusRestore = null;
           editBaseline = null;
           applyMode();
         }
@@ -896,6 +954,7 @@ var treeState = {}; // tree key -> expanded
           editMode = false;
           editBaseline = null;
           focusRestore = null;
+          liabFocusRestore = null;
           AF.recompute();
           renderAssetTree();
           refresh();
@@ -904,18 +963,14 @@ var treeState = {}; // tree key -> expanded
         }
 
         // 취소: 수정 모드에 들어온 뒤의 변경을 모두 버린다.
-        // 재계산을 다시 돌려 합계까지 진입 전 값으로 되돌리는 것이 빠르다.
+        // 복구는 데이터 계층에 맡긴다. data.* 에 배열을 직접 대입하면
+        // 합계는 닫힌 옛 배열을 그대로 보고 요약 카드와 표가 어긋난다(§34.6).
+        // apply() 는 둘을 한 번에 갈아끼우고 재계산은 아래에서 다시 돌린다.
         function cancelEdit() {
           if (!editMode) return;
-          if (editBaseline != null) {
-            var s = JSON.parse(editBaseline);
-            d.assets = s.assets;
-            d.institutions = s.institutions;
-            d.groups = s.groups;
-          }
-          leaveEditMode();
+          if (editBaseline != null) store.apply(JSON.parse(editBaseline));
           AF.recompute();
-          renderAssetTree();
+          leaveEditMode(); // applyMode() 가 트리와 부채 행을 진입 전 상태로 다시 그린다
           refresh();
         }
 
@@ -1383,10 +1438,14 @@ var treeState = {}; // tree key -> expanded
               btn.hidden = editMode;
             }
             if (addInstitutionBtn) addInstitutionBtn.hidden = !editMode;
+            // 항목 추가도 구조 변경이다. 읽기 모드에서 눌러 만들면 확정 없이
+            // 목록이 달라지므로 수정 모드에서만 노출한다(금융기관 추가와 같은 규칙).
+            if (addLiabBtn) addLiabBtn.hidden = !editMode;
             var sep = document.querySelector(".mode-bar__sep");
             if (sep) sep.hidden = !editMode;
             syncEditControls();
             renderAssetTree();
+            renderLiabRows();
           }
 
           function toggleMode() {
@@ -1409,86 +1468,221 @@ var treeState = {}; // tree key -> expanded
           }, 0);
         }
 
-        /* ---------- 편집 가능한 목록 (금융자산 / 부채) ---------- */
+        /* ---------- 부채 목록 (읽기 모드 / 수정 모드) ---------- */
 
-function renderList(opts) {
-          var body = document.getElementById(opts.bodyId);
-          // 금융자산 목록은 계층 트리(assetsTreeBody)가 단일 출처다.
-          // 플랫 편집 테이블이 제거되면 여기서는 아무것도 그리지 않는다.
-          if (!body) return;
-          // 목록을 캐시하지 않는다. reset() 이 data.assets 를 새 배열로 교체하므로
-          // 렌더 시점에 읽어야 복구 후 목록이 그려진다.
-          var list = opts.getList();
-          body.textContent = "";
+        // 금융자산은 계층 트리(assetsTreeBody)가 단일 출처다.
+        // 여기서 그리는 표는 부채뿐이다 — 부채는 계층이 아니라 행 하나가
+        // 기관·유형·금리·만기를 함께 들고 있다.
+        //
+        // 수정 모드 입력은 리렌더로 포커스를 잃지 않도록 어느 칸이었는지
+        // 기록해 둔다. 트리의 focusRestore 와 같은 방식이지만 다른 표라
+        // 상태는 따로 둔다 — 한쪽이 풀리면 다른 쪽까지 연쇄로 풀린다.
+        var liabFocusRestore = null;
 
-          list.forEach(function (row) {
-            var tr = document.createElement("tr");
+        function instNameOf(id) {
+          var inst = d.institutions.filter(function (i) { return i.id === id; })[0];
+          // 기관을 지워도 부채는 남는다. 소속 없는 부채는 "기타"로 보여 준다.
+          return inst ? inst.name : "기타";
+        }
 
-            var nameTd = document.createElement("td");
-            var name = document.createElement("input");
-            name.type = "text";
-            name.value = row.label;
-            name.setAttribute("aria-label", opts.itemNoun + " 이름");
-            name.addEventListener("input", function () {
-              row.label = name.value;
-              // 이름이 바뀌면 같은 행의 다른 입력 라벨도 갱신해야 한다
-               amt.setAttribute("aria-label", row.label + " 금액");
-               del.setAttribute("aria-label", row.label + " 삭제");
-               renderAssetTree();
-               commit();
-             });
-            nameTd.appendChild(name);
+        // 만기는 저장하지 않는다. 남은 회차에서 만든다(§34.6 단일 출처).
+        // 두 값을 따로 저장하면 읽기와 수정에서 서로 다른 날짜가 나온다.
+        function maturityOfRow(row) {
+          if (!(row.termMonths > 0)) return "";
+          return AF.debt.maturityOf(d.asOfMonth, row.termMonths);
+        }
 
-            var amtTd = document.createElement("td");
-            amtTd.className = "num cell-num";
-            var amt = document.createElement("input");
-            amt.type = "number";
-            amt.inputMode = "numeric";
-            amt.min = "0";
-            amt.step = "10000";
-            amt.value = String(row.amount);
-            amt.setAttribute("aria-label", row.label + " 금액");
-            var amtError = document.createElement("p");
-            amtError.className = "field__error";
-            amtError.hidden = true;
-            amtError.innerHTML = '<span aria-hidden="true">!</span> 0 이상의 정수 원';
-            function readAmount() {
-              var n = Number(amt.value);
-              var bad = amt.value.trim() === "" || !isFinite(n) || n < 0;
-              amt.setAttribute("aria-invalid", String(bad));
-              amtError.hidden = !bad;
-              if (bad) return;
-              row.amount = Math.floor(n);
-              commit();
-            }
-            amt.addEventListener("input", readAmount);
-             amtTd.appendChild(amt);
-             amtTd.appendChild(amtError);
+        function monthsFromAsOf(ym) {
+          var a = /^(\d{4})-(\d{2})$/.exec(d.asOfMonth || "");
+          var b = /^(\d{4})-(\d{2})$/.exec(String(ym || ""));
+          if (!a || !b) return NaN;
+          return (+b[1] * 12 + +b[2]) - (+a[1] * 12 + +a[2]);
+        }
 
-             var delTd = document.createElement("td");
-             delTd.className = "cell-act";
-             var del = document.createElement("button");
-             del.type = "button";
-             del.className = "row-btn";
-             del.textContent = "×";
-             del.setAttribute("aria-label", row.label + " 삭제");
-             del.addEventListener("click", function () {
-               var idx = opts.getList().indexOf(row);
-               if (idx < 0) return;
-               opts.getList().splice(idx, 1);
-               renderList(opts);
-               renderAssetTree();
-               commit();
-               // 지우면 남은 행이 없으므로 다시 넣을 자리를 만들어 준다
-               if (!opts.getList().length) document.getElementById(opts.addId).focus();
-             });
-             delTd.appendChild(del);
+        function liabTextCell(text, cls) {
+          var td = document.createElement("td");
+          td.className = cls || "";
+          td.textContent = text;
+          return td;
+        }
 
-            tr.appendChild(nameTd);
-            tr.appendChild(amtTd);
-            tr.appendChild(delTd);
-            body.appendChild(tr);
+        function liabReadRow(row) {
+          var tr = document.createElement("tr");
+          tr.appendChild(liabTextCell(row.label));
+          tr.appendChild(liabTextCell(instNameOf(row.institutionId)));
+          tr.appendChild(liabTextCell(row.debtType || "—"));
+          tr.appendChild(liabTextCell(fmtNum(row.amount), "num"));
+          tr.appendChild(liabTextCell(fmtPct(row.rate), "num"));
+          tr.appendChild(liabTextCell(maturityOfRow(row) || "—"));
+          tr.appendChild(liabTextCell(fmtNum(row.monthlyPayment), "num"));
+          tr.appendChild(liabTextCell("", "cell-act"));
+          return tr;
+        }
+
+        // 숫자 칸. 0 은 유효한 값이다(잔액 없는 대출) — 빈 칸만 거절한다.
+        function liabNumberCell(row, field, ariaLabel, step) {
+          var td = document.createElement("td");
+          td.className = "num cell-num";
+          var inp = document.createElement("input");
+          inp.type = "number";
+          inp.inputMode = "decimal";
+          inp.min = "0";
+          inp.step = String(step);
+          inp.value = String(num(row[field]));
+          inp.dataset.key = row.key;
+          inp.dataset.field = field;
+          inp.setAttribute("aria-label", ariaLabel);
+          inp.addEventListener("input", function () {
+            var n = Number(inp.value);
+            var bad = inp.value.trim() === "" || !isFinite(n) || n < 0;
+            inp.setAttribute("aria-invalid", String(bad));
+            if (bad) return;
+            // 금리는 소수 둘째 자리(2.05), 잔액·납입액은 원 단위다.
+            row[field] = step < 1 ? Math.round(n * 100) / 100 : Math.floor(n);
+            liabFocusRestore = { key: row.key, field: field };
+            commit();
           });
+          td.appendChild(inp);
+          return td;
+        }
+
+        // 만기는 화면에서 고르고 저장은 남은 회차로 한다.
+        // 회차 0은 "만기 없는 부채"(카드값처럼)이며 빈 칸으로 표현한다.
+        function liabMaturityCell(row) {
+          var td = document.createElement("td");
+          var inp = document.createElement("input");
+          inp.type = "month";
+          inp.value = maturityOfRow(row);
+          inp.dataset.key = row.key;
+          inp.dataset.field = "termMonths";
+          inp.setAttribute("aria-label", row.label + " 만기");
+          inp.addEventListener("input", function () {
+            if (inp.value === "") {
+              inp.setAttribute("aria-invalid", "false");
+              row.termMonths = 0;
+              liabFocusRestore = { key: row.key, field: "termMonths" };
+              commit();
+              return;
+            }
+            var months = monthsFromAsOf(inp.value);
+            // asOf 이전 달은 회차가 음수가 된다. 회차 상한은 대출이 아니라
+            // 계산 폭주를 막기 위한 값이다 — 스케줄이 그 길이만큼 커진다.
+            var bad = !isFinite(months) || months < 0 || months > 1200;
+            inp.setAttribute("aria-invalid", String(bad));
+            if (bad) return;
+            row.termMonths = months;
+            liabFocusRestore = { key: row.key, field: "termMonths" };
+            commit();
+          });
+          td.appendChild(inp);
+          return td;
+        }
+
+        function liabEditRow(row) {
+          var tr = document.createElement("tr");
+
+          var nameTd = document.createElement("td");
+          var name = document.createElement("input");
+          name.type = "text";
+          name.value = row.label;
+          name.dataset.key = row.key;
+          name.dataset.field = "label";
+          name.setAttribute("aria-label", "부채 이름");
+          name.addEventListener("input", function () {
+            // 빈 이름은 행 식별자가 된다. 허용하지 않는다.
+            var v = name.value.trim();
+            name.setAttribute("aria-invalid", String(v === ""));
+            if (v === "") return;
+            row.label = v;
+            liabFocusRestore = { key: row.key, field: "label" };
+            commit();
+          });
+          nameTd.appendChild(name);
+          tr.appendChild(nameTd);
+
+          // 기관은 선택 칸이다. 텍스트로 받으면 기관 목록과 어긋나
+          // 지우고 나서도 부채가 남는다(§34.6).
+          var instTd = document.createElement("td");
+          var sel = document.createElement("select");
+          sel.dataset.key = row.key;
+          sel.dataset.field = "institutionId";
+          sel.setAttribute("aria-label", row.label + " 기관");
+          d.institutions.forEach(function (inst) {
+            var opt = document.createElement("option");
+            opt.value = inst.id;
+            opt.textContent = inst.name;
+            sel.appendChild(opt);
+          });
+          sel.value = row.institutionId || "inst-other";
+          sel.addEventListener("change", function () {
+            row.institutionId = sel.value;
+            liabFocusRestore = { key: row.key, field: "institutionId" };
+            commit();
+          });
+          instTd.appendChild(sel);
+          tr.appendChild(instTd);
+
+          var typeTd = document.createElement("td");
+          var typeInput = document.createElement("input");
+          typeInput.type = "text";
+          typeInput.value = row.debtType || "";
+          typeInput.dataset.key = row.key;
+          typeInput.dataset.field = "debtType";
+          typeInput.setAttribute("aria-label", row.label + " 유형");
+          typeInput.addEventListener("input", function () {
+            // 유형은 분류라 비울 수 있다. 읽기 모드에서는 "—" 로 대신한다.
+            row.debtType = typeInput.value.trim();
+            liabFocusRestore = { key: row.key, field: "debtType" };
+            commit();
+          });
+          typeTd.appendChild(typeInput);
+          tr.appendChild(typeTd);
+
+          tr.appendChild(liabNumberCell(row, "amount", row.label + " 금액", 1));
+          tr.appendChild(liabNumberCell(row, "rate", row.label + " 금리", 0.01));
+          tr.appendChild(liabMaturityCell(row));
+          tr.appendChild(liabNumberCell(row, "monthlyPayment", row.label + " 월납입액", 1));
+
+          var delTd = document.createElement("td");
+          delTd.className = "cell-act";
+          delTd.appendChild(actionBtn("×", row.label + " 삭제", function () {
+            var idx = d.liabilities.indexOf(row);
+            if (idx < 0) return;
+            d.liabilities.splice(idx, 1);
+            commit();
+            // 지우면 남은 행이 없으므로 다시 넣을 자리를 만들어 준다
+            if (!d.liabilities.length) document.getElementById("addLiab").focus();
+          }, true));
+          tr.appendChild(delTd);
+
+          return tr;
+        }
+
+        function renderLiabRows() {
+          var body = document.getElementById("liabBody");
+          if (!body) return;
+          // 목록을 캐시하지 않는다. reset()/apply() 는 data.liabilities 를
+          // 새 배열로 교체하므로 렌더 시점에 읽어야 복구 후 목록이 그려진다.
+          body.textContent = "";
+          d.liabilities.forEach(function (row) {
+            body.appendChild(editMode ? liabEditRow(row) : liabReadRow(row));
+          });
+
+          var want = liabFocusRestore;
+          liabFocusRestore = null;
+          if (!want) return;
+          var target = null;
+          (function walk(node) {
+            node.childNodes.forEach(function (c) {
+              if (target || c.nodeType !== 1) return;
+              if (c.dataset && c.dataset.key === want.key && c.dataset.field === want.field) {
+                target = c;
+                return;
+              }
+              walk(c);
+            });
+          })(body);
+          if (target && target.focus) target.focus();
         }
 
         /* ---------- 파생값 갱신 ---------- */
@@ -1548,6 +1742,67 @@ function renderList(opts) {
             f.formatCompactKR(d.cash.autoTransfer.monthlyEssential);
 
           renderComposition();
+          renderLiabPlan();
+        }
+
+        /* 부채 상환 계획 (파생값. 저장하지 않는다).
+         * 행(잔액·금리·회차·월납입액)이 단일 출처고 여기는 그 결과만 그린다.
+         * 표 아래에 따로 두는 이유: 표는 지금 얼마인지를, 계획은 앞으로 얼마나
+         * 더 갚아야 하는지를 말한다. 한 표에 섞으면 읽기가 어려워진다.
+         * 입력 이벤트에서 불리지만 상자 안에 포커스가 없으므로 입력을 끊지 않는다. */
+        function renderLiabPlan() {
+          var box = document.getElementById("liabPlan");
+          if (!box) return;
+          box.textContent = "";
+          box.hidden = d.liabilities.length === 0;
+          if (box.hidden) return;
+
+          var head = document.createElement("p");
+          head.className = "liab-plan__head";
+          head.textContent = "상환 계획";
+          box.appendChild(head);
+
+          d.liabilities.forEach(function (row) {
+            var item = document.createElement("div");
+            item.className = "liab-plan__item";
+
+            var title = document.createElement("div");
+            title.className = "liab-plan__title";
+            title.textContent = (row.label || "부채") + " · " + (row.repayment || "원리금균등");
+            item.appendChild(title);
+
+            if (!(row.amount > 0) || !(row.termMonths > 0)) {
+              var pending = document.createElement("div");
+              pending.className = "liab-plan__row";
+              pending.textContent = "잔액과 기간을 넣으면 상환 계획이 나옵니다.";
+              item.appendChild(pending);
+              box.appendChild(item);
+              return;
+            }
+
+            var plan = AF.debt.plan(row, d.asOfMonth);
+            // 잔액·금리·기간·월납입액이 서로 맞으면 계약 회차 그대로 끝난다.
+            // 잔액만 줄이면 납입액이 남아 먼저 끝나는데, 그때는 회차를 바꿔야
+            // 사용자가 "고쳤더니 다르다"를 눈치챈다. 두 값을 같이 보여 준다.
+            var early = plan.remaining < row.termMonths;
+            [
+              early
+                ? "계약 만기 " + plan.maturity + " · 예상 상환 완료 " +
+                  plan.remaining + "회차 (" + AF.debt.maturityOf(d.asOfMonth, plan.remaining) + ")"
+                : "만기 " + plan.maturity + " · 남은 " + plan.remaining + "회",
+              "다음 납입액 " + fmtNum(plan.nextPayment) + "원 = 이자 " +
+                fmtNum(plan.nextInterest) + "원 + 원금 " + fmtNum(plan.nextPrincipal) + "원",
+              "남은 이자 " + fmtNum(plan.totalInterest) + "원 · 총 납입액 " +
+                fmtNum(plan.totalPaid) + "원 · 마지막 회차 " + fmtNum(plan.finalPayment) + "원"
+            ].forEach(function (line) {
+              var el = document.createElement("div");
+              el.className = "liab-plan__row";
+              el.textContent = line;
+              item.appendChild(el);
+            });
+
+            box.appendChild(item);
+          });
         }
 
         function renderComposition() {
@@ -1594,19 +1849,6 @@ function renderList(opts) {
         /* ---------- 계층 편집 (Level1 기관 / Level2 상품유형 / Level3 자산) ---------- */
 
         // 금융자산은 플랫 편집 테이블이 없고 계층 트리가 단일 출처다.
-        // bodyId 를 빈 값으로 두면 renderList() 가 아무것도 그리지 않는다.
-        var assetOpts = {
-          getList: function () { return d.assets; },
-          bodyId: "",
-          addId: "addAsset",
-          itemNoun: "금융자산"
-        };
-        var liabOpts = {
-          getList: function () { return d.liabilities; },
-          bodyId: "liabBody",
-          addId: "addLiab",
-          itemNoun: "부채"
-        };
 
         // 이름 입력(프롬프트 대체). 이름을 비우면 만들지 않는다.
         function askName(what, def) {
@@ -1638,9 +1880,15 @@ function renderList(opts) {
             : "아직 자산이 없습니다.";
           if (!window.confirm(msg)) return;
           var gids = childGroups.map(function (g) { return g.id; });
-          d.groups = d.groups.filter(function (g) { return g.institutionId !== id; });
-          d.assets = d.assets.filter(function (a) { return gids.indexOf(a.groupId) < 0; });
-          d.institutions = d.institutions.filter(function (i) { return i.id !== id; });
+          // 구조는 통째로 교체한다. data.* 만 갈아끼우면 합계는 닫힌 옛 배열을
+          // 그대로 보고 요약 카드와 표가 어긋난다(§34.6). apply() 는 둘을
+          // 한 번에 바꾼다. 부채도 같이 넘긴다 — 이 기관의 대출은 "기타"로 옮겨간다.
+          store.apply({
+            institutions: d.institutions.filter(function (i) { return i.id !== id; }),
+            groups: d.groups.filter(function (g) { return g.institutionId !== id; }),
+            assets: d.assets.filter(function (a) { return gids.indexOf(a.groupId) < 0; }),
+            liabilities: d.liabilities
+          });
           commit();
         }
 
@@ -1662,8 +1910,11 @@ function renderList(opts) {
           var msg = g.name + " 상품유형을 삭제합니다.\n";
           msg += affected > 0 ? "이 안의 자산 " + affected + "건도 함께 사라집니다." : "이 안의 자산은 없습니다.";
           if (!window.confirm(msg)) return;
-          d.assets = d.assets.filter(function (a) { return a.groupId !== groupId; });
-          d.groups = d.groups.filter(function (x) { return x.id !== groupId; });
+          // data.* 만 교체하면 합계가 옛 배열을 그대로 본다(§34.6).
+          store.apply({
+            groups: d.groups.filter(function (x) { return x.id !== groupId; }),
+            assets: d.assets.filter(function (a) { return a.groupId !== groupId; })
+          });
           commit();
         }
 
@@ -1711,8 +1962,19 @@ function renderList(opts) {
         function addLiability() {
           var label = askName("부채 이름을 입력하세요", "새 부채");
           if (!label) return;
-          d.liabilities.push({ key: newKey(), label: label, amount: 0 });
-          renderList(liabOpts);
+          // 행은 정제 함수(cleanLiabilityRows)가 기대하는 모양을 미리 채워 넣는다.
+          // 빈 칸이 있으면 입력칸이 "undefined" 로 뜬다.
+          d.liabilities.push({
+            key: newKey(),
+            label: label,
+            institutionId: "inst-other",
+            debtType: "",
+            amount: 0,
+            rate: 0,
+            termMonths: 0,
+            monthlyPayment: 0,
+            repayment: "원리금균등"
+          });
           commit();
         }
 
@@ -1725,9 +1987,13 @@ function renderList(opts) {
           });
         }
 
-        document.getElementById("addLiab").addEventListener("click", function () {
-          addLiability();
-        });
+        var addLiabBtn = document.getElementById("addLiab");
+        if (addLiabBtn) {
+          addLiabBtn.hidden = !editMode;
+          addLiabBtn.addEventListener("click", function () {
+            addLiability();
+          });
+        }
 
         /* ---------- 투자금 (비상금 분자) ---------- */
 
@@ -1759,7 +2025,7 @@ function renderList(opts) {
           if (editMode) leaveEditMode();
           store.reset();
           // reset() 이 배열을 새 것으로 교체하므로 반드시 다시 그린다
-          renderList(liabOpts);
+          renderLiabRows();
           investable.value = String(d.cash.investable.amount);
           investable.setAttribute("aria-invalid", "false");
           investableError.hidden = true;
@@ -1797,7 +2063,7 @@ function renderList(opts) {
 /* ---------- 첫 렌더 ---------- */
 
          renderAssetTree();
-         renderList(liabOpts);
+         renderLiabRows();
          refresh();
 
          /* ---------- 모드 전환 ---------- */
