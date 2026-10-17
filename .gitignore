@@ -44,3 +44,6 @@ samples/card/*.csv
 
 # init-deep internal state
 .omo/
+
+# agent-local HTML artifacts
+.senpi/
