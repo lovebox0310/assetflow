@@ -2281,5 +2281,6 @@ erDiagram
 
 ### 37.6 백엔드 실행 가능화 기록 (Issue 3 후반과 함께 확정)
 - 메인 클래스 `AssetflowApplication` + Gradle wrapper(8.10)를 추가했다. DB 연결 전까지는 `application.yml` 에서 DataSource/JPA/MyBatis 자동 구성을 exclude 해 부팅한다 — PostgreSQL 연결이 도입되는 날 해당 exclude 를 제거한다.
-- **이 PC 에는 시스템 JDK 가 없다.** 확보한 것: Temurin 21 (`C:/Users/H/tools/jdk-21.0.12.1+1`), Gradle 배포판 (`C:/Users/H/tools/gradle-8.10`). IDEA 내장 JBR 25 는 Gradle 8.10 데몬과 호환되지 않는다(class file major 69, 직접 재현). `./gradlew` 실행 시 JAVA_HOME 을 JDK 21 로 둔다.
+- **이 PC 에는 시스템 JDK 가 없다.** 확보한 것: Temurin 21 (`C:/Users/H/tools/jdk-21.0.12.1+1`), Gradle 배포판 (`C:/Users/H/tools/gradle-8.10`). IDEA 내장 JBR 25 는 Gradle 8.10 데몬과 호환되지 않는다(class file major 69, 직접 재현).
+- **JAVA_HOME 을 사용자 환경변수로 영구 등록했다**([Environment]::SetEnvironmentVariable User 범위, 레지스트리 검증). 새 터미널은 설정 없이 `./gradlew` 가 돌고, 이미 열린 셸은 다시 열어야 본다. 요청 오류 “JAVA_HOME is not set” 은 등록 전 열린 셸에서 나온 것이다.
 - 검증 기록: `./gradlew compileJava test` 통과(3 테스트), `bootRun` 기동 후 `POST /api/v1/auth/login` 200 응답 확인.

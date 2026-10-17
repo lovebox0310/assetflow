@@ -25,7 +25,7 @@ Current status:
 - Gradle wrapper (8.10) is present and committed — no local Gradle install is needed.
 - Data model draft: `db/schema.sql` (design notes in §37 of `.ai/project.md`).
 
-Prerequisites: JDK 21 only (`JAVA_HOME` pointed at a JDK 21). The wrapper fetches Gradle itself.
+Prerequisites: JDK 21 only (`JAVA_HOME` pointed at a JDK 21). The wrapper fetches Gradle itself. On the dev machine `JAVA_HOME` is set permanently as a **User env var** (Temurin 21 at `C:/Users/H/tools/jdk-21.0.12.1+1`), so new terminals need no setup — already-open shells must be reopened to pick it up.
 
 ```bash
 ./gradlew compileJava                  # fastest signal that the build is wired correctly
@@ -36,9 +36,9 @@ curl -s -X POST http://localhost:8080/api/v1/auth/login \
 ```
 
 Verification status: **verified on 2026-10-17** — `compileJava test` (3 tests pass) and
-`bootRun` + login smoke (HTTP 200) on the dev machine, with `JAVA_HOME` set to a local
-Temurin 21 install. The machine has no system JDK/Gradle, so `JAVA_HOME` must be set per
-session there (details in `.ai/project.md` §37.6).
+`bootRun` + login smoke (HTTP 200) on the dev machine. The machine has no system JDK/Gradle,
+so Temurin 21 was provisioned at `C:/Users/H/tools/jdk-21.0.12.1+1` and registered as a
+permanent User env `JAVA_HOME` (details in `.ai/project.md` §37.6).
 
 Notes for AI collaboration:
 
