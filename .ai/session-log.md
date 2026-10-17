@@ -14,6 +14,41 @@
 
 ---
 
+## 2026-10-17 — Issue 1 착수 (구조/품질 게이트) + init-deep
+
+### 무엇을 했나
+
+| # | 작업 | 산출물 |
+|---|---|---|
+| 1 | init-deep 지식 기반 | `AGENTS.md` (root·apps·design·samples) |
+| 2 | init-deep 스냅샷 실측 교정 | `.omo/init-deep.json` (실제 SHA·파일수·LOC) |
+| 3 | BE 빌드 파일 (빌드도구 Gradle 고정) | `apps/backend/build.gradle`, `settings.gradle` |
+| 4 | PR/이슈 템플릿 | `.github/PULL_REQUEST_TEMPLATE.md`, `ISSUE_TEMPLATE/*.md` |
+| 5 | 품질 게이트에 FE 잡 추가 | `.github/workflows/quality-gate.yml` `frontend-gate` |
+
+### 검증
+
+| 대상 | 명령 | 결과 |
+|---|---|---|
+| FE 단위 테스트 | `node node_modules/vitest/vitest.mjs run` | 3파일 8건 PASS |
+| FE 타입 검사 | `npx tsc --noEmit` | 클린 |
+| FE 빌드 | `npx vite build` | 성공 (142.36 kB) |
+| 프로토타입 회귀 | `node design/prototype/tools/run-all.mjs` | 3/3 스위트 PASS |
+| 카드 파서·번들 | test-parse-samsung / hyundai / test-card-ui | 40·50·44건 PASS |
+| 워크플로 YAML | `Bun.YAML.parse` | jobs = quality-gate, frontend-gate |
+
+### 남은 것 (Issue 1)
+
+- [ ] BE 로컬 실행 확인 — **이 PC 에 Java/Gradle 이 없어 미검증.** gradle wrapper 와
+      Spring Boot 메인 클래스가 아직 없어 `backend-gate` 도 넣지 않았다(워크플로 주석에 명시).
+- [ ] GitHub labels + Issue 1-8 등록 — 템플릿 파일만 준비, 원격 등록은 미실행.
+- [ ] 커밋 — 명시 요청 없음.
+
+> `AGENTS.md` 의 Commit/Branch 와 `.omo/init-deep.json` 은 초판이 자리표시자였다.
+> 이번에 실측값(a071fc0, feature/prototype-debt-ui, 파일 77, LOC 6874)으로 교정했다.
+
+---
+
 ## 2026-10-05 — 프론트엔드 스캐폴딩 (React 18 + Vite + TS)
 
 ### 무엇을 했나
