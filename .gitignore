@@ -41,3 +41,6 @@ samples/card/*.xlsx
 samples/card/*.xlsb
 samples/card/*.xlsm
 samples/card/*.csv
+
+# init-deep internal state
+.omo/
