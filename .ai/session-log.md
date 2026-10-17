@@ -12,6 +12,42 @@
 > 문서의 성격은 **경로**로 구분합니다(§32.2). `.ai/` 루트에 새 파일을 늘리지
 > 말고, 분류가 필요하면 전용 폴더를 만듭니다
 
+## 2026-10-18 — Issue 6 대시보드 API 3종 명세·구현 (GitHub #8)
+
+### 무엇을 했나
+
+| # | 작업 | 산출물 |
+|---|---|---|
+| 1 | API 3종 구현 | `auth/MeController`(GET /me), `dashboard/DashboardController`(summary, cashflow) |
+| 2 | 표준 오류 포맷 | `common/api/ErrorResponse` + `@RestControllerAdvice` — 실패 전부 code/message/details/timestamp, 401/403/400/500 구분(§25) |
+| 3 | 접근 제어 | `common/web/BearerTokenInterceptor` — Bearer 없으면 401. 실제 JWT 검증은 이슈 7에서(§38.5) |
+| 4 | mock 원장 | `dashboard/MockDashboardSource` — §36.2 기준선 고정. DB 연결 때 교체되는 유일한 클래스 |
+| 5 | API 명세 | project.md **§38** — 요청/응답 예시, 계산 미담당 원칙(§34.6), 접근 제어 한계 |
+| 6 | smoke 테스트 6건 | "standalone MockMvc — 토큰/포맷/월 범위" |
+
+### 검증
+
+| 대상 | 방법 | 결과 |
+|---|---|---|
+| 컴파일·테스트 | `./gradlew test` | BUILD SUCCESSFUL, **9건 PASS** |
+| summary | bootRun(8081 격리) + fetch | 200 — asOf 2026-10, 기준선 값 그대로 |
+| me / cashflow | 同上 | 200 — months=3 인 3행 desc |
+| 토큰 없음 | 同上 | **401 AUTH_REQUIRED** + timestamp |
+| months=13 | 同上 | **400 INVALID_REQUEST** + details |
+
+### 주의 (사용자 8080 인스턴스)
+
+bootRun 은 부팅 시점에 코드를 컴파일하므로, **이 작업 전에 띄워둔 8080 인스턴스는
+새 API 가 없다.** 재시작이 필요하다. 스모크는 사용자 인스턴스와 격리하도록 8081 로 돌렸고 종료했다.
+
+### 남은 것
+
+- [ ] JSR-310 serial 검토: Instant 직렬화 대신 문자열 timestamp 사용 중 — 스프린트 이슈 7 토큰 대체 시 정리
+- [ ] 백엔드 테스트가 dashboardMock 기준선과 한 곳에 고정되면(스프린트 이슈 7) FE 테스트와 상호 대조
+- [ ] Spring Security 도입 여부는 이슈 7에서 결정
+
+---
+
 ---
 
 ## 2026-10-17 — Issue 3 후반(백엔드 부팅 가능화) + Issue 5(데이터 모델 초안)
