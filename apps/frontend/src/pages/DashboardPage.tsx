@@ -1,10 +1,11 @@
-import { useState } from "react";
-import { Card, Segmented, Typography } from "antd";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Card, Typography } from "antd";
 import { AppLayout } from "../layout/AppLayout";
 import { ResponsiveGrid } from "../layout/ResponsiveGrid";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
 import { MetricCard } from "../components/MetricCard";
-import { dashboardMock } from "../data/dashboardMock";
+import type { DashboardData } from "../data/dashboardMock";
+import { fetchCashflow, fetchDashboardSummary, type CashflowRow } from "../api/dashboardApi";
 import { assetComposition, emergencyMonths, monthlyBalance, netWorth } from "../dashboard/metrics";
 import { AssetCompositionList } from "../dashboard/AssetCompositionList";
 import {
@@ -21,69 +22,98 @@ interface DashboardPageProps {
 }
 
 /**
- * Issue 3: 대시보드 정보구조와 반응형 레이아웃.
- * 영역 순서(§35, 프로토타입 dashboard.html과 동일): 핵심 지표 4종 → 자산 구성비 →
- * 현금 3계좌 → 월별 현금흐름. 카드 내용과 계산은 Issue 4, 실데이터는 Issue 7.
- * 상태 미리보기는 §31 의 프로토타입 관례 — 레이아웃 AC(로딩/빈 상태)를
- * 화면으로 증명할 수 있게 한다.
+ * Issue 7: 실제 API(§38 summary + cashflow)와 연동한다.
+ * - 상태는 더 이상 수동 스위치가 아니라 요청 결과에서 나온다: loading → ready/empty/error.
+ * - §26 연동 기준 "카드 단위 복구 우선": summary(핵심 지표·구성비·현금)와 cashflow(월별
+ *   현금흐름)가 각각의 상태·재시도를 갖는다 — 한쪽 실패가 다른쪽 화면을 중단시키지 않는다.
+ * - 오류 문구는 ApiError 의 사용자 친화 메시지(네트워크/인증 구분)를 그대로 보여 준다.
+ * - 계산은 여전히 metrics.ts 단일 출처(§34.6). 여기선 데이터를 씌우는 것만 한다.
  */
 export function DashboardPage({ onLogout }: DashboardPageProps) {
-  const [preview, setPreview] = useState<SurfaceStatus>("ready");
-  const dataReady = preview === "ready";
-  const composition = assetComposition(dashboardMock);
+  const [summary, setSummary] = useState<DashboardData | null>(null);
+  const [summaryStatus, setSummaryStatus] = useState<SurfaceStatus>("loading");
+  const [summaryError, setSummaryError] = useState("");
+
+  const [cashflow, setCashflow] = useState<CashflowRow[] | null>(null);
+  const [cashflowStatus, setCashflowStatus] = useState<SurfaceStatus>("loading");
+
+  // React 18 StrictMode 더블 마운트 + 리마운트에서도 중복 호출이 없어야 한다.
+  // dedupe 가 네트워크 중복을 막지만, 마운트마다 재요청 자체도 마운트 플래그로 막는다.
+  const mountedRef = useRef(false);
+
+  const load = useCallback(() => {
+    setSummaryStatus("loading");
+    setSummaryError("");
+    setCashflowStatus("loading");
+
+    fetchDashboardSummary()
+      .then((data) => {
+        setSummary(data);
+        const blank = data.assets.length === 0 && data.liabilities.length === 0;
+        setSummaryStatus(blank ? "empty" : "ready");
+      })
+      .catch((e: Error) => {
+        setSummaryStatus("error");
+        setSummaryError(e.message);
+      });
+
+    fetchCashflow()
+      .then((rows) => {
+        setCashflow(rows);
+        setCashflowStatus(rows.length === 0 ? "empty" : "ready");
+      })
+      .catch(() => {
+        setCashflowStatus("error");
+      });
+  }, []);
+
+  useEffect(() => {
+    if (mountedRef.current) return;
+    mountedRef.current = true;
+    void load();
+  }, [load]);
 
   const handleLogout = () => {
     clearToken();
     onLogout();
   };
 
+  const dataReady = summaryStatus === "ready" && summary !== null;
+  const composition = dataReady ? assetComposition(summary) : [];
+  const cashRows = dataReady ? summary.assets.filter((a) => a.type === "cash") : [];
+
   return (
     <AppLayout onLogout={handleLogout}>
       <section aria-labelledby="h-core" style={{ marginBottom: 32 }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "baseline",
-            justifyContent: "space-between",
-            marginBottom: 16,
-          }}
-        >
-          <Typography.Title level={4} id="h-core" style={{ margin: 0 }}>
-            핵심 지표
-          </Typography.Title>
-          <Segmented
-            aria-label="상태 미리보기"
-            options={["ready", "loading", "empty", "error"]}
-            value={preview}
-            onChange={(v) => setPreview(v as SurfaceStatus)}
-          />
-        </div>
+        <Typography.Title level={4} id="h-core" style={{ margin: 0, marginBottom: 16 }}>
+          핵심 지표
+        </Typography.Title>
         <ResponsiveGrid>
           <MetricCard
             title="순자산"
-            status={preview}
-            onRetry={() => setPreview("ready")}
-            hint={dataReady ? formatKrwExact(netWorth(dashboardMock)) : undefined}
+            status={summaryStatus}
+            onRetry={load}
+            hint={dataReady ? formatKrwExact(netWorth(summary)) : undefined}
           >
-            {dataReady ? formatKrwAbbr(netWorth(dashboardMock)) : "—"}
+            {dataReady ? formatKrwAbbr(netWorth(summary)) : "—"}
           </MetricCard>
           <MetricCard
             title="월 수지"
-            status={preview}
-            onRetry={() => setPreview("ready")}
-            hint={dataReady ? `수입 ${formatKrwAbbr(dashboardMock.monthly.income)} · 지출 ${formatKrwAbbr(dashboardMock.monthly.expenses)}` : undefined}
+            status={summaryStatus}
+            onRetry={load}
+            hint={dataReady ? `수입 ${formatKrwAbbr(summary.monthly.income)} · 지출 ${formatKrwAbbr(summary.monthly.expenses)}` : undefined}
           >
-            {dataReady ? formatSignedKrw(monthlyBalance(dashboardMock)) : "—"}
+            {dataReady ? formatSignedKrw(monthlyBalance(summary)) : "—"}
           </MetricCard>
           <MetricCard
             title="비상금 유지 개월"
-            status={preview}
-            onRetry={() => setPreview("ready")}
-            hint={dataReady && !dashboardMock.monthly.essentialComplete ? "필수지출에 미확정 항목이 있습니다" : undefined}
+            status={summaryStatus}
+            onRetry={load}
+            hint={dataReady && !summary.monthly.essentialComplete ? "필수지출에 미확정 항목이 있습니다" : undefined}
           >
-            {dataReady ? formatMonths(emergencyMonths(dashboardMock)) : "—"}
+            {dataReady ? formatMonths(emergencyMonths(summary)) : "—"}
           </MetricCard>
-          <MetricCard title="자산 구성비" status={preview} onRetry={() => setPreview("ready")}>
+          <MetricCard title="자산 구성비" status={summaryStatus} onRetry={load}>
             <AssetCompositionList slices={composition} />
           </MetricCard>
         </ResponsiveGrid>
@@ -94,9 +124,9 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
           자산 구성비
         </Typography.Title>
         <Card>
-          <StateBlock status={preview} onRetry={() => setPreview("ready")}>
+          <StateBlock status={summaryStatus} onRetry={load} errorText={summaryError}>
             <Typography.Text type="secondary">
-              도넛 차트 영역 — 차트 라이브러리 선정 후 Issue 7 연계 시 구현
+              도넛 차트 영역 — 차트 라이브러리 선정 후 구현. 유형별 구성비는 위 자산 구성비 카드에 표시된다
             </Typography.Text>
           </StateBlock>
         </Card>
@@ -107,10 +137,18 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
           현금 3계좌
         </Typography.Title>
         <Card>
-          <StateBlock status={preview} onRetry={() => setPreview("ready")}>
-            <Typography.Text type="secondary">
-              요구불/파킹/예적금 요약 영역 — 현금 화면 연계 시 구현
-            </Typography.Text>
+          <StateBlock status={summaryStatus} onRetry={load} errorText={summaryError}>
+            {cashRows.length === 0 ? (
+              <Typography.Text type="secondary">현금성 계좌가 없습니다</Typography.Text>
+            ) : (
+              <ul style={{ margin: 0, paddingLeft: 20 }}>
+                {cashRows.map((row) => (
+                  <li key={row.id}>
+                    {row.name} — {formatKrwExact(row.value)}
+                  </li>
+                ))}
+              </ul>
+            )}
           </StateBlock>
         </Card>
       </section>
@@ -120,10 +158,31 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
           월별 현금흐름
         </Typography.Title>
         <Card>
-          <StateBlock status={preview} onRetry={() => setPreview("ready")}>
-            <Typography.Text type="secondary">
-              최근 6개월 차트 영역 — Issue 6/7 API 연계 시 구현
-            </Typography.Text>
+          <StateBlock status={cashflowStatus} onRetry={load}>
+            {cashflow && cashflow.length > 0 ? (
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: "left", paddingBottom: 8 }}>월</th>
+                    <th style={{ textAlign: "right", paddingBottom: 8 }}>수입</th>
+                    <th style={{ textAlign: "right", paddingBottom: 8 }}>지출</th>
+                    <th style={{ textAlign: "right", paddingBottom: 8 }}>수지</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cashflow.map((row) => (
+                    <tr key={row.month}>
+                      <td style={{ paddingBottom: 6 }}>{row.month}</td>
+                      <td style={{ textAlign: "right" }}>{formatKrwAbbr(row.income)}</td>
+                      <td style={{ textAlign: "right" }}>{formatKrwAbbr(row.expenses)}</td>
+                      <td style={{ textAlign: "right" }}>{formatSignedKrw(row.income - row.expenses)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <Typography.Text type="secondary">표시할 월 데이터가 없습니다</Typography.Text>
+            )}
           </StateBlock>
         </Card>
       </section>
