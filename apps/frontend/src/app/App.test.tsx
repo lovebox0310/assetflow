@@ -15,18 +15,18 @@ describe("App 인증 흐름", () => {
   it("미로그인 상태에서는 로그인 화면만 보인다 (§21 보호 라우트)", () => {
     render(<App />);
     expect(screen.getByText(/AssetFlow Login/i)).toBeDefined();
-    expect(screen.queryByText(/Dashboard/i)).toBeNull();
+    expect(screen.queryByText("핵심 지표")).toBeNull();
   });
 
   it("로그아웃 후 대시보드 재접근이 차단된다 (§21 AC)", async () => {
     saveToken("tok", Date.now() + 60_000);
     render(<App />);
-    expect(screen.getByText(/Dashboard/i)).toBeDefined();
+    expect(screen.getByText("핵심 지표")).toBeDefined();
 
-    fireEvent.click(screen.getByRole("button", { name: /logout/i }));
+    fireEvent.click(screen.getByRole("button", { name: /로그아웃/ }));
 
     await waitFor(() => expect(screen.getByText(/AssetFlow Login/i)).toBeDefined());
-    expect(screen.queryByText(/Dashboard/i)).toBeNull();
+    expect(screen.queryByText("핵심 지표")).toBeNull();
   });
 
   it("로그인 성공 시 대시보드로 전환하고, reload 없이 화면이 바뀐다", async () => {
@@ -36,7 +36,7 @@ describe("App 인증 흐름", () => {
     const form = screen.getByRole("button", { name: /sign in/i }).closest("form");
     fireEvent.submit(form as HTMLFormElement);
 
-    await waitFor(() => expect(screen.getByText(/Dashboard/i)).toBeDefined());
+    await waitFor(() => expect(screen.getByText("핵심 지표")).toBeDefined());
     expect(screen.queryByText(/AssetFlow Login/i)).toBeNull();
   });
 
@@ -44,6 +44,6 @@ describe("App 인증 흐름", () => {
     saveToken("tok", Date.now() - 1_000); // 이미 만료
     render(<App />);
     expect(screen.getByText(/AssetFlow Login/i)).toBeDefined();
-    expect(screen.queryByText(/Dashboard/i)).toBeNull();
+    expect(screen.queryByText("핵심 지표")).toBeNull();
   });
 });

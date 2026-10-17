@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1290 900" font-family="sans-serif" font-size="13">
+  <title>Issue 3 — 대시보드 정보구조 와이어프레임 (§35)</title>
+  <style>
+    .frame { fill: #fff; stroke: #333; stroke-width: 1.5; }
+    .hd { fill: #e8eef7; stroke: #333; }
+    .core { fill: #dcefdc; stroke: #333; }
+    .comp { fill: #fdeed3; stroke: #333; }
+    .cash { fill: #e6dcf5; stroke: #333; }
+    .flow { fill: #f5dcdc; stroke: #333; }
+    .lbl { font-size: 12px; fill: #222; }
+    .ttl { font-size: 15px; font-weight: bold; fill: #000; }
+    .note { font-size: 11px; fill: #555; }
+  </style>
+
+  <!-- 모바일 360 -->
+  <text x="20" y="28" class="ttl">모바일 360px — 1열 스크롤</text>
+  <rect x="20" y="40" width="120" height="820" class="frame" rx="8"/>
+  <rect x="26" y="46" width="108" height="18" class="hd" rx="3"/>
+  <text x="30" y="59" class="lbl">헤더</text>
+  <rect x="26" y="70" width="108" height="10" class="note" style="fill:none;stroke:none"/><text x="26" y="80" class="note">핵심 지표 + 상태전환</text>
+  <rect x="26" y="88" width="108" height="40" class="core" rx="3"/><text x="30" y="112" class="lbl">순자산</text>
+  <rect x="26" y="134" width="108" height="40" class="core" rx="3"/><text x="30" y="158" class="lbl">월 수지</text>
+  <rect x="26" y="180" width="108" height="40" class="core" rx="3"/><text x="30" y="204" class="lbl">비상금 유지 개월</text>
+  <rect x="26" y="226" width="108" height="40" class="core" rx="3"/><text x="30" y="250" class="lbl">자산 구성비</text>
+  <rect x="26" y="280" width="108" height="90" class="comp" rx="3"/><text x="30" y="330" class="lbl">자산 구성비</text>
+  <rect x="26" y="384" width="108" height="90" class="cash" rx="3"/><text x="30" y="434" class="lbl">현금 3계좌</text>
+  <rect x="26" y="488" width="108" height="110" class="flow" rx="3"/><text x="30" y="548" class="lbl">월별 현금흐름</text>
+
+  <!-- 태블릿 768 -->
+  <text x="180" y="28" class="ttl">태블릿 768px — 2열</text>
+  <rect x="180" y="40" width="280" height="500" class="frame" rx="8"/>
+  <rect x="188" y="48" width="264" height="20" class="hd" rx="3"/><text x="192" y="62" class="lbl">헤더</text>
+  <rect x="188" y="80" width="127" height="52" class="core" rx="3"/><text x="192" y="110" class="lbl">순자산</text>
+  <rect x="325" y="80" width="127" height="52" class="core" rx="3"/><text x="329" y="110" class="lbl">월 수지</text>
+  <rect x="188" y="142" width="127" height="52" class="core" rx="3"/><text x="192" y="172" class="lbl">비상금 유지 개월</text>
+  <rect x="325" y="142" width="127" height="52" class="core" rx="3"/><text x="329" y="172" class="lbl">자산 구성비</text>
+  <rect x="188" y="210" width="264" height="80" class="comp" rx="3"/><text x="192" y="254" class="lbl">자산 구성비</text>
+  <rect x="188" y="300" width="264" height="80" class="cash" rx="3"/><text x="192" y="344" class="lbl">현금 3계좌</text>
+  <rect x="188" y="390" width="264" height="90" class="flow" rx="3"/><text x="192" y="439" class="lbl">월별 현금흐름</text>
+
+  <!-- 데스크톱 1200 -->
+  <text x="500" y="28" class="ttl">데스크톱 1200px — 핵심 4열 1스크린</text>
+  <rect x="500" y="40" width="770" height="420" class="frame" rx="8"/>
+  <rect x="510" y="50" width="750" height="24" class="hd" rx="3"/><text x="514" y="67" class="lbl">헤더 (로고 · 로그아웃)</text>
+  <rect x="510" y="86" width="178" height="64" class="core" rx="3"/><text x="514" y="122" class="lbl">순자산</text>
+  <rect x="700" y="86" width="178" height="64" class="core" rx="3"/><text x="704" y="122" class="lbl">월 수지</text>
+  <rect x="888" y="86" width="178" height="64" class="core" rx="3"/><text x="892" y="122" class="lbl">비상금 유지 개월</text>
+  <rect x="1082" y="86" width="178" height="64" class="core" rx="3"/><text x="1086" y="122" class="lbl">자산 구성비</text>
+  <rect x="510" y="166" width="370" height="120" class="comp" rx="3"/><text x="514" y="230" class="lbl">자산 구성비 (도넛)</text>
+  <rect x="900" y="166" width="360" height="120" class="cash" rx="3"/><text x="904" y="230" class="lbl">현금 3계좌</text>
+  <rect x="510" y="300" width="750" height="140" class="flow" rx="3"/><text x="514" y="374" class="lbl">월별 현금흐름 (최근 6개월)</text>
+
+  <!-- 규칙 노트 -->
+  <text x="500" y="500" class="ttl">레이아웃 규칙 (§35)</text>
+  <text x="500" y="524" class="note">간격 스케일 4/8/12/16/24/32/48 · 카드 gutter 세로 16, 가로 16→24 (lg)</text>
+  <text x="500" y="542" class="note">컬럼 xs&lt;576:1 · 768~991:2 · &gt;=992:4 (antd Row/Col, §28.2)</text>
+  <text x="500" y="560" class="note">컨테이너 max-width 1200 · 거터 모바일 16 / 데스크톱(&gt;=992) 24</text>
+  <text x="500" y="578" class="note">우선순위: 핵심 지표 &gt; 구성비/현금 &gt; 현금흐름 · 상태 4종 StateBlock 단일 출처</text>
+</svg>
