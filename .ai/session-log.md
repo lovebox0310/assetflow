@@ -27,7 +27,8 @@
 
 ### 이 PC 환경 (§37.6 중복 아님 — 실행 명령만 여기)
 - JDK 21: `C:/Users/H/tools/jdk-21.0.12.1+1` (Temurin), Gradle 8.10: `C:/Users/H/tools/gradle-8.10`
-- 실행: `JAVA_HOME="C:/Users/H/tools/jdk-21.0.12.1+1" ./gradlew test` (apps/backend)
+- **JAVA_HOME 을 사용자 환경변수로 영구 등록 완료(레지스트리 검증)**. 새 PowerShell 창에서는 설정 없이 `./gradlew` 가 돈다 — 열려 있던 창은 다시 열어야 한다
+- 실행(수동 지정이 필요한 경우만): `JAVA_HOME="C:/Users/H/tools/jdk-21.0.12.1+1" ./gradlew test` (apps/backend)
 
 ### 검증
 
