@@ -1,0 +1,72 @@
+/* Issue 2 (§21): 모바일 360px 에서 폼 레이아웃이 깨지지 않는다.
+ * AC: 화면 증거 — 폼 최대폭 420px, 입력 width 100%, box-sizing:border-box. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: #f7f8fa;
+  color: #1f2328;
+}
+
+.auth-page {
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+.auth-page h1 {
+  font-size: 1.5rem;
+  margin: 0 0 16px;
+}
+
+.auth-page form {
+  display: grid;
+  gap: 10px;
+}
+
+.auth-page label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.auth-page input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.auth-page button {
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 6px;
+  background: #1d76db;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.auth-page button:hover {
+  background: #16589e;
+}
+
+.field-error,
+.form-error {
+  margin: 0;
+  color: #b60205;
+  font-size: 0.8rem;
+}
+
+.form-error {
+  font-size: 0.85rem;
+}
