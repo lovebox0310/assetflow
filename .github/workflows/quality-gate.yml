@@ -11,9 +11,13 @@
 #   3. 카드 파서·번들 테스트 — 픽스처 재현성까지
 #   4. 생성물 드리프트 — 커밋된 번들이 생성기와 어긋나는지
 #
-# 의존성은 없다. package.json 도 lock 파일도 요구하지 않는다(§30).
-# 앱(React/Spring) 빌드는 이 워크플로에 넣지 않는다 — 빌드 파일 자체가 아직 없다.
-# 만들어지는 날 여기 추가한다. 없는 걸 돌아가는 척하지 않는 게 이 워크플로의 요지다.
+# 이 워크플로의 quality-gate 잡은 의존성이 없다. package.json 도 lock 파일도 요구하지 않는다(§30).
+#
+# 앱 게이트:
+#   - FE(React/Vite): 2026-10-17 에 package.json·lock 이 이미 있어 frontend-gate 잡으로 추가했다.
+#     (로컬 검증: vitest 8/8 PASS, tsc --noEmit 클린, vite build 성공)
+#   - BE(Spring): build.gradle 은 있으나 gradle wrapper 와 Spring Boot 메인 클래스가 아직 없다.
+#     빌드가 실제로 돌아가는 날 backend-gate 잡을 추가한다. 없는 걸 돌아가는 척하지 않는다.
 
 name: quality-gate
 
@@ -81,3 +85,28 @@ jobs:
 
       - name: 결과 요약
         run: echo "quality-gate 통과"
+
+  # FE 앱 게이트. quality-gate 잡과 독립적으로 돈다.
+  # package.json 의 packageManager(pnpm@9.15.4)로 도구 버전을 고정하고,
+  # lock 파일이 어긋나면 --frozen-lockfile 이 실패하게 한다.
+  frontend-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: pnpm 활성화 (packageManager 필드 고정본)
+        run: corepack enable
+      - name: 의존성 설치 (lock 고정)
+        run: pnpm install --frozen-lockfile
+      - name: 타입 검사
+        run: pnpm typecheck
+      - name: 단위 테스트
+        run: pnpm test
+      - name: 프로덕션 빌드
+        run: pnpm build
