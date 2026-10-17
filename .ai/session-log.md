@@ -14,6 +14,52 @@
 
 ---
 
+## 2026-10-17 — Issue 1 마감(커밋·푸시·원격 등록) + Issue 2 FE 구현
+
+### 무엇을 했나
+
+| # | 작업 | 산출물 |
+|---|---|---|
+| 1 | Issue 1 결과물을 6개 원자 커밋으로 마감 | `dd2cac7`~`0f0ad02` (docs/ci/build/chore 계열) |
+| 2 | 브랜치 원격 푸시 | `origin/feature/prototype-debt-ui` (트래킹 설정) |
+| 3 | GitHub 라벨 23종 등록 | §19 체계 전부 (`--force`로 docs 갱신) |
+| 4 | Sprint 1 Issue 1-8 원격 등록 | 원격 #3~#10, §19 라벨 매핑·§21~27 최종 본문 사용 |
+| 5 | Issue 2 FE 구현 (§21) | `auth/validate.ts` 신규, authApi·authStore·App·LoginPage·DashboardPage 갱신, `app.css` 360px 대응 |
+| 6 | Issue 2 테스트 확장 | 8건 → **23건** (App 종단·만료·필드 검증·로그아웃) |
+
+### 검증
+
+| 대상 | 명령 | 결과 |
+|---|---|---|
+| FE 타입 검사 | `npx tsc --noEmit` | 클린 |
+| FE 단위 테스트 | `node node_modules/vitest/vitest.mjs run` | 5파일 23건 PASS |
+| FE 빌드 | `npx vite build` | 성공 (143.31 kB) |
+| 프로토타입 회귀 | `node design/prototype/tools/run-all.mjs` | 3/3 스위트 PASS |
+| 카드 파서 3종 | `node samples/card/tools/test-*.mjs` | PASS |
+| 라벨·이슈 원격 | `gh issue view 3,4 --json labels` | §19 매핑 일치 확인 |
+
+### 구현에서 결정한 것
+
+- **라우터 없음**: 화면 2종은 `App` 조건부 렌더로 보호 라우트를 대체한다. 토큰
+  없거나 만료되면 대시보드가 마운트되지 않는다. reload 대신 `onSuccess`/`onLogout`
+  상태 전환. 화면이 늘면 Issue 7에서 라우터 검토.
+- **검증은 두 곳에서**: 화면은 필드별 메시지를, `loginWithEmail` 경계는 형식 검증을
+  다시 거쳐 공통 메시지(`Invalid credentials`)만 뱉는다 (§21 보안 기준).
+- **토큰 만료**: `saveToken(token, expiresAt?)`. mock API는 1시간 TTL. 서버 만료시는
+  Issue 6/7 연결 시 `LoginOutput.expiresAt` 로 대체.
+- **API 연동·비밀번호 해시**: 백엔드 없음(이 PC JDK/Gradle 부재)이라 mock 유지.
+  실제 연동은 Issue 6(API 명세)·Issue 7(FE-BE), 해시 저장은 BE 측 §21 보안 기준.
+
+### 남은 것 (Issue 2)
+
+- [ ] **Issue 2 작업분 미커밋** — 명시 요청 없음 (`src/` 11개 파일 변경·신규)
+- [ ] AC 화면 증거 — §9 의 PR 캡처 요구: 360px/데스크톱 로그인·대시보드 캡처
+- [ ] 실제 로그인 API 연동 — Issue 6/7 종속
+- [ ] 원격 #3 (Issue 1) 상태 라벨 `status:ready` → `status:done` 전환 — PR 머지 시
+      `issue-label-automation.yml`이 처리하므로 PR 전까지 보류
+
+---
+
 ## 2026-10-17 — Issue 1 착수 (구조/품질 게이트) + init-deep
 
 ### 무엇을 했나
