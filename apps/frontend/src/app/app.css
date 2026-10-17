@@ -75,6 +75,27 @@ body {
   background: #16589e;
 }
 
+/* §28.2 숫자 표기: 금액·비율 세로 정렬 */
+.af-num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 자산 구성비 카드: 라벨 · 값 양쪽 정렬 목록 */
+.af-composition {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.af-composition li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .field-error,
 .form-error {
   margin: 0;
