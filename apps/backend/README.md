@@ -10,9 +10,15 @@ Backend implementation area for AssetFlow.
 
 ## Sprint 1 target APIs
 
-- GET /api/v1/me
-- GET /api/v1/dashboard/summary
-- GET /api/v1/dashboard/cashflow?months=3
+All three are implemented (mock ledger, spec in §38 of `.ai/project.md`):
+
+- GET /api/v1/me — current user (mock single user)
+- GET /api/v1/dashboard/summary — dashboard rows (same shape as the FE `DashboardData`)
+- GET /api/v1/dashboard/cashflow?months=3 — last N months, 1..12, newest first
+
+Protected endpoints require `Authorization: Bearer <token>`; failures use the
+`{code, message, details, timestamp}` format (401 AUTH_REQUIRED / 400 INVALID_REQUEST).
+Real JWT validation follows in the FE-BE integration issue.
 
 ## Run and verify
 
