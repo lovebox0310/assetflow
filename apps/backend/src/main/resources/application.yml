@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: assetflow-backend
+  # Issue #7(데이터 모델)에서 PostgreSQL 연결이 추가되기 전까지는
+  # DB 없이 부팅 가능해야 Issue #3 AC(로컬 실행 확인)를 만족하므로,
+  # DataSource/JPA/MyBatis 자동 구성을 제외한다.
+  # DB 연결 도입 시 이 exclude 를 제거하고 spring.datasource 를 채운다.
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration
+      - org.mybatis.spring.boot.autoconfigure.MybatisAutoConfiguration
+
+server:
+  port: 8080

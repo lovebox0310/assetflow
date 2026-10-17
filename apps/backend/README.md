@@ -21,24 +21,28 @@ Build tool is fixed to **Gradle** (§1 allows Gradle or Maven, one team standard
 Current status:
 
 - `build.gradle` and `settings.gradle` are present (Spring Boot 3.3.5, Java 21, MyBatis, PostgreSQL).
-- **Not yet present:** the Gradle wrapper (`gradlew`, `gradle/wrapper/*`) and a Spring Boot
-  main class (`@SpringBootApplication`). Until the main class exists the app cannot boot,
-  so `bootRun` will fail even with a correct JDK installed.
+- Spring Boot main class: `src/main/java/com/assetflow/AssetflowApplication.java`.
+- Gradle wrapper (8.10) is present and committed — no local Gradle install is needed.
+- Data model draft: `db/schema.sql` (design notes in §37 of `.ai/project.md`).
 
-Prerequisites: JDK 21 and Gradle 8.5+. On a machine that has them:
+Prerequisites: JDK 21 only (`JAVA_HOME` pointed at a JDK 21). The wrapper fetches Gradle itself.
 
 ```bash
-gradle wrapper --gradle-version 8.10   # once, then commit the wrapper files
 ./gradlew compileJava                  # fastest signal that the build is wired correctly
 ./gradlew test
-./gradlew bootRun                      # needs the main class first
+./gradlew bootRun                      # boots without DB; DataSource/JPA/MyBatis autoconfig excluded
+curl -s -X POST http://localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" -d '{"email":"user@example.com","password":"password123"}'
 ```
 
-Verification status: **unverified.** The development machine used on 2026-10-17 had no
-JDK, no Gradle and no Docker (`where java`/`gradle`/`docker` all miss, `JAVA_HOME` unset),
-so nothing above was actually executed. Treat these as the commands to run, not as passing results.
+Verification status: **verified on 2026-10-17** — `compileJava test` (3 tests pass) and
+`bootRun` + login smoke (HTTP 200) on the dev machine, with `JAVA_HOME` set to a local
+Temurin 21 install. The machine has no system JDK/Gradle, so `JAVA_HOME` must be set per
+session there (details in `.ai/project.md` §37.6).
 
 Notes for AI collaboration:
 
 - Keep API contract checks tied to test commands before PR.
+
+---
 - Prefer one build tool only (Maven or Gradle) to avoid ambiguity.
