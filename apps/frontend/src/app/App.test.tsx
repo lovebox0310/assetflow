@@ -1,7 +1,31 @@
-import { beforeEach, describe, expect, it, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { App } from "./App";
 import { clearToken, saveToken } from "../auth/authStore";
+import { dashboardMock } from "../data/dashboardMock";
+
+// Issue 7: 로그인·대시보드 모두 실제 fetch 를 부른다. 테스트에서 §38 포맷으로
+// 응답하는 대역을 심는다 — 서버 없이도 AC 경로를 검증한다.
+function apiResponse(data: unknown, ok = true, status = 200): Response {
+  const body = ok ? { code: "OK", message: "loaded", data } : { code: "X", message: "err", details: "", timestamp: "" };
+  return { ok, status, json: async () => body } as Response;
+}
+
+beforeEach(() => {
+  vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+    const path = String(input);
+    if (path.includes("/auth/login")) {
+      return Promise.resolve(apiResponse({ token: "jwt-test", }));
+    }
+    if (path.includes("/dashboard/summary")) return Promise.resolve(apiResponse(dashboardMock));
+    if (path.includes("/dashboard/cashflow")) return Promise.resolve(apiResponse([]));
+    return Promise.resolve(apiResponse({}, false, 500));
+  }));
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 // App 은 실제 authApi(mock 토큰)를 쓴다. Issue 7 에서 서버 연동되면
 // 이 테스트의 성공 경로가 그대로 AC "정상 계정으로 로그인 시 대시보드 진입"이 된다.

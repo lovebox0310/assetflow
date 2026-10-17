@@ -10,6 +10,20 @@ export function saveToken(token: string, expiresAt?: number) {
   }
 }
 
+/** API 클라이언트가 Authorization 헤더에 쓴다. 없으면 null. */
+export function getToken(): string | null {
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) return null;
+
+  const raw = localStorage.getItem(EXPIRES_KEY);
+  if (raw) {
+    const expiresAt = Number(raw);
+    // 만료 토큰은 없는 토큰과 같다 (§21) — 헤더에 싣지 않는다.
+    if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) return null;
+  }
+  return token;
+}
+
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(EXPIRES_KEY);

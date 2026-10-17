@@ -8,6 +8,8 @@ interface StateBlockProps {
   /** error 상태에서 재시도 버튼. 없으면 메시지만 보여 준다. */
   onRetry?: () => void;
   emptyText?: string;
+  /** error 상태의 부가 설명 (ApiError 의 사용자 친화 문구, §26). */
+  errorText?: string;
   children: ReactNode;
 }
 
@@ -16,7 +18,7 @@ interface StateBlockProps {
  * Issue 4 카드 4종이 같은 상태를 이 블록으로 감싼다 — 화면마다 다른
  * 스피너/문구를 만들지 않는다.
  */
-export function StateBlock({ status, onRetry, emptyText = "데이터가 없습니다", children }: StateBlockProps) {
+export function StateBlock({ status, onRetry, emptyText = "데이터가 없습니다", errorText, children }: StateBlockProps) {
   if (status === "loading") {
     return <Skeleton active paragraph={{ rows: 2 }} />;
   }
@@ -29,6 +31,7 @@ export function StateBlock({ status, onRetry, emptyText = "데이터가 없습�
         type="error"
         showIcon
         title="데이터를 불러오지 못했습니다"
+        description={errorText || undefined}
         action={
           onRetry ? (
             <Button size="small" onClick={onRetry}>
