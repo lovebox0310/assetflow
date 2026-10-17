@@ -28,7 +28,7 @@ export function StateBlock({ status, onRetry, emptyText = "데이터가 없습�
       <Alert
         type="error"
         showIcon
-        message="데이터를 불러오지 못했습니다"
+        title="데이터를 불러오지 못했습니다"
         action={
           onRetry ? (
             <Button size="small" onClick={onRetry}>
