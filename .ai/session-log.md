@@ -14,6 +14,48 @@
 
 ---
 
+## 2026-10-17 — Issue 3 대시보드 정보구조·레이아웃 (PR #5/#12 대상)
+
+### 무엇을 했나
+
+| # | 작업 | 산출물 |
+|---|---|---|
+| 1 | §35 정보구조·레이아웃 규칙 확정 (와이어프레임 포함) | `.ai/project.md` §35, `design/wireframes/issue3-dashboard-layout.svg` |
+| 2 | antd@6.6.6 도입 (§28.1 정책 정렬) | `package.json`·lock — Issue 1 스캐폴딩의 무-antd 편차를 이번 세션에서 해소 |
+| 3 | 공통 레이아웃 컴포넌트 | `src/layout/AppLayout.tsx`(헤더/컨테이너), `src/layout/ResponsiveGrid.tsx`(Row/Col span 24/12/6) |
+| 4 | 상태 4종 단일 구현 | `src/components/StateBlock.tsx` (로딩/빈/오류+재시도/데이터) |
+| 5 | 대시보드 레이아웃 구현 | `DashboardPage.tsx` — 지표→구성비→현금→현금흐름 순서, 상태 미리보기 토글(§31 관례) |
+| 6 | 테스트 확장 | 26→27건 (영역 순서·Col 분할 계약·상태 전환·로그아웃) |
+
+### 검증
+
+| 대상 | 명령/방법 | 결과 |
+|---|---|---|
+| 타입 | `npx tsc --noEmit` | 클린 |
+| 단위 | `node node_modules/vitest/vitest.mjs run` | **27건 PASS** |
+| 빌드 | `npx vite build` | 성공 (536 kB / gzip 176 kB — antd 도입 효과) |
+| 실측(데스크톱 1440) | WebView + getBoundingClientRect | 핵심 카드 4종 top 137 동일·폭 270 동일 → **4열 1스크린** |
+| 실측(태블릿 768) | CDP `Emulation.setDeviceMetricsOverride` | 2×2 정렬(폭 360 균일), scrollW=768 |
+| 실측(모바일 360) |同上 | 1열, 폭 328 균일, **scrollW=360 (가로 스크롤 0)** |
+| CJK 스캔 | U+3040-9FFF 전수 | 교정 후 CLEAN (한자 혼입 1건 직접 검출·수정) |
+
+### 도구 함정 (§34.8 계열 — 기록 필요)
+
+`Bun.WebView` 창 크기는 Windows 최소 폭(~500px)에 막힌다. 창을 360으로 열어
+스크린샷은 360으로 나오지만 **CSS 뷰포트는 500에서 미디어쿼리가 평가**됐다.
+이대로 찍은 Issue 2 "360px 캡처"도 부정확했다. 교정: `cdp("Emulation.
+setDeviceMetricsOverride", {width, height, mobile})` 로 실제 뷰포트를 강제하고
+`window.innerWidth`/`scrollWidth`를 같이 측정해 캡처를 증거로 쓴다. 캡처만 보고
+레이아웃을 판정하지 말 것.
+
+### 남은 것
+
+- [ ] 카드 내용·계산·포맷 (Issue 4 = #6), Storybook (§10)
+- [ ] 로그인 폼 antd Form 이전 — §35.4 부채로 명시적 유예
+- [ ] 번들 536kB → Issue 7에서 code-splitting 검토
+
+---
+
 ## 2026-10-17 — Issue 1 마감(커밋·푸시·원격 등록) + Issue 2 FE 구현
 
 ### 무엇을 했나
