@@ -14,6 +14,177 @@
 
 ---
 
+## 2026-10-17 — Issue 1 마감(커밋·푸시·원격 등록) + Issue 2 FE 구현
+
+### 무엇을 했나
+
+| # | 작업 | 산출물 |
+|---|---|---|
+| 1 | Issue 1 결과물을 6개 원자 커밋으로 마감 | `dd2cac7`~`0f0ad02` (docs/ci/build/chore 계열) |
+| 2 | 브랜치 원격 푸시 | `origin/feature/prototype-debt-ui` (트래킹 설정) |
+| 3 | GitHub 라벨 23종 등록 | §19 체계 전부 (`--force`로 docs 갱신) |
+| 4 | Sprint 1 Issue 1-8 원격 등록 | 원격 #3~#10, §19 라벨 매핑·§21~27 최종 본문 사용 |
+| 5 | Issue 2 FE 구현 (§21) | `auth/validate.ts` 신규, authApi·authStore·App·LoginPage·DashboardPage 갱신, `app.css` 360px 대응 |
+| 6 | Issue 2 테스트 확장 | 8건 → **23건** (App 종단·만료·필드 검증·로그아웃) |
+
+### 검증
+
+| 대상 | 명령 | 결과 |
+|---|---|---|
+| FE 타입 검사 | `npx tsc --noEmit` | 클린 |
+| FE 단위 테스트 | `node node_modules/vitest/vitest.mjs run` | 5파일 23건 PASS |
+| FE 빌드 | `npx vite build` | 성공 (143.31 kB) |
+| 프로토타입 회귀 | `node design/prototype/tools/run-all.mjs` | 3/3 스위트 PASS |
+| 카드 파서 3종 | `node samples/card/tools/test-*.mjs` | PASS |
+| 라벨·이슈 원격 | `gh issue view 3,4 --json labels` | §19 매핑 일치 확인 |
+
+### 구현에서 결정한 것
+
+- **라우터 없음**: 화면 2종은 `App` 조건부 렌더로 보호 라우트를 대체한다. 토큰
+  없거나 만료되면 대시보드가 마운트되지 않는다. reload 대신 `onSuccess`/`onLogout`
+  상태 전환. 화면이 늘면 Issue 7에서 라우터 검토.
+- **검증은 두 곳에서**: 화면은 필드별 메시지를, `loginWithEmail` 경계는 형식 검증을
+  다시 거쳐 공통 메시지(`Invalid credentials`)만 뱉는다 (§21 보안 기준).
+- **토큰 만료**: `saveToken(token, expiresAt?)`. mock API는 1시간 TTL. 서버 만료시는
+  Issue 6/7 연결 시 `LoginOutput.expiresAt` 로 대체.
+- **API 연동·비밀번호 해시**: 백엔드 없음(이 PC JDK/Gradle 부재)이라 mock 유지.
+  실제 연동은 Issue 6(API 명세)·Issue 7(FE-BE), 해시 저장은 BE 측 §21 보안 기준.
+
+### 남은 것 (Issue 2)
+
+- [ ] **Issue 2 작업분 미커밋** — 명시 요청 없음 (`src/` 11개 파일 변경·신규)
+- [ ] AC 화면 증거 — §9 의 PR 캡처 요구: 360px/데스크톱 로그인·대시보드 캡처
+- [ ] 실제 로그인 API 연동 — Issue 6/7 종속
+- [ ] 원격 #3 (Issue 1) 상태 라벨 `status:ready` → `status:done` 전환 — PR 머지 시
+      `issue-label-automation.yml`이 처리하므로 PR 전까지 보류
+
+---
+
+## 2026-10-17 — Issue 1 착수 (구조/품질 게이트) + init-deep
+
+### 무엇을 했나
+
+| # | 작업 | 산출물 |
+|---|---|---|
+| 1 | init-deep 지식 기반 | `AGENTS.md` (root·apps·design·samples) |
+| 2 | init-deep 스냅샷 실측 교정 | `.omo/init-deep.json` (실제 SHA·파일수·LOC) |
+| 3 | BE 빌드 파일 (빌드도구 Gradle 고정) | `apps/backend/build.gradle`, `settings.gradle` |
+| 4 | PR/이슈 템플릿 | `.github/PULL_REQUEST_TEMPLATE.md`, `ISSUE_TEMPLATE/*.md` |
+| 5 | 품질 게이트에 FE 잡 추가 | `.github/workflows/quality-gate.yml` `frontend-gate` |
+
+### 검증
+
+| 대상 | 명령 | 결과 |
+|---|---|---|
+| FE 단위 테스트 | `node node_modules/vitest/vitest.mjs run` | 3파일 8건 PASS |
+| FE 타입 검사 | `npx tsc --noEmit` | 클린 |
+| FE 빌드 | `npx vite build` | 성공 (142.36 kB) |
+| 프로토타입 회귀 | `node design/prototype/tools/run-all.mjs` | 3/3 스위트 PASS |
+| 카드 파서·번들 | test-parse-samsung / hyundai / test-card-ui | 40·50·44건 PASS |
+| 워크플로 YAML | `Bun.YAML.parse` | jobs = quality-gate, frontend-gate |
+
+### 남은 것 (Issue 1)
+
+- [ ] BE 로컬 실행 확인 — **이 PC 에 Java/Gradle 이 없어 미검증.** gradle wrapper 와
+      Spring Boot 메인 클래스가 아직 없어 `backend-gate` 도 넣지 않았다(워크플로 주석에 명시).
+- [ ] GitHub labels + Issue 1-8 등록 — 템플릿 파일만 준비, 원격 등록은 미실행.
+- [ ] 커밋 — 명시 요청 없음.
+
+> `AGENTS.md` 의 Commit/Branch 와 `.omo/init-deep.json` 은 초판이 자리표시자였다.
+> 이번에 실측값(a071fc0, feature/prototype-debt-ui, 파일 77, LOC 6874)으로 교정했다.
+
+---
+
+## 2026-10-05 — 프론트엔드 스캐폴딩 (React 18 + Vite + TS)
+
+### 무엇을 했나
+
+FE 빌드가 없던 상태에서 `apps/frontend` 에 실행 가능한 스캐폴딩을 만들었습니다.
+기존에 있던 소스(Auth/페이지/API 타입)를 유지하면서, 도구체인만 추가했습니다.
+
+| # | 작업 | 산출물 |
+|---|---|---|
+| 1 | Vite + React 18 + TypeScript 설정 | `apps/frontend/package.json`, `tsconfig.json`, `vite.config.ts`, `index.html` |
+| 2 | 테스트 환경(Vitest + jsdom + RTL) | `vite.config.ts`, `*.test.ts(x)` 3건 |
+| 3 | README 갱신(pnpm/corepack) | `apps/frontend/README.md` |
+
+검증: `corepack pnpm run --dir apps/frontend typecheck` → PASS, `test` → 8건 PASS,
+`build` → PASS. 프로토타입 회귀도 그대로 PASS(3/3, 408건).
+
+### 결정과 근거
+
+- 패키지 매니저: **pnpm 단독**(§30). `packageManager` 필드로 pnpm@9.15.4 고정.
+  Windows의 Device Guard 문제 때문에 corepack 12.10.1 네이티브가 막혀 있던 환경도
+  9.15.4 체인으로 정리했다.
+- FE 버전: React 18.3.1 + Vite 8 + TS 5.9. 저장소 기존 계획(React 18, Vite)과 일치.
+- 계산은 단일 출처를 지킨다. `design/prototype/assets.html` 의 로직을 React 로
+  옮길 때는 계산 함수를 분리해 두 화면이 같은 코드를 쓰게 할 것(§34.6).
+
+### 남은 것
+
+- `design/prototype/assets.html` 의 금융자산·부채 UI/계산을 FE 컴포넌트로 이식.
+- 대시보드 카드(§23)의 파생값: 합계·순자산·비상금개월·투자가능현금·세금 잔액을
+  실제 데이터로 계산하도록 연결.
+
+---
+
+
+### 무엇을 했나
+
+부채 목록을 "언제나 편집 가능" 이던 별도 취급에서 빼내, 자산과 **같은 읽기/수정
+모드 + 스냅샷·확정·취소** 로 맞췄습니다. 그 위에 행에서 파생되는 상환 계획을 얹었습니다.
+
+| # | 작업 | 산출물 |
+|---|---|---|
+| 1 | 부채 열 확장(항목·기관·유형·금액·금리·만기·월납입액·삭제) | `design/prototype/assets.html` |
+| 2 | 원리금균등 계층(납입액·기간·스케줄·만기·계획) + 시드 교체 | `common/mock-data.js` `AF.debt` |
+| 3 | `snapshotOf`/`cancelEdit`/`removeInstitution`/`removeGroup` 을 `store.apply` 경로로 통일 | `assets.html` |
+| 4 | 상환 계획 파생 블록 `#liabPlan` (저장하지 않음) | `assets.html` |
+| 5 | 회귀 테스트 부채 구간 추가 | `tools/test-assets-page.mjs` 섹션 16–24 (163건) |
+| 6 | 부채 수학 계약 | `tools/test-mock-data.mjs` 섹션 9 (60건) |
+
+검증: `node design/prototype/tools/run-all.mjs` → **3/3 스위트, 408건 전량 PASS**.
+
+### 사람이 정한 것 (§34.6 반영)
+
+- **예적금 수익률**: 원금과 평가금액이 다르면 차이가 수익률에 반영된다. 둘이
+  같다고 0%로 고정하는 것은 버그다.
+- **부채 상환 방식**: 원리금균등 **하나만**. 화면의 월 필수지출이 고정값 하나라
+  회차마다 달라지는 방식을 못 받는다.
+- **부채도 자산과 같은 UI/UX**, 열만 기관·유형·금리·만기를 더한다.
+
+### 손으로 잡은 실제 값
+
+잔액 **69,355,560원** (원금 아님) · 연 **2.05%** · 월납입 **317,180원** ·
+기관 **우리은행** · 유형 **주택담보대출** · 남은 **274회차** · 만기 **2049-07**.
+
+- 공식 월 납입액은 317,180.78원. 제공값과 **0.78원** 어긋나는데, **제공값을 쓴다**
+  — 역산값으로 갈아끼우면 지출 시드 `대출상환및이자 317,180원`과 화면이 어긋난다.
+- 1회차: 이자 118,482 + 원금 198,698 = 317,180. 총이자 17,552,034,
+  총납입 86,907,594, 마지막 회차 317,454, 잔액 0.
+
+### 구조에서 실제로 밟은 것
+
+- `mock-data.js` 의 클로저 배열과 `data.*` 는 **같은 참조**여야 한다.
+  `data.x = newArray` 재할당은 `computeAssetTotals()` 가 구식 배열을 읽어
+  합계가 어긋난다 → `assetStorage.apply = applyAssetSnapshot` 으로 통일했다.
+  같은 이유로 `cancelEdit`·`removeInstitution`·`removeGroup` 도 `store.apply({...})` 다.
+- 하네스는 **정적 마크업을 DOM 트리로 만들지 않는다**(id 요소만 뒤늦게 만든다).
+  표 머리글 계약은 그래서 소스에서 읽어 검증한다.
+- `Element.textContent` 는 자식이 없으면 `this.value || this._text` 다.
+  테스트는 `<option>` 텍스트 대신 `value` 로 검증해야 한다.
+- 이자·원금·납입액을 각자 반올림하면 **합이 1원 어긋날 수 있다.** 마지막
+  회차에서만 실제로 나타나며(잔액 정리를 흡수) 테스트는 그 사실을 계약으로 삼는다.
+
+### 남은 것
+
+- `main` 에 미커밋 파일이 있다. 실제 앱 스캐폴딩으로 넘어가기 전에 `feature/*`
+  브랜치가 필요하다(`CONTRIBUTING.md` §90).
+- 아직 미결: 신용카드 등 **만기 없는 상품** 표현, 금리 고정/변동 구분,
+  부채비율·이자비용·만기도래 산식.
+
+---
+
 ## 2026-10-05 — 무인 진행 품질 게이트 (프로토타입 검증 + CI)
 
 ### 무엇을 했나

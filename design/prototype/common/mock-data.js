@@ -80,6 +80,7 @@
     { id: "inst-bank-ibk", name: "IBK기업은행" },
     { id: "inst-bank-nh", name: "NH농협은행" },
     { id: "inst-securities-samsung", name: "삼성증권" },
+    { id: "inst-bank-woori", name: "우리은행" },
     { id: "inst-other", name: "기타" }
   ];
 
@@ -106,7 +107,10 @@
       categoryLevel3: "예금",
       assetClass: "deposit",
       principalDeposit: 50000000,
-      currentValue: 50000000,
+      // 원금 × (1 + 2.5%). 예적금·적금 두 행만 이 규칙에서 빠졌다.
+      // 원금과 같은 값을 두면 파생 수익률이 0이 되는데, 시드는 2.5 라고
+      // 말하고 있었다 — 편집하지 않아도 이미 자기모순이었다.
+      currentValue: 51250000,
       returnRate: 2.5,
       currency: "KRW"
     },
@@ -119,7 +123,7 @@
       categoryLevel3: "적금",
       assetClass: "savings",
       principalDeposit: 30000000,
-      currentValue: 30000000,
+      currentValue: 30690000,
       returnRate: 2.3,
       currency: "KRW"
     },
@@ -194,7 +198,29 @@
     }
   ];
 
-  var liabilities = [{ key: "loan", label: "대출", amount: 62500000 }];
+  /* 부채 (§34.6).
+   * 69,355,560 은 현재 잔액이다(원금이 아니다). 잔액 69,355,560 + 연 2.05% +
+   * 월 317,180 을 넣으면 잔여 회차가 274로 떨어진다 — 세 값이 자기모순 없이
+   * 맞아떨어지므로 이 셋이 한 세트다. 원금을 따로 받지 않는다: 남은 상환
+   * 스케줄은 잔액에서 시작하므로 원금은 과거 정보일 뿐 계산에 쓰지 않는다.
+   * 만기는 저장하지 않고 asOf + termMonths 로 계산한다 (단일 출처).
+   * monthlyPayment 는 은행 실제 청구액이다. 공식 역산값(317,180.78원)과
+   * 0.78원 어긋나는데, 역산값으로 갈아끼우면 지출 시드의
+   * 고정지출/대출상환및이자 317,180원과 어긋난다.
+   */
+  var liabilities = [
+    {
+      key: "loan",
+      label: "주택담보대출",
+      institutionId: "inst-bank-woori",
+      debtType: "주택담보대출",
+      amount: 69355560,
+      rate: 2.05,
+      termMonths: 274,
+      monthlyPayment: 317180,
+      repayment: "원리금균등"
+    }
+  ];
 
   /* ---------- 현금 3계좌 ---------- */
 
@@ -493,6 +519,130 @@
     return rows;
   }
 
+  /* ---------- 원리금균등 상환 계산 ----------
+   * 상환 방식은 원리금균등 하나다(2026-10-05 결정). 원금균등·만기일시는
+   * 월 상환액이 매달 달라지는데 이 앱의 월 필수지출(§28.7)은 고정값 하나로
+   * 잡혀 있어 그 구조를 담지 않는다. 방식이 늘어나면 이 자리부터 다시 본다.
+   *
+   * 금리는 연이율(%)로 받고 월 계산에는 연/12 를 쓴다. 국내 은행 약관의
+   * "월 이자 = 원금 × 연이율 ÷ 12" 와 같은 방식이다. 윤년·일할 계산은 하지
+   * 않는다 — 실은 은행이 그런다. 이 프로토타입은 월 단위 사유만 한다.
+   */
+
+  // 월 납입액. 원금·연이율·총 회차를 주면 고정 금액을 돌려준다.
+  function monthlyPaymentOf(principal, annualRatePct, termMonths) {
+    var r = (annualRatePct / 100) / 12;
+    var n = +termMonths;
+    if (!(n > 0)) return 0;
+    // r 이 0 이면 이자 없는 대출이다. 분모가 0 이 되므로 따로 둔다.
+    if (r === 0) return principal / n;
+    return (principal * r) / (1 - Math.pow(1 + r, -n));
+  }
+
+  // 총 회차. 원금·연이율·월 납입액을 주면 기간을 역산한다.
+  // 은행이 남은 기간을 알려줄 때 쓴다. 이자 없는 대출은 단순 나눗셈이다.
+  function termMonthsOf(principal, annualRatePct, monthlyPayment) {
+    var r = (annualRatePct / 100) / 12;
+    var p = +monthlyPayment;
+    if (!(p > 0)) return 0;
+    if (r === 0) return principal > 0 ? principal / p : 0;
+    var inner = 1 - (principal * r) / p;
+    // inner 가 (0,1) 밖이면 그 월 납입액으로 원금을 못 갚는다.
+    // 만기일시·거치형으로는 이 함수를 쓰지 않는다.
+    if (!(inner > 0) || !(inner < 1)) return 0;
+    return -Math.log(inner) / Math.log(1 + r);
+  }
+
+  // 원리금균등 회차별 내역. 월 납입액은 항상 같고 이자만 줄어든다.
+  // monthlyPayment 를 따로 받는 이유: 사용자가 알려준 값(은행 실제 청구액)이
+  // 공식 역산값과 1원 미만으로 어긋난다. 역산값으로 갈아끼우면 화면의 월 납입액이
+  // 지출 시드의 고정지출과 어긋난다. 알려준 값을 믿고 마지막 회차에서 잔액을 정리한다 —
+  // 반올림 오차가 잔액에 남으면 "끝났는데 돈이 남는다"가 화면에 그대로 찍힌다.
+  function repaymentSchedule(principal, annualRatePct, termMonths, monthlyPayment) {
+    var r = (annualRatePct / 100) / 12;
+    var n = Math.floor(+termMonths);
+    var rows = [];
+    var balance = principal;
+    var totalInterest = 0;
+    if (!(n > 0) || !(balance > 0)) {
+      return { rows: rows, monthlyPayment: 0, totalInterest: 0, totalPaid: principal };
+    }
+    var pay = monthlyPayment > 0
+      ? +monthlyPayment
+      : monthlyPaymentOf(principal, annualRatePct, n);
+    for (var k = 1; k <= n; k++) {
+      var interest = balance * r;
+      var principalPart = pay - interest;
+      // 회차 납입액이 남은 잔액보다 크면 초과분은 갚지 않는다.
+      // 잔액을 음수로 끌고 가면 다음 회차의 원금이 음수가 되어
+      // "끝났는데 돈이 남는다"가 다시 나타난다.
+      if (principalPart >= balance) principalPart = balance;
+      if (k === n) principalPart = balance;   // 마지막 회차는 잔액 정리
+      var paid = interest + principalPart;
+      balance -= principalPart;
+      totalInterest += interest;
+      rows.push({
+        k: k,
+        interest: Math.round(interest),
+        principal: Math.round(principalPart),
+        payment: Math.round(paid),
+        balance: Math.max(0, Math.round(balance))
+      });
+      // 여기서 갚았으면 남은 회차는 없다. 사용자가 잔액만 줄이면
+      // 고정 납입액으로 남은 기간 안에 먼저 끝난다 — 회차를 끝까지 채우면
+      // 뒤쪽 회차가 전부 음수가 된다.
+      if (balance <= 0) break;
+    }
+    return {
+      rows: rows,
+      monthlyPayment: pay,
+      totalInterest: totalInterest,
+      totalPaid: principal + totalInterest
+    };
+  }
+
+  // asOf(YYYY-MM) 에서 termMonths 개월 뒤의 달. 만기는 저장하지 않고 여기서 만든다.
+  // 남은 회차가 곧 만기이므로 두 값을 따로 저장하면 어긋날 수 있다.
+  function maturityOf(asOfMonth, termMonths) {
+    var m = /^(\d{4})-(\d{2})$/.exec(asOfMonth || "");
+    var n = Math.floor(+termMonths);
+    if (!m || !(n >= 0)) return "";
+    var total = (+m[1]) * 12 + (+m[2] - 1) + n;
+    return Math.floor(total / 12) + "-" + String((total % 12) + 1).padStart(2, "0");
+  }
+
+  /* 부채 행 하나에서 화면이 보여줄 파생값을 만든다.
+   * 파생값은 저장하지 않는다 — 행(잔액·금리·회차)이 단일 출처다.
+   * 아래 넷은 전부 행에서만 나온다:
+   *   만기        asOf + 남은 회차
+   *   다음 납입액  잔액 × 월 금리(이자) + 남은 원금
+   *   남은 이자    스케줄 합계
+   *   잔액 정리    마지막 회차에서 반올림 오차를 흡수
+   */
+  function debtPlan(l, asOfMonth) {
+    var sched = repaymentSchedule(l.amount, l.rate, l.termMonths, l.monthlyPayment);
+    var r = (l.rate / 100) / 12;
+    var first = sched.rows[0];
+    return {
+      repayment: l.repayment,
+      maturity: maturityOf(asOfMonth, l.termMonths),
+      // 남은 회차는 스케줄이 실제로 끝나는 지점이다. 잔액만 줄이면 계약 회차보다
+      // 먼저 끝나므로 두 값이 어긋날 수 있다. 어긋나면 화면이 그 사실을 보여준다.
+      remaining: sched.rows.length,
+      monthlyPayment: sched.monthlyPayment,
+      // 다음 납입액의 이자/원금 분해. 첫 회차 기준이다(잔액이 클수록 이자 비중 큼).
+      nextInterest: first ? first.interest : 0,
+      nextPrincipal: first ? first.principal : 0,
+      nextPayment: first ? first.payment : 0,
+      // 잔액이 0이 아니고 회차가 남았는데 이자가 0이면 입력이 깨진 것이다.
+      monthlyInterest: Math.round(l.amount * r),
+      totalInterest: Math.round(sched.totalInterest),
+      totalPaid: Math.round(sched.totalPaid),
+      // 마지막 회차 납입액. 잔액 정리 때문에 앞 회차와 다르면 사용자가 알아야 한다.
+      finalPayment: sched.rows.length ? sched.rows[sched.rows.length - 1].payment : 0
+    };
+  }
+
   function computeAssetTotals() {
     var totalCash = totalCashOf();
     var totalAssets = sumAmounts(assets) + totalCash;
@@ -719,9 +869,7 @@ assets: assets.map(function (a) {
      }),
     institutions: institutions.map(function (i) { return Object.assign({}, i); }),
     groups: groups.map(function (g) { return Object.assign({}, g); }),
-    liabilities: liabilities.map(function (l) {
-      return { key: l.key, label: l.label, amount: l.amount };
-    }),
+    liabilities: liabilities.map(function (l) { return Object.assign({}, l); }),
     // 투자금은 자산 화면에서 고칠 수 있다. 복구 기준값이 필요하다.
     investable: cash.investable.amount
   };
@@ -921,6 +1069,39 @@ var ASSET_KEY = "assetflow.assets.v3";
     return rows.length ? rows : fallback;
   }
 
+  /* 부채 행 정제 (§34.6).
+   * cleanAssetRows 를 부채에 쓰면 assetClass · principalInvest · returnRate 같은
+   * 자산 필드가 부채에 주입된다. 계산에 쓰지 않는 값이 붙어 나중에 "부채에도
+   * 수익률이 있었나" 식의 오해를 만든다. 부채는 잔액·금리·남은 회차·월 납입액
+   * 넷과 식별자·기관·유형뿐이다.
+   * 금리와 회차는 음수/NaN 이 조용히 0이 되면 안 된다: 0% 대출과 "값을 못 읽은
+   * 대출"은 다르다. 못 읽으면 원본이 남아 사용자가 눈치챈다.
+   */
+  function cleanLiabilityRows(list) {
+    if (!Array.isArray(list)) return [];
+    return list
+      .filter(function (r) { return r && typeof r.label === "string" && r.label.trim() !== ""; })
+      .map(function (r) {
+        var amount = moneyOf(r.amount, 0);
+        var rate = Number.isFinite(+r.rate) && +r.rate >= 0 ? +r.rate : 0;
+        var term = Number.isFinite(+r.termMonths) && +r.termMonths >= 0
+          ? Math.floor(+r.termMonths) : 0;
+        var pay = moneyOf(r.monthlyPayment, 0);
+        return Object.assign({}, r, {
+          key: typeof r.key === "string" && r.key ? r.key : newKey(),
+          label: r.label,
+          amount: amount,
+          institutionId: typeof r.institutionId === "string" ? r.institutionId : "inst-other",
+          debtType: typeof r.debtType === "string" ? r.debtType : "",
+          rate: rate,
+          termMonths: term,
+          monthlyPayment: pay,
+          // 상환 방식은 원리금균등 하나다(2026-10-05 결정).
+          repayment: "원리금균등"
+        });
+      });
+  }
+
   function applyAssetSnapshot(snap) {
     if (!snap || typeof snap !== "object") return false;
     var hasAssets = Array.isArray(snap.assets);
@@ -955,7 +1136,12 @@ var ASSET_KEY = "assetflow.assets.v3";
     }
     // 부채가 없는 것은 정상 상태다. 부채를 0으로 강제하면 사용자의 실제를 덮는다.
     if (hasLiabilities) {
-      liabilities = cleanAssetRows(snap.liabilities, []);
+      // 기관 id 는 institutions 에 실제로 있어야 트리에 붙는다.
+      // 없는 기관을 가리키면 부채가 소실되므로 기타로 돌린다(자산과 같은 규칙).
+      liabilities = cleanLiabilityRows(snap.liabilities).map(function (l) {
+        if (institutions.some(function (i) { return i.id === l.institutionId; })) return l;
+        return Object.assign({}, l, { institutionId: "inst-other" });
+      });
       data.liabilities = liabilities;
     }
     // 투자금은 비상금 유지 개월의 분자다. 사용자가 고를 수 있게 한다.
@@ -982,6 +1168,10 @@ var ASSET_KEY = "assetflow.assets.v3";
         return false;
       }
     },
+    // 저장소를 거치지 않고 메모리 상태를 통째로 바꾼다(취소·구조 삭제).
+    // 닫힌 배열과 data.* 를 한 번에 갈아끼운다 — 한쪽만 바꾸면 합계는 옛
+    // 배열을 보고 화면은 새 배열을 본다(§34.6, 자산 트리 합계 어긋남).
+    apply: applyAssetSnapshot,
     save: function () {
       try {
         global.localStorage.setItem(ASSET_KEY, JSON.stringify({
@@ -1126,6 +1316,16 @@ var ASSET_KEY = "assetflow.assets.v3";
   };
 
   global.AF.cardStorage.load();
+
+  // 부채 계산. 화면과 테스트가 같은 코드를 쓴다 — 계산이 두 곳에 있으면
+  // 화면이 맞고 테스트가 틀린 상태가 나온다(§34.6).
+  global.AF.debt = {
+    monthlyPaymentOf: monthlyPaymentOf,
+    termMonthsOf: termMonthsOf,
+    schedule: repaymentSchedule,
+    maturityOf: maturityOf,
+    plan: debtPlan
+  };
 
   global.AF.fmt = {
     formatCompactKR: formatCompactKR,
