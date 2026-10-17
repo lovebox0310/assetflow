@@ -47,13 +47,25 @@ describe("DashboardPage 레이아웃 (Issue 3)", () => {
     expect(cols.length).toBe(4);
   });
 
+  it("ready 상태에서 카드 4종이 계산·포맷된 값을 보여 준다 (§23 AC)", () => {
+    renderPage();
+    // 순자산 691,844,440 → 6.9억 / 월 수지 +3,240,000원 / 비상금 23.5개월
+    expect(screen.getByText("6.9억")).toBeDefined();
+    expect(screen.getByText("+3,240,000원")).toBeDefined();
+    expect(screen.getByText("23.5개월")).toBeDefined();
+    // 구성비 카드: 합 100.0 의 4조각이 라벨·값으로 렌더
+    expect(screen.getByText("부동산·기타")).toBeDefined();
+    expect(screen.getByText("84.1% · 6.4억")).toBeDefined();
+  });
+
   it("상태 미리보기로 빈 데이터/오류 상태를 구분해 보여 준다 (§22 AC)", () => {
     renderPage();
-    // 기본 ready: 카드 플레이스홀더 문구
-    expect(screen.getAllByText(/Issue 4/).length).toBeGreaterThan(0);
+    // ready: 실계산 값 렌더 → empty/error 로 바뀌면 값이 사라진다
+    expect(screen.getByText("6.9억")).toBeDefined();
 
     fireEvent.click(screen.getByText("empty"));
     expect(screen.getAllByText("데이터가 없습니다").length).toBeGreaterThan(0);
+    expect(screen.queryByText("6.9억")).toBeNull();
 
     fireEvent.click(screen.getByText("error"));
     expect(screen.getAllByText("데이터를 불러오지 못했습니다").length).toBeGreaterThan(0);
@@ -62,6 +74,6 @@ describe("DashboardPage 레이아웃 (Issue 3)", () => {
     const [firstRetry] = screen.getAllByRole("button", { name: /재시도/ });
     if (!firstRetry) throw new Error("재시도 버튼 없음");
     fireEvent.click(firstRetry);
-    expect(screen.getAllByText(/Issue 4/).length).toBeGreaterThan(0);
+    expect(screen.getByText("6.9억")).toBeDefined();
   });
 });

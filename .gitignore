@@ -47,3 +47,6 @@ samples/card/*.csv
 
 # agent-local HTML artifacts
 .senpi/
+
+# storybook static build output
+storybook-static/

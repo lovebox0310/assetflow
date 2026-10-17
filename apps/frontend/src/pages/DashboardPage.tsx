@@ -3,9 +3,17 @@ import { Card, Segmented, Typography } from "antd";
 import { AppLayout } from "../layout/AppLayout";
 import { ResponsiveGrid } from "../layout/ResponsiveGrid";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
+import { MetricCard } from "../components/MetricCard";
+import { dashboardMock } from "../data/dashboardMock";
+import { assetComposition, emergencyMonths, monthlyBalance, netWorth } from "../dashboard/metrics";
+import { AssetCompositionList } from "../dashboard/AssetCompositionList";
+import {
+  formatKrwAbbr,
+  formatKrwExact,
+  formatMonths,
+  formatSignedKrw,
+} from "../utils/formatters";
 import { clearToken } from "../auth/authStore";
-
-const CORE_CARDS = ["순자산", "월 수지", "비상금 유지 개월", "자산 구성비"] as const;
 
 interface DashboardPageProps {
   /** 로그아웃 후 로그인 화면으로 전환한다 (§21 로그아웃 처리). */
@@ -21,6 +29,8 @@ interface DashboardPageProps {
  */
 export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [preview, setPreview] = useState<SurfaceStatus>("ready");
+  const dataReady = preview === "ready";
+  const composition = assetComposition(dashboardMock);
 
   const handleLogout = () => {
     clearToken();
@@ -49,15 +59,33 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
           />
         </div>
         <ResponsiveGrid>
-          {CORE_CARDS.map((title) => (
-            <Card key={title} title={title}>
-              <StateBlock status={preview} onRetry={() => setPreview("ready")}>
-                <Typography.Text type="secondary">
-                  카드 값은 Issue 4(계산 로직)에서 채워집니다
-                </Typography.Text>
-              </StateBlock>
-            </Card>
-          ))}
+          <MetricCard
+            title="순자산"
+            status={preview}
+            onRetry={() => setPreview("ready")}
+            hint={dataReady ? formatKrwExact(netWorth(dashboardMock)) : undefined}
+          >
+            {dataReady ? formatKrwAbbr(netWorth(dashboardMock)) : "—"}
+          </MetricCard>
+          <MetricCard
+            title="월 수지"
+            status={preview}
+            onRetry={() => setPreview("ready")}
+            hint={dataReady ? `수입 ${formatKrwAbbr(dashboardMock.monthly.income)} · 지출 ${formatKrwAbbr(dashboardMock.monthly.expenses)}` : undefined}
+          >
+            {dataReady ? formatSignedKrw(monthlyBalance(dashboardMock)) : "—"}
+          </MetricCard>
+          <MetricCard
+            title="비상금 유지 개월"
+            status={preview}
+            onRetry={() => setPreview("ready")}
+            hint={dataReady && !dashboardMock.monthly.essentialComplete ? "필수지출에 미확정 항목이 있습니다" : undefined}
+          >
+            {dataReady ? formatMonths(emergencyMonths(dashboardMock)) : "—"}
+          </MetricCard>
+          <MetricCard title="자산 구성비" status={preview} onRetry={() => setPreview("ready")}>
+            <AssetCompositionList slices={composition} />
+          </MetricCard>
         </ResponsiveGrid>
       </section>
 
@@ -68,7 +96,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
         <Card>
           <StateBlock status={preview} onRetry={() => setPreview("ready")}>
             <Typography.Text type="secondary">
-              도넛 차트 영역 — Issue 4에서 구현
+              도넛 차트 영역 — 차트 라이브러리 선정 후 Issue 7 연계 시 구현
             </Typography.Text>
           </StateBlock>
         </Card>
@@ -81,7 +109,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
         <Card>
           <StateBlock status={preview} onRetry={() => setPreview("ready")}>
             <Typography.Text type="secondary">
-              요구불/파킹/예적금 요약 영역 — Issue 4에서 구현
+              요구불/파킹/예적금 요약 영역 — 현금 화면 연계 시 구현
             </Typography.Text>
           </StateBlock>
         </Card>
@@ -94,7 +122,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
         <Card>
           <StateBlock status={preview} onRetry={() => setPreview("ready")}>
             <Typography.Text type="secondary">
-              최근 6개월 차트 영역 — Issue 4에서 구현
+              최근 6개월 차트 영역 — Issue 6/7 API 연계 시 구현
             </Typography.Text>
           </StateBlock>
         </Card>
