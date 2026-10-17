@@ -11,6 +11,9 @@ dist/
 build/
 coverage/
 
+# Gradle work directories (wrapper itself under gradle/ stays tracked)
+.gradle/
+
 # OS/editor files
 .DS_Store
 Thumbs.db
