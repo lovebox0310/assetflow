@@ -2216,3 +2216,71 @@ Node 버전은 **22(LTS)** 로 고정한다. 저장소 문서에 정해진 최�
 
 
 
+---
+
+## 37) 데이터 모델 초안 (2026-10-17 확정, Issue 5)
+
+DDL 단일 출처: `apps/backend/db/schema.sql` (§24의 "DDL 초안 SQL" 산출물). 경로가 곧 뜻이다(§32.2): 앱이 소유하는 SQL은 앱 디렉터리 아래 둔다. ERD는 새 파일을 만들지 않고 이 장의 다이어그램으로 충족한다(§32.4 — 1회성 산출물에 전용 폴더를 만들지 않는다).
+
+### 37.1 테이블 4종과 선택 근거
+| 테이블 | 역할 | 주요 결정과 근거 |
+|---|---|---|
+| users | 인증·계정 | `email` 유니크(§21). 비밀번호는 평문 금지, `password_hash` 로 둔다 |
+| asset_accounts | 자산·부채 계정 | 자산과 부채를 한 테이블에 두고 `is_debt` 로 구분. 프론트 계약(`AssetType` = cash/deposit/invest/realty)을 CHECK enum 으로 고정해 FE와 BE의 문자열이 갈라지지 않게 한다. 사용자별 다중 계정 허용 |
+| expense_categories | 지출 분류 | `user_id IS NULL` = 기본(전역) 카테고리, NOT NULL = 사용자 커스텀. `is_essential` 이 비상금 분모(월 필수지출, §28.7/§28.10) 집계의 근거 |
+| monthly_snapshots | 월 집계 | 대시보드 API 3종(§25)의 조회 대상. user와 월의 UNIQUE 로 1행을 보장 — 중복 스냅샷은 INSERT 가 아니라 UPDATE |
+
+### 37.2 관계 다이어그램 (ERD 산출물)
+```mermaid
+erDiagram
+    users ||--o{ asset_accounts : owns
+    users ||--o{ expense_categories : defines
+    users ||--o{ monthly_snapshots : snapshots
+    users {
+        bigint id PK
+        varchar email UK "인증 식별자"
+        varchar password_hash
+    }
+    asset_accounts {
+        bigint id PK
+        bigint user_id FK
+        varchar account_type "cash deposit invest realty"
+        bigint balance "원 단위"
+        boolean is_debt
+    }
+    expense_categories {
+        bigint id PK
+        bigint user_id FK "NULL이면 기본 카테고리"
+        varchar name
+        boolean is_essential
+    }
+    monthly_snapshots {
+        bigint id PK
+        bigint user_id FK
+        char snapshot_month "YYYY-MM"
+        bigint total_assets
+        bigint total_debts
+        bigint essential_expenses "NULL이면 미확정"
+        boolean essential_complete
+    }
+```
+
+### 37.3 전역 규칙
+- **금액은 전부 BIGINT, 원 단위 정수.** §28.3(API 단위 규칙)과 동일 — DECIMAL 은 쓰지 않는다.
+- **시각은 TIMESTAMPTZ NOT NULL DEFAULT now().** `updated_at` 은 DB 트리거가 아니라 애플리케이션(MyBatis UPDATE 문)이 갱신한다. 트리거를 도입하게 되면 이 규약을 고치고 §32.7 에 남긴다.
+- **월 스냅샷은 시점값이다.** `asset_accounts.balance` 가 바뀌어도 과거 월을 소급하지 않는다. 각 월의 총계는 스냅샷 시점에 고정된다 — 재무 집계는 수정 이력보다 시점값이 기준이다.
+
+### 37.4 소프트 삭제: 스프린트 1에 도입하지 않는다 (결정)
+- 필요성이 실제로 등장하지 않은 삭제 이력 컬럼은 죽은 데이터가 된다. 스프린트 1 사용자는 1인이고, 실수 삭제는 등록을 다시 하면 복구된다.
+- 확장 포인트: 계정 해지가 필요해지면 `users.deleted_at` 만 추가한다. 자산·지출은 이력 컬럼 없이 재등록으로 대체한다. 도입 시 이 장을 먼저 고치고 스키마가 따라가게 한다.
+
+### 37.5 인덱스와 무결성 (AC 대응)
+- 월별 조회 최적화: `uq_monthly_snapshots_user_month(user_id, snapshot_month)` 유니크 인덱스가 최근 N개월 조회(cashflow API, §25)의 범위 스캔을 그대로 제공한다. 별도 인덱스 없음.
+- 자산 목록 조회: `ix_asset_accounts_user_type(user_id, account_type)`. 구성비와 현금 3계좌 조회가 이 인덱스 하나로 커버된다.
+- 무결성: 이메일 유니크, 스냅샷의 user-월 유니크, 금액 CHECK(음수 금지), `account_type` CHECK enum. 카테고리 유니크는 부분 인덱스 두 개로 나눈다 — Postgres 는 UNIQUE 에서 NULL 을 서로 다른 값으로 취급하기 때문에, 기본 카테고리의 이름 중복 방지는 `WHERE user_id IS NULL` 부분 인덱스로 해야 한다.
+
+### 37.6 백엔드 실행 가능화 기록 (Issue 3 후반과 함께 확정)
+- 메인 클래스 `AssetflowApplication` + Gradle wrapper(8.10)를 추가했다. DB 연결 전까지는 `application.yml` 에서 DataSource/JPA/MyBatis 자동 구성을 exclude 해 부팅한다 — PostgreSQL 연결이 도입되는 날 해당 exclude 를 제거한다.
+- **이 PC 에는 시스템 JDK 가 없다.** 확보한 것: Temurin 21 (`C:/Users/H/tools/jdk-21.0.12.1+1`), Gradle 배포판 (`C:/Users/H/tools/gradle-8.10`). IDEA 내장 JBR 25 는 Gradle 8.10 데몬과 호환되지 않는다(class file major 69, 직접 재현).
+- **JAVA_HOME 을 사용자 환경변수로 영구 등록했다**([Environment]::SetEnvironmentVariable User 범위, 레지스트리 검증). 새 터미널은 설정 없이 `./gradlew` 가 돌고, 이미 열린 셸은 다시 열어야 본다. 요청 오류 “JAVA_HOME is not set” 은 등록 전 열린 셸에서 나온 것이다.
+- 검증 기록: `./gradlew compileJava test` 통과(3 테스트), `bootRun` 기동 후 `POST /api/v1/auth/login` 200 응답 확인.
