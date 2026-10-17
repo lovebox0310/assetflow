@@ -14,6 +14,38 @@
 
 ---
 
+## 2026-10-17 — Issue 3 후반(백엔드 부팅 가능화) + Issue 5(데이터 모델 초안)
+
+### 무엇을 했나
+
+| # | 작업 | 산출물 |
+|---|---|---|
+| 1 | Spring Boot 메인 클래스 + `application.yml` | `AssetflowApplication`, DataSource/JPA/MyBatis 자동 구성 제외(§37.6) — DB 전 부팅 |
+| 2 | Gradle wrapper | `gradlew` + `gradle/wrapper/*` (Gradle 8.10). 스프린트 1 대상 JDK 21 |
+| 3 | 최소 테스트 3건 | `ApiResponseTest`, `AuthServiceTest` — `gradlew test` 가 실제 돌아가는 상태 |
+| 4 | 데이터 모델 초안 | `apps/backend/db/schema.sql` + 설계 노트 project.md **§37** |
+
+### 이 PC 환경 (§37.6 중복 아님 — 실행 명령만 여기)
+- JDK 21: `C:/Users/H/tools/jdk-21.0.12.1+1` (Temurin), Gradle 8.10: `C:/Users/H/tools/gradle-8.10`
+- 실행: `JAVA_HOME="C:/Users/H/tools/jdk-21.0.12.1+1" ./gradlew test` (apps/backend)
+
+### 검증
+
+| 대상 | 방법 | 결과 |
+|---|---|---|
+| 컴파일·테스트 | `./gradlew compileJava test` | BUILD SUCCESSFUL, 3건 PASS |
+| 부팅 | `./gradlew bootRun` → 8080 | Tomcat 기동, 1.046초 |
+| API 스모크 | `POST /api/v1/auth/login` | HTTP 200, `{"code":"OK",...,"token":"mock-jwt-token"}` |
+| 문서 규약 | §32.2 배치·CRLF 보존 | schema.sql 은 apps/backend/, 결정은 §37, CRLF 유지 |
+
+### 남은 것
+
+- [ ] PostgreSQL 로컬 설치 및 DDL 적용 검증 (독립 — 이 PC 에 Postgres 미준비)
+- [ ] Issue 6(API 3종, GitHub #8) 진행 시 §25 응답 표준과 §37 스키마 대조
+- [ ] GitHub 이슈 번호와 스프린트 Issue 번호 불일치(스프린트 Issue 5 = GitHub #7) — 이슈 제목에 스프린트 번호 명기 제안
+
+---
+
 ## 2026-10-17 — Issue 4 대시보드 핵심 카드 4종 (PR — 대상 #6)
 
 ### 무엇을 했나
@@ -52,7 +84,7 @@
 
 ### 남은 것
 
-- [ ] PR #13 머지 후 #6 자동 종료 확인
+- [x] PR #13 머지 후 #6 자동 종료 확인 (2026-10-17: GitHub 이슈 #6 CLOSED 확인. `gh issue view 6 --json state`)
 - [ ] 구성비 도넛·현금 3계좌·현금흐름 차트 — §36 소관 아님, Issue 6/7 연계 시 (§22 영역 유지)
 - [ ] 비상금 미확정 경고 상태의 실제 화면 노출 — 데이터에 미확정이 생긴 날 테스트
 
