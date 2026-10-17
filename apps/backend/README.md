@@ -16,26 +16,27 @@ Backend implementation area for AssetFlow.
 
 ## Run and verify
 
+Build tool is fixed to **Gradle** (§1 allows Gradle or Maven, one team standard only).
+
 Current status:
 
-- This folder currently contains source files only.
-- Build tool files like `pom.xml` or `build.gradle` are not present yet.
+- `build.gradle` and `settings.gradle` are present (Spring Boot 3.3.5, Java 21, MyBatis, PostgreSQL).
+- **Not yet present:** the Gradle wrapper (`gradlew`, `gradle/wrapper/*`) and a Spring Boot
+  main class (`@SpringBootApplication`). Until the main class exists the app cannot boot,
+  so `bootRun` will fail even with a correct JDK installed.
 
-When backend scaffolding is added, use one of the following:
-
-Maven (if `pom.xml` is used):
-
-```bash
-./mvnw spring-boot:run
-./mvnw test
-```
-
-Gradle (if `build.gradle` is used):
+Prerequisites: JDK 21 and Gradle 8.5+. On a machine that has them:
 
 ```bash
-./gradlew bootRun
+gradle wrapper --gradle-version 8.10   # once, then commit the wrapper files
+./gradlew compileJava                  # fastest signal that the build is wired correctly
 ./gradlew test
+./gradlew bootRun                      # needs the main class first
 ```
+
+Verification status: **unverified.** The development machine used on 2026-10-17 had no
+JDK, no Gradle and no Docker (`where java`/`gradle`/`docker` all miss, `JAVA_HOME` unset),
+so nothing above was actually executed. Treat these as the commands to run, not as passing results.
 
 Notes for AI collaboration:
 
