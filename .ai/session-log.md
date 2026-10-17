@@ -12,6 +12,46 @@
 > 문서의 성격은 **경로**로 구분합니다(§32.2). `.ai/` 루트에 새 파일을 늘리지
 > 말고, 분류가 필요하면 전용 폴더를 만듭니다
 
+---
+
+## 2026-10-18 — Issue 7 FE-BE 연동·상태 처리 안정화 (GitHub #9)
+
+### 무엇을 했나
+
+| # | 작업 | 산출물 |
+|---|---|---|
+| 1 | 공통 API 클라이언트 | `src/api/client.ts` — Bearer 자동 부착, 오류 4분류(auth/network/server/client, 사용자 친화 한국어 문구), in-flight dedupe(§26 "중복 호출 방지") |
+| 2 | 로그인 실연동 | `authApi.ts` → POST /api/v1/auth/login(§38.2). 실패는 §21 공통 메시지로 감춤 |
+| 3 | 대시보드 실연동 | `dashboardApi.ts`(summary + cashflow) → DashboardPage 가 mock 대신 API 데이터 사용. 계산은 여전히 metrics.ts 단일 출처 |
+| 4 | 카드 단위 상태·재시도 | summary 계열(핵심 4카드·구성비·현금 3계좌)과 cashflow(월별 현금흐름 표)가 각각 loading/empty/error + 재시도 — 한쪽 실패가 다른쪽을 중단시키지 않는다 |
+| 5 | dev 프록시 | `vite.config.ts` server.proxy /api → 8080. CORS 없이 동일 출처로 동작 |
+| 6 | 현금 3계좌/현금흐름 실렌더 | placeholder → summary 의 cash 계좌 목록, cashflow 3개월 표로 교체(도넛 차트만 라이브러리 선정 후) |
+| 7 | 테스트 갱신 | fetch 대역(§38 포맷)으로 정상/로딩/오류/401/빈/중복방지 시나리오 — 48건 전부 통과 |
+
+### 검증
+
+| 대상 | 방법 | 결과 |
+|---|---|---|
+| 타입 | `tsc --noEmit` | 클린 |
+| 단위·통합 | vitest 48건 | 48 PASS (fetch 대역, 시나리오별) |
+| 실 E2E | bootRun(새 코드) + vite 5174 + 헤드리스 브라우저 | 로그인 → 대시보드에 실 API 데이터(현금 계좌, 현금흐름 표) 렌더. 캡처 `.ai/e2e-integration.png` |
+
+### 디버그 기록 (다음 사람을 위해)
+
+- **dedupe in-flight 맵은 모듈 단위다.** 끝나지 않는 fetch 를 심는 테스트가 멈춘 Promise 를
+  남기면 이후 테스트가 그 Promise 를 재사용해 무한 로딩이 된다. `clearInflight()` 를 테스트
+  afterEach 에서 부른다. 프로덕션에서는 브라우저가 hang 요청을 타임아웃 시켜 정리된다.
+- testing-library `findByText` 는 **복수 매치에서 예외를 던진다.** 카드 4종+섹션이 같은
+  오류 문구를 동시에 보일 수 있어 오류 문구 검사는 findAllByText 를 쓴다.
+
+### 알려진 연동 이슈 (산출물)
+
+- 배포(dev 밖)에서는 vite 프록시가 없으므로 **리버스 프록시나 백엔드 CORS 설정이 필요하다** — 스프린트 1 배포 리허설(Issue 8)에서 처리
+- 서버는 아직 토큰 만료시를 주지 않는다 → 클라 TTL 1시간(§21 유지). 백엔드 토큰 실발급이 이어지는 작업에서 서버 expiresAt 로 대체
+- 401 재시도 흐름: 인증 오류 시 재시도가 아니라 로그아웃→재로그인이 맞는 UX. 현재는 오류 메시지 노출까지 — 자동 로그아웃 전환은 후속 작업
+
+---
+
 ## 2026-10-18 — Issue 6 대시보드 API 3종 명세·구현 (GitHub #8)
 
 ### 무엇을 했나
