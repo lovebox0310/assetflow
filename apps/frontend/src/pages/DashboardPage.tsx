@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Card, Typography } from "antd";
+import { useCallback, Suspense, lazy, useEffect, useRef, useState } from "react";
+import { Button, Card, Skeleton, Typography } from "antd";
 import { AppLayout } from "../layout/AppLayout";
 import { ResponsiveGrid } from "../layout/ResponsiveGrid";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
@@ -15,6 +15,8 @@ import {
   formatSignedKrw,
 } from "../utils/formatters";
 import { clearToken } from "../auth/authStore";
+
+const CompositionDonut = lazy(() => import("../components/CompositionDonut").then(m => ({ default: m.CompositionDonut })));
 
 interface DashboardPageProps {
   /** 로그아웃 후 로그인 화면으로 전환한다 (§21 로그아웃 처리). */
@@ -130,9 +132,12 @@ export function DashboardPage({ onLogout, onOpenAssets }: DashboardPageProps) {
         </Typography.Title>
         <Card>
           <StateBlock status={summaryStatus} onRetry={load} errorText={summaryError}>
-            <Typography.Text type="secondary">
-              도넛 차트 영역 — 차트 라이브러리 선정 후 구현. 유형별 구성비는 위 자산 구성비 카드에 표시된다
-            </Typography.Text>
+            {dataReady ? (
+              <Suspense fallback={<Skeleton active paragraph={{ rows: 3 }} />}>
+                {/* 번들 분리: recharts 를 대시보드 본체에서 떼어 lazy 로딩한다 (§39 리스크 3) */}
+                <CompositionDonut slices={composition} />
+              </Suspense>
+            ) : null}
           </StateBlock>
         </Card>
       </section>
