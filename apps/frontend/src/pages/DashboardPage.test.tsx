@@ -101,7 +101,8 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     // 카드와 현금흐름 표가 같은 금액을 보일 수 있어 getAll 로 존재를 검사한다.
     expect((await screen.findAllByText("+3,240,000원")).length).toBeGreaterThan(0);
     expect(screen.getByText("23.5개월")).toBeDefined();
-    expect(screen.getByText("부동산·기타")).toBeDefined();
+    // 구성비 카드와 도넛 범례가 같은 유형명을 보일 수 있어 getAll 로 존재를 검사한다.
+    expect(screen.getAllByText("부동산·기타").length).toBeGreaterThan(0);
     expect(screen.getByText("84.1% · 6.4억")).toBeDefined();
     // 현금 3계좌 섹션: summary 의 cash 계좌가 이름·금액으로 렌더
     expect(screen.getByText(/우리 파킹통장/)).toBeDefined();

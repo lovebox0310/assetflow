@@ -12,6 +12,7 @@ import {
 } from "../api/assetsApi";
 import { clearInflight } from "../api/client";
 import { clearToken } from "../auth/authStore";
+import { CardImportPanel } from "../components/CardImportPanel";
 
 interface AssetsPageProps {
   /** 대시보드로 돌아간다. */
@@ -224,6 +225,13 @@ export function AssetsPage({ onBack }: AssetsPageProps) {
 
       <section aria-labelledby="h-readonly" style={{ marginBottom: 24 }}>
         <Typography.Title level={4} id="h-readonly" style={{ margin: 0, marginBottom: 16 }}>
+          카드 내역 가져오기
+        </Typography.Title>
+        <CardImportPanel />
+      </section>
+
+      <section aria-labelledby="h-expense-owned" style={{ marginBottom: 24 }}>
+        <Typography.Title level={4} id="h-expense-owned" style={{ margin: 0, marginBottom: 16 }}>
           다른 화면이 읽는 값
         </Typography.Title>
         <Card>

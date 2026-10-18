@@ -13,6 +13,11 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+    // 카드 계약(samples/card/card-columns.json)을 src 에서 import 한다 —
+    // 규격은 단일 출처이므로 복사하지 않는다(§29.2). 루트 밖 파일 서빙 허용.
+    fs: {
+      allow: ["../.."],
+    },
   },
   test: {
     environment: "jsdom",
