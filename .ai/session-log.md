@@ -76,6 +76,7 @@
 - [x] login 주소창(GET) 접속 시 500 → 405 핸들러 추가(HttpRequestMethodNotSupportedException) — POST 전용 API 안내 표준화. 재배포·검증 완료(GET 405 / POST 200)
 - [x] 로그인 자격증명 변경(사용자 요청) — lovebox0310@gmail.com / 개인 비밀번호(BCrypt). 코드에는 자격증명을 두지 않고 OWNER_EMAIL 설정으로 분리(PostgresAssetLedger·application-postgres.yml), systemd 에 OWNER_EMAIL 적용. 구 자격증명(user@example.com) 행 삭제 — 시드 재생성 방지를 위해 data-seed.sql 의 시드 INSERT 도 제거(운영 사용자는 수동 생성 원칙, DEPLOY.md §7). 외부 HTTPS 검증: 새 자격증명 로그인 200+expiresAt / 구 자격증명 401 / 변조 토큰 401
 - [x] 프론트 홈서버 서빙 — dist 전송 후 Caddy 구성(/api/*·/health → 백엔드 프록시, 나머지 SPA 정적 서빙). `https://redbox9.iptime.org` 에서 로그인 화면 직접 접속 가능(같은 출처라 CORS·인증서 문제 없음). 외부 검증: root 200(HTML)·health UP·POST login 200
+- [x] card-imports POST 500 수정 — PostgresCardImportLedger 에 하드코딩된 시드 이메일 잔존(user@example.com → id 17)이OWNER_EMAIL 전환·임시 사용자 삭제 후 FK 위반을 일으킴. OWNER_EMAIL 설정 주입으로 수정, 재배포 후 POST 200·스모크 행 정리. **교훈: 하드코딩 이메일 전수 검색(git grep)을 배포 전 수행할 것** — data-seed 시드 INSERT 제거도 함께 반영(운영 사용자는 수동 생성, DEPLOY.md §7)
 - [ ] 프론트 배포(Vercel) + `ALLOWED_ORIGIN`·`VITE_API_BASE_URL` 연결
 - [ ] CI backend-gate 는 인메모리 경로만 검증 — postgres 경로는 본 항목의 bootRun/서버 스모크로 수동 검증
 
