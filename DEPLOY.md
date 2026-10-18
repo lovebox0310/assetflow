@@ -57,9 +57,49 @@
 - 필수 상태 체크: `quality-gate`, `frontend-gate`, `backend-gate` (strict)
 - 승인 요구: **제거됨** — 단독 개발자는 자신의 PR을 승인할 수 없어 병합 불가가 되기 때문(사용자 결정). 규칙 변경은 GitHub Settings → Branches 또는 `gh api -X PUT .../branches/main/protection`
 
-## 7. 카페24 VPS 에 PostgreSQL 설치·이관 (Ubuntu 기준)
+## 7. 사무실 홈서버 구성 (2026-10-18 완료 — 카페24·가비아 대신 자체 장비 운영)
 
-로컬(Windows) → VPS(Linux) 로 원장 데이터를 옮기는 절차. 원본 진리는 로컬 DB, VPS 는 이관 대상이다.
+가비아 Gen2 월 20,000원이 예산(9,000원) 초과라, 사무실의 우분투 컴퓨터(Ubuntu 26.04, 15GB RAM)를 홈서버로 사용하기로 했다. 구성:
+
+| 구성요소 | 내용 |
+|---|---|
+| 접속 | `ssh redbox9@redbox9.iptime.org -p 2222` (ipTIME DDNS, 공유기 2222→22 포워딩) — 배포용 키 등록 완료 |
+| Postgres 18.6 | 서버 로컬 전용(5432 외부 미개방). DB `assetflow`, 계정 `assetflow`, 스키마·시드 적용 완료 |
+| Backend | `/opt/assetflow/app.jar` + systemd(`assetflow.service`) — postgres 프로필, `-Xmx512m`, Restart=always |
+| HTTPS | Caddy 역방향 프록시 — `redbox9.iptime.org` → `localhost:8080`, Let’s Encrypt 자동 발급 |
+| 방화벽 | ufw: 22/2222, 80, 443 허용. **5432 는 개방 금지** |
+
+공유기 포트포워딩(사용자 수동): 외부 80·443 → 192.168.0.102. 완료 전까지는 인증서 발급이 실패한다(Caddy 가 자동 재시도).
+
+### 7.1 데이터 이관 절차 (로컬 Windows → 홈서버)
+
+1. **로컬 덤프 생성** (Windows):
+   ```bash
+   D:/study/pgsql/pgsql/bin/pg_dump.exe -h localhost -U postgres -d assetflow \
+     --no-owner --no-privileges --clean --if-exists -F p -f assetflow-dump.sql
+   ```
+2. **전송·복원** (홈서버):
+   ```bash
+   scp -P 2222 assetflow-dump.sql redbox9@redbox9.iptime.org:/tmp/
+   PGPASSWORD='<assetflow 비밀번호>' psql -h localhost -U assetflow -d assetflow -f /tmp/assetflow-dump.sql
+   ```
+3. **백업 자동화** (홈서버 cron): 매일 `pg_dump -U assetflow assetflow > ~/backup/assetflow-$(date +\%F).sql`, 7일분 보관
+4. **나중에 카페24·VPS로 이관할 때**: 같은 pg_dump/복원 절차를 대상 서버에 반복한다 — 계약 변화 없음
+
+### 7.2 백엔드 재배포 (새 jar 나올 때)
+
+```bash
+# 로컬: bootJar 빌드 후 전송
+cd apps/backend && ./gradlew bootJar
+scp -P 2222 build/libs/assetflow-backend-0.0.1-SNAPSHOT.jar \
+  redbox9@redbox9.iptime.org:/tmp/assetflow.jar
+# 서버: 교체·재기동
+sudo mv /tmp/assetflow.jar /opt/assetflow/app.jar && sudo systemctl restart assetflow
+```
+
+## 8. 카페24·VPS 에 PostgreSQL 설치·이관 (참고용 — 현재는 홈서버 사용)
+
+VPS 를 쓰게 될 경우의 절차. 원본 진리는 로컬 DB, 대상 서버는 이관 대상이다.
 
 1. **VPS 설치**:
    ```bash
@@ -84,9 +124,9 @@
 5. **보안 설정**:
    - `postgresql.conf`: `listen_addresses = 'localhost'` 유지 — 백엔드와 같은 서버면 외부 노출 불필요
    - 외부 접속이 필요하면 `pg_hba.conf` 에 특정 IP + `scram-sha-256` 만 허용
-   - 방화벽: 5432 외부 개방은 하지 않는다 — 백엔드가 VPS 안에서 localhost 로 접속
-6. **백엔드 연결**: Render 등 백엔드에서 VPS 로 직접 붙는 게 아니라면, 백엔드를 같은 VPS 에 두고 `DB_URL=jdbc:postgresql://localhost:5432/assetflow`
-7. **정기 백업**: VPS cron 에 `pg_dump` 를 매일 1회 남기고, 7일분 보관
+   - 방화벽: 5432 외부 개방은 하지 않는다 — 백엔드가 서버 안에서 localhost 로 접속
+6. **백엔드 연결**: 백엔드를 같은 서버에 두고 `DB_URL=jdbc:postgresql://localhost:5432/assetflow`
+7. **정기 백업**: cron 에 `pg_dump` 매일 1회, 7일분 보관
 
 ## 알려진 한계
 

@@ -14,6 +14,39 @@
 
 ---
 
+## 2026-10-18 — 사무실 홈서버 구축: Postgres·백엔드 배포 (비용 0원 구성)
+
+### 무엇을 했나
+
+카페24 가입 실패 → 가비아 Gen2 가입했으나 1vCore/1GB+공인IP 가 월 20,000원(예산 9,000원 초과) → **사무실 우분투 컴퓨터(Ubuntu 26.04, 15GB RAM) 를 홈서버로 사용**하기로 결정(사용자 확인: 상시 운영 가능, Postgres+백엔드 공존, ipTIME DDNS·포트포워딩 가능).
+
+| # | 작업 | 산출물 |
+|---|---|---|
+| 1 | SSH 접속 확립 | `redbox9@redbox9.iptime.org:2222` — plink 로 첫 접속 후 배포 공개키 등록, OpenSSH 키 접속 전환 |
+| 2 | Postgres 18.6 설치 | DB `assetflow`(소유자 assetflow), 계정 비밀번호 인증(localhost 전용). §37.1 누락됐던 테이블 소유자 문제는 DB 재생성으로 해결 |
+| 3 | 원장 데이터 이관 | 로컬 `schema.sql`·`data-seed.sql` 전송·적용 — 테이블 5종 생성, users 시드 1행 |
+| 4 | 백엔드 배포 | 서버에 openjdk-21-jre 설치, bootJar 전송(sha256 일치), systemd `assetflow.service`(postgres 프로필, -Xmx512m, Restart=always) |
+| 5 | 장애 처리 | 8080 을 점유한 **어제 수동 기동한 구 백엔드 프로세스** 발견·정리 — 재시작 후 health=200, 로그인·계좌 API 200(postgres 원장) |
+| 6 | HTTPS 프록시 | Caddy 설치·Caddyfile 구성(`redbox9.iptime.org` → localhost:8080), ufw 에 80/443 허용. 인증서 발급은 공유기 포트포워딩 후 자동 완료 |
+| 7 | 문서 | `DEPLOY.md` §7 을 홈서버 구성으로 갱신(데이터 이관·재배포 절차), VPS 절차는 §8 참고용으로 이동 |
+
+### 검증
+
+| 대상 | 방법 | 결과 |
+|---|---|---|
+| BE 테스트 | `gradlew test` | 25건 PASS(인메모리 경로) |
+| 서버 API | localhost 실호출 | /health 200, 로그인 200, 계좌 조회 200 — §36.2 시드 응답(postgres 원장) |
+| jar 무결성 | sha256 비교 | 전송 후 해시 일치 |
+| 서비스 | `systemctl is-active` | active(8080 리스너 = systemd 인스턴스) |
+
+### 남은 것
+
+- [ ] 공유기 80/443 포트포워딩(사용자 수동) → Caddy 인증서 발급·`https://redbox9.iptime.org` 외부 접속 검증
+- [ ] 프론트 배포(Vercel) + `ALLOWED_ORIGIN`·`VITE_API_BASE_URL` 연결
+- [ ] CI backend-gate 는 인메모리 경로만 검증 — postgres 경로는 본 항목의 bootRun/서버 스모크로 수동 검증
+
+---
+
 ## 2026-10-18 — DB 연결: 로컬 PostgreSQL 구축 + 원장 영속 교체 (§39 단일 교체 지점 수행)
 
 ### 무엇을 했나
@@ -42,7 +75,7 @@
 ### 남은 것
 
 - [x] 커밋/PR — PR #27 병합 완료(e24c93b)
-- [ ] 카페24 VPS 실제 설치·이관 — DEPLOY.md §7 절차 따름(VPS 발급이 선행)
+- [x] VPS 검토 결과 — 가비아 Gen2 월 20,000원 예산 초과로 사무실 홈서버 구성으로 전환(위 항목)
 - [ ] CI backend-gate 는 인메모리 경로만 검증 — postgres 경로는 bootRun 스모크로 수동 검증(로컬 기록은 본 항목)
 
 ---
