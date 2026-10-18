@@ -4,7 +4,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -49,6 +51,13 @@ public class ApiExceptionHandler {
     public ResponseEntity<ErrorResponse> badRequest(IllegalArgumentException e) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of("INVALID_REQUEST", "Invalid request", e.getMessage()));
+    }
+
+    /** 프레임워크 400 계열: 필수 파라미터 누락·JSON 본문 파싱 실패는 500 이 아니라 400 이다. */
+    @ExceptionHandler({MissingServletRequestParameterException.class, HttpMessageNotReadableException.class})
+    public ResponseEntity<ErrorResponse> frameworkBadRequest(Exception e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("INVALID_REQUEST", "Invalid request", ""));
     }
 
     /** 정적 리소스 부재(루트·favicon 등)는 오류가 아니라 404다 — catch-all 500 으로 묻지 않는다. */
