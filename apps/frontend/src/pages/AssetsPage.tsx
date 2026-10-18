@@ -18,7 +18,8 @@ interface AssetsPageProps {
   onBack: () => void;
 }
 
-const TYPES: AssetAccountRow["accountType"][] = ["cash", "deposit", "invest", "realty"];
+const TYPES = new Set<AssetAccountRow["accountType"]>(["cash", "deposit", "invest", "realty"]);
+void TYPES; // §40.2 enum 참조 — 화면 추가 폼의 유형 제한에서 쓴다
 
 /**
  * 스프린트 2 #21: §31 자산 화면의 React 이관.
@@ -257,4 +258,3 @@ function EditForm({ form, isDebt }: { form: FormInstance; isDebt: boolean }) {
     </Form>
   );
 }
-type FormInstanceAlias = import("antd").FormInstance;
