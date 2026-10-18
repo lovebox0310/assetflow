@@ -47,6 +47,28 @@
 
 ---
 
+## 2026-10-18 — main 보호 규칙 설정 + 이슈 #3 종료 (스프린트 1 이슈 전종료)
+
+### 무엇을 했나
+
+- 저장소 public 전환(사용자) → 이전에 403 이던 브랜치 보호 API가 가능해짐
+- **backend-gate 잡을 CI에 추가**(quality-gate.yml): 워크플로 주석의 약속("빌드가 돌아가는 날 추가한다")이 실행 가능해진 날의 이행. 컴파일·테스트(temurin 21, DB 없이)
+- **CI 첫 실행에서 실패 2건 잡음**:
+  1. `./gradlew: Permission denied` — Windows 에서 커밋한 gradlew 에 실행 비트가 없었다
+     → `git update-index --chmod=+x gradlew` (모드만 바꾸는 커밋)
+  2. frontend-gate 에 eslint 단계 추가 (PR #19 에서 만든 스크립트가 CI 에는 없었다)
+- 최종 CI: quality-gate=success, frontend-gate=success, backend-gate=success (run 39101080566)
+- **main 보호 규칙 설정**: required checks 3종 + PR 승인 1명 + force-push/삭제 금지
+- 이슈 #3 종료 → **스프린트 1 이슈 8종 전부 CLOSED**
+
+### 남은 것 (다음 스프린트 창구)
+
+- 실배포 실행(DEPLOY.md 1~6단계: Neon/Render/Vercel 계정 연결)
+- 도넛 차트 라이브러리 선정
+- 카드 임포트 UI 연결(lib/card 파서 → 화면/API)
+
+---
+
 ## 2026-10-18 — eslint 게이트 구축 + 배포 준비 (이슈 #3 집행, PR #19)
 
 - typescript-eslint flat config(`eslint.config.js`) + `pnpm run lint` — **클린 통과**, 전 테스트 동시 재실행 PASS(FE 48/48, BE 9건, 빌드 성공)
