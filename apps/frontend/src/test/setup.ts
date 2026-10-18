@@ -26,3 +26,13 @@ Object.defineProperty(window, "matchMedia", {
 });
 
 export {};
+
+// jsdom 에는 ResizeObserver 도 없다. antd Popconfirm/Tooltip 이 요구한다.
+// 프로덕션 아님 — 테스트 환경에서만 채워 넣는다.
+// eslint-disable-next-line @typescript-eslint/no-empty-function
+class FakeResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+globalThis.ResizeObserver = FakeResizeObserver as unknown as typeof ResizeObserver;
