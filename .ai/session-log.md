@@ -41,7 +41,7 @@
 
 ### 남은 것
 
-- [ ] 커밋/PR — 이 항목부터 feature 브랜치로(사용자 확인 후)
+- [x] 커밋/PR — PR #27 병합 완료(e24c93b)
 - [ ] 카페24 VPS 실제 설치·이관 — DEPLOY.md §7 절차 따름(VPS 발급이 선행)
 - [ ] CI backend-gate 는 인메모리 경로만 검증 — postgres 경로는 bootRun 스모크로 수동 검증(로컬 기록은 본 항목)
 
