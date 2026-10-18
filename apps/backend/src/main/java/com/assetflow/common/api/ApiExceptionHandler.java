@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -29,6 +30,13 @@ public class ApiExceptionHandler {
     public ResponseEntity<ErrorResponse> permissionDenied(PermissionDeniedException e) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(ErrorResponse.of("PERMISSION_DENIED", "Permission denied", e.getMessage()));
+    }
+
+    /** GET 으로 POST 전용 API 를 호출하는 경우(브라우저 주소창 접속 등) — 500 이 아니라 405 다. */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> methodNotSupported(HttpRequestMethodNotSupportedException e) {
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .body(ErrorResponse.of("METHOD_NOT_ALLOWED", "Method not allowed", ""));
     }
 
     @ExceptionHandler(NotFoundException.class)
