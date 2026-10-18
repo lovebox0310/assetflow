@@ -2225,13 +2225,14 @@ Node 버전은 **22(LTS)** 로 고정한다. 저장소 문서에 정해진 최�
 
 DDL 단일 출처: `apps/backend/db/schema.sql` (§24의 "DDL 초안 SQL" 산출물). 경로가 곧 뜻이다(§32.2): 앱이 소유하는 SQL은 앱 디렉터리 아래 둔다. ERD는 새 파일을 만들지 않고 이 장의 다이어그램으로 충족한다(§32.4 — 1회성 산출물에 전용 폴더를 만들지 않는다).
 
-### 37.1 테이블 4종과 선택 근거
+### 37.1 테이블 5종과 선택 근거 (2026-10-18: card_imports 추가)
 | 테이블 | 역할 | 주요 결정과 근거 |
 |---|---|---|
 | users | 인증·계정 | `email` 유니크(§21). 비밀번호는 평문 금지, `password_hash` 로 둔다 |
 | asset_accounts | 자산·부채 계정 | 자산과 부채를 한 테이블에 두고 `is_debt` 로 구분. 프론트 계약(`AssetType` = cash/deposit/invest/realty)을 CHECK enum 으로 고정해 FE와 BE의 문자열이 갈라지지 않게 한다. 사용자별 다중 계정 허용 |
 | expense_categories | 지출 분류 | `user_id IS NULL` = 기본(전역) 카테고리, NOT NULL = 사용자 커스텀. `is_essential` 이 비상금 분모(월 필수지출, §28.7/§28.10) 집계의 근거 |
 | monthly_snapshots | 월 집계 | 대시보드 API 3종(§25)의 조회 대상. user와 월의 UNIQUE 로 1행을 보장 — 중복 스냅샷은 INSERT 가 아니라 UPDATE |
+| card_imports | 카드매입 임포트 확정 행 | 2026-10-18 추가(§22 DB 연결). `CardImportLedger` 영속 저장처. `(user_id, row_key)` UNIQUE 로 §29.6 중복 반영 금지를 DB 가 보증. 합계 컬럼 없음 — 행에서 재계산(§29.7) |
 
 ### 37.2 관계 다이어그램 (ERD 산출물)
 ```mermaid

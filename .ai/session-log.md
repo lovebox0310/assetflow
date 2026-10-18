@@ -14,6 +14,39 @@
 
 ---
 
+## 2026-10-18 — DB 연결: 로컬 PostgreSQL 구축 + 원장 영속 교체 (§39 단일 교체 지점 수행)
+
+### 무엇을 했나
+
+사용자 요구: “로컬에 PostgreSQL 운영, 추후 카페24 VPS 설치·데이터 이관”. §39 DB 전략대로 단일 교체 지점을 갈아끼웠다.
+
+| # | 작업 | 산출물 |
+|---|---|---|
+| 1 | 로컬 Postgres 17.5 설치 | EDB 바이너리 zip(관리자 권한 불필요) → `D:/study/pgsql`, `initdb`(trust, UTF-8) → `pg_ctl` 기동(포트 5432) — 서비스 등록 아닌 수동 운영 |
+| 2 | DB 구축 | `assetflow` DB 생성, `schema.sql` 적용(테이블 5종), users 시드(user@example.com) |
+| 3 | 원장 교체 | `AssetLedger`·`CardImportLedger` 를 인터페이스로 전환. `InMemory*`(기본값, 테스트·CI) + `Postgres*`(postgres 프로필, JdbcTemplate) |
+| 4 | 스키마 보완 | §37에 누락됐던 `card_imports` 테이블 추가 — `(user_id, row_key)` UNIQUE 로 §29.6 중복 금지를 DB 가 보증. `project.md §37.1` 갱신(4종→5종) |
+| 5 | 프로필 활성화 | `application-postgres.yml`(베이스 exclude 를 빈 값으로 덮어써 DataSource 활성화, Spring SQL init 으로 schema/data-seed 자동 적용), `build.gradle` resources 에 db/ 추가 |
+| 6 | 이관 문서 | `DEPLOY.md` §7 신설 — 카페24 VPS(Ubuntu) 설치·pg_dump/pg_restore 이관·보안 설정·cron 백업. 만료 항목 갱신(모크 안내·보호 규칙) |
+| 7 | 환경 정비 | Gradle 8.10+JBR(Java 25) 조합에서 빌드 스크립트 파싱 실패(major 69) → Temurin JDK 21 설치 후 `~/.gradle/gradle.properties` 에 `org.gradle.java.home` 고정 |
+
+### 검증
+
+| 대상 | 방법 | 결과 |
+|---|---|---|
+| BE 테스트(인메모리 경로) | `gradlew test` (JDK 21) | **25건 PASS** — 테스트 3곳이 인터페이스 직접 생성을 InMemory* 로 교정 |
+| postgres 프로필 bootRun | 실 DB 스모크 | 시드 7행(§36.2 일치) / 계좌 생성 / 카드 반영 시 DB 행에서 합계 재계산(gross 11,000) |
+| **영속성 증명** | 서버 재시작 후 재조회 | 계좌 8행 유지(id=8 스모크 행), row-keys 유지 — 재시작해도 데이터 유지 확인 후 스모크 데이터 정리 |
+| FE | 변경 없음 | 기존 59건 PASS 상태 유지 |
+
+### 남은 것
+
+- [ ] 커밋/PR — 이 항목부터 feature 브랜치로(사용자 확인 후)
+- [ ] 카페24 VPS 실제 설치·이관 — DEPLOY.md §7 절차 따름(VPS 발급이 선행)
+- [ ] CI backend-gate 는 인메모리 경로만 검증 — postgres 경로는 bootRun 스모크로 수동 검증(로컬 기록은 본 항목)
+
+---
+
 ## 2026-10-18 — #22 카드 임포트 UI·API + #23 도넛 차트 검증 완료 (커밋 대기)
 
 ### 무엇을 했나
@@ -39,8 +72,9 @@
 
 ### 남은 것
 
-- [ ] **커밋/PR** — 작업 트리에 검증 완료 상태로 대기(사용자 지시 대기)
-- [ ] DB 연결 — 계정 연결 시 AssetLedger·CardImportLedger 교체만 수행(§39)
+- [x] **커밋/PR** — PR #26 병합 완료(8b0e66a), 이슈 #22·#23 종결. 보호 규칙 승인 요구 제거(단독 개발 병합 가능)
+- [ ] **DB 연결** — 계정 연결 시 AssetLedger·CardImportLedger 교체만 수행(§39, 스프린트 3 첫 이슈 후보)
+- [ ] **배포 실행** — DEPLOY.md 2~6단계(DB 생성·Render/Vercel 연결·도메인·알람) — 계정 준비가 선행되는 사용자 작업
 - [ ] main 청크 940KB 경고 — 인덱스 청크 기준이며 기능 동작에는 무관. 후속 분리 검토
 
 ---
