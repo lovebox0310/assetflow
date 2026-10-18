@@ -2339,3 +2339,89 @@ expenses 4,960,000 · essentialExpenses 2,317,180 · essentialComplete true.
 - `gradlew test`: 9건 통과(기존 3 + MockMvc standalone 6 — 정상응답 4, 401 2, 400 2 포함).
 - bootRun(8081 격리 포트) 스모크: summary/me/cashflow 200 · 토큰 없음 401 ·
   months=13 400 — 응답 본문 전부 §25 표준 포맷 확인.
+---
+
+## 39) 스프린트 2 작업표 (2026-10-18 확정)
+
+목표:
+- 자산 입력·조회 화면(§31)을 실제 동작으로 만들고, 카드 명세서 임포트와 구성비 차트를 연결한다.
+
+완료 기준 (DoD):
+1. /assets 화면에서 금융자산·부채·투자금의 편집·추가·삭제가 백엔드 원장에 반영된다
+2. 자산 화면과 대시보드가 같은 데이터를 본다(단일 출처 — §31.1, §34.6)
+3. 카드 명세서 업로드 → 미리보기 → 반영 흐름이 화면에서 동작한다(익명화 샘플 기준)
+4. 대시보드 구성비가 도넛 차트로 렌더된다
+5. CI 3잡(quality/frontend/backend-gate) + Storybook 전부 통과
+
+DB 전략 (결정):
+- 스프린트 2 본체는 **모크 원장 유지**(스프린트 1 §38 패턴 승계) — 자산 CRUD는 `MockDashboardSource` 를
+  원장 교체 가능 구조로 일반화하고, DB 연결은 교체 지점 하나를 갈아끼우는 단일 작업으로 남긴다
+- 이유: 실DB(Neon/로컬 Postgres)는 외부 계정·설치가 선행되고, 화면·API·계약 작업은 DB 와
+  독립적으로 검증 가능하다. 기다리지 않고 진행한다(사용자 답변 대기 만료 30분 → 최선 판단)
+- DB 연결은 스프린트 3 첫 이슈 후보. 연결되는 순간 CRUD 계약(§40)이 그대로 검증된다
+
+백로그 (우선순위 순):
+1. 자산 도메인 CRUD API 명세·구현 (자산/부채 계정 행, §37 스키마 그대로)
+2. 자산 화면 이관 (assets.html → React, §31.2 편집 가능/읽기 전용 구분 유지)
+3. 카드 임포트 UI 연결 (lib/card 파서 → 업로드·미리보기·반영)
+4. 구성비 도넛 차트 (recharts — antd 6 조합, 가벼운 의존성)
+
+화면 범위:
+- 자산(/assets) — 스프린트 2 주력
+- 대시보드 — 도넛 차트만 추가
+- 지출·설정 화면은 스프린트 2 제외 (MVP 나머지는 스프린트 3)
+
+리스크 및 대응:
+1. 모크 원장의 데이터 휘발(서버 재시작) → 계약은 영속 저장과 동일하게 문서화해두고, DB 연결 시 계약 변화 없음을 테스트로 보장
+2. 카드 파서는 익명화 샘플 기준만 검증됨 → 실제 명세서의 변형은 Known Issues 로 계속 추적
+3. recharts 번들 크기 → 대시보드 lazy import 로 분리
+
+스프린트 2 산출물:
+- 자산 화면 동작 데모 + CRUD API 명세(§40)
+- 카드 임포트 흐름 동작 데모
+- 도넛 차트 적용 대시보드
+- 테스트·게이트 결과
+
+GitHub 이슈:
+- #11 [Sprint2] 자산 화면 이관 및 자산·부채·투자금 CRUD API
+- #12 [Sprint2] 카드 명세서 임포트 UI·API 연결
+- #13 [Sprint2] 대시보드 구성비 도넛 차트 (recharts)
+---
+
+## 40) 자산 계정 CRUD API 명세 (2026-10-18 확정, 스프린트 2 #21)
+
+구현: `apps/backend/src/main/java/com/assetflow/assets/`. 원장은 `AssetLedger`(모크,
+DB 연결 시 이 클래스만 영속 구현으로 교체 — §39 DB 전략). §37 asset_accounts 스키마와 동일 필드.
+
+### 40.1 계약 원칙 (§31 승계)
+- **합계·구성비·순자산은 저장하지 않고 행에서 재계산한다.** 대시보드 summary(§38.3)와 자산
+  CRUD가 **같은 원장(AssetLedger)을 읽는 것을 테스트로 고정**했다 — 행을 추가하면 summary 에
+  즉시 나타나는 것이 AC 이다
+- 편집 가능/읽기 전용(§31.2)의 구분은 **화면(UI) 쪽 계약**이다: 자동이체·부가세는
+  asset_accounts 행이 아니라 지출 도메인 산출물이므로 CRUD 대상에 없다
+
+### 40.2 필드와 검증
+| 필드 | 형식 | 검증 |
+|---|---|---|
+| accountType | enum: cash / deposit / invest / realty | 위반 시 400 INVALID_REQUEST |
+| name | VARCHAR, 공백만 금지 | 필수 |
+| institutionName | VARCHAR(선택) | 생략 시 빈 문자열로 정규화 |
+| balance | 정수(원 단위, BIGINT) | **0 이상** — 음수/누락 시 400 |
+| isDebt | boolean 필수 | 누락 시 400 |
+| openedAt | DATE(선택) | 검증 없음(스프린트 2 초안) |
+
+### 40.3 엔드포인트 (전부 Bearer 필수)
+```
+GET    /api/v1/assets/accounts          → data = [ AssetRow ]   (시드 = §36.2 기준선 7행)
+POST   /api/v1/assets/accounts          → data = 생성된 AssetRow (id 자동)
+PUT    /api/v1/assets/accounts/{id}     → data = 갱신된 AssetRow (없으면 404 NOT_FOUND)
+DELETE /api/v1/assets/accounts/{id}     → data = 삭제된 id     (없으면 404)
+```
+AssetRow = `{ id, accountType, name, institutionName, balance, isDebt, openedAt }`.
+
+### 40.4 검증 기록
+- `gradlew test`: **17건 PASS** (자산 CRUD 8건 신규 — 시드 목록/생성/갱신/삭제/404/400×3/
+  §31.1 summary 동기화/미인증 차단)
+- §31.1 테스트: 투자금 행 POST → 대시보드 summary.assets 에 즉시 등장
+- 원장의 현재 데이터는 서버 프로세스 수명과 같다 — 영속은 DB 연결 시점부터(§39 리스크 1 대응:
+  계약은 이미 영속 저장과 동일하게 고정)
