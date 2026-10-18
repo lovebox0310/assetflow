@@ -83,7 +83,7 @@
    scp -P 2222 assetflow-dump.sql redbox9@redbox9.iptime.org:/tmp/
    PGPASSWORD='<assetflow 비밀번호>' psql -h localhost -U assetflow -d assetflow -f /tmp/assetflow-dump.sql
    ```
-3. **백업 자동화** (홈서버 cron): 매일 `pg_dump -U assetflow assetflow > ~/backup/assetflow-$(date +\%F).sql`, 7일분 보관
+3. **백업 자동화 — 설치 완료 (2026-10-18)**: 매일 03:15 cron 실행(`/etc/cron.d/assetflow-backup` → `/opt/assetflow/backup.sh`), 백업 파일 `/var/backups/assetflow/assetflow-YYYY-MM-DD.sql.gz`, 7일분 보관. 수동 실행: `sudo -u postgres /opt/assetflow/backup.sh`. 복원 검증 완료(임시 DB 복원 → 1,341행 일치)
 4. **나중에 카페24·VPS로 이관할 때**: 같은 pg_dump/복원 절차를 대상 서버에 반복한다 — 계약 변화 없음
 
 ### 7.2 백엔드 재배포 (새 jar 나올 때)
