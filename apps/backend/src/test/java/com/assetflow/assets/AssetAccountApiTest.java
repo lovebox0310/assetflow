@@ -29,7 +29,7 @@ class AssetAccountApiTest {
 
     @BeforeEach
     void setUp() {
-        ledger = new AssetLedger();
+        ledger = new InMemoryAssetLedger();
         mvc = MockMvcBuilders
                 .standaloneSetup(
                         new AssetAccountController(ledger),
