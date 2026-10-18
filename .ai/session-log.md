@@ -14,6 +14,67 @@
 
 ---
 
+## 2026-10-18 — Issue 8 테스트·문서화·릴리즈 리허설 (GitHub #10)
+
+### 무엇을 했나
+
+머지된 main(8f56399) 기준으로 품질 게이트를 전부 다시 돌리고, 스프린트 1 종료 산출물을 기록했다.
+
+### 테스트 결과 요약 (AC "핵심 테스트 통과 결과 확보")
+
+| 게이트 | 방법 | 결과 |
+|---|---|---|
+| FE 단위·시나리오 | `pnpm run test` | **48/48 PASS** (formatters·metrics 경계, 로그인 흐름, 대시보드 연동 시나리오: 정상/로딩/오류/401/빈/중복방지) |
+| FE 타입 | `tsc --noEmit` | 클린 |
+| FE 빌드 | `vite build` | 성공 (JS 532.4KB gzip 175.3KB, CSS 1.1KB) |
+| BE 단위·smoke | `gradlew test` | **9건 PASS** |
+| API smoke | bootRun + 실제 호출 | me/summary/cashflow **200**, 토큰 없음 **401** |
+| 보호 라우트 접근 제어 | 同上 + 인터셉터 | 미인증 차단 확인 (§21/§38.5) |
+
+### 반응형 기본 점검 (AC "모바일/데스크톱 상태 UI 일관성")
+
+| 뷰포트 | 관찰 |
+|---|---|
+| 360–380 (모바일) | 카드 1열 스택, 실 API 데이터 렌더, scrollW ≤ innerW (가로 스크롤 없음). 캡처 `.ai/responsive-360.png` |
+| 1280 (데스크톱) | 카드 4열, 4개 섹션 순서 §35와 일치. 캡처 `.ai/responsive-1280.png` |
+
+### 배포 체크리스트 리허설 (§12 "배포 순서" 대조)
+
+| §12 순서 | 리허설 상태 |
+|---|---|
+| 1. main 보호 규칙 (build/test/lint 체크) | **미확인** — GitHub 설정 화면에서 확인 필요 (lint 게이트는 아직 없음, 아래 Known Issues) |
+| 2. DB 생성 (dev/prod 분리) | **미착수** — Neon/Supabase 가입·발급 필요. 이 PC 에 Postgres 없음 |
+| 3. Backend 배포 (DB_URL/DB_USER/DB_PASSWORD/JWT_SECRET) | **미착수** — application.yml 의 autoconfig exclude 를 실 DB 접속으로 교체하는 작업이 선행 |
+| 4. Frontend 배포 (API_BASE_URL) | **미착수** — Vercel/CF Pages 연결 필요. 리버스 프록시 또는 CORS 설정이 함께 필요 |
+| 5. 도메인 + HTTPS | **미착수** |
+| 6. 헬스체크 + 알람 | **미착수** — 헬스체크 엔드포인트(`/actuator/health`)도 미추가 |
+| 7. 롤백 절차 (직전 정상 버전 재배포) | 절차 문서화는 §7/§12 존재. **실제 리허설은 DB·배포 플랫폼 준비 후에만 가능** |
+
+**리허설 결론**: 로컬 품질 게이트는 모두 통과. §12 의 1–7 중 2·3·4·6 이 남아 있고,
+이는 코드 작업이 아니라 계정·플랫폼 준비 작업이라 이 세션에서 진행하지 못했다.
+**스프린트 1 완료 판정은 사용자 확인이 필요한 지점** — 위 표를 기준으로 어디까지 본
+스프린트에 포함할지 정한다. (예: "리허설 = 1·7 절차 확인만으로 종료" 또는 "3까지 실배포")
+
+### 릴리즈 노트 초안 (스프린트 1)
+
+- 이메일 로그인 (FE 검증 + POST /api/v1/auth/login, 공통 오류 메시지 정책 §21)
+- 대시보드: 핵심 지표 카드 4종(순자산·월 수지·비상금 개월·자산 구성비), 반응형 4상태 블록
+- 대시보드 API 3종 (§38 표준 포맷) + Bearer 접근 제어
+- 데이터 모델 초안 DDL (users·asset_accounts·expense_categories·monthly_snapshots, §37)
+- FE-BE 실연동 (vite dev 프록시, 카드 단위 오류 복구)
+
+### Known Issues
+
+1. **lint 게이트 부재** — FE/BE 모두 eslint가 없다. `tsc --noEmit`이 정적 게이트의 실질 역할. eslint 도입 시 CI 체크에 추가할 것 (이슈 #3 잔여)
+2. **PostgreSQL 미연결** — 원장은 백엔드 `MockDashboardSource` 모크. DB 도입 시 이 클래스만 교체(§38)
+3. **서버 토큰 만료시 미제공** — 클라 TTL 1시간. 백엔드 JWT 발급 시 서버 expiresAt 로 대체
+4. **Storybook 정적 빌드 이 PC 차단** — oxc-resolver win32 dlopen 실패(§36.3). CI에서는 통과
+5. **401 자동 로그아웃 UX 미구현** — 인증 오류 시 메시지 노출까지. 자동 전환은 후속
+6. **배포 환경 프록시 필요** — vite 프록시는 dev 전용. 배포 시 리버스 프록시/백엔드 CORS
+7. **헬스체크 엔드포인트 없음** — 배포 6단계 전에 actuator 또는 경량 /health 추가 필요
+
+---
+
 ## 2026-10-18 — Issue 7 FE-BE 연동·상태 처리 안정화 (GitHub #9)
 
 ### 무엇을 했나
