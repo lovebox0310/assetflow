@@ -11,6 +11,16 @@ java {
     sourceCompatibility = '21'
 }
 
+// §37 DDL 단일 출처(apps/backend/db/schema.sql)를 classpath 로 서빙 —
+// spring.sql.init 이 postgres 프로필 부팅 시 이 파일을 그대로 적용한다.
+sourceSets {
+    main {
+        resources {
+            srcDir 'db'
+        }
+    }
+}
+
 repositories {
     mavenCentral()
 }

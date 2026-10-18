@@ -1,0 +1,17 @@
+# postgres 프로필: 실 DB 연결. 기동 시 --spring.profiles.active=postgres 와
+# DB_URL/DB_USER/DB_PASSWORD 환경변수가 필요하다.
+# 베이스 application.yml 의 autoconfigure.exclude 를 빈 값으로 덮어써
+# DataSource/JPA/MyBatis 자동구성을 활성화한다.
+spring:
+  autoconfigure:
+    exclude:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:}
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+      data-locations: classpath:data-seed.sql
+      continue-on-error: true   # 이미 테이블이 있으면 CREATE TABLE 을 무시하고 진행

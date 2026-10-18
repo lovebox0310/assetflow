@@ -2,6 +2,7 @@ package com.assetflow.dashboard;
 
 import com.assetflow.auth.MeController;
 import com.assetflow.assets.AssetLedger;
+import com.assetflow.assets.InMemoryAssetLedger;
 import com.assetflow.common.api.ApiExceptionHandler;
 import com.assetflow.common.web.BearerTokenInterceptor;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,7 +24,7 @@ class DashboardApiTest {
 
     @BeforeEach
     void setUp() {
-        DashboardService service = new DashboardService(new AssetLedger());
+        DashboardService service = new DashboardService(new InMemoryAssetLedger());
         mvc = MockMvcBuilders.standaloneSetup(new DashboardController(service), new MeController(service))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .addInterceptors(new BearerTokenInterceptor())

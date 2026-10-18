@@ -84,3 +84,24 @@ CREATE TABLE monthly_snapshots (
 
 -- 사용자별 최근 N개월 조회(§25 cashflow API)는 위 유니크 인덱스
 -- (user_id, snapshot_month) 범위 스캔으로 충분하다 — 별도 인덱스 불필요.
+
+-- ---------------------------------------------------------------------------
+-- card_imports: 카드매입 임포트 확정 행 (2026-10-18 추가, CardImportLedger 영속 저장처)
+-- §29.6: (user_id, row_key) UNIQUE 로 중복 반영 금지를 DB 가 보증한다.
+-- §29.7: 합계 컬럼은 두지 않는다 — 행에서 재계산한다(월 스냅샷과 같은 원칙).
+-- ---------------------------------------------------------------------------
+CREATE TABLE card_imports (
+    id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id       BIGINT NOT NULL REFERENCES users (id),
+    row_key       VARCHAR(120) NOT NULL,           -- 카드사 행 식별키
+    approved_at   DATE NOT NULL,                   -- 승인일 (YYYY-MM-DD)
+    merchant_name VARCHAR(100) NOT NULL,
+    supply_ex_vat BIGINT NOT NULL,                 -- 공급가액 (원)
+    vat           BIGINT NOT NULL,                 -- 부가세 (원)
+    gross_amount  BIGINT NOT NULL,                 -- 공급대가 (원) = supply_ex_vat + vat
+    card_masked   VARCHAR(32),                     -- 마스킹된 카드번호
+    expense_kind  VARCHAR(20),                     -- 용도구분 (확정 시 확정)
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_card_imports_user_rowkey UNIQUE (user_id, row_key)
+);

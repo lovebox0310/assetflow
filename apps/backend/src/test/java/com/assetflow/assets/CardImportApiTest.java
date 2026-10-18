@@ -29,7 +29,7 @@ class CardImportApiTest {
 
     @BeforeEach
     void setUp() {
-        mvc = MockMvcBuilders.standaloneSetup(new CardImportController(new CardImportLedger()))
+        mvc = MockMvcBuilders.standaloneSetup(new CardImportController(new InMemoryCardImportLedger()))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .addInterceptors(new BearerTokenInterceptor())
                 .build();
