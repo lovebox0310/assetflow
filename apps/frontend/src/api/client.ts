@@ -1,4 +1,5 @@
 import { getToken } from "../auth/authStore";
+import { apiUrl } from "./base";
 
 /**
  * §26 연동 기준의 공통 API 클라이언트.
@@ -36,7 +37,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 
   let response: Response;
   try {
-    response = await fetch(path, { ...init, headers });
+    response = await fetch(apiUrl(path), { ...init, headers });
   } catch {
     throw new ApiError("network", NETWORK_MESSAGE, "NETWORK_ERROR");
   }
