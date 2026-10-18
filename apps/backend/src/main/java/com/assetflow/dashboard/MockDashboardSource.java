@@ -18,19 +18,7 @@ public final class MockDashboardSource {
 
     public static final String AS_OF = "2026-10";
 
-    public static List<AssetRow> assets() {
-        return List.of(
-                new AssetRow("c1", "cash", "우리 파킹통장", 18_500_000L),
-                new AssetRow("c2", "cash", "씨티 요구불", 6_200_000L),
-                new AssetRow("d1", "deposit", "우리 예적금", 42_000_000L),
-                new AssetRow("i1", "invest", "키움 투자금", 31_000_000L),
-                new AssetRow("i2", "invest", "미국주식", 23_500_000L),
-                new AssetRow("r1", "realty", "실거주 아파트", 640_000_000L));
-    }
-
-    public static List<LiabilityRow> liabilities() {
-        return List.of(new LiabilityRow("l1", "주택담보대출", 69_355_560L));
-    }
+    /** §37 원장이 자산 행의 유일한 출처이다 — assets()/liabilities() 시드 중복은 제거(§31.1). */
 
     public static MonthlySummary monthly() {
         // §36.2 기준선과 동일: 총수입 820.0만, 지출 496.0만, 필수 2,317,180

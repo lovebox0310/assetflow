@@ -13,7 +13,7 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(new BearerTokenInterceptor())
-                .addPathPatterns("/api/v1/me", "/api/v1/dashboard/**")
+                .addPathPatterns("/api/v1/me", "/api/v1/dashboard/**", "/api/v1/assets/**")
                 .excludePathPatterns("/api/v1/auth/**");
     }
 }
