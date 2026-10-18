@@ -102,15 +102,31 @@ export function CardImportPanel() {
   const totalGross = classified.reduce((acc, g) => acc + g.gross, 0);
   const skipped = groups.reduce((acc, g) => acc + g.rows.filter((r) => dupKeys.has(r.rowKey)).length, 0);
 
+  /** 반영 완료 후 파일 선택으로 복귀 — 방금 반영한 행이 중복으로 잡히도록 키 목록을 다시 읽는다. */
+  const resetToIdle = useCallback(() => {
+    setPhase("idle");
+    setResult(null);
+    setGroups([]);
+    setKinds({});
+    setErrorText("");
+    setNotice("");
+    getImportedRowKeys()
+      .then((keys) => setDupKeys(new Set(keys)))
+      .catch(() => setDupKeys(new Set()));
+  }, []);
+
   if (phase === "done" && result) {
     return (
       <Card>
-        <Alert
-          type="success"
-          showIcon
-          title={`반영 완료 — 새로 저장 ${result.stored}건 / 받은 ${result.received}건 (총 원장 ${result.totalRows}행)`}
-          description={`합계(행에서 재계산): 이용금액 ${formatKrwExact(result.totals.gross)} · 부가세 ${formatKrwExact(result.totals.vat)}${result.supplyInconsistentRows > 0 ? ` · 공급가액+세액 불일치 경고 ${result.supplyInconsistentRows}행` : ""}`}
-        />
+        <Space direction="vertical" style={{ width: "100%" }} size={12}>
+          <Alert
+            type="success"
+            showIcon
+            title={`반영 완료 — 새로 저장 ${result.stored}건 / 받은 ${result.received}건 (총 원장 ${result.totalRows}행)`}
+            description={`합계(행에서 재계산): 이용금액 ${formatKrwExact(result.totals.gross)} · 부가세 ${formatKrwExact(result.totals.vat)}${result.supplyInconsistentRows > 0 ? ` · 공급가액+세액 불일치 경고 ${result.supplyInconsistentRows}행` : ""}`}
+          />
+          <Button onClick={resetToIdle}>다른 파일 가져오기</Button>
+        </Space>
       </Card>
     );
   }
