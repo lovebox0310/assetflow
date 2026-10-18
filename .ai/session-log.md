@@ -14,6 +14,37 @@
 
 ---
 
+## 2026-10-18 — #22 카드 임포트 UI·API + #23 도넛 차트 검증 완료 (커밋 대기)
+
+### 무엇을 했나
+
+작업 트리에 남아 있던 #22·#23 미커밋 구현의 잔여 오류를 고치고 전체 게이트를 돌렸다.
+
+| # | 작업 | 산출물 |
+|---|---|---|
+| 1 | #22 카드 임포트 | `CardImportPanel`(업로드→매직바이트 판별→카드사 판별→가맹점 미리보기→반영) + `CardImportController`/`CardImportLedger`(서버 재검증) + `cardImportApi`. 자산 화면에 패널 장착 |
+| 2 | #23 도넛 | `CompositionDonut`(recharts, §36.1 assetComposition 산출물 재사용) — 대시보드 lazy import 로 청크 분리. **범례 3종 variant**(`variant` prop: `inline`/`table`/`chips`, 기본값 inline): inline은 도트+이름+금액+백분% 인접 배치, table은 유형·금액·비중 고정폭 3열, chips는 2×2 칩(도트+이름+비중). §35 중단점 반응 — md 이상 도넛 좌측·범례 우측, 미만 상하 스택. `CompositionDonut.stories.tsx` — Inline/Table/Chips/Empty 4 스토리로 실렌더 비교 가능 |
+| 3 | 잔여 오류 수정 | lint: 미사용 `waitFor` 제거 / tsc: 계약 JSON 타입 단언 교정·미사용 `@ts-expect-error` 제거·recharts Tooltip formatter 문맥 추론 전환 / vite 경고: 동적 import 확장자를 정적 부분으로 이동 |
+
+### 검증
+
+| 대상 | 방법 | 결과 |
+|---|---|---|
+| FE 단위·시나리오 | `vitest run` | **59건 PASS** (CardImportPanel — 실제 익명화 샘플 판별·CFB 거부·zip 미지원·반영 대역 포함) |
+| FE 타입·lint | `tsc --noEmit` / `eslint` | 클린 |
+| FE 빌드 | `vite build` | 성공 — 파서 2종(samsung/hyundai)·도넛(recharts 315KB) 별도 청크 분리 확인 |
+| BE 테스트 | `gradlew test` (JAVA_HOME=IntelliJ jbr) | **25건 PASS** (5파일, failures 0) |
+| API smoke | bootRun + 실호출 | row-keys 미인증 **401** / 인증 **200** / POST 반영 **200** — 응답 totals 가 행에서 서버 재계산(gross 1100·vat 100), knownRowKeys 중복 집계 확인 |
+| 범례 렌더 | Storybook + 헤드리스 브라우저(900px) | inline/table/chips 3 variant 실렌더 확인. 금액은 천단위 원 표기(formatKrwExact 단일 출처). 캡처 `.ai/donut-v-inline.png` / `.ai/donut-v-table.png` / `.ai/donut-v-chips.png` |
+
+### 남은 것
+
+- [ ] **커밋/PR** — 작업 트리에 검증 완료 상태로 대기(사용자 지시 대기)
+- [ ] DB 연결 — 계정 연결 시 AssetLedger·CardImportLedger 교체만 수행(§39)
+- [ ] main 청크 940KB 경고 — 인덱스 청크 기준이며 기능 동작에는 무관. 후속 분리 검토
+
+---
+
 ## 2026-10-18 — Storybook 차단 해제: VC++ 런타임이 원인 (§36.3 갱신)
 
 ### 무엇을 했나
