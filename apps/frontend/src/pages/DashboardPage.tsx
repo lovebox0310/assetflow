@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Card, Typography } from "antd";
+import { Button, Card, Typography } from "antd";
 import { AppLayout } from "../layout/AppLayout";
 import { ResponsiveGrid } from "../layout/ResponsiveGrid";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
@@ -19,6 +19,8 @@ import { clearToken } from "../auth/authStore";
 interface DashboardPageProps {
   /** 로그아웃 후 로그인 화면으로 전환한다 (§21 로그아웃 처리). */
   onLogout: () => void;
+  /** 헤더에서 자산 화면으로 이동한다 (§39 화면 범위). */
+  onOpenAssets?: () => void;
 }
 
 /**
@@ -29,7 +31,7 @@ interface DashboardPageProps {
  * - 오류 문구는 ApiError 의 사용자 친화 메시지(네트워크/인증 구분)를 그대로 보여 준다.
  * - 계산은 여전히 metrics.ts 단일 출처(§34.6). 여기선 데이터를 씌우는 것만 한다.
  */
-export function DashboardPage({ onLogout }: DashboardPageProps) {
+export function DashboardPage({ onLogout, onOpenAssets }: DashboardPageProps) {
   const [summary, setSummary] = useState<DashboardData | null>(null);
   const [summaryStatus, setSummaryStatus] = useState<SurfaceStatus>("loading");
   const [summaryError, setSummaryError] = useState("");
@@ -83,7 +85,10 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const cashRows = dataReady ? summary.assets.filter((a) => a.type === "cash") : [];
 
   return (
-    <AppLayout onLogout={handleLogout}>
+    <AppLayout
+      onLogout={handleLogout}
+      nav={onOpenAssets ? <Button type="link" onClick={onOpenAssets}>자산</Button> : undefined}
+    >
       <section aria-labelledby="h-core" style={{ marginBottom: 32 }}>
         <Typography.Title level={4} id="h-core" style={{ margin: 0, marginBottom: 16 }}>
           핵심 지표
