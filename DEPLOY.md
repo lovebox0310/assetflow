@@ -66,10 +66,10 @@
 | 접속 | `ssh redbox9@redbox9.iptime.org -p 2222` (ipTIME DDNS, 공유기 2222→22 포워딩) — 배포용 키 등록 완료 |
 | Postgres 18.6 | 서버 로컬 전용(5432 외부 미개방). DB `assetflow`, 계정 `assetflow`, 스키마·시드 적용 완료 |
 | Backend | `/opt/assetflow/app.jar` + systemd(`assetflow.service`) — postgres 프로필, `-Xmx512m`, Restart=always |
-| HTTPS | Caddy 역방향 프록시 — `redbox9.iptime.org` → `localhost:8080`, Let’s Encrypt 자동 발급 |
+| HTTPS | Caddy 역방향 프록시 — `https://redbox9.iptime.org` (자체 서명 인증서, 브라우저 경고 수락 필요). 정식 인증서는 iptime.org CAA 차단으로 불가 — 도메인 구입 시 Caddyfile 도메인만 교체하면 자동 발급으로 전환 |
 | 방화벽 | ufw: 22/2222, 80, 443 허용. **5432 는 개방 금지** |
 
-공유기 포트포워딩(사용자 수동): 외부 80·443 → 192.168.0.102. 완료 전까지는 인증서 발급이 실패한다(Caddy 가 자동 재시도).
+공유기 포트포워딩(사용자 완료): 외부 80→80, 443→443 (192.168.0.102). 80은 ipTIME 원격 관리 서버(Httpd/1.0)가 선점해 404 응답 — HTTP-01 챌린지 불가, TLS-ALPN(443)도 CAA 차단으로 전환해 자체 서명으로 확정.
 
 ### 7.1 데이터 이관 절차 (로컬 Windows → 홈서버)
 

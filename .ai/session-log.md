@@ -41,7 +41,7 @@
 
 ### 남은 것
 
-- [ ] 공유기 80/443 포트포워딩(사용자 수동) → Caddy 인증서 발급·`https://redbox9.iptime.org` 외부 접속 검증
+- [x] 공유기 80/443 포트포워딩(사용자 완료) → HTTPS 외부 접속 검증 완료: `https://redbox9.iptime.org/health` = UP, 로그인·계좌 API 200. 자체 서명 인증서라 브라우저 경고 수락 필요(정식 인증서는 도메인 구입 후 Caddyfile 교체로 전환)
 - [ ] 프론트 배포(Vercel) + `ALLOWED_ORIGIN`·`VITE_API_BASE_URL` 연결
 - [ ] CI backend-gate 는 인메모리 경로만 검증 — postgres 경로는 본 항목의 bootRun/서버 스모크로 수동 검증
 
