@@ -105,3 +105,22 @@ CREATE TABLE card_imports (
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_card_imports_user_rowkey UNIQUE (user_id, row_key)
 );
+
+-- ---------------------------------------------------------------------------
+-- monthly_expense_items: 월 지출 항목 (§43 — 스프린트 3 지출 화면의 원장)
+-- 합계는 저장하지 않는다 — 행에서 재계산(§34.6 계산 단일 출처는 프론트 metrics.ts).
+-- ---------------------------------------------------------------------------
+CREATE TABLE monthly_expense_items (
+    id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id      BIGINT NOT NULL REFERENCES users (id),
+    month        CHAR(7) NOT NULL,             -- 'YYYY-MM'
+    label        VARCHAR(50) NOT NULL,         -- 항목명
+    amount       BIGINT NOT NULL,              -- 월 금액 (원)
+    is_essential BOOLEAN NOT NULL DEFAULT FALSE,
+    purchase_vat BIGINT NOT NULL DEFAULT 0,    -- 매입세액 (원)
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT ck_expense_item_nonneg CHECK (amount >= 0 AND purchase_vat >= 0),
+    CONSTRAINT uq_expense_item UNIQUE (user_id, month, label)
+);
+CREATE INDEX ix_expense_items_user_month ON monthly_expense_items (user_id, month);
