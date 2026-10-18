@@ -2,24 +2,45 @@ package com.assetflow.auth;
 
 import com.assetflow.auth.dto.LoginRequest;
 import com.assetflow.auth.dto.LoginResponse;
+import com.assetflow.common.api.AuthRequiredException;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AuthServiceTest {
 
-    private final AuthService service = new AuthService();
+    private final InMemoryAuthService service = new InMemoryAuthService(new TokenService("test-secret-0123456789-0123456789-0123456789"));
 
     @Test
-    void returnsTokenForNonNullCredentials() {
+    void issuesRealTokenForCorrectSeedCredentials() {
         LoginRequest request = new LoginRequest();
         request.setEmail("user@example.com");
-        request.setPassword("password123");
+        request.setPassword("password");
 
         LoginResponse response = service.login(request);
 
-        assertEquals("mock-jwt-token", response.getToken());
+        assertTrue(response.getToken().split("\\.").length == 3);   // header.payload.signature
+        assertTrue(response.getExpiresAt() > System.currentTimeMillis());
+    }
+
+    @Test
+    void rejectsWrongPasswordWith401Contract() {
+        LoginRequest request = new LoginRequest();
+        request.setEmail("user@example.com");
+        request.setPassword("wrong-password");
+
+        assertThrows(AuthRequiredException.class, () -> service.login(request));
+    }
+
+    @Test
+    void rejectsUnknownEmailLikeWrongPassword() {
+        LoginRequest request = new LoginRequest();
+        request.setEmail("nobody@example.com");
+        request.setPassword("password");
+
+        assertThrows(AuthRequiredException.class, () -> service.login(request));
     }
 
     @Test
