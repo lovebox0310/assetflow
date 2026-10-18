@@ -1,5 +1,6 @@
 package com.assetflow.assets;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -20,10 +21,11 @@ public class PostgresCardImportLedger implements CardImportLedger {
     private final JdbcTemplate jdbc;
     private final long userId;
 
-    public PostgresCardImportLedger(JdbcTemplate jdbc) {
+    public PostgresCardImportLedger(JdbcTemplate jdbc,
+                                    @Value("${app.owner-email:user@example.com}") String ownerEmail) {
         this.jdbc = jdbc;
         this.userId = jdbc.queryForObject(
-                "SELECT id FROM users WHERE email = 'user@example.com'", Long.class);
+                "SELECT id FROM users WHERE email = ?", Long.class, ownerEmail);
     }
 
     private static CardImportLedger.ImportedRow map(java.sql.ResultSet rs, int n) throws java.sql.SQLException {

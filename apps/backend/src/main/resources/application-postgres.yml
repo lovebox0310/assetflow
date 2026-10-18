@@ -13,8 +13,8 @@ spring:
     init:
       mode: always
       schema-locations: classpath:schema.sql
-      data-locations: classpath:data-seed.sql
       continue-on-error: true   # 이미 테이블이 있으면 CREATE TABLE 을 무시하고 진행
+    # users(원장 소유자) 행은 운영 DB 에서 수동 생성 — DEPLOY.md §7. 자동 시드는 하지 않는다(자격증명 해시를 저장소에 커밋하지 않기 위함)
 
 app:
   # 단일 사용자 MVP의 원장 소유자 — 이 이메일 행이 asset_accounts·card_imports 의 user_id 가 된다.
