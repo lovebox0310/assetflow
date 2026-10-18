@@ -14,6 +14,39 @@
 
 ---
 
+## 2026-10-18 — Storybook 차단 해제: VC++ 런타임이 원인 (§36.3 갱신)
+
+### 무엇을 했나
+
+`pnpm storybook` 이 oxc-resolver dlopen 실패로 안 뜨는 차단(§36.3, Known Issues 4번)을 해제했다.
+
+### 원인 (착각했던 것 → 실제)
+
+| 착각 | 실제 |
+|---|---|
+| "npm optional deps 버그 — node_modules 재설치 필요" (에러 메시지의 권장 문구) | **Visual C++ 재배포 가능 패키지 부재** |
+| node_modules 재설치 → 바인딩 .node 사라짐(동일 실패) | 재설치 후에도 동일 — 파일은 원래 정상이었다 |
+
+판단 근거:
+1. `resolver.win32-x64-msvc.node` — 1,886,720 bytes, `MZ` 매직 (진짜 DLL)
+2. System32 검사 — `vcruntime140.dll` / `msvcp140.dll` / `vcruntime140_1.dll` **전부 없음**
+3. vc_redist.x64.exe 설치(UAC 승인) → 세 DLL 전부 존재 → `pnpm storybook` 즉시 기동
+
+### 검증
+
+| 대상 | 방법 | 결과 |
+|---|---|---|
+| 기동 | `pnpm storybook` → 6006 | "Storybook ready", HTTP 200 |
+| UI | 헤드리스 브라우저 렌더 | 스토리 8종 사이드바, 순자산 카드 렌더, Controls 동작. 캡처 `.ai/storybook-fixed.png` |
+
+### 교훈 (§36.3 에 기록)
+
+- 네이티브 모듈 dlopen 실패에서는 **파일 존재(매직·크기) → 의존 DLL(System32) 순서**로 확인한다.
+  에러 메시지의 npm 재설치 권장은 문구일 뿐, 이 PC 의 경우 원인이 아니었다.
+- Known Issues 4번 해제. 남은 Known Issues: 배포 플랫폼 단계(2~6), 서버 만료시, 401 UX, 헬스체크 제외
+
+---
+
 ## 2026-10-18 — eslint 게이트 구축 + 배포 준비 (이슈 #3 집행, PR #19)
 
 - typescript-eslint flat config(`eslint.config.js`) + `pnpm run lint` — **클린 통과**, 전 테스트 동시 재실행 PASS(FE 48/48, BE 9건, 빌드 성공)

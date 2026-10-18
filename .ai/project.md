@@ -2208,10 +2208,13 @@ Node 버전은 **22(LTS)** 로 고정한다. 저장소 문서에 정해진 최�
 ### 36.3 Storybook (§10)
 - 스토리 8종: `src/components/MetricCard.stories.tsx` — 기본 4종 + 로딩/빈/에러 + 빈 구성비.
   값은 스토리에 하드코딩하지 않고 metrics·formatters 산출물을 그대로 사용한다.
-- **정적 빌드/로컬 실행은 이 PC에서 차단됨**: `oxc-resolver` win32 바인딩의 dlopen 실패
-  (실물 .node 직접 require도 "specified module could not be found"). vite 의 자체 oxc 바이너리는
-  정상 로드되므로 패키지의 런타임 DLL 문제다. 스토리 타입은 CI `tsc --noEmit` 으로 검증된다.
-  해제 시도 순서: 다른 Node 버전(24 외) → oxc-resolver 최신 재설치 → 러너에서만 확인.
+- **차단 해제됨 (2026-10-18)**: 원인은 oxc-resolver 가 아니라 **Visual C++ 재배포 가능 패키지 부재**
+  — 이 PC 의 System32 에 vcruntime140.dll·msvcp140.dll·vcruntime140_1.dll 이 전부 없었다. .node DLL
+  은 정상이었고 dlopen 실패 메시지("specified module could not be found")는 파일이 아니라
+  의존 DLL 을 가리킨다. vc_redist.x64.exe 설치 후 `pnpm storybook` 기동·스토리 렌더 확인.
+  node_modules 재설치는 필요 없었다(초기 안내의 npm 버그 설명은 이 경우 원인이 아니었다).
+  교훈: 네이티브 모듈 dlopen 실패에서는 파일 존재(매직 바이트·크기)와 의존 DLL(System32)을
+  순서대로 본다.
 
 
 
