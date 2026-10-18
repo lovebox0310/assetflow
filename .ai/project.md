@@ -2441,7 +2441,8 @@ AssetRow = `{ id, accountType, name, institutionName, balance, isDebt, openedAt 
 
 ### 41.2 엔드포인트 (전부 Bearer 필수)
 ```
-GET  /api/v1/assets/card-imports/row-keys → data = [ rowKey ]
+GET  /api/v1/assets/card-imports?month=YYYY-MM → data = [ ImportedRow ]  (지출 화면 "가져온 카드내역" 표용)
+GET  /api/v1/assets/card-imports/row-keys      → data = [ rowKey ]
 POST /api/v1/assets/card-imports          → data = { stored, received, totalRows, duplicatesInBatch,
                                                  knownRowKeys, totals{gross,vat,supplyExVat},
                                                  supplyInconsistentRows }

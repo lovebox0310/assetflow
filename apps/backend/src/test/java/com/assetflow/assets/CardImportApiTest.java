@@ -26,11 +26,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class CardImportApiTest {
 
     private static final String TOKEN = "Bearer " + new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com");
+    private final InMemoryCardImportLedger ledger = new InMemoryCardImportLedger();
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
-        mvc = MockMvcBuilders.standaloneSetup(new CardImportController(new InMemoryCardImportLedger()))
+        mvc = MockMvcBuilders.standaloneSetup(new CardImportController(ledger))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .addInterceptors(new BearerTokenInterceptor(new TokenService("test-secret-0123456789-0123456789-0123456789")))
                 .build();
@@ -137,5 +138,18 @@ class CardImportApiTest {
     void unauthenticatedAccessIsBlocked() throws Exception {
         mvc.perform(get("/api/v1/assets/card-imports/row-keys"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void monthRowsReturnsOnlyThatMonth() throws Exception {
+        ledger.addAll(List.of(
+                new CardImportLedger.ImportedRow("m1", "2025-01-03", "가맹점A", 1000, 100, 1100, "", ""),
+                new CardImportLedger.ImportedRow("m2", "2025-02-05", "가맹점B", 2000, 200, 2200, "", "")));
+        mvc.perform(get("/api/v1/assets/card-imports?month=2025-01").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].merchantName").value("가맹점A"));
+        mvc.perform(get("/api/v1/assets/card-imports?month=2025/01").header("Authorization", TOKEN))
+                .andExpect(status().isBadRequest());
     }
 }
