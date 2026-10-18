@@ -1,5 +1,6 @@
 package com.assetflow.assets;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -20,10 +21,11 @@ public class PostgresAssetLedger implements AssetLedger {
     private final JdbcTemplate jdbc;
     private final long userId;
 
-    public PostgresAssetLedger(JdbcTemplate jdbc) {
+    public PostgresAssetLedger(JdbcTemplate jdbc,
+                               @Value("${app.owner-email:user@example.com}") String ownerEmail) {
         this.jdbc = jdbc;
         this.userId = jdbc.queryForObject(
-                "SELECT id FROM users WHERE email = 'user@example.com'", Long.class);
+                "SELECT id FROM users WHERE email = ?", Long.class, ownerEmail);
     }
 
     /** §36.2 mock 기준선 시드 — 비어 있을 때만 채운다(재시작해도 사용자 데이터를 덮지 않는다). */
