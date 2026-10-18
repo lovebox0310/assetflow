@@ -2426,3 +2426,101 @@ AssetRow = `{ id, accountType, name, institutionName, balance, isDebt, openedAt 
 - §31.1 테스트: 투자금 행 POST → 대시보드 summary.assets 에 즉시 등장
 - 원장의 현재 데이터는 서버 프로세스 수명과 같다 — 영속은 DB 연결 시점부터(§39 리스크 1 대응:
   계약은 이미 영속 저장과 동일하게 고정)
+
+## 41) 카드매입 임포트 API 명세 (2026-10-18 확정, 스프린트 2 #22)
+
+구현: `CardImportController` + 원장 `card_imports` 테이블(§37.1 — POSTGRES 운영, 인메모리는 테스트·CI).
+
+### 41.1 계약 원칙
+- **서버 재검증**(§29.2): FE 미리보기는 참고 — 저장되는 값은 서버가 행마다 검증한다.
+  rowKey·merchantName 필수 텍스트, approvedAt 는 ISO 날짜, 금액 3종은 long 필수.
+  공급가액+세액≠공급대가 는 **저장하되 경고 카운트**(현대카드 부가세 변형 수용, §29.3).
+- **합계는 저장하지 않는다**(§29.7) — 행에서 재계산해 응답.
+- **중복 반영 금지**(§29.6) — `(user_id, row_key)` UNIQUE + ON CONFLICT DO NOTHING.
+  DB 가 보증하고 응답에 stored/received/duplicatesInBatch/knownRowKeys 를 돌려준다.
+
+### 41.2 엔드포인트 (전부 Bearer 필수)
+```
+GET  /api/v1/assets/card-imports/row-keys → data = [ rowKey ]
+POST /api/v1/assets/card-imports          → data = { stored, received, totalRows, duplicatesInBatch,
+                                                 knownRowKeys, totals{gross,vat,supplyExVat},
+                                                 supplyInconsistentRows }
+```
+
+### 41.3 검증 기록 (스프린트 2 종료 시점)
+- BE 25건 PASS(인메모리 경로), 서비스 스모크: 반영 200 — totals 가 행에서 재계산됨 확인.
+- 운영 원장: 홈서버 PostgreSQL, 2025년 전체 내역 1,341행 저장.
+
+## 42) 스프린트 3 작업표 (2026-10-18 확정)
+
+목표:
+- 지출 화면과 설정 화면을 실제 동작으로 만들고, 카드 원장·월 지출 항목·비상금 기준이 단일 출처로 연결된다.
+
+완료 기준 (DoD):
+1. 지출 화면에서 월 지출 항목(항목·월 금액·필수·매입세액)의 편집·추가·삭제가 백엔드에 반영된다
+2. 카드 임포트 원장 데이터가 지출 화면에 나타난다(가맹점 용도구분과 연결 — §29.7/§41)
+3. 설정 화면의 비상금 기준(목표 개월)이 대시보드 비상금 카드와 같은 값으로 동작한다(§34.6)
+4. 인증 실패(401) 시 로그인 화면으로 자동 전환된다(Known Issues 5 해소)
+5. CI 3잡(quality/frontend/backend-gate) + Storybook 전부 통과
+
+DB 전략 (결정):
+- **월 지출 항목 저장처 신설**: `monthly_expense_items` 테이블 — (user_id, month, 항목, 월 금액,
+  is_essential, 매입세액). 원장 교체 패턴은 §39 반복(원장 클래스 하나, 계약 고정).
+- 월 스냅샷(§37 monthly_snapshots)은 여전히 시점값 — 지출 화면의 필수지출 합계와
+  스냅샷 essential_expenses 의 연결 경로는 §43 명세에서 확정.
+- 카드 원장(card_imports)과 월 지출 항목은 **별도 표** — 프로토타입(§31 지출 화면)도 별도 섹션.
+
+백로그 (우선순위 순):
+1. 월 지출 항목 스키마·CRUD API 명세(§43) — 원장 + 계약 고정
+2. 지출 화면 이관(월 지출 항목 표·합계·필수 플래그·매입세액 + 카드 원장 소비)
+3. 설정 화면 이관(프로필·비상금 기준·계정 요약)
+4. 401 자동 로그아웃 UX(Known Issues 5)
+
+화면 범위:
+- 지출(/expenses) — 스프린트 3 주력
+- 설정(/settings) — 프로필·비상금 기준
+- 백로그: xlsx 직접 지원(카드 임포트), 로그인 비밀번호 변경 기능
+
+GitHub 이슈:
+- #36 [Sprint3] 지출 화면 이관 + 월 지출 항목 CRUD API
+- #37 [Sprint3] 설정 화면 이관 (프로필·비상금 기준)
+- #38 [Sprint3] 401 자동 로그아웃 UX
+
+## 43) 월 지출 항목 CRUD API 명세 (2026-10-18 확정, 스프린트 3 #36)
+
+구현: `ExpenseItemController` + 원장 `ExpenseItemLedger`(인메모리/Postgres 이원화 — §39 패턴 반복).
+
+### 43.1 데이터 모델 (schema.sql 에 추가 — §37 단일 출처)
+```
+monthly_expense_items (
+    id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id      BIGINT NOT NULL REFERENCES users (id),
+    month        CHAR(7) NOT NULL,            -- 'YYYY-MM'
+    label        VARCHAR(50) NOT NULL,        -- 항목명
+    amount       BIGINT NOT NULL,             -- 월 금액 (원, BIGINT — §37.3)
+    is_essential BOOLEAN NOT NULL DEFAULT FALSE,
+    purchase_vat BIGINT NOT NULL DEFAULT 0,   -- 매입세액 (원)
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_expense_item UNIQUE (user_id, month, label)
+);
+```
+- **UNIQUE (user_id, month, label)**: 같은 월 같은 이름 항목 중복 방지(사용자 실수 방지).
+- **필수지출 합계는 저장하지 않는다** — 행에서 재계산(§34.6: 계산 단일 출처는 프론트 metrics.ts).
+- 월 스냅샷(§37)과의 연결: 지출 화면의 필수 합계 → 스냅샷 essential_expenses 갱신은
+  월 확정 시점의 작업으로 별도 이슈(스프린트 3 후반)에서 처리.
+
+### 43.2 엔드포인트 (전부 Bearer 필수)
+```
+GET    /api/v1/expenses/items?month=YYYY-MM → data = [ ExpenseItem ]
+POST   /api/v1/expenses/items?month=YYYY-MM → data = 생성된 ExpenseItem
+PUT    /api/v1/expenses/items/{id}          → data = 갱신된 ExpenseItem (없으면 404)
+DELETE /api/v1/expenses/items/{id}          → data = 삭제된 id          (없으면 404)
+```
+- month 쿼리 파라미터 필수(`YYYY-MM` 형식, 아니면 400) — 월 단위 조회·생성.
+- ExpenseItem = { id, month, label, amount, isEssential, purchaseVat }.
+- 합계·필수지출 합계는 응답에 없다 — 프론트가 행에서 계산(§34.6).
+
+### 43.3 검증 규칙
+- label: 필수, 공백 불가 / amount: BIGINT 0 이상(음수 400) / purchaseVat: BIGINT 0 이상(기본 0).
+- month: `YYYY-MM` 정규식 검증(스냅샷과 같은 형식 — §37).
