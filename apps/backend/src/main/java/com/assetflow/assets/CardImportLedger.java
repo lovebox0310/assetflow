@@ -16,6 +16,9 @@ public interface CardImportLedger {
 
     List<ImportedRow> all();
 
+    /** 승인일이 해당 월(YYYY-MM)인 행 — 지출 화면의 "가져온 카드내역" 표용 (§42). */
+    List<ImportedRow> inMonth(String month);
+
     Set<String> existingRowKeys();
 
     /** 이미 있는 rowKey 는 건너뛴다(§29.6 중복 반영 금지). 새로 저장된 건수를 돌려준다. */

@@ -21,6 +21,16 @@ public class InMemoryCardImportLedger implements CardImportLedger {
         }
     }
 
+    public List<ImportedRow> inMonth(String month) {
+        synchronized (rows) {
+            List<ImportedRow> out = new ArrayList<>();
+            for (ImportedRow r : rows) {
+                if (r.approvedAt().startsWith(month)) out.add(r);
+            }
+            return List.copyOf(out);
+        }
+    }
+
     public Set<String> existingRowKeys() {
         synchronized (rows) {
             Set<String> keys = new HashSet<>();
