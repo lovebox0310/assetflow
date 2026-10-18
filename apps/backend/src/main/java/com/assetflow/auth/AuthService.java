@@ -2,16 +2,9 @@ package com.assetflow.auth;
 
 import com.assetflow.auth.dto.LoginRequest;
 import com.assetflow.auth.dto.LoginResponse;
-import org.springframework.stereotype.Service;
 
-@Service
-public class AuthService {
+/** 로그인 계약 — 구현은 InMemoryAuthService(테스트·CI) / PostgresAuthService(실 DB) 둘. */
+public interface AuthService {
 
-    public LoginResponse login(LoginRequest request) {
-        // TODO: Replace with real user lookup and password hash verification.
-        if (request.getEmail() == null || request.getPassword() == null) {
-            throw new IllegalArgumentException("Invalid credentials");
-        }
-        return new LoginResponse("mock-jwt-token");
-    }
+    LoginResponse login(LoginRequest request);
 }
