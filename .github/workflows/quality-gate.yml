@@ -16,8 +16,8 @@
 # 앱 게이트:
 #   - FE(React/Vite): 2026-10-17 에 package.json·lock 이 이미 있어 frontend-gate 잡으로 추가했다.
 #     (로컬 검증: vitest 8/8 PASS, tsc --noEmit 클린, vite build 성공)
-#   - BE(Spring): build.gradle 은 있으나 gradle wrapper 와 Spring Boot 메인 클래스가 아직 없다.
-#     빌드가 실제로 돌아가는 날 backend-gate 잡을 추가한다. 없는 걸 돌아가는 척하지 않는다.
+#   - BE(Spring): 2026-10-18 부터 backend-gate 잡이 돈다 (wrapper + 메인 클래스 완비, §37.6).
+#     DB 연결 전이라 테스트는 Postgres 없이 돈다(application.yml 의 exclude, §37.6).
 
 name: quality-gate
 
@@ -108,5 +108,24 @@ jobs:
         run: pnpm typecheck
       - name: 단위 테스트
         run: pnpm test
+      - name: eslint
+        run: pnpm lint
       - name: 프로덕션 빌드
         run: pnpm build
+
+  # BE 앱 게이트. 2026-10-18 부터 백엔드가 실제로 빌드·테스트 가능하다
+  # (wrapper + 메인 클래스, §37.6). DB 전 부팅이므로 테스트는 Postgres 없이 돈다.
+  backend-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: 컴파일·테스트
+        run: ./gradlew compileJava test --console=plain --no-daemon
