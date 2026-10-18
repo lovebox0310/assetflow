@@ -14,6 +14,16 @@
 
 ---
 
+## 2026-10-18 — eslint 게이트 구축 + 배포 준비 (이슈 #3 집행, PR #19)
+
+- typescript-eslint flat config(`eslint.config.js`) + `pnpm run lint` — **클린 통과**, 전 테스트 동시 재실행 PASS(FE 48/48, BE 9건, 빌드 성공)
+- 배포 준비 코드: `GET /health`(플랫폼 헬스체크 대상), CORS(`ALLOWED_ORIGIN` env, 미설정 시 동일 출처만 — 안전 기본값), 프론트 `VITE_API_BASE_URL` 프리픽스
+- `DEPLOY.md` 런북 작성: Neon(DB) → Render(Backend) → Vercel(Front) 단계별 집행용, 롤백 리허설 절차 포함
+- main 보호 규칙: **무료 개인 저장소에서는 설정 불가**(GitHub Pro 또는 public 전환 필요, 403 확인) — 사용자 결정 사항으로 이관
+- 이슈 #3의 잔여는 "보호 규칙 설정(플랜 필요)" 하나뿐 — eslint 항목은 해소
+
+---
+
 ## 2026-10-18 — Issue 8 테스트·문서화·릴리즈 리허설 (GitHub #10)
 
 ### 무엇을 했나
