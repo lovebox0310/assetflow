@@ -48,6 +48,17 @@ public class PostgresCardImportLedger implements CardImportLedger {
                 """, PostgresCardImportLedger::map, userId);
     }
 
+    public List<ImportedRow> inMonth(String month) {
+        return jdbc.query("""
+                SELECT row_key, approved_at, merchant_name, supply_ex_vat, vat, gross_amount,
+                       card_masked, expense_kind
+                FROM card_imports
+                WHERE user_id = ? AND approved_at >= date ?::date
+                  AND approved_at < (date ?::date + interval '1 month')
+                ORDER BY approved_at, id
+                """, PostgresCardImportLedger::map, userId, month + "-01", month + "-01");
+    }
+
     public Set<String> existingRowKeys() {
         return new HashSet<>(jdbc.queryForList(
                 "SELECT row_key FROM card_imports WHERE user_id = ?", String.class, userId));

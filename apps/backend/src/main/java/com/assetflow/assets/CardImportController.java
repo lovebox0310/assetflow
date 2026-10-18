@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
@@ -25,6 +26,7 @@ import java.util.regex.Pattern;
 public class CardImportController {
 
     private static final Pattern ISO_DATE = Pattern.compile("\\d{4}-\\d{2}-\\d{2}");
+    private static final Pattern MONTH_PATTERN = Pattern.compile("\\d{4}-(0[1-9]|1[0-2])");
 
     private final CardImportLedger ledger;
 
@@ -41,6 +43,15 @@ public class CardImportController {
     @GetMapping("/card-imports/row-keys")
     public ApiResponse<List<String>> rowKeys() {
         return new ApiResponse<>("OK", "Row keys loaded", List.copyOf(ledger.existingRowKeys()));
+    }
+
+    /** 월별 반영 행 조회 — 지출 화면의 "가져온 카드내역" 표용 (§42/§43 월 단위와 정렬). */
+    @GetMapping("/card-imports")
+    public ApiResponse<List<ImportedRow>> monthRows(@RequestParam("month") String month) {
+        if (!MONTH_PATTERN.matcher(month).matches()) {
+            throw new IllegalArgumentException("month must be YYYY-MM");
+        }
+        return new ApiResponse<>("OK", "Card imports loaded", ledger.inMonth(month));
     }
 
     @PostMapping("/card-imports")
