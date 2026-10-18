@@ -1,9 +1,12 @@
 package com.assetflow.common.api;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * §25 오류 표준: 실패 응답은 전부 ErrorResponse(code, message, details, timestamp).
@@ -12,6 +15,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
  */
 @RestControllerAdvice
 public class ApiExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
     @ExceptionHandler(AuthRequiredException.class)
     public ResponseEntity<ErrorResponse> authRequired(AuthRequiredException e) {
@@ -38,9 +43,18 @@ public class ApiExceptionHandler {
                 .body(ErrorResponse.of("INVALID_REQUEST", "Invalid request", e.getMessage()));
     }
 
+    /** 정적 리소스 부재(루트·favicon 등)는 오류가 아니라 404다 — catch-all 500 으로 묻지 않는다. */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> noResource(NoResourceFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.of("NOT_FOUND", "Resource not found", ""));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> internalError(Exception e) {
         // 스택/내부 메시지를 노출하지 않는다 — details 는 여기서 비운다.
+        // 원인 추적을 위해 서버 로그에는 스택 전체를 남긴다.
+        log.error("Unhandled exception", e);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ErrorResponse.of("INTERNAL_ERROR", "Internal server error", ""));
     }
