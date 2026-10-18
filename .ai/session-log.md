@@ -43,6 +43,7 @@
 
 - [x] 공유기 80/443 포트포워딩(사용자 완료) → HTTPS 외부 접속 검증 완료: `https://redbox9.iptime.org/health` = UP, 로그인·계좌 API 200. 자체 서명 인증서라 브라우저 경고 수락 필요(정식 인증서는 도메인 구입 후 Caddyfile 교체로 전환)
 - [x] 500 오탐 수정 — 루트(/)·favicon 접근 시 NoResourceFoundException 이 catch-all 500 으로 응답하던 문제. 404 전용 핸들러 추가 + 500 핸들러에 서버 로깅 추가(사용자 500 제보의 원인이 바로 이것). 재배포 후 https 외부 경로에서 루트 404·health 200 확인
+- [x] login 주소창(GET) 접속 시 500 → 405 핸들러 추가(HttpRequestMethodNotSupportedException) — POST 전용 API 안내 표준화. 재배포·검증 완료(GET 405 / POST 200)
 - [ ] 프론트 배포(Vercel) + `ALLOWED_ORIGIN`·`VITE_API_BASE_URL` 연결
 - [ ] CI backend-gate 는 인메모리 경로만 검증 — postgres 경로는 본 항목의 bootRun/서버 스모크로 수동 검증
 
