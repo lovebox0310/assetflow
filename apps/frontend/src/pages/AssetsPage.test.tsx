@@ -71,7 +71,6 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
 
   it("자산 추가는 POST 를 보내고 목록을 다시 읽는다", async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
       if (init?.method === "POST") {
         return Promise.resolve(apiResponse({ id: 99, accountType: "cash", name: "새 통장", institutionName: "", balance: 5_000_000, isDebt: false, openedAt: null }));
       }
@@ -106,7 +105,9 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
     render(<AssetsPage onBack={() => {}} />);
     await screen.findByText("우리 파킹통장");
 
-    fireEvent.click(screen.getAllByRole("button", { name: "편집" })[0]);
+    const editBtn = screen.getAllByRole("button", { name: "편집" })[0];
+    if (!editBtn) throw new Error("편집 버튼 없음");
+    fireEvent.click(editBtn);
     const balanceEl = await screen.findByPlaceholderText("잔액(원)");
     fireEvent.change(findInnerInput(balanceEl), { target: { value: "19000000" } });
     fireEvent.click(screen.getByRole("button", { name: "저장" }));
@@ -118,14 +119,14 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
   });
 
   it("삭제는 DELETE 로 반영된다", async () => {
-    const fetchMock = vi.fn(() => Promise.resolve(apiResponse(seedAccounts())));
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => Promise.resolve(apiResponse(seedAccounts())));
     vi.stubGlobal("fetch", fetchMock);
     render(<AssetsPage onBack={() => {}} />);
     await screen.findByText("우리 파킹통장");
 
     const firstRow = screen.getByText("우리 파킹통장").closest("tr");
     if (!firstRow) throw new Error("행 없음");
-    const dangerBtn = firstRow.querySelector(".ant-btn-dangerous");
+    const dangerBtn = firstRow.querySelector<HTMLElement>(".ant-btn-dangerous");
     if (!dangerBtn) throw new Error("삭제 버튼 없음");
     fireEvent.click(dangerBtn);
     // Popconfirm 확인 버튼 (기본 로케일 OK) — 행의 '삭제' 들과 구분된다
