@@ -14,6 +14,36 @@
 
 ---
 
+---
+
+## 2026-10-18 — 진짜 인증 연결: BCrypt 비밀번호 검증 + 실제 JWT 발급·검증
+
+### 무엇을 했나
+
+가짜 인증(어떤 자격증명이든 mock-jwt-token 반환)을 실제 인증으로 교체했다. DEPLOY.md Known Issues "JWT_SECRET 미발급" 해소.
+
+| # | 작업 | 산출물 |
+|---|---|---|
+| 1 | 의존성 | spring-security-crypto(BCrypt 검증만 — Spring Security 본체 미도입), jjwt 0.12(HS512) |
+| 2 | TokenService 신설 | JWT 발급·검증 단일 출처. JWT_SECRET env(HS256 32바이트 이상), 미설정 시 부팅마다 무작위(재시작 시 기존 토큰 무효화되므로 운영은 고정값 필수) |
+| 3 | AuthService 프로필 분리 | 인터페이스화 + InMemory(테스트·CI — BCrypt 상수 검증) / Postgres(users 테이블 조회·BCrypt matches) |
+| 4 | 인터셉터 실검증 | BearerTokenInterceptor 가 토큰 서명·만료를 검증 — 무효·만료 토큰은 401 |
+| 5 | 405·404 정리 | GET 으로 POST 전용 API 접근 시 405, 루트·favicon 등 정적 부재는 404(catch-all 500 오탐 제거) |
+| 6 | 시드 | data-seed.sql 과 서버 users 행의 password_hash 를 BCrypt("password") 로 교체 |
+
+### 검증
+
+| 대상 | 방법 | 결과 |
+|---|---|---|
+| BE 테스트 | gradlew test | PASS(AuthServiceTest 재작성 — 올바른 자격증명/잘못된 비밀번호/미등록 이메일/null) |
+| 서버 스모크 | HTTPS 실호출 | 올바른 자격증명 → 200 + 실제 JWT(HS512, expiresAt 포함) / 잘못된 비밀번호 → 401 / 정상 토큰 → 보호 API 200 / 변조 토큰 → 401 |
+
+### 남은 것
+
+- [ ] 운영 비밀번호 변경 — 시드 자격증명(user@example.com/password)은 개발용. 실제 비밀번호로 교체 필요(BCrypt 해시 재생성)
+
+---
+
 ## 2026-10-18 — 사무실 홈서버 구축: Postgres·백엔드 배포 (비용 0원 구성)
 
 ### 무엇을 했나
@@ -44,6 +74,7 @@
 - [x] 공유기 80/443 포트포워딩(사용자 완료) → HTTPS 외부 접속 검증 완료: `https://redbox9.iptime.org/health` = UP, 로그인·계좌 API 200. 자체 서명 인증서라 브라우저 경고 수락 필요(정식 인증서는 도메인 구입 후 Caddyfile 교체로 전환)
 - [x] 500 오탐 수정 — 루트(/)·favicon 접근 시 NoResourceFoundException 이 catch-all 500 으로 응답하던 문제. 404 전용 핸들러 추가 + 500 핸들러에 서버 로깅 추가(사용자 500 제보의 원인이 바로 이것). 재배포 후 https 외부 경로에서 루트 404·health 200 확인
 - [x] login 주소창(GET) 접속 시 500 → 405 핸들러 추가(HttpRequestMethodNotSupportedException) — POST 전용 API 안내 표준화. 재배포·검증 완료(GET 405 / POST 200)
+- [x] 프론트 홈서버 서빙 — dist 전송 후 Caddy 구성(/api/*·/health → 백엔드 프록시, 나머지 SPA 정적 서빙). `https://redbox9.iptime.org` 에서 로그인 화면 직접 접속 가능(같은 출처라 CORS·인증서 문제 없음). 외부 검증: root 200(HTML)·health UP·POST login 200
 - [ ] 프론트 배포(Vercel) + `ALLOWED_ORIGIN`·`VITE_API_BASE_URL` 연결
 - [ ] CI backend-gate 는 인메모리 경로만 검증 — postgres 경로는 본 항목의 bootRun/서버 스모크로 수동 검증
 

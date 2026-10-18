@@ -3,6 +3,7 @@ package com.assetflow.assets;
 import com.assetflow.assets.CardImportController.ImportRequest;
 import com.assetflow.assets.CardImportController.ImportRow;
 import com.assetflow.common.api.ApiExceptionHandler;
+import com.assetflow.auth.TokenService;
 import com.assetflow.common.web.BearerTokenInterceptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,14 +25,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class CardImportApiTest {
 
-    private static final String TOKEN = "Bearer mock-jwt-token";
+    private static final String TOKEN = "Bearer " + new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com");
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
         mvc = MockMvcBuilders.standaloneSetup(new CardImportController(new InMemoryCardImportLedger()))
                 .setControllerAdvice(new ApiExceptionHandler())
-                .addInterceptors(new BearerTokenInterceptor())
+                .addInterceptors(new BearerTokenInterceptor(new TokenService("test-secret-0123456789-0123456789-0123456789")))
                 .build();
     }
 

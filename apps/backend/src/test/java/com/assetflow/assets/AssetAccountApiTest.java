@@ -2,6 +2,7 @@ package com.assetflow.assets;
 
 import com.assetflow.assets.AssetLedger.AssetRow;
 import com.assetflow.common.api.ApiExceptionHandler;
+import com.assetflow.auth.TokenService;
 import com.assetflow.common.web.BearerTokenInterceptor;
 import com.assetflow.dashboard.DashboardController;
 import com.assetflow.dashboard.DashboardService;
@@ -35,11 +36,11 @@ class AssetAccountApiTest {
                         new AssetAccountController(ledger),
                         new DashboardController(new DashboardService(ledger)))
                 .setControllerAdvice(new ApiExceptionHandler())
-                .addInterceptors(new BearerTokenInterceptor())
+                .addInterceptors(new BearerTokenInterceptor(new TokenService("test-secret-0123456789-0123456789-0123456789")))
                 .build();
     }
 
-    private static final String TOKEN = "Bearer mock-jwt-token";
+    private static final String TOKEN = "Bearer " + new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com");
 
     private String json(long balance, String type, String name, boolean isDebt) {
         return "{\"accountType\":\"" + type + "\",\"name\":\"" + name

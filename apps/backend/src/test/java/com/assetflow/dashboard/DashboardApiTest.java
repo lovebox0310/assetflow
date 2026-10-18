@@ -4,6 +4,7 @@ import com.assetflow.auth.MeController;
 import com.assetflow.assets.AssetLedger;
 import com.assetflow.assets.InMemoryAssetLedger;
 import com.assetflow.common.api.ApiExceptionHandler;
+import com.assetflow.auth.TokenService;
 import com.assetflow.common.web.BearerTokenInterceptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,13 +28,13 @@ class DashboardApiTest {
         DashboardService service = new DashboardService(new InMemoryAssetLedger());
         mvc = MockMvcBuilders.standaloneSetup(new DashboardController(service), new MeController(service))
                 .setControllerAdvice(new ApiExceptionHandler())
-                .addInterceptors(new BearerTokenInterceptor())
+                .addInterceptors(new BearerTokenInterceptor(new TokenService("test-secret-0123456789-0123456789-0123456789")))
                 .build();
     }
 
     @Test
     void summaryReturnsBaselineRows() throws Exception {
-        mvc.perform(get("/api/v1/dashboard/summary").header("Authorization", "Bearer mock-jwt-token"))
+        mvc.perform(get("/api/v1/dashboard/summary").header("Authorization", "Bearer " + new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("OK"))
                 .andExpect(jsonPath("$.data.asOf").value("2026-10"))
@@ -46,20 +47,20 @@ class DashboardApiTest {
 
     @Test
     void meReturnsMockUser() throws Exception {
-        mvc.perform(get("/api/v1/me").header("Authorization", "Bearer mock-jwt-token"))
+        mvc.perform(get("/api/v1/me").header("Authorization", "Bearer " + new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.email").value("user@example.com"));
     }
 
     @Test
     void cashflowReturnsRequestedMonthsNewestFirst() throws Exception {
-        mvc.perform(get("/api/v1/dashboard/cashflow?months=3").header("Authorization", "Bearer mock-jwt-token"))
+        mvc.perform(get("/api/v1/dashboard/cashflow?months=3").header("Authorization", "Bearer " + new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(3))
                 .andExpect(jsonPath("$.data[0].month").value("2026-10"))
                 .andExpect(jsonPath("$.data[0].income").value(8_200_000));
 
-        mvc.perform(get("/api/v1/dashboard/cashflow").header("Authorization", "Bearer mock-jwt-token"))
+        mvc.perform(get("/api/v1/dashboard/cashflow").header("Authorization", "Bearer " + new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(3)); // 기본값 months=3
     }
@@ -83,12 +84,12 @@ class DashboardApiTest {
 
     @Test
     void invalidMonthsIsAStandard400() throws Exception {
-        mvc.perform(get("/api/v1/dashboard/cashflow?months=0").header("Authorization", "Bearer mock-jwt-token"))
+        mvc.perform(get("/api/v1/dashboard/cashflow?months=0").header("Authorization", "Bearer " + new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
                 .andExpect(jsonPath("$.timestamp").exists());
 
-        mvc.perform(get("/api/v1/dashboard/cashflow?months=13").header("Authorization", "Bearer mock-jwt-token"))
+        mvc.perform(get("/api/v1/dashboard/cashflow?months=13").header("Authorization", "Bearer " + new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com")))
                 .andExpect(status().isBadRequest());
     }
 }
