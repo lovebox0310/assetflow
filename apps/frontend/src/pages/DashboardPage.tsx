@@ -1,7 +1,8 @@
 import { useCallback, Suspense, lazy, useEffect, useRef, useState } from "react";
-import { Button, Card, Skeleton, Space, Typography } from "antd";
+import { Card, Skeleton, Typography } from "antd";
 import { AppLayout } from "../layout/AppLayout";
 import { ResponsiveGrid } from "../layout/ResponsiveGrid";
+import { StandardNav } from "../layout/StandardNav";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
 import { MetricCard } from "../components/MetricCard";
 import type { DashboardData } from "../data/dashboardMock";
@@ -91,12 +92,7 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses }: Dashbo
   return (
     <AppLayout
       onLogout={handleLogout}
-      nav={
-        <Space>
-          {onOpenAssets ? <Button type="link" onClick={onOpenAssets}>자산</Button> : undefined}
-          {onOpenExpenses ? <Button type="link" onClick={onOpenExpenses}>지출</Button> : undefined}
-        </Space>
-      }
+      nav={<StandardNav current="dashboard" onOpenAssets={onOpenAssets} onOpenExpenses={onOpenExpenses} />}
     >
       <section aria-labelledby="h-core" style={{ marginBottom: 32 }}>
         <Typography.Title level={4} id="h-core" style={{ margin: 0, marginBottom: 16 }}>
