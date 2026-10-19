@@ -71,6 +71,15 @@ public class PostgresExpenseItemLedger implements ExpenseItemLedger {
         }
     }
 
+    public void linkRecurring(long id, Long recurringId) {
+        int updated = jdbc.update(
+                "UPDATE monthly_expense_items SET recurring_id = ?, updated_at = now() WHERE id = ? AND user_id = ?",
+                recurringId, id, userId);
+        if (updated == 0) {
+            throw new com.assetflow.common.api.NotFoundException("expense item id " + id);
+        }
+    }
+
     public int copyMonth(String from, String to) {
         return jdbc.update("""
                 INSERT INTO monthly_expense_items (user_id, month, label, amount, is_essential, purchase_vat, recurring_id)
