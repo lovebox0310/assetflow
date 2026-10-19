@@ -220,4 +220,26 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
     fireEvent.click(screen.getByRole("button", { name: "저장" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v1/expenses/recurring", expect.objectContaining({ method: "POST" })));
   });
+
+  it("수동 항목에서 고정지출로 등록하면 폼이 채워지고 POST recurring로 저장된다 (§45.5)", async () => {
+    const fetchMock = stubFetch((path, init) => {
+      if (path.includes("/expenses/recurring") && init?.method === "POST") {
+        return apiResponse({ id: 8, label: "DB손해보험", amount: 34160, isEssential: true, purchaseVat: 0, startMonth: "2026-10", endMonth: null });
+      }
+      if (path.includes("/expenses/recurring")) return apiResponse([]);
+      if (path.includes("/expenses/items")) return apiResponse([
+        { id: 9, month: "2026-10", label: "DB손해보험", amount: 34160, isEssential: true, purchaseVat: 0, recurringId: null },
+      ]);
+      if (path.includes("/assets/card-imports")) return apiResponse([]);
+      if (path.includes("/expenses/snapshots")) return apiResponse(null);
+      return apiResponse({}, false, 500);
+    });
+    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "고정지출로 등록" }));
+    const name = screen.getByLabelText("정기 항목 이름") as HTMLInputElement;
+    expect(name.value).toBe("DB손해보험");
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v1/expenses/recurring", expect.objectContaining({ method: "POST" })));
+  });
 });
