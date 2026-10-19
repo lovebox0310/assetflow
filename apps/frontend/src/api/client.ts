@@ -1,4 +1,4 @@
-import { getToken } from "../auth/authStore";
+import { getToken, clearToken } from "../auth/authStore";
 import { apiUrl } from "./base";
 
 /**
@@ -48,6 +48,10 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 
   if (!response.ok) {
     if (response.status === 401) {
+      // Known Issues 5 (이슈 #38): 401 이면 토큰을 정리하고 앱에 로그인 전환을 알린다.
+      // LoginPage 의 로그인 실패도 이 경로를 타지만, 로그인 화면에서는 영향이 없다.
+      clearToken();
+      window.dispatchEvent(new Event("assetflow:unauthorized"));
       throw new ApiError("auth", AUTH_MESSAGE, body?.code ?? "AUTH_REQUIRED");
     }
     throw new ApiError(
