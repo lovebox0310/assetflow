@@ -34,6 +34,24 @@ public class ExpenseItemController {
 
     public record ItemBody(String label, Long amount, Boolean isEssential, Long purchaseVat) {}
 
+    /** §45.5 변환: 월 항목을 그 값 그대로 정기 정의로 등록하고, 행을 정의에 연결한다. */
+    @PostMapping("/items/{id}/convert-to-recurring")
+    public ApiResponse<RecurringExpenseLedger.Recurring> convertToRecurring(@PathVariable long id, @RequestBody RecurringExpenseController.PeriodBody body) {
+        ExpenseItemLedger.ExpenseItem existing = ledger.byId(id);
+        if (existing == null) {
+            throw new com.assetflow.common.api.NotFoundException("expense item id " + id);
+        }
+        if (existing.recurringId() != null) {
+            throw new IllegalArgumentException("already recurring");
+        }
+        String startMonth = body.startMonth() == null ? existing.month() : body.startMonth();
+        String endMonth = body.endMonth() == null ? null : body.endMonth();
+        RecurringExpenseLedger.Recurring def = recurringLedger.create(
+                existing.label(), existing.amount(), existing.isEssential(), existing.purchaseVat(), startMonth, endMonth);
+        ledger.linkRecurring(id, def.id());
+        return new ApiResponse<>("OK", "Converted to recurring", def);
+    }
+
     /** month 쿼리 파라미터 필수 — YYYY-MM 이 아니면 400(§43.2). */
     private String requireMonth(String month) {
         if (month == null || !MONTH.matcher(month).matches()) {

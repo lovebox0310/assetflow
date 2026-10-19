@@ -17,6 +17,9 @@ public interface ExpenseItemLedger {
     /** §45.2: 그 월에 아직 없는 정기 항목을 멱등하게 물리행으로 등록한다(이미 있으면 무시). */
     void ensureRecurringRows(String month, List<com.assetflow.expenses.RecurringExpenseLedger.Recurring> defs);
 
+    /** §45.5: 월 항목을 정기 정의에 연결(recurring_id 세팅) — 변환 후 "정기 항목 수정" 링크가 붙는다. */
+    void linkRecurring(long id, Long recurringId);
+
     /** §45.3: from 월의 항목을 to 월로 복사(중복 label 은 건너뜀) — 복사된 건수. */
     int copyMonth(String from, String to);
 

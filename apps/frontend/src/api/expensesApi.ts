@@ -126,6 +126,15 @@ export function deleteRecurring(id: number): Promise<number> {
   return apiFetch<number>(`/api/v1/expenses/recurring/${id}`, { method: "DELETE" });
 }
 
+/** §45.5 월 항목을 그 값 그대로 정기 정의로 등록하고 행을 연결한다(서버 연산). */
+export function convertItemToRecurring(id: number, month: string): Promise<RecurringRow> {
+  return apiFetch<RecurringRow>(`/api/v1/expenses/items/${id}/convert-to-recurring`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ startMonth: month }),
+  });
+}
+
 /** §45.4 지난달 복사 — 멱등(중복 label 건너뜀). */
 export function copyItems(from: string, to: string): Promise<number> {
   return apiFetch<number>(`/api/v1/expenses/items/copy?from=${from}&to=${to}`, { method: "POST" });
