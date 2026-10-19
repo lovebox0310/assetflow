@@ -70,6 +70,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets }: ExpensesPageProp
   const [recurring, setRecurring] = useState<RecurringRow[] | null>(null);
   const [recForm, setRecForm] = useState<RecurringRow | "new" | null>(null);
   const [prevCount, setPrevCount] = useState<number | null>(null);
+  const [prefill, setPrefill] = useState<Partial<RecurringRow> | null>(null);
   const [editing, setEditing] = useState<ExpenseItemRow | null>(null);
   const [form] = Form.useForm();
   const mountedRef = useRef(false);
@@ -133,7 +134,8 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets }: ExpensesPageProp
     if (recForm && recForm !== "new") {
       recFormInstance.setFieldsValue({ label: recForm.label, amount: recForm.amount, purchaseVat: recForm.purchaseVat, isEssential: recForm.isEssential, startMonth: recForm.startMonth, endMonth: recForm.endMonth });
     } else if (recForm === "new") {
-      recFormInstance.setFieldsValue({ label: "", amount: null, purchaseVat: null, isEssential: false, startMonth: month, endMonth: null });
+      const values = prefill ?? { label: "", amount: null, purchaseVat: null, isEssential: false, startMonth: month, endMonth: null };
+      recFormInstance.setFieldsValue(values);
     }
   }, [recForm, recFormInstance, month]);
 
@@ -219,6 +221,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets }: ExpensesPageProp
         await updateRecurring((recForm as RecurringRow).id, payload);
       }
       setRecForm(null);
+      setPrefill(null);
       setNotice("");
       loadRecurring();
       loadItems();
@@ -249,6 +252,12 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets }: ExpensesPageProp
     if (!recurringId) return;
     const def = (recurring ?? []).find((d) => d.id === recurringId);
     if (def) setRecForm(def);
+  };
+
+  /** 월 항목의 값을 그대로 가져와 정기(고정지출) 정의로 등록한다 (§45.5). */
+  const convertToRecurring = (row: ExpenseItemRow) => {
+    setPrefill({ label: row.label, amount: row.amount, isEssential: row.isEssential, purchaseVat: row.purchaseVat, startMonth: row.month, endMonth: null });
+    setRecForm("new");
   };
 
   const cancelEdit = () => {
@@ -295,6 +304,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets }: ExpensesPageProp
         <Space size={0}>
           <Button size="small" type="text" onClick={() => beginEdit(row)}>이 달만 수정</Button>
           {row.recurringId ? <Button size="small" type="text" onClick={() => openRecurringEdit(row.recurringId)}>정기 항목 수정</Button> : null}
+          {!row.recurringId ? <Button size="small" type="text" onClick={() => convertToRecurring(row)}>고정지출로 등록</Button> : null}
           <Popconfirm title="이 항목을 삭제할까요?" onConfirm={() => void removeItem(row.id)}>
             <Button size="small" type="text" danger>삭제</Button>
           </Popconfirm>
@@ -393,7 +403,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets }: ExpensesPageProp
                         </span>
                         <Space size={0} wrap>
                           <Button size="small" type="text" onClick={() => beginEdit(it)}>이 달만 수정</Button>
-                          {it.recurringId ? <Button size="small" type="text" onClick={() => openRecurringEdit(it.recurringId)}>정기 항목 수정</Button> : null}
+                          {it.recurringId ? <Button size="small" type="text" onClick={() => openRecurringEdit(it.recurringId)}>정기 항목 수정</Button> : <Button size="small" type="text" onClick={() => convertToRecurring(it)}>고정지출로 등록</Button>}
                           <Popconfirm title="이 항목을 삭제할까요?" onConfirm={() => void removeItem(it.id)}>
                             <Button size="small" type="text" danger>삭제</Button>
                           </Popconfirm>
