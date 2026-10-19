@@ -34,12 +34,13 @@ public class PostgresExpenseItemLedger implements ExpenseItemLedger {
                 rs.getString("label"),
                 rs.getLong("amount"),
                 rs.getBoolean("is_essential"),
-                rs.getLong("purchase_vat"));
+                rs.getLong("purchase_vat"),
+                rs.getObject("recurring_id") == null ? null : rs.getLong("recurring_id"));
     }
 
     public List<ExpenseItem> all(String month) {
         return jdbc.query("""
-                SELECT id, month, label, amount, is_essential, purchase_vat
+                SELECT id, month, label, amount, is_essential, purchase_vat, recurring_id
                 FROM monthly_expense_items WHERE user_id = ? AND month = ? ORDER BY id
                 """, PostgresExpenseItemLedger::map, userId, month);
     }
@@ -51,10 +52,36 @@ public class PostgresExpenseItemLedger implements ExpenseItemLedger {
                     VALUES (?, ?, ?, ?, ?, ?)
                     RETURNING id
                     """, Long.class, userId, month, label, amount, isEssential, purchaseVat);
-            return new ExpenseItem(id, month, label, amount, isEssential, purchaseVat);
+            return new ExpenseItem(id, month, label, amount, isEssential, purchaseVat, null);
         } catch (DataIntegrityViolationException e) {
             throw new IllegalArgumentException("duplicate label: " + label);
         }
+    }
+
+    public void ensureRecurringRows(String month, List<RecurringExpenseLedger.Recurring> defs) {
+        for (RecurringExpenseLedger.Recurring def : defs) {
+            jdbc.update("""
+                    INSERT INTO monthly_expense_items (user_id, month, label, amount, is_essential, purchase_vat, recurring_id)
+                    SELECT ?, ?, ?, ?, ?, ?, ?
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM monthly_expense_items WHERE user_id = ? AND month = ? AND label = ?
+                    )
+                    """, userId, month, def.label(), def.amount(), def.isEssential(), def.purchaseVat(), def.id(),
+                    userId, month, def.label());
+        }
+    }
+
+    public int copyMonth(String from, String to) {
+        return jdbc.update("""
+                INSERT INTO monthly_expense_items (user_id, month, label, amount, is_essential, purchase_vat, recurring_id)
+                SELECT user_id, ?, label, amount, is_essential, purchase_vat, recurring_id
+                FROM monthly_expense_items src
+                WHERE user_id = ? AND month = ?
+                  AND NOT EXISTS (
+                      SELECT 1 FROM monthly_expense_items dst
+                      WHERE dst.user_id = ? AND dst.month = ? AND dst.label = src.label
+                  )
+                """, to, userId, from, userId, to);
     }
 
     public ExpenseItem byId(long id) {
@@ -75,7 +102,7 @@ public class PostgresExpenseItemLedger implements ExpenseItemLedger {
             if (updated == 0) {
                 throw new com.assetflow.common.api.NotFoundException("expense item id " + id);
             }
-            return new ExpenseItem(id, month, label, amount, isEssential, purchaseVat);
+            return new ExpenseItem(id, month, label, amount, isEssential, purchaseVat, null);
         } catch (DataIntegrityViolationException e) {
             throw new IllegalArgumentException("duplicate label: " + label);
         }

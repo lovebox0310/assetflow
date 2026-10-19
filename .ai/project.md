@@ -2525,3 +2525,38 @@ DELETE /api/v1/expenses/items/{id}          → data = 삭제된 id          (�
 ### 43.3 검증 규칙
 - label: 필수, 공백 불가 / amount: BIGINT 0 이상(음수 400) / purchaseVat: BIGINT 0 이상(기본 0).
 - month: `YYYY-MM` 정규식 검증(스냅샷과 같은 형식 — §37).
+
+## 45) 정기(고정) 지출 항목 명세 (2026-10-18 확정, 스프린트 3 #48)
+
+### 45.1 데이터 모델 — schema.sql (§37 단일 출처)
+```
+recurring_expenses ( id PK, user_id FK, label, amount BIGINT, is_essential, purchase_vat,
+                     start_month CHAR(7) NOT NULL, end_month CHAR(7) NULL(무기한) )
+  UNIQUE (user_id, label, start_month) · CHECK 기간: end >= start · 금액 0 이상
+monthly_expense_items + recurring_id BIGINT NULL REFERENCES recurring_expenses(id)
+```
+
+### 45.2 월 표의 자동 등록 — "읽을 때 멱등 물리행 생성" (채택 설계)
+- `GET /api/v1/expenses/items?month` 시, 활성 정의(start<=month<=end/무기한) 중 그 월에
+  아직 없는 항목을 물리행으로 INSERT 하고(recurring_id 세팅) 전체 행을 반환.
+- **cron 없음** — 조회될 때마다 등록되므로 서버가 며칠 쉬어도 개월이 밀리지 않는다.
+- 물리행이라 **id 가 실제로 존재** — "그 달의 금액 변경"은 그 행의 PUT(시점값, §37.3).
+  "정기 항목 수정"은 정의의 PUT — 아직 생성되지 않은 이후 달에만 반영된다.
+- 수동 생성 행이 정기 정의와 같은 label 이면 정기 정의는 등록되지 않는다(수동 우선).
+
+### 45.3 정기 항목 CRUD 엔드포인트 (Bearer 필수)
+```
+GET    /api/v1/expenses/recurring       → data = [ Recurring ]
+POST   /api/v1/expenses/recurring       → data = 생성된 Recurring
+PUT    /api/v1/expenses/recurring/{id}  → data = 갱신된 Recurring (없으면 404)
+DELETE /api/v1/expenses/recurring/{id}  → data = 삭제된 id     (없으면 404)
+Recurring = { id, label, amount, isEssential, purchaseVat, startMonth, endMonth }
+```
+startMonth 필수(YYYY-MM), endMonth 선택(NULL=무기한), end >= start 검증.
+
+### 45.4 지난달 복사 (issue 48 — 배너 1클릭)
+```
+POST /api/v1/expenses/items/copy?from=YYYY-MM&to=YYYY-MM → data = 복사 건수
+```
+중복 label 은 건너뛴다(멱등 — 두 번 눌러도 중복 없음). to 가 from 이후여야 한다(400).
+
