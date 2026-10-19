@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Card, Checkbox, Form, Input, InputNumber, Popconfirm, Select, Space, Table, Typography } from "antd";
+import { Button, Card, Checkbox, Form, Grid, Input, InputNumber, Popconfirm, Select, Space, Table, Typography } from "antd";
 import { AppLayout } from "../layout/AppLayout";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
 import { clearInflight } from "../api/client";
@@ -41,6 +41,9 @@ function recentMonths(): string[] {
  * - 합계·필수지출 합계는 행에서 재계산 — 저장하지 않는다(§34.6).
  */
 export function ExpensesPage({ onOpenDashboard, onOpenAssets }: ExpensesPageProps) {
+  const screens = Grid.useBreakpoint();
+  // §35 중단점: md 미만은 표 대신 카드형 리스트 — 6열 표는 좁은 폭에서 읽을 수 없다
+  const wide = Boolean(screens.md);
   const months = recentMonths();
   const [month, setMonth] = useState<string>(() => {
     const d = new Date();
@@ -56,6 +59,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets }: ExpensesPageProp
   const [income, setIncome] = useState<number | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [notice, setNotice] = useState("");
+  const [cardLimit, setCardLimit] = useState(20);
   const [editing, setEditing] = useState<ExpenseItemRow | null>(null);
   const [form] = Form.useForm();
   const mountedRef = useRef(false);
@@ -226,7 +230,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets }: ExpensesPageProp
           aria-label="조회 월"
           value={month}
           options={months.map((m) => ({ value: m, label: m }))}
-          onChange={(v: string) => setMonth(v)}
+          onChange={(v: string) => { setMonth(v); setCardLimit(20); }}
           style={{ width: 130 }}
         />
       </div>
@@ -242,6 +246,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets }: ExpensesPageProp
         <Card>
           <StateBlock status={itemStatus} onRetry={loadItems} errorText={itemError} emptyText="항목이 없습니다 — 아래 양식에서 추가하세요">
             {items ? (
+              wide ? (
               <Table
                 size="small"
                 rowKey="id"
@@ -254,10 +259,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets }: ExpensesPageProp
                       <Table.Summary.Cell index={0}>합계 ({itemCount}항목)</Table.Summary.Cell>
                       <Table.Summary.Cell index={1} align="right">{formatKrwExact(totalAmount)}</Table.Summary.Cell>
                       <Table.Summary.Cell index={2} align="center">
-                        <div style={{ whiteSpace: "nowrap", lineHeight: 1.4 }}>
-                          <div style={{ fontSize: 12, color: "rgba(0, 0, 0, 0.45)" }}>필수</div>
-                          <div style={{ fontWeight: 600 }}>{formatKrwExact(essentialTotal)}</div>
-                        </div>
+                        <div style={{ whiteSpace: "nowrap", fontWeight: 600 }}>{formatKrwExact(essentialTotal)}</div>
                       </Table.Summary.Cell>
                       <Table.Summary.Cell index={3} align="right">{totalVat > 0 ? formatKrwExact(totalVat) : "—"}</Table.Summary.Cell>
                       <Table.Summary.Cell index={4} />
@@ -265,30 +267,59 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets }: ExpensesPageProp
                   </Table.Summary>
                 )}
               />
+              ) : (
+                <div>
+                  {items.map((it) => (
+                    <div key={it.id} style={{ border: "1px solid rgba(5, 5, 5, 0.06)", borderRadius: 8, padding: "10px 12px", marginBottom: 10 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                        <span style={{ fontWeight: 600 }}>{it.label}</span>
+                        {it.isEssential ? <span className="pill" style={{ background: "#dcfce7", color: "#166534", borderRadius: 20, fontSize: 11, padding: "1px 9px" }}>필수</span> : null}
+                        <span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{formatKrwExact(it.amount)}</span>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+                        <span style={{ fontSize: 12, color: "rgba(0, 0, 0, 0.45)" }}>
+                          매입세액 {it.purchaseVat > 0 ? formatKrwExact(it.purchaseVat) : "—"}
+                        </span>
+                        <Space size={4}>
+                          <Button size="small" type="text" onClick={() => beginEdit(it)}>편집</Button>
+                          <Popconfirm title="이 항목을 삭제할까요?" onConfirm={() => void removeItem(it.id)}>
+                            <Button size="small" type="text" danger>삭제</Button>
+                          </Popconfirm>
+                        </Space>
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{ fontWeight: 600, padding: "4px 2px" }}>
+                    <span>합계 ({itemCount}항목)</span>
+                    <span> {formatKrwExact(totalAmount)}</span>
+                    <span> · 필수 {formatKrwExact(essentialTotal)}</span>
+                  </div>
+                </div>
+              )
             ) : null}
           </StateBlock>
 
           <div style={{ marginTop: 16 }}>
-            <Form form={form} layout="inline">
+            <Form form={form} layout="inline" style={{ display: "flex", flexWrap: "wrap", gap: "10px 12px" }}>
               <Form.Item name="label" rules={[{ required: true, message: "항목명을 입력하세요" }]}
-                style={{ marginRight: 8 }}>
+               >
                 <Input placeholder={editing ? "항목명(편집 중)" : "항목명"} style={{ width: 160 }}
                   aria-label="항목 이름" />
               </Form.Item>
               <Form.Item name="amount" rules={[{ required: true, message: "월 금액을 입력하세요" }]}
-                style={{ marginRight: 8 }}>
+               >
                 <InputNumber placeholder="월 금액" min={0} style={{ width: 140 }} aria-label="월 금액" />
               </Form.Item>
-              <Form.Item name="purchaseVat" style={{ marginRight: 8 }}>
+              <Form.Item name="purchaseVat">
                 <InputNumber placeholder="매입세액" min={0} style={{ width: 120 }} aria-label="매입세액" />
               </Form.Item>
-              <Form.Item name="isEssential" valuePropName="checked" style={{ marginRight: 8 }}>
+              <Form.Item name="isEssential" valuePropName="checked">
                 <Checkbox>필수</Checkbox>
               </Form.Item>
               <Button type="primary" onClick={() => void saveItem()}>
                 {editing ? "저장" : "추가"}
               </Button>
-              {editing ? <Button style={{ marginLeft: 8 }} onClick={cancelEdit}>취소</Button> : null}
+              {editing ? <Button onClick={cancelEdit}>취소</Button> : null}
             </Form>
           </div>
         </Card>
@@ -329,6 +360,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets }: ExpensesPageProp
         <Card>
           <StateBlock status={cardStatus} onRetry={loadCard} errorText={cardError} emptyText="이 월에 반영된 카드 내역이 없습니다">
             {cardRows ? (
+              wide ? (
               <Table
                 size="small"
                 rowKey="rowKey"
@@ -352,6 +384,30 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets }: ExpensesPageProp
                   </Table.Summary>
                 )}
               />
+              ) : (
+                <div>
+                  {cardRows.slice(0, cardLimit).map((r) => (
+                    <div key={r.rowKey} style={{ border: "1px solid rgba(5, 5, 5, 0.06)", borderRadius: 8, padding: "10px 12px", marginBottom: 10 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                        <span style={{ fontWeight: 600 }}>{r.merchantName}</span>
+                        <span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{formatKrwExact(r.grossAmount)}</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: "rgba(0, 0, 0, 0.45)", marginTop: 4 }}>
+                        {r.approvedAt} · 공급 {formatKrwExact(r.supplyExVat)} · 부가세 {formatKrwExact(r.vat)} · {r.expenseKind || "미분류"}
+                      </div>
+                    </div>
+                  ))}
+                  {cardRows.length > cardLimit ? (
+                    <Button block type="text" onClick={() => setCardLimit((n) => n + 30)}>
+                      나머지 {cardRows.length - cardLimit}건 더 보기
+                    </Button>
+                  ) : null}
+                  <div style={{ fontWeight: 600, padding: "4px 2px" }}>
+                    <span>합계 ({cardRows.length}건)</span>
+                    <span> {formatKrwExact(cardTotal)}</span>
+                  </div>
+                </div>
+              )
             ) : null}
           </StateBlock>
         </Card>
