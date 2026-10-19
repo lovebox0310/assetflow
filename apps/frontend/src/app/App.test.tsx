@@ -70,4 +70,22 @@ describe("App 인증 흐름", () => {
     expect(screen.getByText(/AssetFlow Login/i)).toBeDefined();
     expect(screen.queryByText("핵심 지표")).toBeNull();
   });
+
+describe("401 자동 로그아웃 (이슈 #38)", () => {
+  it("어떤 화면에서든 401 응답이 오면 토큰 정리 후 로그인 화면으로 전환한다", async () => {
+    saveToken("tok", Date.now() + 60_000);
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.includes("/dashboard/summary")) {
+        return Promise.resolve({ ok: false, status: 401, json: async () => ({ code: "AUTH_REQUIRED", message: "Authentication required", details: "", timestamp: "" }) } as Response);
+      }
+      if (path.includes("/dashboard/cashflow")) return Promise.resolve(apiResponse([]));
+      return Promise.resolve(apiResponse({}, false, 500));
+    }));
+    render(<App />);
+
+    // summary 가 401 → 토큰 정리 + 로그인 화면 전환
+    await screen.findByText(/AssetFlow Login/i);
+  });
+});
 });
