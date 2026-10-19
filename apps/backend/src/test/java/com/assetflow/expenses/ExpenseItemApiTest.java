@@ -179,4 +179,24 @@ class ExpenseItemApiTest {
                         .content("{}"))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void convertIsIdempotentWhenDefAlreadyExists() throws Exception {
+        // 항목 생성 → 동일 label·시작월의 정의를 미리 만들어 둠 (사용자가 직접 등록한 경우)
+        mvc.perform(post("/api/v1/expenses/items?month=2026-10").header("Authorization", TOKEN)
+                        .contentType("application/json")
+                        .content("{\"label\":\"교육비\",\"amount\":30000}"))
+                .andExpect(status().isOk());
+        recurring.create("교육비", 30000, false, 0, "2026-10", null);
+
+        // 변환 → 새로 만들지 않고 기존 정의(id 1)에 연결 — 200
+        mvc.perform(post("/api/v1/expenses/items/1/convert-to-recurring").header("Authorization", TOKEN)
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(1));
+
+        mvc.perform(get("/api/v1/expenses/items?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data[0].recurringId").value(1));
+    }
 }
