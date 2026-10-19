@@ -86,7 +86,7 @@ public class PostgresExpenseItemLedger implements ExpenseItemLedger {
 
     public ExpenseItem byId(long id) {
         List<ExpenseItem> rows = jdbc.query("""
-                SELECT id, month, label, amount, is_essential, purchase_vat
+                SELECT id, month, label, amount, is_essential, purchase_vat, recurring_id
                 FROM monthly_expense_items WHERE id = ? AND user_id = ?
                 """, PostgresExpenseItemLedger::map, id, userId);
         return rows.isEmpty() ? null : rows.get(0);
