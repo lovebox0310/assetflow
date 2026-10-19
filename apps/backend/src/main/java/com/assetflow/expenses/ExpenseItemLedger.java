@@ -10,9 +10,15 @@ import java.util.List;
 public interface ExpenseItemLedger {
 
     record ExpenseItem(long id, String month, String label,
-                       long amount, boolean isEssential, long purchaseVat) {}
+                       long amount, boolean isEssential, long purchaseVat, Long recurringId) {}
 
     List<ExpenseItem> all(String month);
+
+    /** §45.2: 그 월에 아직 없는 정기 항목을 멱등하게 물리행으로 등록한다(이미 있으면 무시). */
+    void ensureRecurringRows(String month, List<com.assetflow.expenses.RecurringExpenseLedger.Recurring> defs);
+
+    /** §45.3: from 월의 항목을 to 월로 복사(중복 label 은 건너뜀) — 복사된 건수. */
+    int copyMonth(String from, String to);
 
     /** 없으면 null — PUT 의 월 유지 판단용. */
     ExpenseItem byId(long id);

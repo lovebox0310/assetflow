@@ -24,19 +24,6 @@ public class InMemoryExpenseItemLedger implements ExpenseItemLedger {
         }
     }
 
-    public ExpenseItem create(String month, String label, long amount, boolean isEssential, long purchaseVat) {
-        synchronized (rows) {
-            for (ExpenseItem r : rows) {
-                if (r.month().equals(month) && r.label().equals(label)) {
-                    throw new IllegalArgumentException("duplicate label: " + label);
-                }
-            }
-            ExpenseItem row = new ExpenseItem(nextId++, month, label, amount, isEssential, purchaseVat);
-            rows.add(row);
-            return row;
-        }
-    }
-
     public ExpenseItem byId(long id) {
         synchronized (rows) {
             for (ExpenseItem r : rows) {
@@ -44,6 +31,59 @@ public class InMemoryExpenseItemLedger implements ExpenseItemLedger {
             }
         }
         return null;
+    }
+
+    public void ensureRecurringRows(String month, List<RecurringExpenseLedger.Recurring> defs) {
+        synchronized (rows) {
+            for (RecurringExpenseLedger.Recurring def : defs) {
+                boolean exists = false;
+                for (ExpenseItem r : rows) {
+                    if (r.month().equals(month) && r.label().equals(def.label())) {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (!exists) {
+                    rows.add(new ExpenseItem(nextId++, month, def.label(), def.amount(), def.isEssential(), def.purchaseVat(), def.id()));
+                }
+            }
+        }
+    }
+
+    public int copyMonth(String from, String to) {
+        synchronized (rows) {
+            int copied = 0;
+            List<ExpenseItem> copies = new ArrayList<>();
+            for (ExpenseItem r : rows) {
+                if (!r.month().equals(from)) continue;
+                boolean exists = false;
+                for (ExpenseItem t2 : rows) {
+                    if (t2.month().equals(to) && t2.label().equals(r.label())) {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (!exists) {
+                    copies.add(new ExpenseItem(nextId++, to, r.label(), r.amount(), r.isEssential(), r.purchaseVat(), r.recurringId()));
+                    copied++;
+                }
+            }
+            rows.addAll(copies);
+            return copied;
+        }
+    }
+
+    public ExpenseItem create(String month, String label, long amount, boolean isEssential, long purchaseVat) {
+        synchronized (rows) {
+            for (ExpenseItem r : rows) {
+                if (r.month().equals(month) && r.label().equals(label)) {
+                    throw new IllegalArgumentException("duplicate label: " + label);
+                }
+            }
+            ExpenseItem row = new ExpenseItem(nextId++, month, label, amount, isEssential, purchaseVat, null);
+            rows.add(row);
+            return row;
+        }
     }
 
     public ExpenseItem update(long id, String month, String label, long amount, boolean isEssential, long purchaseVat) {
@@ -55,7 +95,7 @@ public class InMemoryExpenseItemLedger implements ExpenseItemLedger {
                             throw new IllegalArgumentException("duplicate label: " + label);
                         }
                     }
-                    ExpenseItem row = new ExpenseItem(id, month, label, amount, isEssential, purchaseVat);
+                    ExpenseItem row = new ExpenseItem(id, month, label, amount, isEssential, purchaseVat, rows.get(i).recurringId());
                     rows.set(i, row);
                     return row;
                 }

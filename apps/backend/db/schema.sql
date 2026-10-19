@@ -124,3 +124,26 @@ CREATE TABLE monthly_expense_items (
     CONSTRAINT uq_expense_item UNIQUE (user_id, month, label)
 );
 CREATE INDEX ix_expense_items_user_month ON monthly_expense_items (user_id, month);
+
+-- ---------------------------------------------------------------------------
+-- recurring_expenses: 정기(고정) 지출 정의 (§45 — 매달 월 지출 항목에 자동 등록).
+-- "매달 반복되는 약속" — 월 표 조회 시 멱등하게 물리행을 만들어 등록한다(§45.2).
+-- ---------------------------------------------------------------------------
+CREATE TABLE recurring_expenses (
+    id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id      BIGINT NOT NULL REFERENCES users (id),
+    label        VARCHAR(50) NOT NULL,
+    amount       BIGINT NOT NULL,
+    is_essential BOOLEAN NOT NULL DEFAULT FALSE,
+    purchase_vat BIGINT NOT NULL DEFAULT 0,
+    start_month  CHAR(7) NOT NULL,           -- 'YYYY-MM'
+    end_month    CHAR(7),                    -- NULL = 무기한
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT ck_recurring_nonneg CHECK (amount >= 0 AND purchase_vat >= 0),
+    CONSTRAINT ck_recurring_months CHECK (end_month IS NULL OR end_month >= start_month),
+    CONSTRAINT uq_recurring UNIQUE (user_id, label, start_month)
+);
+
+-- 월 지출 항목이 어떤 정기 항목에서 생성됐는지 — FE 의 정기/수동 배지와 "정기 항목 수정" 링크용
+ALTER TABLE monthly_expense_items ADD COLUMN recurring_id BIGINT REFERENCES recurring_expenses (id);
