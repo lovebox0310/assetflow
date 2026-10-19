@@ -78,6 +78,7 @@
 - [x] 프론트 홈서버 서빙 — dist 전송 후 Caddy 구성(/api/*·/health → 백엔드 프록시, 나머지 SPA 정적 서빙). `https://redbox9.iptime.org` 에서 로그인 화면 직접 접속 가능(같은 출처라 CORS·인증서 문제 없음). 외부 검증: root 200(HTML)·health UP·POST login 200
 - [x] card-imports POST 500 수정
 - [x] DB 백업 자동화 설치
+- [x] #36 프론트 완료 — ExpensesPage(월 지출 항목 CRUD 표 + 수입 입력·월 확정 §44 + 가져온 카드내역 표 §41) + 지출 내비게이션. FE 테스트 65건 PASS, 빌드·홈서버 배포, 외부 HTTPS에서 POST/GET/DELETE 실호출 검증 완료(검증행 정리)
 - [x] 스프린트 3 시작
 - [x] 월별 카드 원장 조회 배포 완료 — PR #42 병합 후 발견된 SQL 문법 오류(date ?::date)는 PR #43으로 교정·병합·배포. 라이브 스모크: GET /assets/card-imports?month=2025-01 → 실제 데이터(2025-01 토스페이먼츠 등) 반환 확인 — 계획(§41 카드 임포트 명세 기록·§42 스프린트 3 작업표·§43 월 지출 항목 API 명세) + 이슈 #36·#37·#38 등록. #36 백엔드 완료: monthly_expense_items 스키마 + ExpenseItemLedger 원장 3종 + CRUD API(§43), 테스트 34건 PASS, PR #39 병합. 라이브 500 발견·수정: 테이블이 postgres 소유라 assetflow 계정에 권한 없음(42xxx→BadSqlGrammar) — 소유권 이전으로 해소, POST/GET 200 확인·스모크 행 정리. **교훈: 운영 DB에 스키마를 적용할 때는 앱 계정(assetflow)으로 실행하거나 소유권을 즉시 이전** — 홈서버 cron(매일 03:15, /etc/cron.d/assetflow-backup → /opt/assetflow/backup.sh), 백업 /var/backups/assetflow(7일분 보관). 첫 백업 실행·복원 검증 완료(임시 DB 복원 → users 1·accounts 2·imports 1341 일치, 오류 0)
 - [x] 최종 확인 — 병합된 main jar 로 서버 재배포 후 login 200·card-imports POST 200·health 200 재검증, 스모크 행 정리
