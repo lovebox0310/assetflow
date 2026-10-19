@@ -8,6 +8,7 @@ export interface ExpenseItemRow {
   amount: number;
   isEssential: boolean;
   purchaseVat: number;
+  recurringId: number | null;
 }
 
 /** §41 — 카드 원장 반영 행(월별 조회). */
@@ -79,4 +80,53 @@ export function confirmMonth(month: string, income: number): Promise<MonthSnapsh
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ income }),
   });
+}
+
+/** §45 — 정기(고정) 지출 정의. endMonth null = 무기한. */
+export interface RecurringRow {
+  id: number;
+  label: string;
+  amount: number;
+  isEssential: boolean;
+  purchaseVat: number;
+  startMonth: string;
+  endMonth: string | null;
+}
+
+export interface RecurringPayload {
+  label: string;
+  amount: number;
+  isEssential?: boolean;
+  purchaseVat?: number;
+  startMonth: string;
+  endMonth?: string | null;
+}
+
+export function listRecurring(): Promise<RecurringRow[]> {
+  return apiFetch<RecurringRow[]>("/api/v1/expenses/recurring");
+}
+
+export function createRecurring(payload: RecurringPayload): Promise<RecurringRow> {
+  return apiFetch<RecurringRow>("/api/v1/expenses/recurring", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateRecurring(id: number, payload: RecurringPayload): Promise<RecurringRow> {
+  return apiFetch<RecurringRow>(`/api/v1/expenses/recurring/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteRecurring(id: number): Promise<number> {
+  return apiFetch<number>(`/api/v1/expenses/recurring/${id}`, { method: "DELETE" });
+}
+
+/** §45.4 지난달 복사 — 멱등(중복 label 건너뜀). */
+export function copyItems(from: string, to: string): Promise<number> {
+  return apiFetch<number>(`/api/v1/expenses/items/copy?from=${from}&to=${to}`, { method: "POST" });
 }
