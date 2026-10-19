@@ -49,14 +49,15 @@ public class PostgresCardImportLedger implements CardImportLedger {
     }
 
     public List<ImportedRow> inMonth(String month) {
+        java.sql.Date start = java.sql.Date.valueOf(month + "-01");
+        java.sql.Date end = java.sql.Date.valueOf(java.time.YearMonth.parse(month).plusMonths(1).atDay(1));
         return jdbc.query("""
                 SELECT row_key, approved_at, merchant_name, supply_ex_vat, vat, gross_amount,
                        card_masked, expense_kind
                 FROM card_imports
-                WHERE user_id = ? AND approved_at >= date ?::date
-                  AND approved_at < (date ?::date + interval '1 month')
+                WHERE user_id = ? AND approved_at >= ? AND approved_at < ?
                 ORDER BY approved_at, id
-                """, PostgresCardImportLedger::map, userId, month + "-01", month + "-01");
+                """, PostgresCardImportLedger::map, userId, start, end);
     }
 
     public Set<String> existingRowKeys() {
