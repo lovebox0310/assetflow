@@ -40,6 +40,7 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
 
   it("월 지출 항목과 목록 합계를 행에서 계산해 보여준다 (§34.6)", async () => {
     stubFetch((path) => {
+      if (path.includes("/expenses/recurring")) return apiResponse([]);
       if (path.includes("/expenses/items")) return apiResponse([
         { id: 1, month: "2026-10", label: "임대료", amount: 1_200_000, isEssential: true, purchaseVat: 0 },
         { id: 2, month: "2026-10", label: "주유비", amount: 150_000, isEssential: false, purchaseVat: 13_636 },
@@ -65,6 +66,7 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
       if (path.includes("/expenses/items") && init?.method === "POST") {
         return apiResponse({ id: 9, month: "2026-10", label: "통신비", amount: 60_000, isEssential: true, purchaseVat: 0 });
       }
+      if (path.includes("/expenses/recurring")) return apiResponse([]);
       if (path.includes("/expenses/items")) {
         return apiResponse([
           { id: 9, month: "2026-10", label: "통신비", amount: 60_000, isEssential: true, purchaseVat: 0 },
@@ -94,6 +96,7 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
         });
       }
       if (path.includes("/expenses/snapshots")) return apiResponse(null);
+      if (path.includes("/expenses/recurring")) return apiResponse([]);
       if (path.includes("/expenses/items")) return apiResponse([]);
       if (path.includes("/assets/card-imports")) return apiResponse([]);
       return apiResponse({}, false, 500);
@@ -115,6 +118,7 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
         { rowKey: "k1", approvedAt: "2026-10-01", merchantName: "우아한형제들", supplyExVat: 37_273, vat: 3_727, grossAmount: 41_000 },
         { rowKey: "k2", approvedAt: "2026-10-02", merchantName: "GS25", supplyExVat: 2_909, vat: 291, grossAmount: 3_200 },
       ]);
+      if (path.includes("/expenses/recurring")) return apiResponse([]);
       if (path.includes("/expenses/items")) return apiResponse([]);
       if (path.includes("/expenses/snapshots")) return apiResponse(null);
       return apiResponse({}, false, 500);
@@ -129,6 +133,7 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
 
   it("API 실패 시 카드 단위 오류와 재시도가 뜬다 (§26 재사용)", async () => {
     stubFetch((path) => {
+      if (path.includes("/expenses/recurring")) return apiResponse([]);
       if (path.includes("/expenses/items")) return apiResponse({}, false, 500);
       if (path.includes("/assets/card-imports")) return apiResponse([], true, 200);
       if (path.includes("/expenses/snapshots")) return apiResponse(null);
@@ -142,6 +147,7 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
 
   it("미인증 401은 인증 오류 문구로 구분된다 (§26 연동 기준)", async () => {
     stubFetch((path) => {
+      if (path.includes("/expenses/recurring")) return apiResponse([]);
       if (path.includes("/expenses/items")) {
         return { ok: false, status: 401, json: async () => ({ code: "AUTH_REQUIRED", message: "Authentication required", details: "", timestamp: "" }) } as Response;
       }
@@ -152,5 +158,66 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
     render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} />);
 
     await screen.findAllByText(/인증|로그인/i);
+  });
+
+  it("정기 항목 칩이 정의를 보여주고, 행에 정기 배지가 붙는다 (§45)", async () => {
+    stubFetch((path) => {
+      if (path.includes("/expenses/recurring")) return apiResponse([
+        { id: 3, label: "임대료", amount: 1_200_000, isEssential: true, purchaseVat: 0, startMonth: "2026-10", endMonth: null },
+      ]);
+      if (path.includes("/expenses/items")) return apiResponse([
+        { id: 7, month: "2026-10", label: "임대료", amount: 1_200_000, isEssential: true, purchaseVat: 0, recurringId: 3 },
+      ]);
+      if (path.includes("/assets/card-imports")) return apiResponse([]);
+      if (path.includes("/expenses/snapshots")) return apiResponse(null);
+      return apiResponse({}, false, 500);
+    });
+    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} />);
+
+    expect(await screen.findByText(/무기한/)).toBeDefined();
+    expect(await screen.findByText("정기")).toBeDefined();
+    expect(screen.queryByText("수동")).toBeNull();
+  });
+
+  it("빈 월에서 지난달 복사 배너가 제안되고 클릭 시 POST copy가 불린다 (§45.4)", async () => {
+    const fetchMock = stubFetch((path) => {
+      if (path.includes("/items/copy")) return apiResponse(2);
+      if (path.includes("/expenses/recurring")) return apiResponse([]);
+      if (path.includes("/expenses/items?month=2026-09")) return apiResponse([
+        { id: 1, month: "2026-09", label: "주유비", amount: 100_000, isEssential: false, purchaseVat: 0 },
+        { id: 2, month: "2026-09", label: "통신비", amount: 60_000, isEssential: true, purchaseVat: 0 },
+      ]);
+      if (path.includes("/expenses/items")) return apiResponse([]);
+      if (path.includes("/assets/card-imports")) return apiResponse([]);
+      if (path.includes("/expenses/snapshots")) return apiResponse(null);
+      return apiResponse({}, false, 500);
+    });
+    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} />);
+
+    await screen.findByText(/지난달\(2026-09\)/);
+    fireEvent.click(screen.getByRole("button", { name: "지난달 항목 가져오기" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/api/v1/expenses/items/copy?from=2026-09&to=2026-10"), expect.objectContaining({ method: "POST" })));
+  });
+
+  it("정기 항목 추가 폼이 열리고 저장 시 POST recurring가 불린다", async () => {
+    const fetchMock = stubFetch((path, init) => {
+      if (path.includes("/expenses/recurring") && init?.method === "POST") {
+        return apiResponse({ id: 5, label: "통신비", amount: 60_000, isEssential: true, purchaseVat: 0, startMonth: "2026-10", endMonth: null });
+      }
+      if (path.includes("/expenses/recurring")) return apiResponse([]);
+      if (path.includes("/expenses/items")) return apiResponse([]);
+      if (path.includes("/assets/card-imports")) return apiResponse([]);
+      if (path.includes("/expenses/snapshots")) return apiResponse(null);
+      return apiResponse({}, false, 500);
+    });
+    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "+ 정기 항목 추가" }));
+    const name = screen.getByLabelText("정기 항목 이름") as HTMLInputElement;
+    const amount = screen.getByLabelText("정기 월 금액") as HTMLInputElement;
+    fireEvent.change(name, { target: { value: "통신비" } });
+    fireEvent.change(amount, { target: { value: "60000" } });
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v1/expenses/recurring", expect.objectContaining({ method: "POST" })));
   });
 });
