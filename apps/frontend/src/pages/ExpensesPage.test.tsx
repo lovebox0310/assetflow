@@ -53,10 +53,11 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
     expect(await screen.findByText("임대료")).toBeDefined();
     expect(await screen.findByText("주유비")).toBeDefined();
     // 목록 합계 1,350,000 — 행에서 재계산
-    expect(await screen.findByText("목록 합계 (2항목)")).toBeDefined();
+    expect(await screen.findByText("합계 (2항목)")).toBeDefined();
     expect(screen.getAllByText("1,350,000원").length).toBeGreaterThan(0);
     // 필수 합계 1,200,000
-    expect(screen.getAllByText("필수 1,200,000원").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/필수/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/1,200,000원/).length).toBeGreaterThan(0);
   });
 
   it("항목 추가는 POST로 반영되고 목록이 재조회된다", async () => {

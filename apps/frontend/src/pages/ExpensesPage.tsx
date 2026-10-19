@@ -251,9 +251,14 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets }: ExpensesPageProp
                 summary={() => (
                   <Table.Summary fixed>
                     <Table.Summary.Row style={{ fontWeight: 600 }}>
-                      <Table.Summary.Cell index={0}>목록 합계 ({itemCount}항목)</Table.Summary.Cell>
+                      <Table.Summary.Cell index={0}>합계 ({itemCount}항목)</Table.Summary.Cell>
                       <Table.Summary.Cell index={1} align="right">{formatKrwExact(totalAmount)}</Table.Summary.Cell>
-                      <Table.Summary.Cell index={2} align="center">필수 {formatKrwExact(essentialTotal)}</Table.Summary.Cell>
+                      <Table.Summary.Cell index={2} align="center">
+                        <div style={{ whiteSpace: "nowrap", lineHeight: 1.4 }}>
+                          <div style={{ fontSize: 12, color: "rgba(0, 0, 0, 0.45)" }}>필수</div>
+                          <div style={{ fontWeight: 600 }}>{formatKrwExact(essentialTotal)}</div>
+                        </div>
+                      </Table.Summary.Cell>
                       <Table.Summary.Cell index={3} align="right">{totalVat > 0 ? formatKrwExact(totalVat) : "—"}</Table.Summary.Cell>
                       <Table.Summary.Cell index={4} />
                     </Table.Summary.Row>
@@ -264,7 +269,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets }: ExpensesPageProp
           </StateBlock>
 
           <div style={{ marginTop: 16 }}>
-            <Form form={form} layout="inline" component={false}>
+            <Form form={form} layout="inline">
               <Form.Item name="label" rules={[{ required: true, message: "항목명을 입력하세요" }]}
                 style={{ marginRight: 8 }}>
                 <Input placeholder={editing ? "항목명(편집 중)" : "항목명"} style={{ width: 160 }}
