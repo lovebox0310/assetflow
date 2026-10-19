@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Card, Form, Input, InputNumber, Popconfirm, Space, Typography, type FormInstance } from "antd";
 import { AppLayout } from "../layout/AppLayout";
+import { StandardNav } from "../layout/StandardNav";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
 import {
   createAccount,
@@ -17,6 +18,8 @@ import { CardImportPanel } from "../components/CardImportPanel";
 interface AssetsPageProps {
   /** 대시보드로 돌아간다. */
   onBack: () => void;
+  /** 헤더 내비게이션 — 지출 화면으로 이동 (§42). */
+  onOpenExpenses?: () => void;
 }
 
 const TYPES = new Set<AssetAccountRow["accountType"]>(["cash", "deposit", "invest", "realty"]);
@@ -29,7 +32,7 @@ void TYPES; // §40.2 enum 참조 — 화면 추가 폼의 유형 제한에서 �
  *   단일 출처라 이 화면에서 편집하지 않는다(읽기 전용 자리 표시).
  * - 상태 4종은 StateBlock 단일 구현체를 재사용한다(§35 화면마다 다른 스피너 금지).
  */
-export function AssetsPage({ onBack }: AssetsPageProps) {
+export function AssetsPage({ onBack, onOpenExpenses }: AssetsPageProps) {
   const [rows, setRows] = useState<AssetAccountRow[] | null>(null);
   const [status, setStatus] = useState<SurfaceStatus>("loading");
   const [errorText, setErrorText] = useState("");
@@ -140,7 +143,7 @@ export function AssetsPage({ onBack }: AssetsPageProps) {
     <AppLayout
       onLogout={handleLogout}
       nav={
-        <Button type="link" onClick={onBack}>대시보드</Button>
+        <StandardNav current="assets" onOpenDashboard={onBack} onOpenExpenses={onOpenExpenses} />
       }
     >
       <section aria-labelledby="h-assets" style={{ marginBottom: 24 }}>
