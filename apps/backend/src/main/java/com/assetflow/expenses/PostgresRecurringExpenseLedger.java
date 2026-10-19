@@ -75,6 +75,8 @@ public class PostgresRecurringExpenseLedger implements RecurringExpenseLedger {
     }
 
     public void delete(long id) {
+        // 시점값 원칙(§37.3): 이미 물리행이 된 과거·현재 월은 유지 — recurring_id 만 해제한다.
+        jdbc.update("UPDATE monthly_expense_items SET recurring_id = NULL WHERE recurring_id = ? AND user_id = ?", id, userId);
         int deleted = jdbc.update("DELETE FROM recurring_expenses WHERE id = ? AND user_id = ?", id, userId);
         if (deleted == 0) {
             throw new com.assetflow.common.api.NotFoundException("recurring id " + id);
