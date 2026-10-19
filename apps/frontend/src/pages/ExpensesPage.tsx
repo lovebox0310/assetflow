@@ -227,7 +227,8 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets }: ExpensesPageProp
       loadRecurring();
       loadItems();
     } catch (e: unknown) {
-      setNotice(e instanceof Error ? e.message : "정기 항목 저장에 실패했습니다.");
+      const msg = e instanceof Error ? e.message : "정기 항목 저장에 실패했습니다.";
+      setNotice(/중복|duplicate/.test(msg) ? "같은 이름·시작월의 정기 항목이 이미 있습니다." : msg);
     }
   };
 

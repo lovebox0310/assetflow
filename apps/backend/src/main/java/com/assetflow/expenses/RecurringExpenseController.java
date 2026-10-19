@@ -64,11 +64,15 @@ public class RecurringExpenseController {
     @PostMapping("/recurring")
     public ApiResponse<RecurringExpenseLedger.Recurring> create(@RequestBody RecurringBody body) {
         validate(body);
-        return new ApiResponse<>("OK", "Recurring created",
-                ledger.create(body.label().trim(), body.amount(),
-                        body.isEssential() == null ? false : body.isEssential(),
-                        body.purchaseVat() == null ? 0 : body.purchaseVat(),
-                        body.startMonth(), body.endMonth()));
+        try {
+            return new ApiResponse<>("OK", "Recurring created",
+                    ledger.create(body.label().trim(), body.amount(),
+                            body.isEssential() == null ? false : body.isEssential(),
+                            body.purchaseVat() == null ? 0 : body.purchaseVat(),
+                            body.startMonth(), body.endMonth()));
+        } catch (org.springframework.dao.DuplicateKeyException e) {
+            throw new IllegalArgumentException("duplicate recurring: " + body.label());
+        }
     }
 
     @PutMapping("/recurring/{id}")
