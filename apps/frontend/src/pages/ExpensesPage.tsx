@@ -271,9 +271,13 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets }: ExpensesPageProp
                 <div>
                   {items.map((it) => (
                     <div key={it.id} style={{ border: "1px solid rgba(5, 5, 5, 0.06)", borderRadius: 8, padding: "10px 12px", marginBottom: 10 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                        <span style={{ fontWeight: 600 }}>{it.label}</span>
-                        {it.isEssential ? <span className="pill" style={{ background: "#dcfce7", color: "#166534", borderRadius: 20, fontSize: 11, padding: "1px 9px" }}>필수</span> : null}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                          <span style={{ fontWeight: 600 }}>{it.label}</span>
+                          {it.isEssential ? (
+                            <span style={{ background: "#dcfce7", color: "#166534", borderRadius: 20, fontSize: 11, padding: "2px 9px", lineHeight: "16px" }}>필수</span>
+                          ) : null}
+                        </div>
                         <span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{formatKrwExact(it.amount)}</span>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
