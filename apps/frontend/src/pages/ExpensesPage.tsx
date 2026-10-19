@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Card, Checkbox, Form, Grid, Input, InputNumber, Popconfirm, Select, Space, Table, Typography } from "antd";
 import { AppLayout } from "../layout/AppLayout";
+import { StandardNav } from "../layout/StandardNav";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
 import { clearInflight } from "../api/client";
 import { clearToken } from "../auth/authStore";
@@ -333,12 +334,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets }: ExpensesPageProp
   return (
     <AppLayout
       onLogout={handleLogout}
-      nav={
-        <Space>
-          <Button type="link" onClick={onOpenDashboard}>대시보드</Button>
-          <Button type="link" onClick={onOpenAssets}>자산</Button>
-        </Space>
-      }
+      nav={<StandardNav current="expenses" onOpenDashboard={onOpenDashboard} onOpenAssets={onOpenAssets} />}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
         <Typography.Title level={4} id="h-expenses" style={{ margin: 0 }}>지출</Typography.Title>

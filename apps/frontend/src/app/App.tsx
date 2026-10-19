@@ -17,7 +17,12 @@ export function App() {
 
   if (authed && isAuthenticated()) {
     if (page === "assets") {
-      return <AssetsPage onBack={() => setPage("dashboard")} />;
+      return (
+        <AssetsPage
+          onBack={() => setPage("dashboard")}
+          onOpenExpenses={() => setPage("expenses")}
+        />
+      );
     }
     if (page === "expenses") {
       return (
