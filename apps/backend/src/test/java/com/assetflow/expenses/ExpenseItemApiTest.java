@@ -25,10 +25,11 @@ class ExpenseItemApiTest {
     private static final String TOKEN = "Bearer "
             + new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com");
     private final InMemoryExpenseItemLedger ledger = new InMemoryExpenseItemLedger();
+    private final InMemoryRecurringExpenseLedger recurring = new InMemoryRecurringExpenseLedger();
 
     @BeforeEach
     void setUp() {
-        mvc = MockMvcBuilders.standaloneSetup(new ExpenseItemController(ledger))
+        mvc = MockMvcBuilders.standaloneSetup(new ExpenseItemController(ledger, recurring))
                 .addInterceptors(new BearerTokenInterceptor(new TokenService("test-secret-0123456789-0123456789-0123456789")))
                 .setControllerAdvice(new com.assetflow.common.api.ApiExceptionHandler())
                 .build();
@@ -112,5 +113,45 @@ class ExpenseItemApiTest {
     void missingTokenIsBlocked() throws Exception {
         mvc.perform(get("/api/v1/expenses/items?month=2026-10"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void recurringItemsMaterializeIntoMonthAndStopAfterEndMonth() throws Exception {
+        recurring.create("임대료", 1_200_000, true, 0, "2026-10", null);
+        recurring.create("구독료", 14_900, false, 0, "2026-01", "2026-12");
+
+        // 2026-10 조회 → 정기 항목이 물리행으로 등장 + recurringId 배지
+        mvc.perform(get("/api/v1/expenses/items?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].recurringId").value(1));
+
+        // 그 달의 행을 수정해도(시점값) 정의는 그대로
+        mvc.perform(put("/api/v1/expenses/items/1").header("Authorization", TOKEN)
+                        .contentType("application/json")
+                        .content("{\"label\":\"임대료\",\"amount\":1300000,\"isEssential\":true}"))
+                .andExpect(jsonPath("$.data.amount").value(1_300_000));
+
+        // 2027-01 조회 → 종료월이 지난 구독료는 없고 임대료는 이후 달 금액(정의값 1,200,000)으로 새로 등록
+        mvc.perform(get("/api/v1/expenses/items?month=2027-01").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].label").value("임대료"))
+                .andExpect(jsonPath("$.data[0].amount").value(1_200_000));
+    }
+
+    @Test
+    void copyLastMonthIsIdempotent() throws Exception {
+        mvc.perform(post("/api/v1/expenses/items?month=2026-09").header("Authorization", TOKEN)
+                        .contentType("application/json")
+                        .content("{\"label\":\"주유비\",\"amount\":100000}"))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/v1/expenses/items/copy?from=2026-09&to=2026-10").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value(1));
+        // 두 번 복사해도 중복 없음
+        mvc.perform(post("/api/v1/expenses/items/copy?from=2026-09&to=2026-10").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data").value(0));
+        mvc.perform(get("/api/v1/expenses/items?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data[0].label").value("주유비"))
+                .andExpect(jsonPath("$.data[0].amount").value(100000));
     }
 }

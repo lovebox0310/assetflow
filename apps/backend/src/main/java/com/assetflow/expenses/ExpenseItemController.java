@@ -25,9 +25,11 @@ public class ExpenseItemController {
     private static final Pattern MONTH = Pattern.compile("\\d{4}-(0[1-9]|1[0-2])");
 
     private final ExpenseItemLedger ledger;
+    private final RecurringExpenseLedger recurringLedger;
 
-    public ExpenseItemController(ExpenseItemLedger ledger) {
+    public ExpenseItemController(ExpenseItemLedger ledger, RecurringExpenseLedger recurringLedger) {
         this.ledger = ledger;
+        this.recurringLedger = recurringLedger;
     }
 
     public record ItemBody(String label, Long amount, Boolean isEssential, Long purchaseVat) {}
@@ -52,13 +54,26 @@ public class ExpenseItemController {
             throw new IllegalArgumentException("purchaseVat must be non-negative");
         }
         boolean essential = body.isEssential() == null ? false : body.isEssential();
-        return new ExpenseItemLedger.ExpenseItem(0, month, body.label().trim(), body.amount(), essential, vat);
+        return new ExpenseItemLedger.ExpenseItem(0, month, body.label().trim(), body.amount(), essential, vat, null);
     }
 
     @GetMapping("/items")
     public ApiResponse<List<ExpenseItemLedger.ExpenseItem>> list(@RequestParam("month") String month) {
         String m = requireMonth(month);
+        // §45.2: 정의가 있는 정기 항목을 그 월에 멱등 등록 후 반환 — cron 없이 개월 밀림 방지
+        ledger.ensureRecurringRows(m, recurringLedger.activeIn(m));
         return new ApiResponse<>("OK", "Expense items loaded", ledger.all(m));
+    }
+
+    /** §45.3 지난달 복사 — 새 월 진입 배너의 1클릭 반영. */
+    @PostMapping("/items/copy")
+    public ApiResponse<Integer> copy(@RequestParam("from") String from, @RequestParam("to") String to) {
+        String f = requireMonth(from);
+        String t2 = requireMonth(to);
+        if (f.compareTo(t2) >= 0) {
+            throw new IllegalArgumentException("to must be after from");
+        }
+        return new ApiResponse<>("OK", "Items copied", ledger.copyMonth(f, t2));
     }
 
     @PostMapping("/items")
