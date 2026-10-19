@@ -31,6 +31,9 @@ public class RecurringExpenseController {
     public record RecurringBody(String label, Long amount, Boolean isEssential, Long purchaseVat,
                                 String startMonth, String endMonth) {}
 
+    /** 변환용 기간 본문 (§45.5) — 둘 다 선택, null 이면 기존 행의 월/무기한. */
+    public record PeriodBody(String startMonth, String endMonth) {}
+
     private void validate(RecurringBody body) {
         if (body.label() == null || body.label().isBlank()) {
             throw new IllegalArgumentException("label is required");
