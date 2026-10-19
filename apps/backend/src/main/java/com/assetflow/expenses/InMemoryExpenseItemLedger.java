@@ -50,6 +50,19 @@ public class InMemoryExpenseItemLedger implements ExpenseItemLedger {
         }
     }
 
+    public void linkRecurring(long id, Long recurringId) {
+        synchronized (rows) {
+            for (int i = 0; i < rows.size(); i++) {
+                if (rows.get(i).id() == id) {
+                    rows.set(i, new ExpenseItem(id, rows.get(i).month(), rows.get(i).label(),
+                            rows.get(i).amount(), rows.get(i).isEssential(), rows.get(i).purchaseVat(), recurringId));
+                    return;
+                }
+            }
+        }
+        throw new com.assetflow.common.api.NotFoundException("expense item id " + id);
+    }
+
     public int copyMonth(String from, String to) {
         synchronized (rows) {
             int copied = 0;

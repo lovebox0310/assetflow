@@ -236,10 +236,7 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
     });
     render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "고정지출로 등록" }));
-    const name = screen.getByLabelText("정기 항목 이름") as HTMLInputElement;
-    expect(name.value).toBe("DB손해보험");
-    fireEvent.click(screen.getByRole("button", { name: "저장" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v1/expenses/recurring", expect.objectContaining({ method: "POST" })));
+    fireEvent.click(await screen.findByRole("button", { name: "정기 항목으로 등록" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v1/expenses/items/9/convert-to-recurring", expect.objectContaining({ method: "POST" })));
   });
 });

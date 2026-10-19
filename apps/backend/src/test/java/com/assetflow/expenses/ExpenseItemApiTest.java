@@ -154,4 +154,29 @@ class ExpenseItemApiTest {
                 .andExpect(jsonPath("$.data[0].label").value("주유비"))
                 .andExpect(jsonPath("$.data[0].amount").value(100000));
     }
+
+    @Test
+    void convertToRecurringCreatesDefAndLinksRow() throws Exception {
+        mvc.perform(post("/api/v1/expenses/items?month=2026-10").header("Authorization", TOKEN)
+                        .contentType("application/json")
+                        .content("{\"label\":\"DB손해보험\",\"amount\":34160,\"isEssential\":true}"))
+                .andExpect(status().isOk());
+
+        mvc.perform(post("/api/v1/expenses/items/1/convert-to-recurring").header("Authorization", TOKEN)
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.label").value("DB손해보험"))
+                .andExpect(jsonPath("$.data.amount").value(34160));
+
+        // 행이 정의에 연결됐다 — 재조회에서 recurringId 배지
+        mvc.perform(get("/api/v1/expenses/items?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data[0].recurringId").value(1));
+
+        // 이중 변환은 400
+        mvc.perform(post("/api/v1/expenses/items/1/convert-to-recurring").header("Authorization", TOKEN)
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
 }
