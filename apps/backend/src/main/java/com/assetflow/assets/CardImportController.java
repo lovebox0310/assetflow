@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -29,9 +30,11 @@ public class CardImportController {
     private static final Pattern MONTH_PATTERN = Pattern.compile("\\d{4}-(0[1-9]|1[0-2])");
 
     private final CardImportLedger ledger;
+    private final MerchantRuleLedger ruleLedger;
 
-    public CardImportController(CardImportLedger ledger) {
+    public CardImportController(CardImportLedger ledger, MerchantRuleLedger ruleLedger) {
         this.ledger = ledger;
+        this.ruleLedger = ruleLedger;
     }
 
     public record ImportRow(String rowKey, String approvedAt, String merchantName,
@@ -39,6 +42,14 @@ public class CardImportController {
                             String cardMasked, String expenseKind) {}
 
     public record ImportRequest(List<ImportRow> rows, Map<String, String> merchantRules) {}
+
+    @GetMapping("/card-imports/merchant-rules")
+    public ApiResponse<Map<String, String>> merchantRules(@RequestParam(value = "merchant", required = false) List<String> merchants) {
+        Map<String, String> rules = (merchants == null || merchants.isEmpty())
+                ? ruleLedger.allRules()
+                : ruleLedger.rulesFor(Set.copyOf(merchants));
+        return new ApiResponse<>("OK", "Merchant rules loaded", Map.copyOf(rules));
+    }
 
     @GetMapping("/card-imports/row-keys")
     public ApiResponse<List<String>> rowKeys() {
@@ -59,9 +70,23 @@ public class CardImportController {
         if (request.rows() == null || request.rows().isEmpty()) {
             throw new IllegalArgumentException("rows is empty");
         }
+        Map<String, String> submittedRules = request.merchantRules() == null
+                ? Map.of() : request.merchantRules();
+
+        // §49: 저장된 규칙을 먼저 읽어 미분류 행에 자동 적용한다.
+        Set<String> merchantNames = new HashSet<>();
+        for (ImportRow row : request.rows()) {
+            merchantNames.add(row.merchantName());
+        }
+        Map<String, String> storedRules = new HashMap<>(ruleLedger.rulesFor(merchantNames));
+
         List<ImportedRow> incoming = new ArrayList<>();
         int supplyInconsistent = 0;
         for (ImportRow row : request.rows()) {
+            String kind = submittedRules.getOrDefault(row.merchantName(), "");
+            if (kind.isBlank()) {
+                kind = storedRules.getOrDefault(row.merchantName(), "");
+            }
             ImportedRow r = new ImportedRow(
                     requiredText(row.rowKey(), "rowKey"),
                     requiredIsoDate(row.approvedAt()),
@@ -70,7 +95,7 @@ public class CardImportController {
                     requiredLong(row.vat(), "vat"),
                     requiredLong(row.grossAmount(), "grossAmount"),
                     row.cardMasked() == null ? "" : row.cardMasked(),
-                    row.expenseKind() == null ? "" : row.expenseKind());
+                    kind);
             // §29.3 공급가액+세액=공급대가 를 행마다 검사한다 — 어긋나면 저장은 하되
             // 경고를 돌려준다(현대카드의 가맹점 신고 부가세 변형이 정상 범위라 잘라내지 않는다).
             if (r.supplyExVat() + r.vat() != r.grossAmount()) {
@@ -79,7 +104,16 @@ public class CardImportController {
             incoming.add(r);
         }
 
-        // §29.6: 중복 rowKey 는 한 건만 반영 — 건수를 결과로 알린다
+        // §49: 제출된 규칙을 저장한다. 사용자가 수정한 값은 이후 반영에 적용된다.
+        Map<String, String> rulesToSave = new HashMap<>(submittedRules);
+        for (ImportedRow r : incoming) {
+            if (!r.expenseKind().isBlank()) {
+                rulesToSave.put(r.merchantName(), r.expenseKind());
+            }
+        }
+        ruleLedger.saveAll(rulesToSave);
+
+        // §29.6: 중복 rowKey 는 한 건酷反影 금지 — 건수를 결과로 알린다
         int stored = ledger.addAll(incoming);
         List<ImportedRow> all = ledger.all();
 
