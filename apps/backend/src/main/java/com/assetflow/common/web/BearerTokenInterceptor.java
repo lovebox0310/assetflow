@@ -28,6 +28,7 @@ public class BearerTokenInterceptor implements HandlerInterceptor {
         if (email == null) {
             throw new AuthRequiredException("Invalid or expired token");
         }
+        request.setAttribute("auth.email", email);
         return true;
     }
 }
