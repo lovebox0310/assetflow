@@ -87,6 +87,20 @@ CREATE TABLE monthly_snapshots (
 -- (user_id, snapshot_month) 범위 스캔으로 충분하다 — 별도 인덱스 불필요.
 
 -- ---------------------------------------------------------------------------
+-- merchant_rules: 가맹점 용도구분 자동 승계 규칙 (§49 — 스프린트 3).
+-- 한 사용자가 한 번 분류한 가맹점은 다음 반영 때 자동으로 같은 구분을 제안한다.
+-- ---------------------------------------------------------------------------
+CREATE TABLE merchant_rules (
+    id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id       BIGINT NOT NULL REFERENCES users (id),
+    merchant_name VARCHAR(100) NOT NULL,
+    expense_kind  VARCHAR(20) NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_merchant_rules_user_merchant UNIQUE (user_id, merchant_name)
+);
+
+-- ---------------------------------------------------------------------------
 -- card_imports: 카드매입 임포트 확정 행 (2026-10-18 추가, CardImportLedger 영속 저장처)
 -- §29.6: (user_id, row_key) UNIQUE 로 중복 반영 금지를 DB 가 보증한다.
 -- §29.7: 합계 컬럼은 두지 않는다 — 행에서 재계산한다(월 스냅샷과 같은 원칙).

@@ -2573,3 +2573,41 @@ PUT /api/v1/settings → 본문 { targetMonths: 1..60 } → data = 갱신된 값
 - 이메일은 토큰 subject 에서(AuthEmailResolver) — 요청 파라미터로 다른 사용자를 만지지 않는다.
 ### 46.3 me 실검증 — GET /api/v1/me 가 하드코딩 mock 대신 users 테이블의 id·이메일·표시명을 반환한다(JWT subject 일치).
 ### 46.4 스냅샷↔대시보드 — summary.monthly 는 AS_OF 월의 스냅샷이 확정돼 있으면 실데이터(§34.6), 없으면 모크 폴백.
+
+
+## 49) 카드 가맹점 용도구분 자동 승계 (2026-10-20 확정, 스프린트 3 #49)
+
+목적:
+- 한 번 용도구분을 지정한 가맹점은 다음 카드 반영 때 서버가 자동으로 같은 구분을 적용해 반복 분류를 제거한다.
+
+데이터 모델:
+```
+merchant_rules (
+    id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id       BIGINT NOT NULL REFERENCES users (id),
+    merchant_name VARCHAR(100) NOT NULL,
+    expense_kind  VARCHAR(20) NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_merchant_rules_user_merchant UNIQUE (user_id, merchant_name)
+);
+```
+
+동작:
+1. 미리보기 단계에서 프론트는 현재 파일의 가맹점 목록으로 `GET /api/v1/assets/card-imports/merchant-rules?merchant=...` 를 호출해 저장된 규칙을 조회한다.
+2. 저장된 규칙이 있는 가맹점은 미리보기 Select 에 미리 채워진다. 사용자는 확인만 하면 된다.
+3. `POST /api/v1/assets/card-imports` 시 서버는 요청 본문의 `merchantRules` 를 우선 적용하고, 없는 가맹점은 저장된 규칙을 적용한다.
+4. 반영이 끝나면 서버는 실제로 저장된 최종 구분을 규칙으로 저장(upsert)한다.
+5. 규칙 수정은 이후 반영에만 적용된다 — 이미 저장된 card_imports 행은 변경하지 않는다.
+
+API:
+```
+GET  /api/v1/assets/card-imports/merchant-rules?merchant=가맹점A&merchant=가맹점B
+     → data = { "가맹점A": "사업비용", "가맹점B": "개인지출" }
+POST /api/v1/assets/card-imports
+     본문: { rows: [...], merchantRules: { "가맹점A": "사업비용" } }
+```
+
+검증:
+- BE: `CardImportApiTest` — 저장된 규칙 자동 적용, 제출값 덮어쓰기, 이후 반영 승계.
+- FE: `CardImportPanel.test.tsx` — `/merchant-rules` 호출 및 미리보기 자동 선택.

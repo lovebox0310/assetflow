@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Alert, Button, Card, Select, Space, Table, Typography } from "antd";
 import contractJson from "../../../../samples/card/card-columns.json";
 import { detectCardCompany, inspectContainer, parserFor } from "../lib/card/detect-card.mjs";
-import { getImportedRowKeys, submitCardImports, type CardImportRow, type CardImportResult } from "../api/cardImportApi";
+import { getImportedRowKeys, getMerchantRules, submitCardImports, type CardImportRow, type CardImportResult } from "../api/cardImportApi";
 import { formatKrwExact } from "../utils/formatters";
 
 const contract = contractJson as Parameters<typeof detectCardCompany>[1];
@@ -76,7 +76,19 @@ export function CardImportPanel() {
       }
       const list = [...map.entries()].map(([merchant, v]) => ({ merchant, ...v }));
       setGroups(list);
-      setKinds(Object.fromEntries(list.map((g) => [g.merchant, ""])));
+      const merchants = list.map((g) => g.merchant);
+      const initialKinds = Object.fromEntries(merchants.map((m) => [m, ""]));
+      try {
+        const rules = await getMerchantRules(merchants);
+        for (const m of merchants) {
+          if (rules[m]) {
+            initialKinds[m] = rules[m];
+          }
+        }
+      } catch {
+        // 규칙 조회 실패 시 미분류 상태로 진행 — 반영은 가능해야 한다.
+      }
+      setKinds(initialKinds);
       setPhase("review");
     } catch (e) {
       setErrorText(e instanceof Error ? e.message : "파싱에 실패했습니다.");
