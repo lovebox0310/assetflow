@@ -53,6 +53,7 @@ describe("CardImportPanel (§29.7 흐름 이관)", () => {
     fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input);
       if (path.includes("/card-imports/row-keys")) return Promise.resolve(apiResponse([]));
+      if (path.includes("/card-imports/merchant-rules")) return Promise.resolve(apiResponse({ "합성카페": "사업비용" }));
       if (init?.method === "POST") {
         return Promise.resolve(apiResponse({
           stored: 75, received: 75, totalRows: 75, duplicatesInBatch: 0, knownRowKeys: 75,
@@ -118,5 +119,20 @@ describe("CardImportPanel (§29.7 흐름 이관)", () => {
     const sent = JSON.parse(String(postCall[1].body));
     expect(sent.rows.length).toBe(75);
     expect(sent.totals).toBeUndefined(); // §29.7 — 합계를 싣지 않는다
+  });
+
+  it("저장된 가맹점 규칙은 미리보기에서 자동으로 선택된다 (§49)", async () => {
+    render(<CardImportPanel />);
+    chooseFile(HYUNDAI_TEXT);
+
+    await screen.findByText("가맹점");
+    // 미리보기 로딩 시 /merchant-rules 가 호출된다
+    const rulesCall = fetchMock.mock.calls.find((c) =>
+      String(c[0]).includes("/card-imports/merchant-rules"),
+    );
+    expect(rulesCall).toBeDefined();
+
+    // 샘플에 존재하는 가맹점에 대해 모킹된 규칙 값이 화면에 노출된다
+    await screen.findByText("사업비용");
   });
 });

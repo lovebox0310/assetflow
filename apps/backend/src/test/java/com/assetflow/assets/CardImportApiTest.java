@@ -27,11 +27,12 @@ class CardImportApiTest {
 
     private static final String TOKEN = "Bearer " + new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com");
     private final InMemoryCardImportLedger ledger = new InMemoryCardImportLedger();
+    private final InMemoryMerchantRuleLedger ruleLedger = new InMemoryMerchantRuleLedger();
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
-        mvc = MockMvcBuilders.standaloneSetup(new CardImportController(ledger))
+        mvc = MockMvcBuilders.standaloneSetup(new CardImportController(ledger, ruleLedger))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .addInterceptors(new BearerTokenInterceptor(new TokenService("test-secret-0123456789-0123456789-0123456789")))
                 .build();
@@ -151,5 +152,62 @@ class CardImportApiTest {
                 .andExpect(jsonPath("$.data[0].merchantName").value("가맹점A"));
         mvc.perform(get("/api/v1/assets/card-imports?month=2025/01").header("Authorization", TOKEN))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void storedMerchantRulesAreAppliedToUnclassifiedRows() throws Exception {
+        ruleLedger.saveAll(Map.of("가맹점A", "사업비용"));
+
+        String body = "{\"rows\":["
+                + row("k1", "2026-10-01", "가맹점A", 9000, 1000, 10000)
+                + ","
+                + row("k2", "2026-10-02", "가맹점B", 18000, 2000, 20000)
+                + "],\"merchantRules\":{}}";
+
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.stored").value(2))
+                .andExpect(jsonPath("$.data.totalRows").value(2));
+
+        mvc.perform(get("/api/v1/assets/card-imports?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].expenseKind").value("사업비용"))
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k2')].expenseKind").value(""));
+    }
+
+    @Test
+    void submittedRulesOverrideStoredRulesAndPersistForFutureImports() throws Exception {
+        ruleLedger.saveAll(Map.of("가맹점A", "사업비용"));
+
+        String first = "{\"rows\":["
+                + row("k1", "2026-10-01", "가맹점A", 9000, 1000, 10000)
+                + "],\"merchantRules\":{\"가맹점A\":\"개인지출\"}}";
+
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(first))
+                .andExpect(status().isOk());
+
+        String second = "{\"rows\":["
+                + row("k2", "2026-10-02", "가맹점A", 18000, 2000, 20000)
+                + "],\"merchantRules\":{}}";
+
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(second))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.stored").value(1));
+
+        mvc.perform(get("/api/v1/assets/card-imports?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k2')].expenseKind").value("개인지출"));
+    }
+
+    @Test
+    void merchantRulesEndpointReturnsRulesForRequestedMerchants() throws Exception {
+        ruleLedger.saveAll(Map.of("가맹점A", "사업비용", "가맹점B", "개인지출"));
+
+        mvc.perform(get("/api/v1/assets/card-imports/merchant-rules?merchant=가맹점A").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.가맹점A").value("사업비용"));
     }
 }

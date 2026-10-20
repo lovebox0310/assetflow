@@ -27,6 +27,14 @@ export function getImportedRowKeys(): Promise<string[]> {
   return apiFetch<string[]>("/api/v1/assets/card-imports/row-keys");
 }
 
+/** §49: 저장된 가맹점 용도구분 규칙을 조회한다. 미리보기 자동 분류용. */
+export function getMerchantRules(merchants?: string[]): Promise<Record<string, string>> {
+  const query = merchants && merchants.length > 0
+      ? "?" + new URLSearchParams(merchants.map((m) => ["merchant", m])).toString()
+      : "";
+  return apiFetch<Record<string, string>>(`/api/v1/assets/card-imports/merchant-rules${query}`);
+}
+
 /** §29.2: 확정 시 서버가 재검증하고 저장한다. 요청에는 합계를 싣지 않는다(§29.7). */
 export function submitCardImports(
   rows: CardImportRow[],

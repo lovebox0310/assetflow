@@ -16,6 +16,37 @@
 
 ---
 
+## 2026-10-20 — #49 카드 가맹점 용도구분 자동 승계 구현
+
+### 무엇을 했나
+
+| # | 작업 | 산출물 |
+|---|---|---|
+| 1 | 이슈 정리 | GitHub #36, #37, #38, #44, #48, #53 CLOSE (이미 머지된 Sprint 3 작업) |
+| 2 | DB 스키마 | `apps/backend/db/schema.sql` 에 `merchant_rules` 테이블 추가 (§49) |
+| 3 | BE 원장 | `MerchantRuleLedger` 인터페이스 + `InMemoryMerchantRuleLedger` + `PostgresMerchantRuleLedger` |
+| 4 | BE API | `GET /api/v1/assets/card-imports/merchant-rules`, POST 시 자동 적용·저장 |
+| 5 | FE 미리보기 | `CardImportPanel` 이 파싱 후 `/merchant-rules` 호출 → Select 자동 채움 |
+| 6 | 문서 | `.ai/project.md` §49 추가 |
+
+### 검증
+
+| 대상 | 방법 | 결과 |
+|---|---|---|
+| BE 테스트 | `gradlew test` | PASS (CardImportApiTest 3건 추가) |
+| FE 테스트 | `pnpm run test` | 74건 PASS |
+| FE 타입 | `tsc --noEmit` | 클린 |
+| FE lint | `eslint src` | 클린 |
+| FE 빌드 | `vite build` | 성공 |
+
+### 남은 것
+
+- [ ] 커밋/PR 생성 필요 (사용자 확인 후 진행)
+- [ ] 운영 DB에 `merchant_rules` 테이블 적용 필요 (`schema.sql` 또는 ALTER)
+- [ ] `.ai/` 추적되지 않은 스크린샷 25개 정리 필요
+
+---
+
 ## 2026-10-18 — 진짜 인증 연결: BCrypt 비밀번호 검증 + 실제 JWT 발급·검증
 
 ### 무엇을 했나
