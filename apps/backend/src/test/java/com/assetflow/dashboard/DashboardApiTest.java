@@ -6,6 +6,8 @@ import com.assetflow.assets.InMemoryAssetLedger;
 import com.assetflow.common.api.ApiExceptionHandler;
 import com.assetflow.auth.TokenService;
 import com.assetflow.common.web.BearerTokenInterceptor;
+import com.assetflow.expenses.InMemoryExpenseSnapshotLedger;
+import com.assetflow.settings.InMemoryUserSettingsLedger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
@@ -25,8 +27,10 @@ class DashboardApiTest {
 
     @BeforeEach
     void setUp() {
-        DashboardService service = new DashboardService(new InMemoryAssetLedger());
-        mvc = MockMvcBuilders.standaloneSetup(new DashboardController(service), new MeController(service))
+        DashboardService service = new DashboardService(new InMemoryAssetLedger(), new InMemoryExpenseSnapshotLedger());
+        mvc = MockMvcBuilders.standaloneSetup(new DashboardController(service), new MeController(new InMemoryUserSettingsLedger(), new com.assetflow.settings.AuthEmailResolver() {
+                    @Override public String currentEmail() { return "user@example.com"; }
+                }))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .addInterceptors(new BearerTokenInterceptor(new TokenService("test-secret-0123456789-0123456789-0123456789")))
                 .build();

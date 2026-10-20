@@ -5,6 +5,7 @@ import com.assetflow.assets.AssetLedger.AssetRow;
 import com.assetflow.dashboard.MockDashboardSource.CashflowMonth;
 import com.assetflow.dashboard.MockDashboardSource.LiabilityRow;
 import com.assetflow.dashboard.MockDashboardSource.MonthlySummary;
+import com.assetflow.expenses.ExpenseSnapshotLedger;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -23,9 +24,11 @@ public class DashboardService {
     public record Me(Long id, String email, String displayName) {}
 
     private final AssetLedger ledger;
+    private final ExpenseSnapshotLedger snapshotLedger;
 
-    public DashboardService(AssetLedger ledger) {
+    public DashboardService(AssetLedger ledger, ExpenseSnapshotLedger snapshotLedger) {
         this.ledger = ledger;
+        this.snapshotLedger = snapshotLedger;
     }
 
     public DashboardSummary summary() {
@@ -39,8 +42,12 @@ public class DashboardService {
                 .filter(AssetRow::isDebt)
                 .map(r -> new LiabilityRow(String.valueOf(r.id()), r.name(), r.balance()))
                 .toList();
-        return new DashboardSummary(MockDashboardSource.AS_OF, assets, liabilities,
-                MockDashboardSource.monthly());
+        // §34.6 단일 출처: AS_OF 월의 스냅샷이 확정돼 있으면 실데이터, 없으면 모크.
+        ExpenseSnapshotLedger.Snapshot snap = snapshotLedger.get(MockDashboardSource.AS_OF);
+        MonthlySummary monthly = snap == null ? MockDashboardSource.monthly()
+                : new MonthlySummary(snap.income(), snap.expenses(),
+                        snap.essentialExpenses(), snap.essentialComplete());
+        return new DashboardSummary(MockDashboardSource.AS_OF, assets, liabilities, monthly);
     }
 
     /** months: 1..12. 범위 밖이면 400(INVALID_REQUEST) — §25 오류 표준. */
@@ -50,10 +57,5 @@ public class DashboardService {
         }
         List<CashflowMonth> all = MockDashboardSource.cashflow();
         return all.subList(0, Math.min(months, all.size()));
-    }
-
-    public Me me() {
-        // 토큰→사용자 조회가 실서비스가 되기 전까지의 모크 사용자 (§21).
-        return new Me(1L, "user@example.com", "사용자");
     }
 }
