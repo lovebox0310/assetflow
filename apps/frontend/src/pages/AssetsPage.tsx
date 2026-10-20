@@ -20,6 +20,8 @@ interface AssetsPageProps {
   onBack: () => void;
   /** 헤더 내비게이션 — 지출 화면으로 이동 (§42). */
   onOpenExpenses?: () => void;
+  /** 헤더 내비게이션 — 설정 화면으로 이동 (§46). */
+  onOpenSettings?: () => void;
 }
 
 const TYPES = new Set<AssetAccountRow["accountType"]>(["cash", "deposit", "invest", "realty"]);
@@ -32,7 +34,7 @@ void TYPES; // §40.2 enum 참조 — 화면 추가 폼의 유형 제한에서 �
  *   단일 출처라 이 화면에서 편집하지 않는다(읽기 전용 자리 표시).
  * - 상태 4종은 StateBlock 단일 구현체를 재사용한다(§35 화면마다 다른 스피너 금지).
  */
-export function AssetsPage({ onBack, onOpenExpenses }: AssetsPageProps) {
+export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPageProps) {
   const [rows, setRows] = useState<AssetAccountRow[] | null>(null);
   const [status, setStatus] = useState<SurfaceStatus>("loading");
   const [errorText, setErrorText] = useState("");
@@ -143,7 +145,7 @@ export function AssetsPage({ onBack, onOpenExpenses }: AssetsPageProps) {
     <AppLayout
       onLogout={handleLogout}
       nav={
-        <StandardNav current="assets" onOpenDashboard={onBack} onOpenExpenses={onOpenExpenses} />
+        <StandardNav current="assets" onOpenDashboard={onBack} onOpenExpenses={onOpenExpenses} onOpenSettings={onOpenSettings} />
       }
     >
       <section aria-labelledby="h-assets" style={{ marginBottom: 24 }}>

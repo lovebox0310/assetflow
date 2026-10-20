@@ -3,6 +3,7 @@ package com.assetflow.assets;
 import com.assetflow.assets.AssetLedger.AssetRow;
 import com.assetflow.common.api.ApiExceptionHandler;
 import com.assetflow.auth.TokenService;
+import com.assetflow.expenses.InMemoryExpenseSnapshotLedger;
 import com.assetflow.common.web.BearerTokenInterceptor;
 import com.assetflow.dashboard.DashboardController;
 import com.assetflow.dashboard.DashboardService;
@@ -34,7 +35,7 @@ class AssetAccountApiTest {
         mvc = MockMvcBuilders
                 .standaloneSetup(
                         new AssetAccountController(ledger),
-                        new DashboardController(new DashboardService(ledger)))
+                        new DashboardController(new DashboardService(ledger, new InMemoryExpenseSnapshotLedger())))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .addInterceptors(new BearerTokenInterceptor(new TokenService("test-secret-0123456789-0123456789-0123456789")))
                 .build();

@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { DashboardPage } from "../pages/DashboardPage";
 import { AssetsPage } from "../pages/AssetsPage";
 import { ExpensesPage } from "../pages/ExpensesPage";
+import { SettingsPage } from "../pages/SettingsPage";
 import { LoginPage } from "../pages/LoginPage";
 import { isAuthenticated } from "../auth/authStore";
 
-export type AppPage = "dashboard" | "assets" | "expenses";
+export type AppPage = "dashboard" | "assets" | "expenses" | "settings";
 
 /**
  * §21 보호 라우트 접근 제어: 토큰이 없거나 만료되면 로그인 화면을 렌더한다.
@@ -29,6 +30,7 @@ export function App() {
         <AssetsPage
           onBack={() => setPage("dashboard")}
           onOpenExpenses={() => setPage("expenses")}
+          onOpenSettings={() => setPage("settings")}
         />
       );
     }
@@ -37,6 +39,16 @@ export function App() {
         <ExpensesPage
           onOpenDashboard={() => setPage("dashboard")}
           onOpenAssets={() => setPage("assets")}
+          onOpenSettings={() => setPage("settings")}
+        />
+      );
+    }
+    if (page === "settings") {
+      return (
+        <SettingsPage
+          onOpenDashboard={() => setPage("dashboard")}
+          onOpenAssets={() => setPage("assets")}
+          onOpenExpenses={() => setPage("expenses")}
         />
       );
     }
@@ -45,6 +57,7 @@ export function App() {
         onLogout={() => setAuthed(false)}
         onOpenAssets={() => setPage("assets")}
         onOpenExpenses={() => setPage("expenses")}
+        onOpenSettings={() => setPage("settings")}
       />
     );
   }
