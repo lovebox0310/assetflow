@@ -31,6 +31,8 @@ import { formatKrwExact } from "../utils/formatters";
 interface ExpensesPageProps {
   onOpenDashboard: () => void;
   onOpenAssets: () => void;
+  /** 헤더 내비게이션 — 설정 화면으로 이동 (§46). */
+  onOpenSettings: () => void;
 }
 
 /** 과거 36개월 — 2025년 전체 내역(카드 원장)을 선택할 수 있어야 한다. */
@@ -49,7 +51,7 @@ function recentMonths(): string[] {
  * - 월 선택 → 월 지출 항목(CRUD) + 수입 입력·월 확정(§44 스냅샷) + 카드 원장 소비(§41).
  * - 합계·필수지출 합계는 행에서 재계산 — 저장하지 않는다(§34.6).
  */
-export function ExpensesPage({ onOpenDashboard, onOpenAssets }: ExpensesPageProps) {
+export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: ExpensesPageProps) {
   const screens = Grid.useBreakpoint();
   // §35 중단점: md 미만은 표 대신 카드형 리스트 — 6열 표는 좁은 폭에서 읽을 수 없다
   const wide = Boolean(screens.md);
@@ -334,7 +336,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets }: ExpensesPageProp
   return (
     <AppLayout
       onLogout={handleLogout}
-      nav={<StandardNav current="expenses" onOpenDashboard={onOpenDashboard} onOpenAssets={onOpenAssets} />}
+      nav={<StandardNav current="expenses" onOpenDashboard={onOpenDashboard} onOpenAssets={onOpenAssets} onOpenSettings={onOpenSettings} />}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
         <Typography.Title level={4} id="h-expenses" style={{ margin: 0 }}>지출</Typography.Title>
