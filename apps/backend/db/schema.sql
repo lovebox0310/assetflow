@@ -11,6 +11,7 @@
 CREATE TABLE users (
     id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     email         VARCHAR(255) NOT NULL,           -- 인증 식별자 (§21)
+    target_months INT NOT NULL DEFAULT 6,      -- 비상금 목표 개월 (§37.5 설정, 스프린트 3) 
     password_hash VARCHAR(255) NOT NULL,           -- 평문 저장 금지, BCrypt 등
     display_name  VARCHAR(50),
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),

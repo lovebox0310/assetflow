@@ -49,7 +49,7 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
       if (path.includes("/expenses/snapshots")) return apiResponse(null);
       return apiResponse({}, false, 500);
     });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} />);
+    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
 
     expect(await screen.findByText("임대료")).toBeDefined();
     expect(await screen.findByText("주유비")).toBeDefined();
@@ -76,7 +76,7 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
       if (path.includes("/expenses/snapshots")) return apiResponse(null);
       return apiResponse({}, false, 500);
     });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} />);
+    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
 
     await screen.findByText("통신비");
     const name = screen.getByLabelText("항목 이름") as HTMLInputElement;
@@ -101,7 +101,7 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
       if (path.includes("/assets/card-imports")) return apiResponse([]);
       return apiResponse({}, false, 500);
     });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} />);
+    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const income = screen.getByLabelText("이번 달 수입") as HTMLInputElement;
@@ -123,7 +123,7 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
       if (path.includes("/expenses/snapshots")) return apiResponse(null);
       return apiResponse({}, false, 500);
     });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} />);
+    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
 
     expect(await screen.findByText("우아한형제들")).toBeDefined();
     expect(screen.getByText("GS25")).toBeDefined();
@@ -139,7 +139,7 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
       if (path.includes("/expenses/snapshots")) return apiResponse(null);
       return apiResponse({}, false, 500);
     });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} />);
+    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
 
     const alerts = await screen.findAllByText(/오류|실패|다시 시도|재시도|문제/i);
     expect(alerts.length).toBeGreaterThan(0);
@@ -155,7 +155,7 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
       if (path.includes("/expenses/snapshots")) return apiResponse(null);
       return apiResponse({}, false, 500);
     });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} />);
+    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
 
     await screen.findAllByText(/인증|로그인/i);
   });
@@ -172,7 +172,7 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
       if (path.includes("/expenses/snapshots")) return apiResponse(null);
       return apiResponse({}, false, 500);
     });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} />);
+    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
 
     expect(await screen.findByText(/무기한/)).toBeDefined();
     expect(await screen.findByText("정기")).toBeDefined();
@@ -192,7 +192,7 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
       if (path.includes("/expenses/snapshots")) return apiResponse(null);
       return apiResponse({}, false, 500);
     });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} />);
+    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
 
     await screen.findByText(/지난달\(2026-09\)/);
     fireEvent.click(screen.getByRole("button", { name: "지난달 항목 가져오기" }));
@@ -210,7 +210,7 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
       if (path.includes("/expenses/snapshots")) return apiResponse(null);
       return apiResponse({}, false, 500);
     });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} />);
+    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "+ 정기 항목 추가" }));
     const name = screen.getByLabelText("정기 항목 이름") as HTMLInputElement;
@@ -234,7 +234,7 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
       if (path.includes("/expenses/snapshots")) return apiResponse(null);
       return apiResponse({}, false, 500);
     });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} />);
+    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "정기 항목으로 등록" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v1/expenses/items/9/convert-to-recurring", expect.objectContaining({ method: "POST" })));

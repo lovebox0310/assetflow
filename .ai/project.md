@@ -2561,3 +2561,15 @@ POST /api/v1/expenses/items/copy?from=YYYY-MM&to=YYYY-MM → data = 복사 건�
 ```
 중복 label 은 건너뛴다(멱등 — 두 번 눌러도 중복 없음). to 가 from 이후여야 한다(400).
 
+
+## 46) 설정 화면 API 명세 (2026-10-18 확정, 스프린트 3 #37)
+
+### 46.1 데이터 — users.target_months INT NOT NULL DEFAULT 6 (비상금 목표 개월)
+### 46.2 엔드포인트 (Bearer 필수, /api/v1/settings/**)
+```
+GET /api/v1/settings → data = { id, email, displayName, targetMonths }
+PUT /api/v1/settings → 본문 { targetMonths: 1..60 } → data = 갱신된 값
+```
+- 이메일은 토큰 subject 에서(AuthEmailResolver) — 요청 파라미터로 다른 사용자를 만지지 않는다.
+### 46.3 me 실검증 — GET /api/v1/me 가 하드코딩 mock 대신 users 테이블의 id·이메일·표시명을 반환한다(JWT subject 일치).
+### 46.4 스냅샷↔대시보드 — summary.monthly 는 AS_OF 월의 스냅샷이 확정돼 있으면 실데이터(§34.6), 없으면 모크 폴백.

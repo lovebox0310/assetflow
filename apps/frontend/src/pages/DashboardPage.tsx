@@ -26,6 +26,8 @@ interface DashboardPageProps {
   onOpenAssets?: () => void;
   /** 헤더에서 지출 화면으로 이동한다 (§42 스프린트 3). */
   onOpenExpenses?: () => void;
+  /** 헤더에서 설정 화면으로 이동한다 (§46). */
+  onOpenSettings?: () => void;
 }
 
 /**
@@ -36,7 +38,7 @@ interface DashboardPageProps {
  * - 오류 문구는 ApiError 의 사용자 친화 메시지(네트워크/인증 구분)를 그대로 보여 준다.
  * - 계산은 여전히 metrics.ts 단일 출처(§34.6). 여기선 데이터를 씌우는 것만 한다.
  */
-export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses }: DashboardPageProps) {
+export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSettings }: DashboardPageProps) {
   const [summary, setSummary] = useState<DashboardData | null>(null);
   const [summaryStatus, setSummaryStatus] = useState<SurfaceStatus>("loading");
   const [summaryError, setSummaryError] = useState("");
@@ -92,7 +94,7 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses }: Dashbo
   return (
     <AppLayout
       onLogout={handleLogout}
-      nav={<StandardNav current="dashboard" onOpenAssets={onOpenAssets} onOpenExpenses={onOpenExpenses} />}
+      nav={<StandardNav current="dashboard" onOpenAssets={onOpenAssets} onOpenExpenses={onOpenExpenses} onOpenSettings={onOpenSettings} />}
     >
       <section aria-labelledby="h-core" style={{ marginBottom: 32 }}>
         <Typography.Title level={4} id="h-core" style={{ margin: 0, marginBottom: 16 }}>
