@@ -106,9 +106,9 @@ export function SettingsPage({ onOpenDashboard, onOpenAssets, onOpenExpenses }: 
               <StateBlock status={status} onRetry={load} errorText={errorText}>
                 {settings ? (
                   <Form form={form} layout="inline" style={{ display: "flex", flexWrap: "wrap", gap: "10px 12px" }}>
-                    <Form.Item label="필수지출(월)" style={{ marginBottom: 0 }}>
+                    <Form.Item label="필수지출(월)" style={{ marginBottom: 0, flex: "0 1 320px", minWidth: 0 }}>
                       <Typography.Text strong>{summary ? formatKrwExact(summary.essential) : "—"}</Typography.Text>
-                      <Typography.Text type="secondary" style={{ fontSize: 12, display: "block" }}>
+                      <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", maxWidth: 260, whiteSpace: "normal", lineHeight: 1.5 }}>
                         지출 화면의 '필수' 항목 합계 · 월 확정 시 스냅샷에 저장
                       </Typography.Text>
                     </Form.Item>
