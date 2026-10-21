@@ -3,6 +3,12 @@ import { Button, Card, Checkbox, Form, Grid, Input, InputNumber, Popconfirm, Sel
 import { AppLayout } from "../layout/AppLayout";
 import { StandardNav } from "../layout/StandardNav";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
+import {
+  MobileListCardActions,
+  MobileListCardHeader,
+  MobileListCardItem,
+  MobileListCardMeta,
+} from "../components/MobileListCard";
 import { clearInflight } from "../api/client";
 import { clearToken } from "../auth/authStore";
 import {
@@ -45,6 +51,32 @@ function recentMonths(): string[] {
   }
   return out;
 }
+
+/**
+ * §28.4 — 배지 스타일.
+ * 라벨이 한국어라 letter-spacing·uppercase·모노는 쓰지 않는다(§28.2/D5).
+ * 높낮이(크기)·굵기·배경색만으로 구분한다.
+ */
+const badgeBase: React.CSSProperties = {
+  borderRadius: 20,
+  fontSize: 11,
+  fontWeight: 600,
+  padding: "2px 9px",
+  lineHeight: "16px",
+  display: "inline-block",
+};
+
+const recurringBadgeStyle: React.CSSProperties = {
+  ...badgeBase,
+  background: "var(--af-badge-signal-bg)",
+  color: "var(--af-badge-signal-fg)",
+};
+
+const essentialBadgeStyle: React.CSSProperties = {
+  ...badgeBase,
+  background: "var(--af-badge-grove-bg)",
+  color: "var(--af-badge-grove-fg)",
+};
 
 /**
  * 스프린트 3 #36: §31 지출 화면의 React 이관.
@@ -304,11 +336,11 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
     { title: "항목", dataIndex: "label" },
     { title: "구분", width: 84, render: (_: unknown, row: ExpenseItemRow) =>
       row.recurringId
-        ? <span style={{ background: "#e0e7ff", color: "#3730a3", borderRadius: 20, fontSize: 11, padding: "2px 9px" }}>정기</span>
+        ? <span style={recurringBadgeStyle}>정기</span>
         : <Typography.Text type="secondary" style={{ fontSize: 12 }}>수동</Typography.Text> },
-    { title: "월 금액", dataIndex: "amount", align: "right" as const, width: 140, render: (v: number) => formatKrwExact(v) },
+    { title: "월 금액", dataIndex: "amount", align: "right" as const, width: 140, className: "af-num", render: (v: number) => formatKrwExact(v) },
     { title: "필수", dataIndex: "isEssential", width: 70, render: (v: boolean) => (v ? "필수" : "—") },
-    { title: "매입세액", dataIndex: "purchaseVat", align: "right" as const, width: 120, render: (v: number) => (v > 0 ? formatKrwExact(v) : "—") },
+    { title: "매입세액", dataIndex: "purchaseVat", align: "right" as const, width: 120, className: "af-num", render: (v: number) => (v > 0 ? formatKrwExact(v) : "—") },
     {
       title: "작업",
       render: (_: unknown, row: ExpenseItemRow) => (
@@ -327,9 +359,9 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
   const cardColumns = [
     { title: "승인일", dataIndex: "approvedAt", width: 110 },
     { title: "가맹점", dataIndex: "merchantName" },
-    { title: "공급가액", dataIndex: "supplyExVat", align: "right" as const, width: 120, render: (v: number) => formatKrwExact(v) },
-    { title: "부가세", dataIndex: "vat", align: "right" as const, width: 110, render: (v: number) => formatKrwExact(v) },
-    { title: "이용금액", dataIndex: "grossAmount", align: "right" as const, width: 130, render: (v: number) => formatKrwExact(v) },
+    { title: "공급가액", dataIndex: "supplyExVat", align: "right" as const, width: 120, className: "af-num", render: (v: number) => formatKrwExact(v) },
+    { title: "부가세", dataIndex: "vat", align: "right" as const, width: 110, className: "af-num", render: (v: number) => formatKrwExact(v) },
+    { title: "이용금액", dataIndex: "grossAmount", align: "right" as const, width: 130, className: "af-num", render: (v: number) => formatKrwExact(v) },
     { title: "용도구분", dataIndex: "expenseKind", width: 110, render: (v: string | undefined) => v || "미분류" },
   ];
 
@@ -359,7 +391,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
         <Typography.Title level={4} id="h-items" style={{ margin: 0, marginBottom: 16 }}>월 지출 항목</Typography.Title>
         <Card>
           {prevCount !== null && prevCount > 0 && itemStatus === "empty" ? (
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "rgba(0, 0, 0, 0.02)", border: "1px dashed rgba(5, 5, 5, 0.15)", borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "var(--af-secondary)", border: "1px dashed var(--af-border)", borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
               <span style={{ fontSize: 13 }}>이 월은 항목이 비어 있어요 — 지난달({prevMonth()}) 항목 <b>{prevCount}건</b>을 가져올까요?</span>
               <Button size="small" type="primary" onClick={() => void copyPrev()}>지난달 항목 가져오기</Button>
             </div>
@@ -392,30 +424,30 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
               ) : (
                 <div>
                   {items.map((it) => (
-                    <div key={it.id} style={{ border: "1px solid rgba(5, 5, 5, 0.06)", borderRadius: 8, padding: "10px 12px", marginBottom: 10 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                          <span style={{ fontWeight: 600 }}>{it.label}</span>
-                          {it.isEssential ? (
-                            <span style={{ background: "#dcfce7", color: "#166534", borderRadius: 20, fontSize: 11, padding: "2px 9px", lineHeight: "16px" }}>필수</span>
-                          ) : null}
-                          <span style={{ background: "#e0e7ff", color: "#3730a3", borderRadius: 20, fontSize: 11, padding: "2px 9px", lineHeight: "16px" }}>{it.recurringId ? "정기" : "수동"}</span>
-                        </div>
-                        <span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{formatKrwExact(it.amount)}</span>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-                        <span style={{ fontSize: 12, color: "rgba(0, 0, 0, 0.45)" }}>
-                          매입세액 {it.purchaseVat > 0 ? formatKrwExact(it.purchaseVat) : "—"}
-                        </span>
-                        <Space size={0} wrap>
-                          <Button size="small" type="text" onClick={() => beginEdit(it)}>이 달만 수정</Button>
-                          {it.recurringId ? <Button size="small" type="text" onClick={() => openRecurringEdit(it.recurringId)}>정기 항목 수정</Button> : <Button size="small" type="text" onClick={() => convertToRecurring(it)}>정기 항목으로 등록</Button>}
-                          <Popconfirm title="이 항목을 삭제할까요?" onConfirm={() => void removeItem(it.id)}>
-                            <Button size="small" type="text" danger>삭제</Button>
-                          </Popconfirm>
-                        </Space>
-                      </div>
-                    </div>
+                    <MobileListCardItem key={it.id}>
+                      <MobileListCardHeader
+                        title={
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                            <span>{it.label}</span>
+                            {it.isEssential ? (
+                              <span style={essentialBadgeStyle}>필수</span>
+                            ) : null}
+                            <span style={recurringBadgeStyle}>{it.recurringId ? "정기" : "수동"}</span>
+                          </span>
+                        }
+                        value={formatKrwExact(it.amount)}
+                      />
+                      <MobileListCardMeta>
+                        매입세액 {it.purchaseVat > 0 ? formatKrwExact(it.purchaseVat) : "—"}
+                      </MobileListCardMeta>
+                      <MobileListCardActions>
+                        <Button size="small" type="text" onClick={() => beginEdit(it)}>이 달만 수정</Button>
+                        {it.recurringId ? <Button size="small" type="text" onClick={() => openRecurringEdit(it.recurringId)}>정기 항목 수정</Button> : <Button size="small" type="text" onClick={() => convertToRecurring(it)}>정기 항목으로 등록</Button>}
+                        <Popconfirm title="이 항목을 삭제할까요?" onConfirm={() => void removeItem(it.id)}>
+                          <Button size="small" type="text" danger>삭제</Button>
+                        </Popconfirm>
+                      </MobileListCardActions>
+                    </MobileListCardItem>
                   ))}
                   <div style={{ fontWeight: 600, padding: "4px 2px" }}>
                     <span>합계 ({itemCount}항목)</span>
@@ -465,9 +497,9 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
                   <span
                     key={r.id}
                     onClick={() => setRecForm(r)}
-                    style={{ background: "rgba(0, 0, 0, 0.02)", border: "1px solid rgba(5, 5, 5, 0.06)", borderRadius: 20, padding: "5px 12px", fontSize: 12.5, display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer" }}
+                    style={{ background: "var(--af-secondary)", border: "1px solid var(--af-border)", borderRadius: 20, padding: "5px 12px", fontSize: 12.5, display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer" }}
                   >
-                    <span><b>{r.label}</b> {formatKrwExact(r.amount)}{r.isEssential ? " · 필수" : ""} · {r.endMonth ? `~${r.endMonth}` : "무기한"}</span>
+                    <span><b>{r.label}</b> {formatKrwExact(r.amount)}{r.isEssential ? " · 필수" : ""} · {r.endMonth ? <span className="af-mono">~{r.endMonth}</span> : "무기한"}</span>
                     <Popconfirm title="정기 항목을 중지할까요? (이미 만들어진 월 표 행은 유지됩니다)" onConfirm={() => void removeRecurring(r.id)}>
                       <Button type="text" size="small" onClick={(e) => e.stopPropagation()} aria-label={`${r.label} 정기 중지`}>✕</Button>
                     </Popconfirm>
@@ -476,7 +508,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
                 <Button type="dashed" onClick={() => setRecForm("new")}>+ 정기 항목 추가</Button>
               </div>
               {recForm ? (
-                <div style={{ marginTop: 12, borderTop: "1px solid rgba(5, 5, 5, 0.06)", paddingTop: 12 }}>
+                <div style={{ marginTop: 12, borderTop: "1px solid var(--af-border)", paddingTop: 12 }}>
                   <Form form={recFormInstance} layout="inline" style={{ display: "flex", flexWrap: "wrap", gap: "10px 12px" }}>
                     <Form.Item name="label" rules={[{ required: true, message: "항목명을 입력하세요" }]}>
                       <Input placeholder="항목명" style={{ width: 140 }} aria-label="정기 항목 이름" />
@@ -568,15 +600,12 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
               ) : (
                 <div>
                   {cardRows.slice(0, cardLimit).map((r) => (
-                    <div key={r.rowKey} style={{ border: "1px solid rgba(5, 5, 5, 0.06)", borderRadius: 8, padding: "10px 12px", marginBottom: 10 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                        <span style={{ fontWeight: 600 }}>{r.merchantName}</span>
-                        <span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{formatKrwExact(r.grossAmount)}</span>
-                      </div>
-                      <div style={{ fontSize: 12, color: "rgba(0, 0, 0, 0.45)", marginTop: 4 }}>
-                        {r.approvedAt} · 공급 {formatKrwExact(r.supplyExVat)} · 부가세 {formatKrwExact(r.vat)} · {r.expenseKind || "미분류"}
-                      </div>
-                    </div>
+                    <MobileListCardItem key={r.rowKey}>
+                      <MobileListCardHeader title={r.merchantName} value={formatKrwExact(r.grossAmount)} />
+                      <MobileListCardMeta>
+                        <span className="af-mono">{r.approvedAt}</span> · 공급 {formatKrwExact(r.supplyExVat)} · 부가세 {formatKrwExact(r.vat)} · {r.expenseKind || "미분류"}
+                      </MobileListCardMeta>
+                    </MobileListCardItem>
                   ))}
                   {cardRows.length > cardLimit ? (
                     <Button block type="text" onClick={() => setCardLimit((n) => n + 30)}>

@@ -124,9 +124,14 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
     render(<AssetsPage onBack={() => {}} />);
     await screen.findByText("우리 파킹통장");
 
-    const firstRow = screen.getByText("우리 파킹통장").closest("tr");
+    const nameEl = screen.getByText("우리 파킹통장");
+    // 테스트 환경의 matchMedia 는 모바일 경로를 타므로 tr 대신 카드 래퍼를 찾는다.
+    // 모바일 카드에서 이름은 날 것의 div 안에 있고, 카드 래퍼는 그 부모다.
+    const firstRow = nameEl.closest("tr") ?? nameEl.closest("div")?.parentElement;
     if (!firstRow) throw new Error("행 없음");
-    const dangerBtn = firstRow.querySelector<HTMLElement>(".ant-btn-dangerous");
+    const dangerBtn = Array.from(firstRow.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("삭제"),
+    );
     if (!dangerBtn) throw new Error("삭제 버튼 없음");
     fireEvent.click(dangerBtn);
     // Popconfirm 확인 버튼 (기본 로케일 OK) — 행의 '삭제' 들과 구분된다

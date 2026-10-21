@@ -3,8 +3,19 @@ import { Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import type { CompositionSlice } from "../dashboard/metrics";
 import { formatKrwExact } from "../utils/formatters";
 
-/** §23 구성비 도넛. 값은 assetComposition() 산출물을 그대로 — 계산 중복 없음 (§36.1). */
-const COLORS = ["#4a6cf7", "#7c5cff", "#e9915c", "#5cb3e9"];
+/**
+ * §23 구성비 도넛. 값은 assetComposition() 산출물을 그대로 — 계산 중복 없음 (§36.1).
+ *
+ * §28.4(D3): 4색 = signal / grove / slate / 뉴트럴.
+ * CSS 변수(`var(--af-*)`) 로 지정해 라이트/다크가 자동으로 따라간다 —
+ * 도넛 SVG fill 은 CSS var() 를 그대로 받는다.
+ */
+const COLORS = [
+  "var(--af-signal)",
+  "var(--af-grove)",
+  "var(--af-slate)",
+  "var(--af-neutral)",
+];
 
 const colorFor = (i: number): string => COLORS[i % COLORS.length] as string;
 
@@ -17,8 +28,8 @@ const dotStyle = (color: string): React.CSSProperties => ({
 function LegendInline({ slices, wide }: { slices: CompositionSlice[]; wide: boolean }) {
   // wide: 금액을 이름 옆에 붙여 왼쪽으로 모은다. 좁은 화면(상하 스택)은 행 전체 폭에서 우측 정렬
   const amountStyle: React.CSSProperties = wide
-    ? { color: "rgba(0, 0, 0, 0.45)", fontSize: 13 }
-    : { marginLeft: "auto", color: "rgba(0, 0, 0, 0.45)", fontSize: 13 };
+    ? { color: "var(--af-muted-foreground)", fontSize: 13 }
+    : { marginLeft: "auto", color: "var(--af-muted-foreground)", fontSize: 13 };
   return (
     <ul
       aria-label="자산 구성비 범례"
@@ -52,8 +63,8 @@ function LegendTable({ slices }: { slices: CompositionSlice[] }) {
               key={h}
               style={{
                 textAlign: i === 0 ? "left" : "right",
-                fontSize: 12, fontWeight: 500, color: "rgba(0, 0, 0, 0.45)",
-                padding: "0 8px 6px 0", borderBottom: "1px solid rgba(5, 5, 5, 0.06)",
+                fontSize: 12, fontWeight: 500, color: "var(--af-muted-foreground)",
+                padding: "0 8px 6px 0", borderBottom: "1px solid var(--af-border)",
               }}
             >
               {h}
@@ -68,8 +79,8 @@ function LegendTable({ slices }: { slices: CompositionSlice[] }) {
               <span aria-hidden style={dotStyle(colorFor(i))} />
               {s.label}
             </td>
-            <td style={{ textAlign: "right", padding: "9px 8px 9px 0", borderBottom: "1px solid rgba(5, 5, 5, 0.06)" }}>{formatKrwExact(s.value)}</td>
-            <td style={{ textAlign: "right", fontWeight: 600, padding: "9px 0 9px 0", borderBottom: "1px solid rgba(5, 5, 5, 0.06)" }}>{s.percent.toFixed(1)}%</td>
+            <td style={{ textAlign: "right", padding: "9px 8px 9px 0", borderBottom: "1px solid var(--af-border)" }}>{formatKrwExact(s.value)}</td>
+            <td style={{ textAlign: "right", fontWeight: 600, padding: "9px 0 9px 0", borderBottom: "1px solid var(--af-border)" }}>{s.percent.toFixed(1)}%</td>
           </tr>
         ))}
       </tbody>
@@ -88,8 +99,8 @@ function LegendChips({ slices }: { slices: CompositionSlice[] }) {
           key={s.type}
           style={{
             display: "flex", alignItems: "center", gap: 8,
-            background: "rgba(0, 0, 0, 0.02)",
-            border: "1px solid rgba(5, 5, 5, 0.06)",
+            background: "var(--af-secondary)",
+            border: "1px solid var(--af-border)",
             borderRadius: 8, padding: "8px 12px",
           }}
         >
@@ -130,6 +141,8 @@ export function CompositionDonut({
             innerRadius="55%"
             outerRadius="85%"
             paddingAngle={2}
+            stroke="var(--af-card)"
+            strokeWidth={2}
           />
         </PieChart>
       </ResponsiveContainer>
