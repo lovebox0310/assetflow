@@ -174,7 +174,7 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
         <tr key={row.id}>
           {/* 열이 5개다(이름·유형·기관·잔액·액션) — 4 로 두면 표가 어긋난다. */}
           <td colSpan={5}>
-            <EditForm form={form} isDebt={debt} />
+            <EditForm form={form} isDebt={debt} wide={wide} />
             <Space style={{ marginTop: 8 }}>
               <Button type="primary" onClick={saveEdit} loading={busy}>저장</Button>
               <Button onClick={cancelEdit} disabled={busy}>취소</Button>
@@ -183,7 +183,7 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
         </tr>
       ) : (
         <MobileListCardItem key={row.id}>
-          <EditForm form={form} isDebt={debt} />
+          <EditForm form={form} isDebt={debt} wide={wide} />
           <MobileListCardActions>
             <Button type="primary" onClick={saveEdit} loading={busy}>저장</Button>
             <Button onClick={cancelEdit} disabled={busy}>취소</Button>
@@ -258,7 +258,7 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
           <StateBlock status={status} onRetry={load} errorText={errorText} emptyText="자산 행이 없습니다 — '+ 자산 추가'로 시작하세요">
             {editingId === "new" && debtFormOpen === false ? (
               <div style={{ marginBottom: 12 }}>
-                <EditForm form={form} isDebt={false} />
+                <EditForm form={form} isDebt={false} wide={wide} />
                 <Space style={{ marginTop: 8 }}>
                   <Button type="primary" onClick={saveEdit} loading={busy}>저장</Button>
                   <Button onClick={cancelEdit} disabled={busy}>취소</Button>
@@ -303,7 +303,7 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
           <StateBlock status={status} onRetry={load} errorText={errorText} emptyText="부채가 비어 있는 것은 정상이다 (§31.4)">
             {editingId === "new" && debtFormOpen ? (
               <div style={{ marginBottom: 12 }}>
-                <EditForm form={form} isDebt />
+                <EditForm form={form} isDebt wide={wide} />
                 <Space style={{ marginTop: 8 }}>
                   <Button type="primary" onClick={saveEdit} loading={busy}>저장</Button>
                   <Button onClick={cancelEdit} disabled={busy}>취소</Button>
@@ -387,17 +387,17 @@ function AssetTotals({ assets, total }: { assets: AssetAccountRow[]; total: numb
   );
 }
 
-function EditForm({ form, isDebt }: { form: FormInstance; isDebt: boolean }) {
+function EditForm({ form, isDebt, wide }: { form: FormInstance; isDebt: boolean; wide: boolean }) {
   return (
-    <Form form={form} layout="inline">
-      <Form.Item name="name" rules={[{ required: true, message: "이름을 입력하세요" }]}>
-        <Input placeholder={isDebt ? "부채 이름" : "자산 이름"} style={{ width: 180 }} />
+    <Form form={form} layout={wide ? "inline" : "vertical"}>
+      <Form.Item name="name" rules={[{ required: true, message: "이름을 입력하세요" }]} style={wide ? {} : { width: "100%" }}>
+        <Input placeholder={isDebt ? "부채 이름" : "자산 이름"} style={{ width: wide ? 180 : "100%" }} />
       </Form.Item>
-      <Form.Item name="institutionName">
-        <Input placeholder="기관 (선택)" style={{ width: 140 }} />
+      <Form.Item name="institutionName" style={wide ? {} : { width: "100%" }}>
+        <Input placeholder="기관 (선택)" style={{ width: wide ? 140 : "100%" }} />
       </Form.Item>
-      <Form.Item name="balance" rules={[{ required: true, message: "잔액을 입력하세요" }]}>
-        <InputNumber min={0} placeholder="잔액(원)" style={{ width: 160 }} />
+      <Form.Item name="balance" rules={[{ required: true, message: "잔액을 입력하세요" }]} style={wide ? {} : { width: "100%" }}>
+        <InputNumber min={0} placeholder="잔액(원)" style={{ width: wide ? 160 : "100%" }} />
       </Form.Item>
       {/*
        * 유형은 더 이상 숨은 필드가 아니다. 숨겨 두면 저장된 값을 읽을 수도 바꿀 수도
@@ -415,8 +415,9 @@ function EditForm({ form, isDebt }: { form: FormInstance; isDebt: boolean }) {
           label="계정 유형"
           initialValue="cash"
           rules={[{ required: true, message: "계정 유형을 선택하세요" }]}
+          style={wide ? {} : { width: "100%" }}
         >
-          <Select options={TYPE_OPTIONS} style={{ width: 150 }} aria-label="계정 유형" />
+          <Select options={TYPE_OPTIONS} style={{ width: wide ? 150 : "100%" }} aria-label="계정 유형" />
         </Form.Item>
       )}
       <Form.Item name="isDebt" hidden initialValue={isDebt}>
