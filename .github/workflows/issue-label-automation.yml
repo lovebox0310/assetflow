@@ -6,20 +6,33 @@ on:
   pull_request:
     types: [opened, closed]
 
+# issues: write 만으로는 부족하다. PR 본문에 PR 번호(예: #67)가 섞여 들어오면
+# 그 번호도 이슈 번호로 잡히는데, PR 에 라벨을 쓰려면 pull_requests: write 가
+# 따로 필요하다. 없으면 403 "Resource not accessible by integration".
 permissions:
   issues: write
-  pull-requests: read
+  pull-requests: write
 
 jobs:
   label-issue-open:
     if: github.event_name == 'issues' && github.event.action == 'opened'
     runs-on: ubuntu-latest
     steps:
+      # actions-ecosystem/action-add-labels 는 쉼표 구분을 더 이상 쪼개지 않는다.
+      # "sprint:1,status:ready" 를 통째로 한 라벨 이름으로 취급해
+      # Validation Failed (Label.name invalid) 로 죽는다.
       - name: Add default labels to new issue
-        uses: actions-ecosystem/action-add-labels@v1
+        uses: actions/github-script@v7
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          labels: sprint:1,status:ready
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              labels: ['sprint:1', 'status:ready']
+            });
+            core.info(`added sprint:1, status:ready to #${context.payload.issue.number}`);
 
   label-pr-open:
     if: github.event_name == 'pull_request' && github.event.action == 'opened'
@@ -34,7 +47,25 @@ jobs:
             const matches = body.match(/#(\d+)/g) || [];
             const issueNumbers = [...new Set(matches.map(v => Number(v.slice(1))))];
 
+            // PR 본문은 "#67"(PR) 과 "#68"(이슈) 을 똑같이 "#<숫자>" 로 적는다.
+            // 구분하지 않으면 PR 에 라벨을 쓰려다 403 으로 죽는다.
             for (const issue_number of issueNumbers) {
+              let target;
+              try {
+                target = (await github.rest.issues.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number
+                })).data;
+              } catch (e) {
+                core.info(`skip #${issue_number}: ${e.message}`);
+                continue;
+              }
+              if (target.pull_request) {
+                core.info(`skip #${issue_number}: pull request, not issue`);
+                continue;
+              }
+
               try {
                 await github.rest.issues.removeLabel({
                   owner: context.repo.owner,
@@ -46,12 +77,17 @@ jobs:
                 core.info(`skip remove status:in-progress for #${issue_number}: ${e.message}`);
               }
 
-              await github.rest.issues.addLabels({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number,
-                labels: ['status:needs-review']
-              });
+              // try 바깥에 두면 위 catch 가 막아준 실패와 무관하게 여기서 런이 죽는다.
+              try {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number,
+                  labels: ['status:needs-review']
+                });
+              } catch (e) {
+                core.info(`skip add status:needs-review for #${issue_number}: ${e.message}`);
+              }
             }
 
   label-pr-merged:
@@ -67,7 +103,24 @@ jobs:
             const matches = body.match(/#(\d+)/g) || [];
             const issueNumbers = [...new Set(matches.map(v => Number(v.slice(1))))];
 
+            // label-pr-open 과 같은 이유로 PR 번호를 걸러낸다.
             for (const issue_number of issueNumbers) {
+              let target;
+              try {
+                target = (await github.rest.issues.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number
+                })).data;
+              } catch (e) {
+                core.info(`skip #${issue_number}: ${e.message}`);
+                continue;
+              }
+              if (target.pull_request) {
+                core.info(`skip #${issue_number}: pull request, not issue`);
+                continue;
+              }
+
               try {
                 await github.rest.issues.removeLabel({
                   owner: context.repo.owner,
@@ -79,10 +132,14 @@ jobs:
                 core.info(`skip remove status:needs-review for #${issue_number}: ${e.message}`);
               }
 
-              await github.rest.issues.addLabels({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number,
-                labels: ['status:done']
-              });
+              try {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number,
+                  labels: ['status:done']
+                });
+              } catch (e) {
+                core.info(`skip add status:done for #${issue_number}: ${e.message}`);
+              }
             }
