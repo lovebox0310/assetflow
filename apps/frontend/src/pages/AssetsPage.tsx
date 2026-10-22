@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Card, Form, Grid, Input, InputNumber, Popconfirm, Space, Typography, type FormInstance } from "antd";
+import { Button, Card, Form, Grid, Input, InputNumber, Popconfirm, Select, Space, Tag, Typography, type FormInstance } from "antd";
 import {
   MobileListCardActions,
   MobileListCardHeader,
@@ -32,6 +32,32 @@ interface AssetsPageProps {
 
 const TYPES = new Set<AssetAccountRow["accountType"]>(["cash", "deposit", "invest", "realty"]);
 void TYPES; // §40.2 enum 참조 — 화면 추가 폼의 유형 제한에서 쓴다
+
+/**
+ * §40.2 enum 의 화면 표기. **§23 의 라벨과 같은 값을 쓴다** — 목록에서 유형을
+ * 보여 주는 순간 화면에 이름이 필요해졌고, 두 곳에 다른 이름을 두면
+ * 대시보드 구성비와 자산 화면이 같은 행을 다르게 부른다.
+ * `invest` 는 "투자"다: §28.7 비상금 유지 개월의 분자(투자금 잔액)가 이 유형이다.
+ */
+const TYPE_LABELS: Record<AssetAccountRow["accountType"], string> = {
+  cash: "현금성",
+  deposit: "예적금",
+  invest: "투자",
+  realty: "부동산·기타",
+};
+
+/** 폼의 Select 선택지. 순서는 §40.2 enum 순서를 따른다. */
+const TYPE_OPTIONS = (Object.keys(TYPE_LABELS) as AssetAccountRow["accountType"][]).map((value) => ({
+  value,
+  label: TYPE_LABELS[value],
+}));
+
+/**
+ * 유형별 합계 차례: 자금 성격 순서(§28.7 현금 3계좌 + 예적금 + 기타).
+ * 0원인 유형도 빠뜨리지 않고 `0원` 으로 보여 준다 — 숨기면 "행이 없다"와
+ * "행이 있는데 0원이다" 를 구별할 수 없고, 그 구별이 안 되는 것이 #68 의 원인이었다.
+ */
+const TYPE_ORDER: AssetAccountRow["accountType"][] = ["cash", "deposit", "invest", "realty"];
 
 /**
  * 스프린트 2 #21: §31 자산 화면의 React 이관.
@@ -96,32 +122,62 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
 
   const cancelEdit = () => setEditingId(null);
 
-  const saveEdit = async () => {
-    const values = await form.validateFields();
-    const payload: UpsertPayload = { ...values, institutionName: values.institutionName ?? "" };
-    if (editingId === "new") {
-      await createAccount(payload);
-    } else if (typeof editingId === "number") {
-      await updateAccount(editingId, payload);
+  /**
+   * #69: 저장/삭제 실패가 화면에 전혀 드러나지 않았다.
+   *
+   * 두 핸들러가 async 인데 `onClick`/`onConfirm` 에 그대로 넘겨져서, API 가
+   * reject 하면 unhandled promise rejection 이 되고 UI 는 아무 일도 없던 것처럼
+   * 조용히 남았다. 사용자 입장에서는 버튼을 눌러도 저장이 안 되는데 이유를
+   * 알 수 없는 상태다.
+   *
+   * `busy` 로 진행 중 버튼을 잠그는 이유: 요청이 뜬 상태에서 두 번 누르면
+   * 같은 행이 두 번 생성된다(§40 CRUD 왕복이 멱등하지 않다).
+   */
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
+
+  const runAction = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    setActionError("");
+    try {
+      await fn();
+    } catch (e: unknown) {
+      // 실패하면 편집 상태를 닫지 않는다 — 입력값을 잃으면 다시 채워야 한다.
+      setActionError(e instanceof Error ? e.message : "요청에 실패했습니다");
+    } finally {
+      setBusy(false);
     }
-    setEditingId(null);
-    load();
   };
 
-  const removeRow = async (id: number) => {
-    await deleteAccount(id);
-    load();
-  };
+  const saveEdit = () =>
+    runAction(async () => {
+      const values = await form.validateFields();
+      const payload: UpsertPayload = { ...values, institutionName: values.institutionName ?? "" };
+      if (editingId === "new") {
+        await createAccount(payload);
+      } else if (typeof editingId === "number") {
+        await updateAccount(editingId, payload);
+      }
+      setEditingId(null);
+      load();
+    });
+
+  const removeRow = (id: number) =>
+    runAction(async () => {
+      await deleteAccount(id);
+      load();
+    });
 
   const renderRow = (row: AssetAccountRow, debt: boolean) => {
     if (editingId === row.id) {
       return wide ? (
         <tr key={row.id}>
-          <td colSpan={4}>
+          {/* 열이 5개다(이름·유형·기관·잔액·액션) — 4 로 두면 표가 어긋난다. */}
+          <td colSpan={5}>
             <EditForm form={form} isDebt={debt} />
             <Space style={{ marginTop: 8 }}>
-              <Button type="primary" onClick={saveEdit}>저장</Button>
-              <Button onClick={cancelEdit}>취소</Button>
+              <Button type="primary" onClick={saveEdit} loading={busy}>저장</Button>
+              <Button onClick={cancelEdit} disabled={busy}>취소</Button>
             </Space>
           </td>
         </tr>
@@ -129,8 +185,8 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
         <MobileListCardItem key={row.id}>
           <EditForm form={form} isDebt={debt} />
           <MobileListCardActions>
-            <Button type="primary" onClick={saveEdit}>저장</Button>
-            <Button onClick={cancelEdit}>취소</Button>
+            <Button type="primary" onClick={saveEdit} loading={busy}>저장</Button>
+            <Button onClick={cancelEdit} disabled={busy}>취소</Button>
           </MobileListCardActions>
         </MobileListCardItem>
       );
@@ -138,6 +194,9 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
     return wide ? (
       <tr key={row.id}>
         <td>{row.name}</td>
+        <td>
+          <Tag>{TYPE_LABELS[row.accountType]}</Tag>
+        </td>
         <td>{row.institutionName || "—"}</td>
         <td style={{ textAlign: "right" }}>{row.balance.toLocaleString("ko-KR")}원</td>
         <td>
@@ -152,7 +211,10 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
     ) : (
       <MobileListCardItem key={row.id}>
         <MobileListCardHeader title={row.name} value={`${row.balance.toLocaleString("ko-KR")}원`} />
-        <MobileListCardMeta>{row.institutionName || "—"}</MobileListCardMeta>
+        <MobileListCardMeta>
+          {TYPE_LABELS[row.accountType]}
+          {row.institutionName ? ` · ${row.institutionName}` : ""}
+        </MobileListCardMeta>
         <MobileListCardActions>
           <Button size="small" type="text" onClick={() => beginEdit(row)}>편집</Button>
           <Popconfirm title="이 행을 삭제할까요?" onConfirm={() => void removeRow(row.id)}>
@@ -178,6 +240,16 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
       }
     >
       <section aria-labelledby="h-assets" style={{ marginBottom: 24 }}>
+        {/*
+         * #69: 저장/삭제 실패를 화면에 알린다. role="alert" 로 두어 스크린리더가
+         * 즉시 읽게 한다(§70 a11y 와 같은 방향, LoginPage 도 같은 방식을 쓴다).
+         * 편집 상태는 닫지 않으므로 입력값이 남고, 사용자가 다시 시도할 수 있다.
+         */}
+        {actionError ? (
+          <Typography.Paragraph role="alert" type="danger" style={{ marginBottom: 16 }}>
+            {actionError}
+          </Typography.Paragraph>
+        ) : null}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
           <Typography.Title level={4} id="h-assets" style={{ margin: 0 }}>금융자산</Typography.Title>
           <Button onClick={beginCreate} disabled={editingId !== null}>+ 자산 추가</Button>
@@ -188,8 +260,8 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
               <div style={{ marginBottom: 12 }}>
                 <EditForm form={form} isDebt={false} />
                 <Space style={{ marginTop: 8 }}>
-                  <Button type="primary" onClick={saveEdit}>저장</Button>
-                  <Button onClick={cancelEdit}>취소</Button>
+                  <Button type="primary" onClick={saveEdit} loading={busy}>저장</Button>
+                  <Button onClick={cancelEdit} disabled={busy}>취소</Button>
                 </Space>
               </div>
             ) : null}
@@ -198,6 +270,7 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
                 <thead>
                   <tr>
                     <th style={{ textAlign: "left", paddingBottom: 8 }}>이름</th>
+                    <th style={{ textAlign: "left", paddingBottom: 8, width: 110 }}>계정 유형</th>
                     <th style={{ textAlign: "left", paddingBottom: 8 }}>기관</th>
                     <th style={{ textAlign: "right", paddingBottom: 8 }}>잔액</th>
                     <th style={{ width: 120 }} />
@@ -208,9 +281,7 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
             ) : (
               <div>{assets.map((r) => renderRow(r, false))}</div>
             )}
-            <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
-              합계 {totalAssets.toLocaleString("ko-KR")}원 — 저장하지 않고 행에서 재계산한다 (§31.1)
-            </Typography.Paragraph>
+            <AssetTotals assets={assets} total={totalAssets} />
           </StateBlock>
         </Card>
       </section>
@@ -234,8 +305,8 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
               <div style={{ marginBottom: 12 }}>
                 <EditForm form={form} isDebt />
                 <Space style={{ marginTop: 8 }}>
-                  <Button type="primary" onClick={saveEdit}>저장</Button>
-                  <Button onClick={cancelEdit}>취소</Button>
+                  <Button type="primary" onClick={saveEdit} loading={busy}>저장</Button>
+                  <Button onClick={cancelEdit} disabled={busy}>취소</Button>
                 </Space>
               </div>
             ) : null}
@@ -285,6 +356,37 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
   );
 }
 
+/**
+ * 유형별 합계 + 총합계. §31.1 대로 저장하지 않고 행에서 매번 다시 센다.
+ *
+ * 유형별 합계를 보여 주는 이유는 #68 의 AC 다 — "유형을 바꾸면 지표가 즉시 달라지는
+ * 것을 육안으로 확인". 대시보드로 건너가지 않고도 `invest` 합계가 바뀌는 것을
+ * 여기서 볼 수 있다. 값이 0원인 유형도 자리를 지킨다: 0 을 숨기면
+ * "투자 행이 없다"와 "투자 행이 0원이다"가 구별되지 않는다(§28.7 분자가 0 이던 상태).
+ */
+function AssetTotals({ assets, total }: { assets: AssetAccountRow[]; total: number }) {
+  return (
+    <div style={{ marginTop: 12 }}>
+      <Space size={[16, 4]} wrap>
+        {TYPE_ORDER.map((type) => {
+          const sum = assets.filter((r) => r.accountType === type).reduce((acc, r) => acc + r.balance, 0);
+          // exactOptionalPropertyTypes: type={undefined} 를 넘길 수 없다 —
+          // 0원일 때만 secondary 를 붙이려고 스프레드를 쓴다.
+          const tone = sum > 0 ? {} : { type: "secondary" as const };
+          return (
+            <Typography.Text key={type} {...tone}>
+              {TYPE_LABELS[type]} {sum.toLocaleString("ko-KR")}원
+            </Typography.Text>
+          );
+        })}
+      </Space>
+      <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
+        합계 {total.toLocaleString("ko-KR")}원 — 저장하지 않고 행에서 재계산한다 (§31.1)
+      </Typography.Paragraph>
+    </div>
+  );
+}
+
 function EditForm({ form, isDebt }: { form: FormInstance; isDebt: boolean }) {
   return (
     <Form form={form} layout="inline">
@@ -297,9 +399,26 @@ function EditForm({ form, isDebt }: { form: FormInstance; isDebt: boolean }) {
       <Form.Item name="balance" rules={[{ required: true, message: "잔액을 입력하세요" }]}>
         <InputNumber min={0} placeholder="잔액(원)" style={{ width: 160 }} />
       </Form.Item>
-      <Form.Item name="accountType" hidden initialValue={isDebt ? "realty" : "cash"}>
-        <Input />
-      </Form.Item>
+      {/*
+       * 유형은 더 이상 숨은 필드가 아니다. 숨겨 두면 저장된 값을 읽을 수도 바꿀 수도
+       * 없어서, §28.7 비상금 분자(투자금)에서 빠진 행을 사용자가 고칠 방법이 없었다 —
+       * 그 결과가 "비상금 0.0개월" 이었다. 라벨을 붙여 화면에 노출한다.
+       * 부채는 유형이 금액 성격을 바꾸지 않으므로 계속 숨긴다(§34.6 부채 계약).
+       */}
+      {isDebt ? (
+        <Form.Item name="accountType" hidden initialValue="realty">
+          <Input />
+        </Form.Item>
+      ) : (
+        <Form.Item
+          name="accountType"
+          label="계정 유형"
+          initialValue="cash"
+          rules={[{ required: true, message: "계정 유형을 선택하세요" }]}
+        >
+          <Select options={TYPE_OPTIONS} style={{ width: 150 }} aria-label="계정 유형" />
+        </Form.Item>
+      )}
       <Form.Item name="isDebt" hidden initialValue={isDebt}>
         <Input />
       </Form.Item>
