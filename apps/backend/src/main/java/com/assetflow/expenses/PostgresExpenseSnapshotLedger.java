@@ -45,6 +45,17 @@ public class PostgresExpenseSnapshotLedger implements ExpenseSnapshotLedger {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
+    public List<Snapshot> recent(String asOf, int months) {
+        return jdbc.query("""
+                SELECT snapshot_month, total_assets, total_debts, income, expenses,
+                       essential_expenses, essential_complete
+                FROM monthly_snapshots
+                WHERE user_id = ? AND snapshot_month <= ?
+                ORDER BY snapshot_month DESC
+                LIMIT ?
+                """, PostgresExpenseSnapshotLedger::map, userId, asOf, months);
+    }
+
     public void upsert(Snapshot s) {
         jdbc.update("""
                 INSERT INTO monthly_snapshots (user_id, snapshot_month, total_assets, total_debts,
