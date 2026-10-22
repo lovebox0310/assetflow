@@ -388,15 +388,21 @@ function AssetTotals({ assets, total }: { assets: AssetAccountRow[]; total: numb
 }
 
 function EditForm({ form, isDebt, wide }: { form: FormInstance; isDebt: boolean; wide: boolean }) {
+  /**
+   * 모바일에서는 필드를 세로로 쌓아 길이를 맞추고, 줄 사이 갭을 12px 로 둔다.
+   * 지출 화면의 편집 폼과 동일한 기준(§71 모바일 갭)을 따른다.
+   */
+  const itemStyle: React.CSSProperties = wide ? {} : { flex: "1 1 100%", minWidth: 0 };
+
   return (
-    <Form form={form} layout={wide ? "inline" : "vertical"}>
-      <Form.Item name="name" rules={[{ required: true, message: "이름을 입력하세요" }]} style={wide ? {} : { width: "100%" }}>
+    <Form form={form} layout="inline" style={{ display: "flex", flexWrap: "wrap", gap: wide ? "10px 12px" : "12px" }}>
+      <Form.Item name="name" rules={[{ required: true, message: "이름을 입력하세요" }]} style={itemStyle}>
         <Input placeholder={isDebt ? "부채 이름" : "자산 이름"} style={{ width: wide ? 180 : "100%" }} />
       </Form.Item>
-      <Form.Item name="institutionName" style={wide ? {} : { width: "100%" }}>
+      <Form.Item name="institutionName" style={itemStyle}>
         <Input placeholder="기관 (선택)" style={{ width: wide ? 140 : "100%" }} />
       </Form.Item>
-      <Form.Item name="balance" rules={[{ required: true, message: "잔액을 입력하세요" }]} style={wide ? {} : { width: "100%" }}>
+      <Form.Item name="balance" rules={[{ required: true, message: "잔액을 입력하세요" }]} style={itemStyle}>
         <InputNumber min={0} placeholder="잔액(원)" style={{ width: wide ? 160 : "100%" }} />
       </Form.Item>
       {/*
@@ -415,7 +421,7 @@ function EditForm({ form, isDebt, wide }: { form: FormInstance; isDebt: boolean;
           label="계정 유형"
           initialValue="cash"
           rules={[{ required: true, message: "계정 유형을 선택하세요" }]}
-          style={wide ? {} : { width: "100%" }}
+          style={itemStyle}
         >
           <Select options={TYPE_OPTIONS} style={{ width: wide ? 150 : "100%" }} aria-label="계정 유형" />
         </Form.Item>
