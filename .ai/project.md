@@ -2862,3 +2862,4 @@ POST /api/v1/assets/card-imports
   나중에 harness 를 쓴다면 그때 다시 고려한다
 - `office` 계열은 실측하지 않았다. xlsx 읽기만 `samples/card/anonymized/synthetic-sample.xlsx` 로 확인했다
   (openpyxl, 1시트 12행 × 8열, 한국어 헤더 정상). **docx/pptx/pdf 경로는 미검증**이다
+- FE: `CardImportPanel.test.tsx` — `/merchant-rules` 호출 및 미리보기 자동 선택.
