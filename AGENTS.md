@@ -30,6 +30,8 @@ assetflow/
 | Pipeline commands | `.opencode/command/` | `/feature`, `/review` entry points |
 | Automation workflows | `.github/workflows/` | CI/CD and issue automation |
 | Card statement samples | `samples/card/` | Excel samples and column contract |
+| Design skills | `~/.config/opencode/skills/` | 31 design skills, global (not in this repo). Route with the `design-playbook` skill (§50) |
+| Engineering skills | `~/.config/opencode/skills/` | 57 more, global. Route with the `workflow-playbook` skill (§51) |
 
 ## CODE MAP
 - **Frontend workspace**: `apps/frontend/` – browser-side implementation
@@ -37,6 +39,8 @@ assetflow/
 - **Design system**: `design/prototype/` – static prototype (IA map, dashboard, expenses, assets, settings, login)
 - **Card statement import**: `samples/card/` – Excel samples, column contract, and parser tools
 - **AI roles**: Five separate subagents in `.opencode/agent/`, each with distinct permissions
+- **Design skills**: `~/.config/opencode/skills/` – 31 design skills installed globally (not in this repo); the `design-playbook` skill routes a task to the right one (§50)
+- **Engineering skills**: `~/.config/opencode/skills/` – 57 engineering, writing, and document skills installed globally; the `workflow-playbook` skill routes those (§51). Both routers are siblings: design work goes to `design-playbook`, everything else to `workflow-playbook`.
 
 ## CONVENTIONS
 - **Document placement**: A document's path tells you what belongs in it. Records go into existing files rather than new ones (see `.ai/project.md` §32).
