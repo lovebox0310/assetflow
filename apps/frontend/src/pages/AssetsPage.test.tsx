@@ -151,6 +151,64 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
     expect((await screen.findAllByText("로그인이 만료되었습니다. 다시 로그인해 주세요.")).length).toBeGreaterThan(0);
   });
 
+  /**
+   * #69: 저장/삭제가 실패하면 그 사실이 화면에 드러나야 한다.
+   *
+   * 이전에는 핸들러가 async 인 채로 onClick/onConfirm 에 그대로 넘겨져
+   * reject 가 unhandled promise rejection 이 됐고, UI 는 아무 일도 없던 것처럼
+   * 남았다. 아래 테스트는 실패를 주입했을 때 사용자가 볼 수 있는 신호가
+   * 실제로 생기는지를 본다 — 수정 전에는 둘 다 실패한다.
+   */
+  describe("#69 저장/삭제 실패 노출", () => {
+    it("저장이 실패하면 role=alert 로 오류를 보여 주고 편집 상태를 유지한다", async () => {
+      const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === "PUT") {
+          // 서버 오류를 흉내 낸다. api client 가 message 를 Error 로 올린다.
+          return Promise.resolve(apiResponse(null, false, 500));
+        }
+        return Promise.resolve(apiResponse(seedAccounts()));
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      render(<AssetsPage onBack={() => {}} />);
+      await screen.findByText("우리 파킹통장");
+
+      const editBtn = screen.getAllByRole("button", { name: "편집" })[0];
+      if (!editBtn) throw new Error("편집 버튼 없음");
+      fireEvent.click(editBtn);
+      await screen.findByRole("combobox", { name: "계정 유형" });
+
+      fireEvent.click(screen.getByRole("button", { name: "저장" }));
+
+      // 사용자가 볼 수 있는 오류 신호가 있어야 한다 (이전: 조용히 아무 일도 없음)
+      const alert = await screen.findByRole("alert");
+      expect(alert.textContent).toBeTruthy();
+      // 입력값을 잃지 않는다 — 편집 폼이 그대로 남아 있어야 한다
+      expect(screen.getByRole("button", { name: "취소" })).toBeDefined();
+    });
+
+    it("삭제가 실패하면 role=alert 로 오류를 보여 주고 행을 남긴다", async () => {
+      const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === "DELETE") return Promise.resolve(apiResponse(null, false, 500));
+        return Promise.resolve(apiResponse(seedAccounts()));
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      render(<AssetsPage onBack={() => {}} />);
+      await screen.findByText("우리 파킹통장");
+
+      const delBtn = screen.getAllByRole("button", { name: "삭제" })[0];
+      if (!delBtn) throw new Error("삭제 버튼 없음");
+      fireEvent.click(delBtn);
+      // Popconfirm 확인 버튼 — 기본 로케일이 OK 다(koKR 미설정, 기존 테스트와 동일)
+      const confirm = await screen.findByRole("button", { name: /OK/i });
+      fireEvent.click(confirm);
+
+      const alert = await screen.findByRole("alert");
+      expect(alert.textContent).toBeTruthy();
+      // 실패했으므로 행이 사라지면 안 된다
+      expect(screen.getByText("우리 파킹통장")).toBeDefined();
+    });
+  });
+
   it("부채가 비면 비어 있는 것이 정상이라는 문구를 보여 준다 (§31.4)", async () => {
     const seed = seedAccounts().filter((r) => !r.isDebt);
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(apiResponse(seed))));

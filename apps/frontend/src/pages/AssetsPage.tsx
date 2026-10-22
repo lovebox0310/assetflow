@@ -122,32 +122,62 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
 
   const cancelEdit = () => setEditingId(null);
 
-  const saveEdit = async () => {
-    const values = await form.validateFields();
-    const payload: UpsertPayload = { ...values, institutionName: values.institutionName ?? "" };
-    if (editingId === "new") {
-      await createAccount(payload);
-    } else if (typeof editingId === "number") {
-      await updateAccount(editingId, payload);
+  /**
+   * #69: 저장/삭제 실패가 화면에 전혀 드러나지 않았다.
+   *
+   * 두 핸들러가 async 인데 `onClick`/`onConfirm` 에 그대로 넘겨져서, API 가
+   * reject 하면 unhandled promise rejection 이 되고 UI 는 아무 일도 없던 것처럼
+   * 조용히 남았다. 사용자 입장에서는 버튼을 눌러도 저장이 안 되는데 이유를
+   * 알 수 없는 상태다.
+   *
+   * `busy` 로 진행 중 버튼을 잠그는 이유: 요청이 뜬 상태에서 두 번 누르면
+   * 같은 행이 두 번 생성된다(§40 CRUD 왕복이 멱등하지 않다).
+   */
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
+
+  const runAction = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    setActionError("");
+    try {
+      await fn();
+    } catch (e: unknown) {
+      // 실패하면 편집 상태를 닫지 않는다 — 입력값을 잃으면 다시 채워야 한다.
+      setActionError(e instanceof Error ? e.message : "요청에 실패했습니다");
+    } finally {
+      setBusy(false);
     }
-    setEditingId(null);
-    load();
   };
 
-  const removeRow = async (id: number) => {
-    await deleteAccount(id);
-    load();
-  };
+  const saveEdit = () =>
+    runAction(async () => {
+      const values = await form.validateFields();
+      const payload: UpsertPayload = { ...values, institutionName: values.institutionName ?? "" };
+      if (editingId === "new") {
+        await createAccount(payload);
+      } else if (typeof editingId === "number") {
+        await updateAccount(editingId, payload);
+      }
+      setEditingId(null);
+      load();
+    });
+
+  const removeRow = (id: number) =>
+    runAction(async () => {
+      await deleteAccount(id);
+      load();
+    });
 
   const renderRow = (row: AssetAccountRow, debt: boolean) => {
     if (editingId === row.id) {
       return wide ? (
         <tr key={row.id}>
-          <td colSpan={4}>
+          {/* 열이 5개다(이름·유형·기관·잔액·액션) — 4 로 두면 표가 어긋난다. */}
+          <td colSpan={5}>
             <EditForm form={form} isDebt={debt} />
             <Space style={{ marginTop: 8 }}>
-              <Button type="primary" onClick={saveEdit}>저장</Button>
-              <Button onClick={cancelEdit}>취소</Button>
+              <Button type="primary" onClick={saveEdit} loading={busy}>저장</Button>
+              <Button onClick={cancelEdit} disabled={busy}>취소</Button>
             </Space>
           </td>
         </tr>
@@ -155,8 +185,8 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
         <MobileListCardItem key={row.id}>
           <EditForm form={form} isDebt={debt} />
           <MobileListCardActions>
-            <Button type="primary" onClick={saveEdit}>저장</Button>
-            <Button onClick={cancelEdit}>취소</Button>
+            <Button type="primary" onClick={saveEdit} loading={busy}>저장</Button>
+            <Button onClick={cancelEdit} disabled={busy}>취소</Button>
           </MobileListCardActions>
         </MobileListCardItem>
       );
@@ -210,6 +240,16 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
       }
     >
       <section aria-labelledby="h-assets" style={{ marginBottom: 24 }}>
+        {/*
+         * #69: 저장/삭제 실패를 화면에 알린다. role="alert" 로 두어 스크린리더가
+         * 즉시 읽게 한다(§70 a11y 와 같은 방향, LoginPage 도 같은 방식을 쓴다).
+         * 편집 상태는 닫지 않으므로 입력값이 남고, 사용자가 다시 시도할 수 있다.
+         */}
+        {actionError ? (
+          <Typography.Paragraph role="alert" type="danger" style={{ marginBottom: 16 }}>
+            {actionError}
+          </Typography.Paragraph>
+        ) : null}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
           <Typography.Title level={4} id="h-assets" style={{ margin: 0 }}>금융자산</Typography.Title>
           <Button onClick={beginCreate} disabled={editingId !== null}>+ 자산 추가</Button>
@@ -220,8 +260,8 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
               <div style={{ marginBottom: 12 }}>
                 <EditForm form={form} isDebt={false} />
                 <Space style={{ marginTop: 8 }}>
-                  <Button type="primary" onClick={saveEdit}>저장</Button>
-                  <Button onClick={cancelEdit}>취소</Button>
+                  <Button type="primary" onClick={saveEdit} loading={busy}>저장</Button>
+                  <Button onClick={cancelEdit} disabled={busy}>취소</Button>
                 </Space>
               </div>
             ) : null}
@@ -265,8 +305,8 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
               <div style={{ marginBottom: 12 }}>
                 <EditForm form={form} isDebt />
                 <Space style={{ marginTop: 8 }}>
-                  <Button type="primary" onClick={saveEdit}>저장</Button>
-                  <Button onClick={cancelEdit}>취소</Button>
+                  <Button type="primary" onClick={saveEdit} loading={busy}>저장</Button>
+                  <Button onClick={cancelEdit} disabled={busy}>취소</Button>
                 </Space>
               </div>
             ) : null}
