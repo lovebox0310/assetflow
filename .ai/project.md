@@ -1263,17 +1263,29 @@ jobs:
 구조 토큰(확정):
 - fontFamily: -apple-system, BlinkMacSystemFont, "Segoe UI", Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif
 	- 근거: §12 비용 제약상 웹폰트 로딩 비용 회피
-- 숫자 표기: font-variant-numeric: tabular-nums (금액/숫자 세로 정렬)
-- 간격: 4px 기준 4 / 8 / 12 / 16 / 24 / 32 / 48
-- borderRadius: 4(입력) / 6(카드, antd 기본) / 8(컨테이너)
+- 숫자 표기: font-variant-numeric: tabular-nums (금액/숫자 세로 정렬) — `.af-num` 클래스
+- 모노 스택(2026-10-21 개정): 숫자·코드에만 `ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace`.
+  **한국어 라벨에는 쓰지 않는다**(한글 글리프가 없어 다른 폰트로 떨어진다). Geist 웹폰트는 §12 비용 제약으로 미도입
+- 간격: 4px 기준 4 / 8 / 12 / 16 / 24 / 32 / 48 (FE 모듈 `src/theme/tokens.ts` 의 `SPACE`)
+- borderRadius(2026-10-21 개정): antd 기준 base 8 / LG 10 / SM 6. `createAfTheme()` 이
+  `borderRadius: 8`, `borderRadiusLG: 10`, `borderRadiusSM: 6` 을 명시한다(기존 4/6/8 표기 대체)
 - boxShadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.08)
-- 컨테이너: max-width 1200px, gutter 데스크톱 24px / 모바일 16px
+- 컨테이너: max-width 1200px, gutter 데스크톱 24px / 모바일 16px (개정 없음 — 1200px 유지)
 - 반응형: antd 기본 분할 유지 (xs<576 / sm>=576 / md>=768 / lg>=992 / xl>=1200)
 
-색상 토큰(보류):
-- colorPrimary은 v1에서 antd 기본값 #1677ff을 사용한다
-- 브랜드 컬러는 프로토타입 리뷰 후 ConfigProvider 1줄로 교체한다
-- 상태 색상은 antd 시드: 성공 #52c41a / 경고 #faad14 / 위험 #ff4d4f
+색상 토큰(2026-10-21 확정 — "보류" 해제):
+- **원시 색상값(hex/rgba)의 단일 보유처는 `apps/frontend/src/theme/tokens.ts` 다.**
+  다른 모듈(app.css 포함)은 antd 토큰 또는 `--af-*` CSS 변수만 참조한다 (§28.4)
+- 팔레트: 잉크(ink) — 라이트/다크 2세트를 `AF_COLORS` 한 곳에 모으고 `createAfTheme(mode)` 가 antd 토큰으로 옮긴다
+	- 면: background #f1efea / #161513 · card #faf9f6 / #1f1e1b
+	- 글자·주 액션: foreground·primary #1e1d1a / #f1efea (다크에서는 반전)
+	- 브랜드 강조 1색: signal #f0a008 / #f5b325
+	- 상태: grove(성공) #487241 / #8abf84 · slate(정보) #3f5e96 / #7c9bda · destructive(위험) #d4000f / #ff6568
+	  (라이트 3색은 §28.5 대비 확보를 위해 원본(#5f8f5a · #4b6fae · #e40014)에서 조정했다 — 원본값과 산출 근거는 `tokens.ts` 주석에 남긴다)
+	- 차트 5단계: chart1~5 (`AF_CHART_COLORS`), 구성비 도넛은 signal/grove/slate/neutral 4색
+- colorPrimary 은 잉크(foreground 와 같은 값)다. 채도색 기본 버튼이 화면을 압도하지 않게 하는 선택이며,
+  브랜드 강조는 signal 한 가지로 통일한다
+- 대비 확보가 필요한 값은 §28.5 기준으로 조정한다(조정값과 산출 근거는 `tokens.ts` 주석에 기록)
 
 ### 28.3 통화·날짜 포맷
 - 새 의존성 없이 Intl 내장만 사용한다 (dayjs는 antd 6가 이미 번들)
@@ -1289,14 +1301,43 @@ jobs:
 	- 날짜: ko-KR (2026년 9월), 차트 축은 2026.09 축약
 - Issue 6 API 명세에 금액 단위(원 단위 정수) 명칭 규칙을 포함한다
 
-### 28.4 다크 모드
-- MVP 범위에서 제외한다 (§15 포함 범위에 없음)
-- 추가 시 antd theme.darkAlgorithm 전환으로 1줄이면 충분하다
-- 규칙: 하드코딩 색상값 금지. antd 토큰 참조만 사용한다
+### 28.4 다크 모드 (2026-10-21 개정 — MVP 제외 해제)
+- 근거: 기존 "MVP 범위에서 제외한다" 규칙을 이 장에서 해제한다. 다크 모드는 FE 단독 결정이며 API·데이터 계약에 영향이 없다
+- 토글: 헤더(`src/layout/AppLayout.tsx`) 아이콘 버튼 1개. aria-label "다크 모드로 전환"/"라이트 모드로 전환",
+  aria-pressed 로 2상태를 알린다. 인라인 SVG(해·달) — 아이콘 패키지 미도입(§12 비용 제약)
+- 모드 상태 단일 출처: `src/theme/themeStore.ts`. 저장 키 `assetflow.theme`, 값 `light|dark|system`, 기본값 `system`(OS 설정 따름)
+	- 토글은 항상 명시적인 반대 모드로 전환한다(라이트↔다크). `system` 은 저장소에 남지만 토글 1회 후에는 명시값이 된다
+	- OS 설정은 `matchMedia` 의 `change` 이벤트를 따라간다. `matchMedia` 가 없거나 예외를 던지면 라이트로 폴백한다
+- 렌더링: `ConfigProvider theme={createAfTheme(resolved)}` — 모드가 바뀌면 토큰이 통째로 교체된다.
+  다크용 토큰은 전부 명시하고 `darkAlgorithm` 에 의존하지 않는다(의도치 않은 파생색 방지)
+- CSS 변수: `applyAfCssVars(mode)` 가 `document.documentElement` 에 `--af-*` 를 주입한다.
+  앱 CSS 는 hex 를 갖지 않고 변수만 참조한다 — 값의 단일 보유처가 둘이 되면 규칙이 무너진다
+- `document.documentElement.dataset.theme` 는 **현재 모드 표시(디버깅·테스트 훅)** 다. 색 값은 여기 담지 않는다.
+  `app.css` 의 `[data-theme]` 규칙은 `color-scheme` 만 선언해 브라우저 기본 UI(스크롤바·네이티브 컨트롤)가
+  모드를 따라가게 하고, 모드별 표면 재정의가 필요해질 때 쓰는 확장 지점으로 둔다
+- 규칙: 하드코딩 색상값 금지. antd 토큰 또는 `--af-*` 변수만 사용한다
+- 프로토타입(`design/prototype/common/tokens.css`)은 이번 개정에서 손대지 않았다.
+  정적 프로토타입은 참고용이고 FE 가 정본이다. 프로토타입 정렬은 별건으로 진행한다
 
 ### 28.5 접근성 기준
 - 기준: WCAG 2.1 AA
 - 본문 텍스트 대비 4.5:1, 큰 텍스트 3:1
+- 다크 모드에도 같은 기준을 적용한다(다크라고 기준을 낮추지 않는다)
+- 폼 컨트롤 테두리·포커스 링은 3:1 (WCAG 1.4.11)
+- 대비 미달 색은 팔레트를 조정해 잡는다(§28.2 의 조정값 목록). 아래는 2026-10-21 개정에서 한 조정과 산출 근거다
+	(수치는 WCAG 상대휘도 공식으로 직접 계산한 값이며 대조 표면을 함께 적는다)
+	- 라이트 destructive #e40014 → #d4000f (배경 위 4.24:1 → 4.80:1)
+	- 라이트 slate #4b6fae → #3f5e96 (배경 위 4.37:1 → 5.62:1, slate-soft 위 3.88:1 → 4.99:1)
+	- 라이트 grove #5f8f5a → #487241 (카드 위 3.59:1 → 5.31:1)
+	- 포커스 링·폼 컨트롤 테두리: 라이트 #aba69c → #807b71 (카드 위 2.30:1 → 4.00:1, secondary 위 1.94:1 → 3.38:1),
+	  다크 #66625a → #7d786f (카드 위 2.75:1 → 3.80:1, secondary 위 2.43:1 → 3.36:1)
+	- 다크 텍스트 3·4단계: #8f8a80 → #969186 (elevated 위 4.46:1 → 4.88:1, secondary 위 4.29:1 → 4.70:1)
+	- 라이트 텍스트 3·4단계는 #6b675e 로 통일해 4.5:1 을 유지한다. 폼 컨트롤 테두리는 `--af-input`
+	  (= `--af-border-strong`, 같은 토큰의 별칭) 을 쓴다
+- antd 6 의 Button 포커스 링 토큰은 `controlOutline` 이 아니라 **`colorPrimaryBorder`** 다
+  (`node_modules/antd/es/style/index.js` 의 `genFocusOutline`). `colorPrimaryBorder` 를
+  `--af-ring`(#807b71 / #7d786f) 과 같은 값으로 맞춰 Button 포커스 링도 3:1 을 만족시킨다.
+  값이 갈라지면 링만 §28.5 를 위반한다 — 색 값은 `tokens.ts` 한 곳에서만 바꾼다
 - 포커스 표시 제거 금지
 - 폼 라벨은 프로그램적으로 연결한다
 - 오류 메시지는 role="alert"를 사용한다
@@ -1308,6 +1349,11 @@ jobs:
   28.5 기준을 antd 채택의 선행 조건으로 보고 매 Storybook 스토리에 검증한다
 - 이 문서에는 기술 부채 관리 전용 섹션이 없으므로,
   DoD의 "남은 리스크와 후속 과제가 기록되어 있다"에 28.5 위반분을 매번 남긴다
+- 2026-10-21 다크 모드 개정에서 남은 예외:
+	- 장식용 구분선 `--af-border`(라이트 #ddd9cf / 다크 #34322d)은 1.4.11 3:1 에 미달한다.
+    정보 전달을 담당하지 않으므로 허용하고, 폼 컨트롤 테두리는 `--af-input`(=`--af-border-strong`) 로 분리한다
+	- 구성비 도넛의 signal 조각(라이트 #f0a008)은 카드 위 2.05:1 이지만, 범례에 텍스트 라벨이 있어
+    색만으로 정보를 전달하지 않는다(1.4.1 충족)
 
 ### 28.7 현금 계좌 구분과 지표 분자
 현금은 계좌별 성격이 다르므로 합쳐서 하나의 지표로 쓰지 않는다. 3계좌로 구분한다.
@@ -2610,4 +2656,210 @@ POST /api/v1/assets/card-imports
 
 검증:
 - BE: `CardImportApiTest` — 저장된 규칙 자동 적용, 제출값 덮어쓰기, 이후 반영 승계.
+- FE: `CardImportPanel.test.tsx` — `/merchant-rules` 호출 및 미리보기 자동 선택.
+
+---
+
+## 50) 디자인 스킬 스위트 설치 (2026-10-21 확정)
+
+목적:
+- 화면·토큰·모션 작업을 시작할 때마다 같은 판단을 매번 다시 찾지 않게 한다.
+  검증된 디자인 스킬 27종(업스트림) + 자체 2종을 이 PC 에 한 번 설치하고, **어떤 일을 어떤
+  스킬로 시작할지** 라우팅 규칙까지 고정한다.
+
+결정:
+- **설치 위치는 전역(`C:\Users\H\.config\opencode\skills\`)** 이다. 저장소에는 넣지 않는다.
+- 선행 런타임으로 **Python 3.13 을 머신에 설치한다.** UI/UX Pro Max 의 검색 CLI(`search.py`)가
+  Python 전용이라 이 스킬의 핵심 기능이 Python 없이는 죽는다.
+- 출처 8곳의 디자인 스킬을 전부 설치한다. 자동 호출에서 빠지는 것은 6종이다.
+  - **3종은 이 저장소와 무관해서 숨긴다**(Swift `write-swift` · React Native `animate-expo` ·
+    Sonner `ask-sonner`) — frontmatter 에 `metadata.opencode/autoinvoke: false` 를 넣었다
+  - **3종은 업스트림이 이미 숨겼다**(`disable-model-invocation: true`: `review-animations` ·
+    `pick-ui-library` · `prototype`) — 손대지 않는다
+  - 숨겨도 ID 로 명시 호출은 여전히 된다
+- 라우팅용 스킬 `design-playbook` 을 하나 더 만들어 **스킬 29개 + 런타임 사실 + 경로 규칙**을
+  한 곳에 둔다. 스킬이 많으면 모델이 고르는 비용이 크다.
+
+### 50.1 왜 전역인가
+
+| 후보 | 판단 |
+|---|---|
+| `.opencode/skills/` 에 커밋 | 스킬 29개 + 폰트 포함 약 17MB 가 저장소에 얹힌다. 라이선스도 제각각(MIT/Apache/미기재)이라 저장소 배포에 승인 절차가 필요한다. **팀 전체가 같은 판단을 해야 한다면 별건으로 다시 결정한다** |
+| **전역 설치** | 이 PC 의 모든 프로젝트가 같은 디자인 판단 기준을 쓴다. 저장소는 건드리지 않는다 |
+| 설치 스크립트만 커밋 | 재현성은 좋지만 "설치됐는가"를 매번 확인해야 한다. 이번 결정의 목적(즉시 사용)에 어긋난다 |
+
+### 50.2 설치된 스킬과 출처
+
+| 출처 | 스킬 ID | 라이선스 |
+|---|---|---|
+| nextlevelbuilder/ui-ux-pro-max-skill | `ui-ux-pro-max` `design` `ui-styling` `design-system` `brand` `banner-design` `slides` | MIT |
+| vercel-labs/agent-skills | `web-design-guidelines` | **저장소에 라이선스 파일 없음** |
+| emilkowalski/skills | `emil-design-eng` `animate` `animation-performance` `animation-vocabulary` `review-animations` `improve-animations` `find-animation-opportunities` `apple-design` `mobile-native` `break-ui` `pick-ui-library` `prototype` `ask-sonner`(숨김) `animate-expo`(숨김) `write-swift`(숨김) | MIT |
+| Leonxlnx/taste-skill | `taste-skill` | MIT |
+| Nutlope/hallmark | `hallmark` | MIT |
+| pbakaus/impeccable | `impeccable` | Apache-2.0 |
+| anthropics/skills | `frontend-design` | 저장소 라이선스 파일 없음(스킬 폴더에 `LICENSE.txt` 동봉) |
+| yihui-dev/awesome-opus5-5-videos | `awesome-opus-videos` (자체 제작 래퍼 + 검색 스크립트) | MIT |
+| 자체 | `design-playbook` (라우팅 인덱스) | — |
+
+- 각 스킬 폴더에 `LICENSE.upstream` 을 같이 둔다. 출처를 잃지 않기 위한 최소 조치다.
+- `awesome-opus-videos` 는 원본 저장소에 스킬이 없다(프롬프트 703건 + `data/videos.json` 만 있다).
+  **검색 스크립트(`scripts/search.mjs`)를 직접 만들어 스킬로包装했다.** 의존성 0개, Node 18+.
+
+### 50.3 런타임 사실
+
+| 항목 | 값 |
+|---|---|
+| Python | 3.13.15 — `C:\Users\H\AppData\Local\Programs\Python\Python313\python.exe` (winget, user scope) |
+| Node | v24.22.0 (기존 설치본) |
+| 경로 규칙 | 스킬 안의 스크립트 경로는 **그 스킬 폴더 기준 상대 경로**다. 실행 전에 절대 경로로 바꿔서 부른다 |
+| 재시작 | opencode 서비스는 시작 시 PATH 를 물려받는다. **PATH 변경 후 `opencode service restart` 필요** (§33.6 과 같은 원칙) |
+
+### 50.4 OpenCode 호환을 위해 손댄 것
+
+- `ui-ux-pro-max/SKILL.md` 는 `${CLAUDE_PLUGIN_ROOT}`(Claude Code 플러그인 루트) 기준 절대 경로
+  11곳을 담고 있었다. **스킬 상대 경로(`scripts/search.py`)로 바꿨다.** 업스트림 자체 경로 계약
+  테스트가 이 형식을 기준 경로로 삼고 있으므로 업스트림 의도와도 맞는다
+- `taste-skill` 은 원래 `<skill>` 상대 표기라 손대지 않았다
+- `impeccable` 은 업스트림이 `.opencode/skills/impeccable/` 변형을 따로 제공한다. 그 변형을 설치했다.
+  Windows 에서는 `scripts/impeccable.cmd` 로 실행한다(자체 바이너리, 런타임 불필요)
+- Frontmatter 에 `metadata.opencode/autoinvoke: false` 를 넣어, 이 저장소와 무관한 3종을
+  모델의 기본 목록에서 뺀다. **숨겨도 ID 로 명시 호출은 여전히 된다**
+
+### 50.5 Assetflow 적용 규칙
+
+- **기준은 여전히 §1·§28 이다.** 스킬은 근거가 아니라 **후보**다. 스킬이 뱉은 값이
+  곧 채택되지 않는다
+- `ui-styling` 은 shadcn/ui + Tailwind 전제다. 이 저장소는 **antd 6 + React 18 + Vite** (§1, §28.1)
+  이므로 **패턴·토큰 참고용**으로만 쓴다. 컴포넌트를 이식하지 않는다
+- 내부 대시보드/운영 화면 → `impeccable` + `ui-ux-pro-max`
+- 공개·마케팅 표면(프로토타입, 랜딩) → `taste-skill` + `frontend-design` + `hallmark`
+- 모션 작업 → `animate`(구현) / `find-animation-opportunities`(제안) / `improve-animations`(전수 점검)
+  / `animation-performance`(성능) 4종의 역할을 섞지 않는다
+
+### 50.6 아직 하지 않은 것 (있는 척하지 않는다)
+
+- **팀 공용 설치는 미결.** 저장소에 올리려면 라이선스 고지 방식과 크기(17MB) 처리를 정해야 한다
+- `ui-styling` 의 캔버스 폰트(≈5.5MB)가 설치에 포함되지만 이 저장소 화면에는 쓰지 않는다
+- `taste-skill` 의 하우스스타일 린트가 `apps/frontend/src/theme/tokens.ts` 의 모노스페이스 2건을
+  지적했다. **프로젝트 규약(§28.2)과의 충돌 여부는 아직 판정하지 않았다.** 스킬 opinions 이고
+  프로젝트 규약이 우선이므로 별건으로 다룬다
+- 설치된 스킬 29개는 **업스트림 스냅샷**이다. 업데이트 절차는 없다. upstream 을 갱신하려면 수동으로
+  다시 가져와 덮어써야 한다
+
+## 51) 상위 10개 저장소 스킬 2차 설치 (2026-10-21 확정)
+
+목적:
+- GitHub 상위 10개 저장소에서 나오는 스킬을 전부 설치하되, **호스트 도구에 묶인 스킬은 죽은 코드**다.
+  10곳 저장소 스캔 결과 `SKILL.md` 가 158개 나왔는데, 실제 배포 대상 147개 중 **약 88개(60%)는
+  특정 CLI/앱 없이는 동작하지 않는다.** 도구 독립 스킬만 골라 설치하고 제외 사유를 남긴다.
+
+결정:
+- **같은 전역 위치(`C:\Users\H\.config\opencode\skills\`)**. §50 의 설계 스위트와 나란히 둔다.
+  누적 **89개**(설계 31 + 엔진 57 + 라우터 1), 그중 자동호출 숨김 42개 · 노출 47개.
+- **도구 독립 스킬 59종만 설치한다.** 제외 88종의 사유는 §51.3 에 남긴다
+- **ID 충돌 1건**은 이름을 바꿔 해결한다 (§51.4)
+- 엔진/문서 계열이 겹치는 스킬이 많아 **인덱스 스킬 `workflow-playbook`** 을 추가한다 (§51.5)
+
+### 51.1 설치한 출처
+
+| 출처 | 설치한 스킬 ID | 라이선스 |
+|---|---|---|
+| mattpocock/skills | `ask-matt` `code-review` `codebase-design` `diagnosing-bugs` `domain-modeling` `grill-with-docs` `implement` `implement-spec` `improve-codebase-architecture` `pr` `throwaway-prototype` `research` `retro` `setup-matt-pocock-skills` `tdd` `to-spec` `to-tickets` `triage` `wayfinder` `wizard` `grill-me` `grilling` `handoff` `teach` `to-questionnaire` `wait-what` `writing-for-agents` `git-guardrails-claude-code` `migrate-to-shoehorn` `scaffold-exercises` `setup-pre-commit` `chief-of-staff` `claude-handoff` `loop-me` `setup-ts-deep-modules` `writing-beats` `writing-fragments` `writing-shape` (38종) | 저장소 LICENSE |
+| deepseek-ai/deepseek-harness | `office` `office-docx` `office-export-pdf` `office-pptx` `office-recalculate` `office-render` `office-xlsx` `agent-experience` (8종) | 저장소 LICENSE |
+| DietrichGebert/ponytail | `ponytail` `ponytail-audit` `ponytail-debt` `ponytail-gain` `ponytail-help` `ponytail-review` (6종) | MIT |
+| tt-a1i/archify | `archify` `simplify-codebase` `test-value` (3종) | MIT |
+| cathrynlavery/diagram-design | `diagram-design` (1종) | MIT |
+| guillaumemeyer/watermarks-remover | `clean-user-facing-text` `remove-ai-marks` (2종) | 저장소 LICENSE |
+| harry0703/MoneyPrinterTurbo | `moneyprinterturbo-video` (1종, 자동호출 숨김) | 저장소 LICENSE |
+| 자체 | `workflow-playbook` (라우팅 인덱스) | — |
+
+- 각 스킬 폴더에 `LICENSE.upstream` 동봉. §50 과 같은 규칙.
+- `ponytail` 저장소는 `skills/` 와 `.openclaw/skills/` 에 **동일 스킬 6종이 중복**되어 있다. `skills/` 쪽만 설치했다.
+- `remove-ai-marks` 는 업스트림에 스크립트가 없다. SKILL.md 가 참조하는
+  `service/scripts/audit_dir.py` 를 저장소 `service/scripts/`(46개, 전부 표준 라이브러리)에서
+  **스킬 폴더 안으로 함께 받아 `service/scripts/` 에 넣었다.** 이러면 호스팅 서비스 없이도 로컬에서 동작한다.
+
+### 51.2 런타임 사실
+
+| 항목 | 값 |
+|---|---|
+| Python | 3.13.15 (§50.3) + **`openpyxl` `pandas` `numpy` `python-docx` `python-pptx` `Pillow` `playwright` 추가 설치** |
+| Playwright | Chromium 설치 완료 (`%LOCALAPPDATA%\ms-playwright`). `diagram-design` 의 PNG rasterize 용 |
+| Node | v24.22.0. `archify` 는 `bin/archify.mjs` 가 순수 Node 내장 모듈만 써서 **`npm install` 불필요** |
+| GitHub CLI | gh 2.102.0 설치됨. `triage` `to-spec` `to-tickets` `wayfinder` 가 이슈 트래커에 쓸 것 |
+| LibreOffice sidecar | **미설치.** `office-export-pdf` `office-render` `office-recalculate` 만 필요. 설치는 동의 절차 필요 |
+
+### 51.3 왜 설치하지 않았는가 (제외 88종)
+
+| 출처 | 제외 스킬 | 사유 |
+|---|---|---|
+| diegosouzapw/OmniRoute | `cli-*` 21종 · `omni-*` 23종 · `config/quality/skill-templates/` 6종 | 전부 `omniroute` CLI 의 하위 명령 문서. CLI 없으면 무의미 |
+| stablyai/orca | `orca-cli` `orca-jira` `orca-linear` `orca-emulator` `orca-emulator-android` `orca-per-workspace-env` `computer-use` `jira-tickets` `linear-tickets` `orchestration` `orca-chat-visuals` (11종) | 전부 `orca` CLI/플랫폼에 결합 |
+| deepseek-ai/deepseek-harness | `dsh-*` 16종 · `cordis-*` 3종 · `cordis-styling-nitpicking` · `diagnose-windows-sandbox-acl` · `record-browser-gif` (22종) | description 이 "DeepSeek Harness" / "Cordis" 를 명시. 이 저장소 밖에서 쓰면 오독 |
+| tt-a1i/archify | `archify-review` `archify-tuning` (2종) | archify 저장소 자체를 유지보수하는 스킬 |
+| anywhere-labs/dsh-desktop | (0종) | **`SKILL.md` 가 하나도 없다.** 스킬이 없는 저장소다 |
+
+- 테스트 픽스처(`tests/fixtures/...`, `snapshots/...`) 5종과 `ponytail` 중복 6종도 제외했다.
+
+### 51.4 ID 충돌 처리
+
+- mattpocock 의 `prototype`("질문을 답하기 위한 일회성 프로토타입")이 §50 에서 설치한
+  Emil Kowalski `prototype`("UI 변형 시각적 피커")와 **같은 ID** 다.
+- OpenCode v2 는 **디렉터리 이름이 곧 ID** 다(§33.4). 같은 폴더에 둘 수 없다.
+- **mattpocock 쪽을 `throwaway-prototype` 로 바꿨다.** §50 의 디자인 스위트 쪽(`prototype`)을 건드리지 않기 위함.
+  frontmatter `name` 도 함께 바꿨다. 업스트림 ID와 달라지므로 갱신 시 재적용이 필요하다.
+
+### 51.5 추가한 라우터 `workflow-playbook`
+
+- 설계 스킬 31종은 `design-playbook` 이 받는다. 엔진/문서 스킬은 **`workflow-playbook` 이 받는다.**
+- 겹치는 쌍을 명시적으로 갈라 놓았다: `code-review`(표준+명세 축) vs `ponytail-review`(평문 리뷰),
+  `ponytail-audit`(전수 감사) vs `improve-codebase-architecture`(HTML 리포트) vs `simplify-codebase`(삭제),
+  `clean-user-facing-text`(문장 정리) vs `remove-ai-marks`(출처 마크 제거).
+
+### 51.6 자동호출 숨김 (총 42개 / 노출 47개)
+
+| 그룹 | 스킬 | 사유 |
+|---|---|---|
+| **내가 숨김 — §50 (3개)** | `write-swift` `ask-sonner` `animate-expo` | Swift/React Native/Sonner — 이 저장소와 무관 (§50) |
+| **내가 숨김 — 배치 2 (13개)** | `moneyprinterturbo-video` | MoneyPrinterTurbo 앱과 API 키가 없으면 실행 불가 |
+| **내가 숨김 — 배치 2 (13개)** | `ponytail-gain` `ponytail-help` | 표시 전용(스코어보드·도움말). 자동 트리거할 이유가 없다 |
+| **내가 숨김 — 배치 2 (13개)** | `migrate-to-shoehorn` `scaffold-exercises` | 특정 niche(TS shoehorn, 강의 연습 생성) |
+| **내가 숨김 — 배치 2 (13개)** | `setup-pre-commit` `git-guardrails-claude-code` | **저장소 설정을 바꾸는 스킬.** 명시 호출만 허용 |
+| **내가 숨김 — 배치 2 (13개)** | `office-docx` `office-export-pdf` `office-pptx` `office-recalculate` `office-render` `office-xlsx` (6종) | `office` 라우터가 워크플로를 고르는 구조. 하위 스킬은 ID 지정 호출로만 |
+| **업스트림이 이미 숨김 (26개)** | `review-animations` `pick-ui-library` `prototype` (emilkowalski) | 업스트림 frontmatter 에 `disable-model-invocation: true` |
+| **업스트림이 이미 숨김 (26개)** | mattpocock 23종: `ask-matt` `implement` `implement-spec` `improve-codebase-architecture` `grill-me` `grill-with-docs` `handoff` `teach` `to-questionnaire` `wait-what` `to-spec` `to-tickets` `triage` `wayfinder` `retro` `setup-matt-pocock-skills` `chief-of-staff` `claude-handoff` `loop-me` `setup-ts-deep-modules` `writing-beats` `writing-fragments` `writing-shape` | **업스트림이 스스로 숨겼다.** 그대로 존중했다 |
+
+- OpenCode v2 는 `disable-model-invocation: true` 와 `metadata.opencode/autoinvoke: false` 를 **같은 효과**로 처리한다.
+  **둘 다 쓰면 `opencode/autoinvoke` 가 우선한다.** (§50.4 의 3종은 업스트림 플래그만으로 이미 숨겨진다)
+- 8종(`setup-matt-pocock-skills` `chief-of-staff` `claude-handoff` `loop-me` `setup-ts-deep-modules`
+  `writing-beats` `writing-fragments` `writing-shape`)은 **두 플래그를 모두** 갖는다. 결과는 같다.
+- 숨김 방식은 frontmatter `metadata.opencode/autoinvoke: false`. **숨겨도 ID 로 명시 호출은 된다.**
+- OpenCode 는 스킬 디렉터리에 파일 감시(watcher)를 걸고 변경마다 `skills rescanned` 로 다시 읽는다.
+  로그에서 이 동작을 확인했다. 단 **한 세션의 시스템 프롬프트는 세션 시작 시점 스냅샷**이라,
+  그 이후의 숨김 변경은 **새 세션**에서만 반영된다.
+
+### 51.7 Assetflow 적용 규칙
+
+- **기준은 여전히 §1·§28·§35.** 스킬은 근거가 아니라 후보다
+- 이 저장소에는 **이미 5개 서브에이전트 역할**(analyst/architect/developer/reviewer/tester)과
+  `/feature` `/review` 파이프라인이 있다. 스킬은 **모델을 위한 지시문**이지 그 역할을 대체하지 않는다
+- `triage` `to-spec` `to-tickets` `wayfinder` 는 이슈 트래커와 `docs/agents/` 레이아웃을 전제한다.
+  `setup-matt-pocock-skills`(숨김)를 먼저 한 번 돌리면 end-to-end 로 동작한다
+- `office` 계열은 deepseek-harness 전용 도구 `load_workspace_dependencies` 를 전제한다.
+  OpenCode 에는 없으니 **설정된 `python`/`node` 로 대체**하고 그 사실을 보고한다
+- **`ponytail-debt` 의 debt 는 코드 부채(미뤄둔 `shortcut:` 주석)다.**
+  이 저장소가 만드는 **금융 부채 기능과 다른 말**이다. 섞지 않는다
+- `wizard` 는 bash wizard 를 만든다. **이 머신은 Windows**다. 크로스플랫폼 CI 용도로만 쓴다
+- `archify` 와 `diagram-design` 는 §50 의 `design-playbook` 이 안내한다 (§50.6 참조)
+
+### 51.8 아직 하지 않은 것 (있는 척하지 않는다)
+
+- **LibreOffice sidecar 는 미설치다.** `office-export-pdf` `office-render` `office-recalculate` 는
+  아직 PDF 변환/렌더/재계산을 못 한다. `office` 스킬이 동의 절차를 기술하고 있으므로 필요할 때 그대로 따른다
+- **설치된 스킬은 전부 업스트림 스냅샷이다.** 2차 배치에 대해서도 업데이트 절차는 없다 (§50.6 와 동일)
+- **`dsh-*` 계열 16종이 제일 아깝다.** 설명서 품질이 좋은데 deepseek-harness 전용이라 제외했다.
+  나중에 harness 를 쓴다면 그때 다시 고려한다
+- `office` 계열은 실측하지 않았다. xlsx 읽기만 `samples/card/anonymized/synthetic-sample.xlsx` 로 확인했다
+  (openpyxl, 1시트 12행 × 8열, 한국어 헤더 정상). **docx/pptx/pdf 경로는 미검증**이다
 - FE: `CardImportPanel.test.tsx` — `/merchant-rules` 호출 및 미리보기 자동 선택.

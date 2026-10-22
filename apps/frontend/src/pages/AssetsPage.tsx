@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Card, Form, Input, InputNumber, Popconfirm, Space, Typography, type FormInstance } from "antd";
+import { Button, Card, Form, Grid, Input, InputNumber, Popconfirm, Space, Typography, type FormInstance } from "antd";
+import {
+  MobileListCardActions,
+  MobileListCardHeader,
+  MobileListCardItem,
+  MobileListCardMeta,
+} from "../components/MobileListCard";
 import { AppLayout } from "../layout/AppLayout";
 import { StandardNav } from "../layout/StandardNav";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
@@ -35,6 +41,10 @@ void TYPES; // §40.2 enum 참조 — 화면 추가 폼의 유형 제한에서 �
  * - 상태 4종은 StateBlock 단일 구현체를 재사용한다(§35 화면마다 다른 스피너 금지).
  */
 export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPageProps) {
+  const screens = Grid.useBreakpoint();
+  // §35 중단점: md 미만은 표 대신 카드형 리스트 — 4열 표는 좁은 폭에서 읽을 수 없다
+  const wide = Boolean(screens.md);
+
   const [rows, setRows] = useState<AssetAccountRow[] | null>(null);
   const [status, setStatus] = useState<SurfaceStatus>("loading");
   const [errorText, setErrorText] = useState("");
@@ -105,9 +115,9 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
 
   const renderRow = (row: AssetAccountRow, debt: boolean) => {
     if (editingId === row.id) {
-      return (
+      return wide ? (
         <tr key={row.id}>
-          <td colSpan={5}>
+          <td colSpan={4}>
             <EditForm form={form} isDebt={debt} />
             <Space style={{ marginTop: 8 }}>
               <Button type="primary" onClick={saveEdit}>저장</Button>
@@ -115,9 +125,17 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
             </Space>
           </td>
         </tr>
+      ) : (
+        <MobileListCardItem key={row.id}>
+          <EditForm form={form} isDebt={debt} />
+          <MobileListCardActions>
+            <Button type="primary" onClick={saveEdit}>저장</Button>
+            <Button onClick={cancelEdit}>취소</Button>
+          </MobileListCardActions>
+        </MobileListCardItem>
       );
     }
-    return (
+    return wide ? (
       <tr key={row.id}>
         <td>{row.name}</td>
         <td>{row.institutionName || "—"}</td>
@@ -131,6 +149,17 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
           </Space>
         </td>
       </tr>
+    ) : (
+      <MobileListCardItem key={row.id}>
+        <MobileListCardHeader title={row.name} value={`${row.balance.toLocaleString("ko-KR")}원`} />
+        <MobileListCardMeta>{row.institutionName || "—"}</MobileListCardMeta>
+        <MobileListCardActions>
+          <Button size="small" type="text" onClick={() => beginEdit(row)}>편집</Button>
+          <Popconfirm title="이 행을 삭제할까요?" onConfirm={() => void removeRow(row.id)}>
+            <Button size="small" type="text" danger>삭제</Button>
+          </Popconfirm>
+        </MobileListCardActions>
+      </MobileListCardItem>
     );
   };
 
@@ -164,17 +193,21 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
                 </Space>
               </div>
             ) : null}
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign: "left", paddingBottom: 8 }}>이름</th>
-                  <th style={{ textAlign: "left", paddingBottom: 8 }}>기관</th>
-                  <th style={{ textAlign: "right", paddingBottom: 8 }}>잔액</th>
-                  <th style={{ width: 120 }} />
-                </tr>
-              </thead>
-              <tbody>{assets.map((r) => renderRow(r, false))}</tbody>
-            </table>
+            {wide ? (
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: "left", paddingBottom: 8 }}>이름</th>
+                    <th style={{ textAlign: "left", paddingBottom: 8 }}>기관</th>
+                    <th style={{ textAlign: "right", paddingBottom: 8 }}>잔액</th>
+                    <th style={{ width: 120 }} />
+                  </tr>
+                </thead>
+                <tbody>{assets.map((r) => renderRow(r, false))}</tbody>
+              </table>
+            ) : (
+              <div>{assets.map((r) => renderRow(r, false))}</div>
+            )}
             <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
               합계 {totalAssets.toLocaleString("ko-KR")}원 — 저장하지 않고 행에서 재계산한다 (§31.1)
             </Typography.Paragraph>
@@ -208,7 +241,7 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
             ) : null}
             {liabilities.length === 0 ? (
               <Typography.Text type="secondary">부채가 비어 있는 것은 정상이다 (§31.4)</Typography.Text>
-            ) : (
+            ) : wide ? (
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr>
@@ -220,6 +253,8 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
                 </thead>
                 <tbody>{liabilities.map((r) => renderRow(r, true))}</tbody>
               </table>
+            ) : (
+              <div>{liabilities.map((r) => renderRow(r, true))}</div>
             )}
             <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
               합계 {totalLiabilities.toLocaleString("ko-KR")}원

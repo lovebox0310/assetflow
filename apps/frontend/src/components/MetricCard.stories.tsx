@@ -63,3 +63,19 @@ export const 에러: Story = {
 export const 구성비빈목록: Story = {
   args: { title: "자산 구성비", status: "ready", children: <AssetCompositionList slices={[]} /> },
 };
+
+/**
+ * 다크 모드 확인 경로 (§28.4).
+ * `.storybook/preview.tsx` 의 데코레이터가 `parameters.theme === "dark"` 를 읽어
+ * 다크 토큰(ConfigProvider + --af-* 변수)을 심는다. 다크 스토리가 없으면
+ * 다크 팔레트를 볼 방법이 없다.
+ */
+export const 다크모드: Story = {
+  parameters: { theme: "dark" },
+  args: {
+    title: "순자산",
+    status: "ready",
+    hint: formatKrwExact(net),
+    children: formatKrwAbbr(net),
+  },
+};
