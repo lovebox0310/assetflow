@@ -460,18 +460,20 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
           </StateBlock>
 
           <div style={{ marginTop: 16 }}>
-            <Form form={form} layout="inline" style={{ display: "flex", flexWrap: "wrap", gap: "10px 12px" }}>
+            <Form form={form} layout="inline" style={{ display: "flex", flexWrap: "wrap", gap: wide ? "10px 12px" : "12px" }}>
               <Form.Item name="label" rules={[{ required: true, message: "항목명을 입력하세요" }]}
-               >
-                <Input placeholder={editing ? "항목명(편집 중)" : "항목명"} style={{ width: 160 }}
+                style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}
+              >
+                <Input placeholder={editing ? "항목명(편집 중)" : "항목명"} style={{ width: wide ? 160 : "100%" }}
                   aria-label="항목 이름" />
               </Form.Item>
               <Form.Item name="amount" rules={[{ required: true, message: "월 금액을 입력하세요" }]}
-               >
-                <InputNumber placeholder="월 금액" min={0} style={{ width: 140 }} aria-label="월 금액" />
+                style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}
+              >
+                <InputNumber placeholder="월 금액" min={0} style={{ width: wide ? 140 : "100%" }} aria-label="월 금액" />
               </Form.Item>
-              <Form.Item name="purchaseVat">
-                <InputNumber placeholder="매입세액" min={0} style={{ width: 120 }} aria-label="매입세액" />
+              <Form.Item name="purchaseVat" style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}>
+                <InputNumber placeholder="매입세액" min={0} style={{ width: wide ? 120 : "100%" }} aria-label="매입세액" />
               </Form.Item>
               <Form.Item name="isEssential" valuePropName="checked">
                 <Checkbox>필수</Checkbox>
@@ -509,24 +511,24 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
               </div>
               {recForm ? (
                 <div style={{ marginTop: 12, borderTop: "1px solid var(--af-border)", paddingTop: 12 }}>
-                  <Form form={recFormInstance} layout="inline" style={{ display: "flex", flexWrap: "wrap", gap: "10px 12px" }}>
-                    <Form.Item name="label" rules={[{ required: true, message: "항목명을 입력하세요" }]}>
-                      <Input placeholder="항목명" style={{ width: 140 }} aria-label="정기 항목 이름" />
+                  <Form form={recFormInstance} layout="inline" style={{ display: "flex", flexWrap: "wrap", gap: wide ? "10px 12px" : "12px" }}>
+                    <Form.Item name="label" rules={[{ required: true, message: "항목명을 입력하세요" }]} style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}>
+                      <Input placeholder="항목명" style={{ width: wide ? 140 : "100%" }} aria-label="정기 항목 이름" />
                     </Form.Item>
-                    <Form.Item name="amount" rules={[{ required: true, message: "월 금액을 입력하세요" }]}>
-                      <InputNumber placeholder="월 금액" min={0} style={{ width: 120 }} aria-label="정기 월 금액" />
+                    <Form.Item name="amount" rules={[{ required: true, message: "월 금액을 입력하세요" }]} style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}>
+                      <InputNumber placeholder="월 금액" min={0} style={{ width: wide ? 120 : "100%" }} aria-label="정기 월 금액" />
                     </Form.Item>
-                    <Form.Item name="purchaseVat">
-                      <InputNumber placeholder="매입세액" min={0} style={{ width: 110 }} aria-label="정기 매입세액" />
+                    <Form.Item name="purchaseVat" style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}>
+                      <InputNumber placeholder="매입세액" min={0} style={{ width: wide ? 110 : "100%" }} aria-label="정기 매입세액" />
                     </Form.Item>
                     <Form.Item name="isEssential" valuePropName="checked">
                       <Checkbox>필수</Checkbox>
                     </Form.Item>
-                    <Form.Item name="startMonth" rules={[{ required: true, message: "시작월을 선택하세요" }]}>
-                      <Select placeholder="시작월" options={months.map((m) => ({ value: m, label: m }))} style={{ width: 120 }} aria-label="시작월" />
+                    <Form.Item name="startMonth" rules={[{ required: true, message: "시작월을 선택하세요" }]} style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}>
+                      <Select placeholder="시작월" options={months.map((m) => ({ value: m, label: m }))} style={{ width: wide ? 120 : "100%" }} aria-label="시작월" />
                     </Form.Item>
-                    <Form.Item name="endMonth">
-                      <Select placeholder="종료월" allowClear options={months.map((m) => ({ value: m, label: m }))} style={{ width: 120 }} aria-label="종료월" />
+                    <Form.Item name="endMonth" style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}>
+                      <Select placeholder="종료월" allowClear options={months.map((m) => ({ value: m, label: m }))} style={{ width: wide ? 120 : "100%" }} aria-label="종료월" />
                     </Form.Item>
                     <Button type="primary" onClick={() => void saveRecurring()}>저장</Button>
                     <Button onClick={() => setRecForm(null)}>취소</Button>
