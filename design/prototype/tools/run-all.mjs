@@ -17,6 +17,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const SUITES = [
   "test-mock-data.mjs",
   "test-assets-page.mjs",
+  "test-settings-page.mjs",
   "test-all-pages.mjs",
 ];
 
