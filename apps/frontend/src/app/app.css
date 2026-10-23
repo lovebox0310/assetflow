@@ -71,10 +71,29 @@ body,
 }
 
 .auth-page label {
-  display: grid;
-  gap: 4px;
+  display: block;
+  margin-bottom: 4px;
   font-size: 0.9rem;
   font-weight: 600;
+}
+
+/* 이슈 #74: 라벨·입력·도움말·오류를 한 묶음으로 세로 배치한다.
+   라벨이 입력을 감싸지 않으므로 htmlFor/id 로 연결한다(오류를 라벨 밖에 둔다). */
+.auth-page .auth-field {
+  display: grid;
+  gap: 4px;
+}
+
+.auth-desc {
+  margin: 0 0 16px;
+  color: var(--af-muted-foreground);
+  font-size: 0.9rem;
+}
+
+.field-help {
+  margin: 0;
+  color: var(--af-muted-foreground);
+  font-size: 0.8rem;
 }
 
 .auth-page input {
