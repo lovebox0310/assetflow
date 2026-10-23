@@ -2882,3 +2882,20 @@ POST /api/v1/assets/card-imports
 - `office` 계열은 실측하지 않았다. xlsx 읽기만 `samples/card/anonymized/synthetic-sample.xlsx` 로 확인했다
   (openpyxl, 1시트 12행 × 8열, 한국어 헤더 정상). **docx/pptx/pdf 경로는 미검증**이다
 - FE: `CardImportPanel.test.tsx` — `/merchant-rules` 호출 및 미리보기 자동 선택.
+
+---
+
+## 52) 화면 경로 동기화 — 해시 라우팅 (2026-10-23 확정, Issue #72)
+
+- 라우터 의존성 없이 `apps/frontend/src/app/routes.ts` + `history.pushState`/`popstate` 로 화면을
+  URL 에 남긴다. 경로는 `#/`(대시보드) · `#/assets` · `#/expenses` · `#/settings`.
+- **경로(path)가 아니라 해시를 택한 이유**: 배포가 정적 호스팅이다(§12 — Vercel + 홈서버 Caddy).
+  `/assets` 딥링크는 서버 rewrite(SPA fallback) 설정이 필요하고, 없는 환경에서 새로고침하면 404 가
+  된다. 해시는 rewrite 없이 같은 AC(뒤로가기·새로고침·딥링크)를 만족한다. 서버 설정이 생기면
+  `routes.ts` 의 `PAGE_PATHS` 만 바꾸면 된다.
+- 화면 판정 단일 출처는 `pageFromHash()` 다. 내비의 `aria-current`(§28.5, #70)도 이 값에서 나온다.
+  화면마다 다른 탭 제목은 `PAGE_TITLES`, 미인증은 `LOGIN_TITLE` 을 쓴다.
+- 로그인 전 딥링크로 들어오면 로그인 후 그 화면으로 복귀한다 — 화면 상태를 초기화하지 않는다.
+- 알 수 없는 해시는 대시보드로 떨어뜨리고 주소를 `#/` 로 정규화한다(새로고침해도 같은 화면).
+- stale hash 는 만들지 않는다: `pushState` 는 해시가 실제로 달라질 때만 부르고, 최초 진입의
+  정규화는 `replaceState`(히스토리 엔트리를 늘리지 않음)로 한다.
