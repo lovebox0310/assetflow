@@ -25,6 +25,8 @@ import { CardImportPanel } from "../components/CardImportPanel";
 interface AssetsPageProps {
   /** 대시보드로 돌아간다. */
   onBack: () => void;
+  /** §54.1: 자산의 하위 화면인 투자 화면으로 이동한다. */
+  onOpenInvestments?: () => void;
   /** 헤더 내비게이션 — 지출 화면으로 이동 (§42). */
   onOpenExpenses?: () => void;
   /** 헤더 내비게이션 — 설정 화면으로 이동 (§46). */
@@ -67,7 +69,7 @@ const TYPE_ORDER: AssetAccountRow["accountType"][] = ["cash", "deposit", "invest
  *   단일 출처라 이 화면에서 편집하지 않는다(읽기 전용 자리 표시).
  * - 상태 4종은 StateBlock 단일 구현체를 재사용한다(§35 화면마다 다른 스피너 금지).
  */
-export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPageProps) {
+export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSettings }: AssetsPageProps) {
   const screens = Grid.useBreakpoint();
   // §35 중단점: md 미만은 표 대신 카드형 리스트 — 4열 표는 좁은 폭에서 읽을 수 없다
   const wide = Boolean(screens.md);
@@ -244,6 +246,22 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
       <Typography.Title level={1} id="h-assets-page" style={{ fontSize: 24, margin: 0, marginBottom: 16 }}>
         자산
       </Typography.Title>
+      {/* §54.1: 자산의 하위 화면 탭 — 전역 nav 는 4개를 유지한다. */}
+      <nav aria-label="자산 하위 화면" style={{ marginBottom: 16 }}>
+        <Space size={4}>
+          <Button
+            type="link"
+            aria-label="자산 탭"
+            aria-current="page"
+            style={{ paddingInline: 8, fontWeight: 700, color: "var(--af-foreground)" }}
+          >
+            자산
+          </Button>
+          <Button type="link" aria-label="투자 탭" onClick={onOpenInvestments} style={{ paddingInline: 8 }}>
+            투자
+          </Button>
+        </Space>
+      </nav>
       <section aria-labelledby="h-assets" style={{ marginBottom: 24 }}>
         {/*
          * #69: 저장/삭제 실패를 화면에 알린다. role="alert" 로 두어 스크린리더가

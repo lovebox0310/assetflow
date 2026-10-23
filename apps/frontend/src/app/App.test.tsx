@@ -114,6 +114,21 @@ describe("URL 상태 동기화 (이슈 #72)", () => {
     expect(screen.getByRole("button", { name: "대시보드" }).getAttribute("aria-current")).toBeNull();
   });
 
+  it("자산 하위의 투자 화면으로 들어가도 URL·제목이 바뀌고 전역 nav 는 자산이 현재다", async () => {
+    render(<App />);
+    await screen.findByText("핵심 지표");
+
+    fireEvent.click(screen.getByRole("button", { name: "자산" }));
+    await screen.findByRole("heading", { name: "자산" });
+    fireEvent.click(screen.getByRole("button", { name: "투자 탭" }));
+
+    expect(await screen.findByRole("heading", { name: "투자" })).toBeDefined();
+    expect(window.location.hash).toBe("#/investments");
+    expect(document.title).toBe("투자 · AssetFlow");
+    expect(screen.getByRole("button", { name: "자산" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("button", { name: "투자 탭" }).getAttribute("aria-current")).toBe("page");
+  });
+
   it("뒤로가기(popstate) 면 이전 화면으로 돌아온다", async () => {
     render(<App />);
     await screen.findByText("핵심 지표");

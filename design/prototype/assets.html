@@ -992,7 +992,7 @@ var treeState = {}; // tree key -> expanded
         // 원금 필드는 자산 유형에 따라 다른 저장소를 쓴다(PRD 5.2).
         // 입력값은 "원금" 하나인데 저장은 둘로 갈린다. 편집 UI 는 그 차이를 숨긴다.
         var DEPOSIT_CLASSES = ["deposit", "savings", "cma", "isa", "pension", "irp"];
-        var INVEST_CLASSES = ["stock", "etf", "bond", "fund"];
+        var INVEST_CLASSES = ["stock", "etf", "bond", "fund", "crypto"];
 
         function isDepositClass(c) { return DEPOSIT_CLASSES.indexOf(c) >= 0; }
         function isInvestClass(c) { return INVEST_CLASSES.indexOf(c) >= 0; }
@@ -1920,7 +1920,7 @@ var treeState = {}; // tree key -> expanded
 
         // 원금 기준은 자산 유형이 정한다(PRD 5.2). 유형만 고르면 금액 필드가 갈린다.
         var DEPOSIT_CLASSES = ["deposit", "savings", "cma", "isa", "pension", "irp"];
-        var INVEST_CLASSES = ["stock", "etf", "bond", "fund"];
+        var INVEST_CLASSES = ["stock", "etf", "bond", "fund", "crypto"];
 
         function addAssetTo(institutionId, groupId) {
           var g = d.groups.filter(function (x) { return x.id === groupId; })[0];

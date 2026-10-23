@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { DashboardPage } from "../pages/DashboardPage";
 import { AssetsPage } from "../pages/AssetsPage";
+import { InvestmentsPage } from "../pages/InvestmentsPage";
 import { ExpensesPage } from "../pages/ExpensesPage";
 import { SettingsPage } from "../pages/SettingsPage";
 import { LoginPage } from "../pages/LoginPage";
@@ -68,6 +69,17 @@ export function App() {
       return (
         <AssetsPage
           onBack={() => navigate("dashboard")}
+          onOpenInvestments={() => navigate("investments")}
+          onOpenExpenses={() => navigate("expenses")}
+          onOpenSettings={() => navigate("settings")}
+        />
+      );
+    }
+    if (page === "investments") {
+      return (
+        <InvestmentsPage
+          onOpenDashboard={() => navigate("dashboard")}
+          onOpenAssets={() => navigate("assets")}
           onOpenExpenses={() => navigate("expenses")}
           onOpenSettings={() => navigate("settings")}
         />

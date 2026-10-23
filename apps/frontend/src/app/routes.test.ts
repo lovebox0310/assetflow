@@ -7,6 +7,7 @@ describe("routes — URL 상태 동기화 (이슈 #72)", () => {
     expect(pageFromHash("#")).toBe("dashboard");
     expect(pageFromHash("#/")).toBe("dashboard");
     expect(pageFromHash("#/assets")).toBe("assets");
+    expect(pageFromHash("#/investments")).toBe("investments");
     expect(pageFromHash("#/expenses")).toBe("expenses");
     expect(pageFromHash("#/settings")).toBe("settings");
   });
@@ -23,9 +24,9 @@ describe("routes — URL 상태 동기화 (이슈 #72)", () => {
   });
 
   it("화면마다 고유한 경로와 제목을 가진다", () => {
-    const pages = ["dashboard", "assets", "expenses", "settings"] as const;
-    expect(new Set(pages.map((p) => PAGE_PATHS[p])).size).toBe(4);
-    expect(new Set(pages.map((p) => PAGE_TITLES[p])).size).toBe(4);
+    const pages = ["dashboard", "assets", "investments", "expenses", "settings"] as const;
+    expect(new Set(pages.map((p) => PAGE_PATHS[p])).size).toBe(5);
+    expect(new Set(pages.map((p) => PAGE_TITLES[p])).size).toBe(5);
     for (const page of pages) {
       expect(pathForPage(page)).toBe(PAGE_PATHS[page]);
       expect(pageFromHash(pathForPage(page))).toBe(page);
