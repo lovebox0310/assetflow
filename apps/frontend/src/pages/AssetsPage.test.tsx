@@ -292,5 +292,40 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
       // 총합계는 유형별 합계와 별개로 그대로 (§31.1)
       expect(screen.getAllByText(/합계 4,000,000원/).length).toBeGreaterThan(0);
     });
+
+    it("invest 행은 예수금이 아니라 계좌 총액으로 보여 주고, 편집 대신 투자 화면 링크를 준다 (§54.3)", async () => {
+      const onOpenInvestments = vi.fn();
+      const rows = [
+        { id: 4, accountType: "invest" as const, name: "키움 투자금", institutionName: "키움증권", balance: 1_300_000, isDebt: false, openedAt: null },
+        { id: 1, accountType: "cash" as const, name: "생활비", institutionName: "", balance: 2_000_000, isDebt: false, openedAt: null },
+      ];
+      const portfolio = {
+        holdings: [],
+        accounts: [
+          {
+            accountId: 4, accountName: "키움 투자금", institutionName: "키움증권",
+            cashBalance: 1_300_000, holdingsValue: 29_700_000, totalValue: 31_000_000,
+          },
+        ],
+      };
+      vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+        const path = String(input);
+        if (path.includes("/investments/holdings")) return Promise.resolve(apiResponse(portfolio));
+        return Promise.resolve(apiResponse(rows));
+      }));
+      render(<AssetsPage onBack={() => {}} onOpenInvestments={onOpenInvestments} />);
+
+      expect(await screen.findByText("키움 투자금")).toBeDefined();
+      // 행 값: 예수금 1,300,000 이 아니라 총액 31,000,000
+      expect(screen.getByText("31,000,000원")).toBeDefined();
+      // 합계 = 31,000,000 + 2,000,000
+      expect(screen.getAllByText(/합계 33,000,000원/).length).toBeGreaterThan(0);
+      // invest 행에는 직접 편집/삭제 버튼이 없다 — 총액을 balance 로 저장하면 이중 계상
+      expect(screen.getAllByRole("button", { name: "삭제" }).length).toBe(1); // 현금 행만
+      expect(screen.getAllByRole("button", { name: "편집" }).length).toBe(1);
+
+      fireEvent.click(screen.getByRole("button", { name: "투자 화면에서 관리" }));
+      expect(onOpenInvestments).toHaveBeenCalled();
+    });
   });
 });
