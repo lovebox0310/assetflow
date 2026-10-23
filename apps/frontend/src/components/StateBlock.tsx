@@ -32,6 +32,9 @@ export function StateBlock({ status, onRetry, emptyText = "데이터가 없습�
         showIcon
         title="데이터를 불러오지 못했습니다"
         description={errorText || undefined}
+        /* 이슈 #70: 오류 알림도 aria-live — 읽기 전용 모드의 콘텐츠처럼
+           무음으로 렌더되지 않게 한다. role=alert(기본) + 즉시(al) 통지. */
+        aria-live="assertive"
         action={
           onRetry ? (
             <Button size="small" onClick={onRetry}>

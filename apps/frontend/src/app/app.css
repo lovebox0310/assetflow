@@ -163,3 +163,32 @@ body,
 .form-error {
   font-size: 0.85rem;
 }
+
+/* ── 접근성 (이슈 #70, §28.5) ─────────────────────────── */
+
+/* 스킵 링크: 포커스 전까지 화면 밖(-9999px), 포커스 시 좌상단에 나타난다.
+   첫 Tab 이 헤더 내비 대신 이 링크에 먼저 닿게 하는 것이 목적이다. */
+.af-skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 8px;
+  z-index: 1000;
+  padding: 8px 14px;
+  background: var(--af-card);
+  color: var(--af-foreground);
+  border: 1px solid var(--af-border-strong);
+  border-radius: 8px;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.af-skip-link:focus {
+  left: 8px;
+  outline: 2px solid var(--af-ring);
+  outline-offset: 2px;
+}
+
+/* 스킵 링크 이동 대상(#main): 포커스는 이동에만 쓰고 육안 링은 띄우지 않는다. */
+#main:focus {
+  outline: none;
+}
