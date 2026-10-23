@@ -14,6 +14,39 @@
 
 ---
 
+## 2026-10-23 — Sprint 4 착수: 로그인 한국어화(#74) · 대시보드 6개월 현금흐름(#73) · URL 동기화(#72)
+
+열린 Sprint 4 이슈 3건을 **독립 브랜치 3개**로 처리했다. 선행 조건인 PR #75(백엔드 현금흐름
+실스냅샷)는 브랜치를 최신화해 CI 3잡 통과 후 머지했다.
+
+### 무엇을 했나
+
+| # | 작업 | 산출물 |
+|---|---|---|
+| 1 | PR #75 최신화·머지 | `feat/dashboard-cashflow-snapshot-data` → main. BE `cashflow` 가 확정 스냅샷을 서빙(§46.5) |
+| 2 | #74 로그인 화면 한국어화 | `LoginPage` 카피를 프로토타입 `login.html` 과 일치 · `validate.ts` 메시지 한국어 · `index.html` title · `htmlFor`/`id` + `aria-invalid` + `aria-describedby`(도움말·오류). 영문 잔존 검사 테스트 추가 |
+| 3 | #73 대시보드 정적 값 제거 + 6개월 현금흐름 | `metrics.cashAccountCount()` 로 "현금 N계좌" 계산 · `metrics.cashflowWindow()` 로 최근 6개월 창 생성, 행 없는 월은 `confirmed:false` → 화면 "미확정"(0원·mock 으로 메우지 않음) · `AssetsPage`·`CardImportPanel` 의 `toLocaleString` 포맷을 `formatKrwExact()` 로 통일 · §35.5 기록 |
+| 4 | #72 URL 상태 동기화 | `app/routes.ts`(해시 경로·제목 단일 출처) + `App` 이 `pushState`/`popstate`/`hashchange` 로 화면 동기화 · 새로고침·딥링크·뒤로가기 · `aria-current` 가 URL 과 같은 출처 · 로그인 후 원래 경로 복귀 · 미지 해시는 `#/` 로 정규화 · §52 기록 |
+
+### 검증
+
+| 대상 | 방법 | 결과 |
+|---|---|---|
+| FE 타입·린트 | `pnpm typecheck` · `pnpm lint` | PASS · PASS |
+| FE 테스트 (#74) | `pnpm test` | 13파일 **106건** PASS (기존 103 + 신규 3) |
+| FE 테스트 (#73) | `pnpm test` | 13파일 **109건** PASS (기존 103 + 신규 6) |
+| FE 테스트 (#72) | `pnpm test` | 14파일 **112건** PASS (기존 103 + 신규 9) |
+| FE 빌드 | `pnpm build` | 3개 브랜치 모두 성공 (기존 chunk 크기 경고만) |
+| CI | PR #75 · #82 · #83 | quality/frontend/backend 게이트 PASS (#82·#83 은 PR 생성 후 확인) |
+
+### 남은 것
+
+- [ ] **PR 3건 머지** — #82(로그인) · #83(대시보드) · #84(URL 동기화). 머지 순서는 서로 독립이나
+      `App.test.tsx` 를 #82 와 #84 가 함께 만지므로 #82 → #84 가 충돌이 적다
+- [ ] **실브라우저 확인** — 해시 딥링크 새로고침, 키보드 뒤로가기, 탭 제목은 jsdom 한계로 실측 필요
+- [ ] #76 CI smoke 이슈 정리
+- [ ] 이전 항목에서 이어진 것: 화면 캡처, 스크린리더 실측
+
 ---
 
 ## 2026-10-23 — 프로토타입 비상금 저장 복구 + FE 접근성 AA 정합성 (#70) + 모바일 헤더 잘림
