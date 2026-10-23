@@ -147,8 +147,8 @@ export function CardImportPanel() {
     <Card aria-label="카드 내역 가져오기">
       <Space direction="vertical" style={{ width: "100%" }} size={12}>
         <Typography.Text strong>카드 내역 가져오기</Typography.Text>
-        {notice ? <Alert type="warning" showIcon title={notice} /> : null}
-        {errorText ? <Alert type="error" showIcon title={errorText} /> : null}
+        {notice ? <Alert type="warning" showIcon title={notice} role="status" aria-live="polite" /> : null}
+        {errorText ? <Alert type="error" showIcon title={errorText} aria-live="assertive" /> : null}
 
         {(phase === "idle" || phase === "error") && (
           <label>
@@ -175,6 +175,7 @@ export function CardImportPanel() {
         {phase === "review" && (
           <>
             <Table
+              aria-label="가져온 카드 내역 검토"
               size="small"
               rowKey="merchant"
               dataSource={groups}

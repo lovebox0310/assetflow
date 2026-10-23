@@ -16,6 +16,45 @@
 
 ---
 
+## 2026-10-23 — 프로토타입 비상금 저장 복구 + FE 접근성 AA 정합성 (#70) + 모바일 헤더 잘림
+
+세 작업을 **독립 브랜치 3개**로 나눠 커밋했다 (각각 main 기준 — `fix/mobile-header-wrap` · `fix/settings-emergency-save` · `feat/a11y-issue-70`). 로컬 검증은 끝났고 **푸시·PR 은 GitHub 인증 미연결로 대기**다.
+
+### 무엇을 했나
+
+| # | 작업 | 산출물 |
+|---|---|---|
+| 1 | 모바일 헤더 잘림 | `AppLayout` 헤더 모바일 `flexWrap: wrap` + `height: auto`/`minHeight 48` (데스크톱 64 유지) |
+| 2 | `settings.html` 비상금 입력 무동작 (이전 남은 것) | 목표 개월 input 이 **어떤 폼 안에도 없었다** → `<form id=emergencyForm>` 감싸기 · 저장/취소 버튼 · 1~24 정수 검증(오류 경고+aria-invalid) · `d.emergency.targetMonths` 갱신 후 `AF.recompute()` · 상태라인(role=status) 표시. 프로필 폼도 id 로 찾도록 교정 — `querySelector("form")` 은 첫 폼에만 묶여 **두 번째 폼 저장을 놓쳤다**. 프로필 저장값은 `d.user` 에 반영하고 취소 시 그 값으로 복원 (기본 리셋은 JS 주입 readonly 필드를 비우므로 preventDefault) |
+| 3 | 프로토타입 회귀 테스트 신규 | `tools/test-settings-page.mjs` **70건** (문서 구조 원문 검사 · 저장 · 검증 · 복원 · 폼 분리), `run-all.mjs` 에 4번째 스위트로 등록 |
+| 4 | #70 현재 페이지 내비 | `StandardNav`: `disabled` → `aria-current="page"` + 잉크색(--af-foreground)·굵기. 대비 재계산 **16.01:1(라이트) / 14.51:1(다크)** · 링크 slate **6.13 / 6.00:1** · 구 disabled 색 **3.49:1** (이슈 실측과 일치 — 미달이었음이 재확인) |
+| 5 | #70 제목 체계 | 4개 화면 h1 정확히 1개(대시보드·자산·지출·설정, 24px — 프로토타입 page-title 과 동일) + 섹션 h4→h2(시각 16px 유지) + MetricCard 제목 h3 (프로토타입 h3.card__label 체계와 일치) |
+| 6 | #70 키보드 요소 | 정기 칩 `span onClick` → **실제 `<button type=button>`** (✕ 중지 버튼은 형제로 분리 — button 안의 button 제거). 지출 행 액션 접근 이름에 항목명 결합 ("부가가치세 이 달만 수정") — "편집" ×5 중복 라벨 해소 |
+| 7 | #70 알림·표 | 지출 notice `role=status aria-live=polite`, 오류 블록·카드 오류 `aria-live=assertive`(role=alert 유지), 카드 안내 role=status. antd 표 4개 `aria-label`, 원시 표 3개 `aria-labelledby` + `th scope="col"` (CompositionDonut 범례는 이미 aria-label 보유) |
+| 8 | #70 스킵 링크·랜드마크 | 문서 첫 `<a href="#main">본문으로 건너뛰기</a>` + `<main id="main" tabIndex=-1>`, `.af-skip-link` (포커스 전 -9999px, 포커스 시 좌상단 + 링) |
+| 9 | a11y 통합 테스트 | `src/app/AppA11y.test.tsx` **16건** — h1 개수(4화면)·aria-current·대비(토큰에서 WCAG 공식 직접 계산해 고정)·스킵 링크 순서·칩 button 동작·액션 이름 결합·알림 role/aria-live·표 접근 이름 4종 |
+
+### 검증
+
+| 대상 | 방법 | 결과 |
+|---|---|---|
+| 프로토타입 | `node design/prototype/tools/run-all.mjs` | **4/4 스위트 PASS** (513건) |
+| FE 타입·린트 | `pnpm typecheck` · `pnpm lint` | PASS · PASS |
+| FE 테스트 | `pnpm test` | **13파일 103건 전부 PASS** (기존 87 + 신규 16) |
+| FE 빌드 | `pnpm build` | 성공 (경고는 기존 chunk 크기·동적 import 관련만) |
+| 대비 | WCAG 공식을 토큰 hex 에 직접 계산, 테스트로 고정 | 16.01 / 14.51 / 6.13 / 6.00:1 — 전부 4.5:1 이상 |
+
+기존 테스트 2건은 접근 이름이 바뀐 것을 반영하지 못해 깨진 것이었다: `CardImportPanel`(안내 → role=status), `ExpensesPage`(행 액션 이름에 항목명 결합). 둘 다 새 시맨틱에 맞춰 갱신했다 — 규칙을 억지로 되돌리지 않았다.
+
+### 남은 것
+
+- [ ] **3개 브랜치 푸시 + PR 생성** — GitHub 인증 미연결 (OpenClaw Settings → Agents → Tools). PR 본문에 #70 AC 대비 계산 결과 첨부 예정. PR 규약: issue 링크 · 변경 요약 · 테스트 결과 (CONTRIBUTING)
+- [ ] **실브라우저 키보드/스크린리더 실측** — jsdom 한계. 스킵 링크 첫 Tab · 포커스 링 · NVDA/보이스오버 낭독은 배포 후 수동 확인이 필요하다 (AC "이동할 수 있다/읽힌다" 의 실측)
+- [ ] 이전 항목에서 이어진 것: 화면 캡처, 대시보드 재시도 버튼 비활성 (이번 범위 밖)
+- [ ] settings.html 비상금 저장은 세션 내 반영이다 — 프로토타입 localStorage 정책은 지출·자산만 저장하는 기존 규약 유지 (새로고침 시 시드 복귀)
+
+---
+
 ## 2026-10-21 — 상위 10개 저장소 스킬 2차 설치 (59종 추가, 누적 88종)
 
 ### 무엇을 했나

@@ -345,11 +345,11 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
       title: "작업",
       render: (_: unknown, row: ExpenseItemRow) => (
         <Space size={0}>
-          <Button size="small" type="text" onClick={() => beginEdit(row)}>이 달만 수정</Button>
-          {row.recurringId ? <Button size="small" type="text" onClick={() => openRecurringEdit(row.recurringId)}>정기 항목 수정</Button> : null}
-          {!row.recurringId ? <Button size="small" type="text" onClick={() => convertToRecurring(row)}>정기 항목으로 등록</Button> : null}
+          <Button size="small" type="text" onClick={() => beginEdit(row)} aria-label={`${row.label} 이 달만 수정`}>이 달만 수정</Button>
+          {row.recurringId ? <Button size="small" type="text" onClick={() => openRecurringEdit(row.recurringId)} aria-label={`${row.label} 정기 항목 수정`}>정기 항목 수정</Button> : null}
+          {!row.recurringId ? <Button size="small" type="text" onClick={() => convertToRecurring(row)} aria-label={`${row.label} 정기 항목으로 등록`}>정기 항목으로 등록</Button> : null}
           <Popconfirm title="이 항목을 삭제할까요?" onConfirm={() => void removeItem(row.id)}>
-            <Button size="small" type="text" danger>삭제</Button>
+            <Button size="small" type="text" danger aria-label={`${row.label} 삭제`}>삭제</Button>
           </Popconfirm>
         </Space>
       ),
@@ -371,7 +371,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
       nav={<StandardNav current="expenses" onOpenDashboard={onOpenDashboard} onOpenAssets={onOpenAssets} onOpenSettings={onOpenSettings} />}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
-        <Typography.Title level={4} id="h-expenses" style={{ margin: 0 }}>지출</Typography.Title>
+        <Typography.Title level={1} id="h-expenses" style={{ fontSize: 24, margin: 0 }}>지출</Typography.Title>
         <Select
           aria-label="조회 월"
           value={month}
@@ -381,14 +381,16 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
         />
       </div>
 
+      {/* 이슈 #70: 변경 알림을 role=status + aria-live=polite 로 — 스크린리더가
+          화면 전환 없이도 안내를 읽는다. (notice 는 주로 실패·중복 안내다) */}
       {notice ? (
-        <Card style={{ marginBottom: 16 }}>
+        <Card style={{ marginBottom: 16 }} role="status" aria-live="polite">
           <Typography.Text type="warning">{notice}</Typography.Text>
         </Card>
       ) : null}
 
       <section aria-labelledby="h-items" style={{ marginBottom: 32 }}>
-        <Typography.Title level={4} id="h-items" style={{ margin: 0, marginBottom: 16 }}>월 지출 항목</Typography.Title>
+        <Typography.Title level={2} id="h-items" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>월 지출 항목</Typography.Title>
         <Card>
           {prevCount !== null && prevCount > 0 && itemStatus === "empty" ? (
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "var(--af-secondary)", border: "1px dashed var(--af-border)", borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
@@ -400,6 +402,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
             {items ? (
               wide ? (
               <Table
+                aria-label="월 지출 항목"
                 size="small"
                 rowKey="id"
                 dataSource={items}
@@ -441,10 +444,10 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
                         매입세액 {it.purchaseVat > 0 ? formatKrwExact(it.purchaseVat) : "—"}
                       </MobileListCardMeta>
                       <MobileListCardActions>
-                        <Button size="small" type="text" onClick={() => beginEdit(it)}>이 달만 수정</Button>
-                        {it.recurringId ? <Button size="small" type="text" onClick={() => openRecurringEdit(it.recurringId)}>정기 항목 수정</Button> : <Button size="small" type="text" onClick={() => convertToRecurring(it)}>정기 항목으로 등록</Button>}
+                        <Button size="small" type="text" onClick={() => beginEdit(it)} aria-label={`${it.label} 이 달만 수정`}>이 달만 수정</Button>
+                        {it.recurringId ? <Button size="small" type="text" onClick={() => openRecurringEdit(it.recurringId)} aria-label={`${it.label} 정기 항목 수정`}>정기 항목 수정</Button> : <Button size="small" type="text" onClick={() => convertToRecurring(it)} aria-label={`${it.label} 정기 항목으로 등록`}>정기 항목으로 등록</Button>}
                         <Popconfirm title="이 항목을 삭제할까요?" onConfirm={() => void removeItem(it.id)}>
-                          <Button size="small" type="text" danger>삭제</Button>
+                          <Button size="small" type="text" danger aria-label={`${it.label} 삭제`}>삭제</Button>
                         </Popconfirm>
                       </MobileListCardActions>
                     </MobileListCardItem>
@@ -488,7 +491,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
       </section>
 
       <section aria-labelledby="h-recurring" style={{ marginBottom: 32 }}>
-        <Typography.Title level={4} id="h-recurring" style={{ margin: 0, marginBottom: 16 }}>정기 항목 (고정지출)</Typography.Title>
+        <Typography.Title level={2} id="h-recurring" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>정기 항목 (고정지출)</Typography.Title>
         <Card>
           {recurring === null ? (
             <Typography.Text type="secondary">정기 항목을 불러올 수 없습니다</Typography.Text>
@@ -496,16 +499,27 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
             <>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                 {recurring.map((r) => (
-                  <span
+                  /*
+                    이슈 #70: span onClick 대신 실제 button — 키보드 포커스·Enter/Space
+                    동작이 브라우저가 책임진다. ✕(중지) 버튼은 중첩 버튼(잘못된 HTML)을
+                    피하기 위해 형제로 분리했다.
+                  */
+                  <div
                     key={r.id}
-                    onClick={() => setRecForm(r)}
-                    style={{ background: "var(--af-secondary)", border: "1px solid var(--af-border)", borderRadius: 20, padding: "5px 12px", fontSize: 12.5, display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer" }}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--af-secondary)", border: "1px solid var(--af-border)", borderRadius: 20, padding: "5px 6px 5px 12px", fontSize: 12.5 }}
                   >
-                    <span><b>{r.label}</b> {formatKrwExact(r.amount)}{r.isEssential ? " · 필수" : ""} · {r.endMonth ? <span className="af-mono">~{r.endMonth}</span> : "무기한"}</span>
+                    <button
+                      type="button"
+                      onClick={() => setRecForm(r)}
+                      aria-label={`${r.label} 정기 항목 편집`}
+                      style={{ background: "none", border: "none", padding: 0, margin: 0, font: "inherit", display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer", color: "inherit", textAlign: "left" }}
+                    >
+                      <span><b>{r.label}</b> {formatKrwExact(r.amount)}{r.isEssential ? " · 필수" : ""} · {r.endMonth ? <span className="af-mono">~{r.endMonth}</span> : "무기한"}</span>
+                    </button>
                     <Popconfirm title="정기 항목을 중지할까요? (이미 만들어진 월 표 행은 유지됩니다)" onConfirm={() => void removeRecurring(r.id)}>
-                      <Button type="text" size="small" onClick={(e) => e.stopPropagation()} aria-label={`${r.label} 정기 중지`}>✕</Button>
+                      <Button type="text" size="small" aria-label={`${r.label} 정기 중지`}>✕</Button>
                     </Popconfirm>
-                  </span>
+                  </div>
                 ))}
                 <Button type="dashed" onClick={() => setRecForm("new")}>+ 정기 항목 추가</Button>
               </div>
@@ -541,7 +555,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
       </section>
 
       <section aria-labelledby="h-snapshot" style={{ marginBottom: 32 }}>
-        <Typography.Title level={4} id="h-snapshot" style={{ margin: 0, marginBottom: 16 }}>월 기준 입력</Typography.Title>
+        <Typography.Title level={2} id="h-snapshot" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>월 기준 입력</Typography.Title>
         <Card>
           <Space direction="vertical" style={{ width: "100%" }} size={8}>
             <Space wrap>
@@ -571,12 +585,13 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
       </section>
 
       <section aria-labelledby="h-card-imports" style={{ marginBottom: 32 }}>
-        <Typography.Title level={4} id="h-card-imports" style={{ margin: 0, marginBottom: 16 }}>가져온 카드내역</Typography.Title>
+        <Typography.Title level={2} id="h-card-imports" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>가져온 카드내역</Typography.Title>
         <Card>
           <StateBlock status={cardStatus} onRetry={loadCard} errorText={cardError} emptyText="이 월에 반영된 카드 내역이 없습니다">
             {cardRows ? (
               wide ? (
               <Table
+                aria-label="가져온 카드내역"
                 size="small"
                 rowKey="rowKey"
                 dataSource={cardRows}
