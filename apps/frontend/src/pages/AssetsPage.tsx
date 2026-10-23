@@ -17,6 +17,7 @@ import {
   type AssetAccountRow,
   type UpsertPayload,
 } from "../api/assetsApi";
+import { getPortfolio, type Portfolio } from "../api/investmentsApi";
 import { clearInflight } from "../api/client";
 import { clearToken } from "../auth/authStore";
 import { formatKrwExact } from "../utils/formatters";
@@ -75,6 +76,7 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
   const wide = Boolean(screens.md);
 
   const [rows, setRows] = useState<AssetAccountRow[] | null>(null);
+  const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [status, setStatus] = useState<SurfaceStatus>("loading");
   const [errorText, setErrorText] = useState("");
   const [editingId, setEditingId] = useState<number | "new" | null>(null);
@@ -85,9 +87,15 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
     clearInflight(); // 앞선 요청의 dedupe 잔여를 비우고 새로 읽는다
     setStatus("loading");
     setErrorText("");
-    listAccounts()
-      .then((data) => {
+    Promise.all([
+      listAccounts(),
+      // §54.3: 투자 계좌의 총액은 예수금 + 평가액이다. 포트폴리오 조회가 실패해도
+      // 자산 목록은 보여야 하므로 보조값으로만 쓰고, 없으면 balance 로 폴백한다.
+      getPortfolio().catch(() => null),
+    ])
+      .then(([data, portfolioData]) => {
         setRows(data);
+        setPortfolio(portfolioData && Array.isArray(portfolioData.accounts) ? portfolioData : null);
         setStatus(data.length === 0 ? "empty" : "ready");
       })
       .catch((e: Error) => {
@@ -104,7 +112,11 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
 
   const assets = rows?.filter((r) => !r.isDebt) ?? [];
   const liabilities = rows?.filter((r) => r.isDebt) ?? [];
-  const totalAssets = assets.reduce((acc, r) => acc + r.balance, 0);
+  const investTotals = new Map((portfolio?.accounts ?? []).map((a) => [a.accountId, a.totalValue]));
+  /** §54.3: invest 행은 예수금이 아니라 계좌 총액(예수금+평가액)을 보여 준다. */
+  const displayValue = (row: AssetAccountRow) =>
+    row.accountType === "invest" ? investTotals.get(row.id) ?? row.balance : row.balance;
+  const totalAssets = assets.reduce((acc, r) => acc + displayValue(r), 0);
   const totalLiabilities = liabilities.reduce((acc, r) => acc + r.balance, 0);
 
   const beginCreate = () => {
@@ -113,6 +125,9 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
   };
 
   const beginEdit = (row: AssetAccountRow) => {
+    // §54.3: invest 행의 balance 는 예수금이다. 이 화면에서 총액을 편집하면
+    // 예수금 자리에 총액이 저장돼 이중 계상된다 — 편집은 투자 화면에서만.
+    if (row.accountType === "invest") return;
     setEditingId(row.id);
     form.setFieldsValue({
       accountType: row.accountType,
@@ -201,28 +216,42 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
           <Tag>{TYPE_LABELS[row.accountType]}</Tag>
         </td>
         <td>{row.institutionName || "—"}</td>
-        <td style={{ textAlign: "right" }}>{formatKrwExact(row.balance)}</td>
+        <td style={{ textAlign: "right" }}>{formatKrwExact(displayValue(row))}</td>
         <td>
-          <Space>
-            <Button size="small" type="text" onClick={() => beginEdit(row)}>편집</Button>
-            <Popconfirm title="이 행을 삭제할까요?" onConfirm={() => void removeRow(row.id)}>
-              <Button size="small" type="text" danger>삭제</Button>
-            </Popconfirm>
-          </Space>
+          {row.accountType === "invest" ? (
+            <Button size="small" type="text" onClick={onOpenInvestments}>
+              투자 화면에서 관리
+            </Button>
+          ) : (
+            <Space>
+              <Button size="small" type="text" onClick={() => beginEdit(row)}>편집</Button>
+              <Popconfirm title="이 행을 삭제할까요?" onConfirm={() => void removeRow(row.id)}>
+                <Button size="small" type="text" danger>삭제</Button>
+              </Popconfirm>
+            </Space>
+          )}
         </td>
       </tr>
     ) : (
       <MobileListCardItem key={row.id}>
-        <MobileListCardHeader title={row.name} value={`${formatKrwExact(row.balance)}`} />
+        <MobileListCardHeader title={row.name} value={`${formatKrwExact(displayValue(row))}`} />
         <MobileListCardMeta>
           {TYPE_LABELS[row.accountType]}
           {row.institutionName ? ` · ${row.institutionName}` : ""}
         </MobileListCardMeta>
         <MobileListCardActions>
-          <Button size="small" type="text" onClick={() => beginEdit(row)}>편집</Button>
-          <Popconfirm title="이 행을 삭제할까요?" onConfirm={() => void removeRow(row.id)}>
-            <Button size="small" type="text" danger>삭제</Button>
-          </Popconfirm>
+          {row.accountType === "invest" ? (
+            <Button size="small" type="text" onClick={onOpenInvestments}>
+              투자 화면에서 관리
+            </Button>
+          ) : (
+            <Space>
+              <Button size="small" type="text" onClick={() => beginEdit(row)}>편집</Button>
+              <Popconfirm title="이 행을 삭제할까요?" onConfirm={() => void removeRow(row.id)}>
+                <Button size="small" type="text" danger>삭제</Button>
+              </Popconfirm>
+            </Space>
+          )}
         </MobileListCardActions>
       </MobileListCardItem>
     );
@@ -304,7 +333,7 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
             ) : (
               <div>{assets.map((r) => renderRow(r, false))}</div>
             )}
-            <AssetTotals assets={assets} total={totalAssets} />
+            <AssetTotals assets={assets} total={totalAssets} valueOf={displayValue} />
           </StateBlock>
         </Card>
       </section>
@@ -387,12 +416,21 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
  * 여기서 볼 수 있다. 값이 0원인 유형도 자리를 지킨다: 0 을 숨기면
  * "투자 행이 없다"와 "투자 행이 0원이다"가 구별되지 않는다(§28.7 분자가 0 이던 상태).
  */
-function AssetTotals({ assets, total }: { assets: AssetAccountRow[]; total: number }) {
+function AssetTotals({
+  assets,
+  total,
+  valueOf,
+}: {
+  assets: AssetAccountRow[];
+  total: number;
+  /** §54.3: invest 행은 계좌 총액(예수금+평가액)으로 센다. */
+  valueOf: (row: AssetAccountRow) => number;
+}) {
   return (
     <div style={{ marginTop: 12 }}>
       <Space size={[16, 4]} wrap>
         {TYPE_ORDER.map((type) => {
-          const sum = assets.filter((r) => r.accountType === type).reduce((acc, r) => acc + r.balance, 0);
+          const sum = assets.filter((r) => r.accountType === type).reduce((acc, r) => acc + valueOf(r), 0);
           // exactOptionalPropertyTypes: type={undefined} 를 넘길 수 없다 —
           // 0원일 때만 secondary 를 붙이려고 스프레드를 쓴다.
           const tone = sum > 0 ? {} : { type: "secondary" as const };
