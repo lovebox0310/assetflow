@@ -162,3 +162,29 @@ CREATE TABLE recurring_expenses (
 
 -- 월 지출 항목이 어떤 정기 항목에서 생성됐는지 — FE 의 정기/수동 배지와 "정기 항목 수정" 링크용
 ALTER TABLE monthly_expense_items ADD COLUMN recurring_id BIGINT REFERENCES recurring_expenses (id);
+
+-- ---------------------------------------------------------------------------
+-- investment_holdings: 투자 계좌의 보유종목 (§54.2 — 2026-10-24 확정, Sprint 5 E1).
+-- 계좌(asset_accounts, account_type='invest')의 balance 는 예수금이다(§54.3).
+-- 평가액·손익·총액은 저장하지 않는다 — 수량 × 가격 × 환율로 매번 계산한다.
+-- crypto 는 소수 수량이 필요해 quantity 만 NUMERIC(24,8) 이다.
+-- ---------------------------------------------------------------------------
+CREATE TABLE investment_holdings (
+    id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id      BIGINT NOT NULL REFERENCES users (id),
+    account_id   BIGINT NOT NULL REFERENCES asset_accounts (id) ON DELETE CASCADE,
+    asset_class  VARCHAR(16) NOT NULL
+                 CHECK (asset_class IN ('stock', 'etf', 'bond', 'fund', 'crypto')),
+    symbol       VARCHAR(32),                 -- '005930' · 'BTC' (없을 수 있음)
+    name         VARCHAR(100) NOT NULL,
+    currency     CHAR(3) NOT NULL DEFAULT 'KRW',
+    quantity     NUMERIC(24, 8) NOT NULL CHECK (quantity >= 0),
+    avg_price    NUMERIC(20, 4) NOT NULL CHECK (avg_price >= 0),
+    market_price NUMERIC(20, 4) NOT NULL CHECK (market_price >= 0),
+    fx_rate      NUMERIC(12, 6) NOT NULL DEFAULT 1 CHECK (fx_rate > 0),
+    price_as_of  DATE,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT ck_holding_currency CHECK (currency ~ '^[A-Z]{3}$')
+);
+CREATE INDEX ix_holdings_user_account ON investment_holdings (user_id, account_id);
