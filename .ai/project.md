@@ -2924,6 +2924,10 @@ Sprint 1~4 종료 시점(열린 이슈 0건)에서 다음 스프린트는 아직
 | C2 | 데이터 | 6개월 현금흐름의 "미확정" 월 해소 | §35.5 |
 | D1 | 계정 | 비밀번호 변경 기능(설정 화면) | §42 백로그 |
 | D2 | 계정 | 소셜 로그인 검토 — 구현이 아니라 비교·결정 | §21 |
+| E1 | 투자 | 보유종목 스키마·CRUD API — `investment_holdings`, invest 계좌만 허용 | §54.2 · §54.8 |
+| E2 | 투자 | `/investments` 화면 — 요약·자산군 필터·계좌 그룹 표·도넛 | §54.5 |
+| E3 | 투자 | `/assets`·대시보드 연동 — 투자 계좌 읽기 전용 총액, 구성비·비상금 분자 교체 | §54.3 |
+| E4 | 투자 | 수동 가격 갱신 UX + 코인 소수·환율 회귀 테스트 | §54.4 |
 
 ### 53.2 테마 묶음
 
@@ -2932,6 +2936,7 @@ Sprint 1~4 종료 시점(열린 이슈 0건)에서 다음 스프린트는 아직
 - **B 카드 임포트 완성**: B1~B2. 실명세서를 그대로 올리는 경로를 완성한다.
 - **C 월 확정 워크플로**: C1~C2. 대시보드 "미확정" 표시를 실제로 줄인다.
 - **D 계정 기능**: D1~D2. 보안·확장.
+- **E 투자 포트폴리오**: E1~E4. 주식·채권·코인 보유를 입력·평가한다(§54 설계 확정, 구현 보류).
 
 ### 53.3 확정 절차 (확정하는 날)
 
@@ -2944,3 +2949,103 @@ Sprint 1~4 종료 시점(열린 이슈 0건)에서 다음 스프린트는 아직
 
 - 이슈 등록·구현 착수는 보류한다(2026-10-24 사용자 결정). 라벨 `sprint:5` 도 만들지 않는다.
 - D2(소셜 로그인)는 확정 후보에서 빠질 수 있다 — §21 의 "검토"는 구현 약속이 아니다.
+
+---
+
+## 54) 투자 포트폴리오 화면 — /investments (2026-10-24 확정, 미구현)
+
+결정일: 2026-10-24
+상태: 설계 확정 · 구현 보류(§53 후보 E)
+근거: 프로토타입 `assets.html` 의 투자자산 필드(assetClass·quantity·avgPrice·currentValue·returnRate,
+PRD 5.2/5.3)는 이미 있으나 구현 모델(`asset_accounts.balance`)에는 자리가 없다. 주식·채권·코인을
+입력할 화면과 저장 구조를 확정한다.
+
+### 54.1 화면 위치: /investments + 자산 탭
+- 새 화면 `#/investments` 를 둔다. 전역 헤더 내비는 4개(대시보드·자산·지출·설정)를 유지한다 —
+  모바일 nav 는 이미 13px·nowrap 이라 5번째를 넣으면 향후 `/forecast`·`/tax` 확장이 막힌다.
+- 자산 화면 상단에 `자산 | 투자` 탭을 두고 투자 탭이 `#/investments` 로 이동한다. 투자 화면에서도
+  헤더의 "자산"이 `aria-current="page"` 를 유지한다 — 투자는 자산의 하위 화면이고, 화면 판정은
+  `routes.ts` 단일 출처(§52)를 그대로 쓴다.
+- `routes.ts` 에 `investments` 를 추가한다: `PAGE_PATHS.investments = "#/investments"`,
+  `PAGE_TITLES.investments = "투자 · AssetFlow"`. 미지 해시 정규화 규칙은 §52 그대로다.
+
+### 54.2 데이터 모델: 계좌는 그대로, 보유종목을 분리
+`asset_accounts`(account_type='invest')는 **증권·거래소 계좌**로 유지하고, 종목은 새 표로 분리한다.
+
+```
+investment_holdings (
+    id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id      BIGINT NOT NULL REFERENCES users (id),
+    account_id   BIGINT NOT NULL REFERENCES asset_accounts (id) ON DELETE CASCADE,
+    asset_class  VARCHAR(16) NOT NULL
+                 CHECK (asset_class IN ('stock', 'etf', 'bond', 'fund', 'crypto')),
+    symbol       VARCHAR(32),                 -- '005930' · 'BTC' (없을 수 있음)
+    name         VARCHAR(100) NOT NULL,
+    currency     CHAR(3) NOT NULL DEFAULT 'KRW',
+    quantity     NUMERIC(24, 8) NOT NULL CHECK (quantity >= 0),   -- 코인 소수 수량
+    avg_price    NUMERIC(20, 4) NOT NULL CHECK (avg_price >= 0),
+    market_price NUMERIC(20, 4) NOT NULL CHECK (market_price >= 0),
+    fx_rate      NUMERIC(12, 6) NOT NULL DEFAULT 1 CHECK (fx_rate > 0),
+    price_as_of  DATE,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+- `crypto` 는 프로토타입 `INVEST_CLASSES`(stock·etf·bond·fund)에 없던 값이다 — 프로토타입에도 같이
+  추가한다(E2). `asset_accounts.balance` 는 BIGINT(원) 그대로 둔다.
+- `account_id` 는 `account_type='invest'` 인 행만 허용한다. 테이블 CHECK 는 다른 표를 볼 수 없으므로
+  **API 검증(400)** 으로 강제한다.
+- `fx_rate` 는 원화 환산 수동 환율(기본 1)이다. 외부 시세·환율 API 는 IA 맵의 MVP 제외와 일치한다.
+- `price_as_of` 는 마지막 가격 입력일 — 화면에 "기준일"로 표시한다.
+
+### 54.3 예수금: invest 계좌의 balance 가 예수금이다
+- `invest` 계좌의 `balance` 의미를 **예수금(현금성 잔액)** 으로 재정의한다. 총액은 저장하지 않는다:
+  `계좌 총액 = balance + Σ(quantity × market_price × fx_rate)`
+- 기존 시드(키움 투자금 31,000,000 · 미국주식 23,500,000)는 보유종목이 없는 예수금으로 해석된다.
+  E1 에서 시드를 "예수금 + 종목"으로 나눠 다시 심는다 — 총액이 우연히 같아도 구성이 다르면
+  구성비가 달라지므로, 화면 값이 바뀌는 것을 허용한다.
+- **이중 계상 금지**: 대시보드 `invest` 구성비(§36.2)와 비상금 유지 개월의 분자(§28.7)는
+  `balance + Σ평가액` 을 소비한다. `balance` 만 더하면 보유종목이 사라지고, 둘 다 더하면 두 번 센다.
+
+### 54.4 계산 계약
+| 값 | 정의 | 저장 |
+|---|---|---|
+| 원금 | quantity × avg_price × fx_rate | ✗ |
+| 평가액 | quantity × market_price × fx_rate | ✗ |
+| 손익 | 평가액 − 원금 | ✗ |
+| 수익률 | 원금 > 0 ? 손익 / 원금 : "—" | ✗ |
+| 계좌 총액 | balance + Σ평가액 | ✗ |
+| 자산군 비중 | Σ평가액(군) / Σ평가액(전체) | ✗ |
+
+- 내부 계산은 BigDecimal/NUMERIC, **표시와 합계는 마지막에 원 단위 HALF_UP 1회**만 한다
+  (행별 반올림 후 합산하면 합계가 몇 원씩 어긋난다 — §31.1 의 "저장하지 않는 합계" 규칙과 같은 이유).
+- 원금 0(평단가 0)이면 수익률은 0% 가 아니라 **"—"** 로 표시한다. 0% 는 "본전"이라는 거짓말이 된다.
+- 빈 상태 구분은 §31.4 를 따른다: "종목 없음"(빈 배열)과 "평가액 0원"은 다른 상태다.
+
+### 54.5 화면 구성
+1. 요약 4칸: 총 평가액 · 총 원금 · 평가손익(수익률) · 예수금
+2. 자산군 필터: 전체 / 주식 / ETF / 채권 / 펀드 / 코인
+3. 계좌별 그룹 표: 증권사·계좌 헤더 + `종목 · 수량 · 평단가 · 현재가 · 평가액 · 손익 · 비중`
+4. 구성 도넛: 자산군 비중 — `CompositionDonut` 재사용(§36.2)
+5. 상태: 로딩·빈 목록·오류(재시도), 가격 기준일, 모바일 카드형 전환
+
+### 54.6 범위
+- 포함: 위 5개 자산군, 원화·외화 수동 환율, 현재가 수동 갱신, 계좌별 그룹, 종목 CRUD
+- 제외: 증권사·거래소 API 자동 시세, 채권 경과이자·만기 계산, 세금, 리밸런싱 제안,
+  과거 포트폴리오 복원(월 스냅샷은 총액만 — §37), 증권사 CSV 임포트(후속 후보)
+
+### 54.7 리스크
+- `invest` 계좌 `balance` 의미 전환 — 기존 데이터·시드·테스트 픽스처를 함께 고쳐야 한다
+- 비상금 분자(§28.7)·구성비 기준선(§36.2)이 holdings 를 소비하도록 바뀐다 — E3 에서 테스트로 고정
+- 스냅샷은 총액만 남으므로 월별 손익 추이는 v1 에서 제공하지 않는다
+- 수동 환율·수동 시세는 정확도의 한계를 화면에 숨기지 않는다(기준일 표시)
+- 계좌별 합산 시 N+1 조회 — 목록 API 는 holdings 를 한 번에 집계한다
+
+### 54.8 이슈 분할 (§53 후보 E)
+| # | 내용 | AC 핵심 |
+|---|---|---|
+| E1 | 스키마 + holdings CRUD API | invest 계좌만 허용(400), 소수 수량·음수 검증, 계좌 총액 응답 |
+| E2 | `/investments` 화면 | 요약·필터·그룹 표·도넛·빈/오류, crypto 클래스 포함 |
+| E3 | `/assets`·대시보드 연동 | 투자 계좌 읽기 전용 총액 + 링크, 구성비·비상금 분자 소스 교체 |
+| E4 | 가격 갱신 UX + 회귀 | 인라인 가격 편집, 기준일, 코인 소수·환율 테스트 |
