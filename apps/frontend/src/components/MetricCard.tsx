@@ -19,7 +19,11 @@ interface MetricCardProps {
  */
 export function MetricCard({ title, status, onRetry, children, hint }: MetricCardProps) {
   return (
-    <Card title={title} style={{ height: "100%" }}>
+    /*
+      이슈 #70 제목 체계: 카드 제목은 h3 (§ 표준: h1 페이지 → h2 섹션 → h3 카드).
+      시각 크기는 기존과 동일하다(1em = 부모 16px, 굵기 600).
+    */
+    <Card title={<h3 style={{ margin: 0, fontSize: "1em", fontWeight: 600 }}>{title}</h3>} style={{ height: "100%" }}>
       <StateBlock status={status} {...(onRetry ? { onRetry } : {})}>
         <div className="af-num" style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.35 }}>
           {children}

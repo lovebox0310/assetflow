@@ -93,7 +93,7 @@
                   <span>이름과 이메일은 모두 입력해야 합니다.</span>
                 </div>
 
-                <form novalidate>
+                <form novalidate id="profileForm">
                   <div class="field">
                     <label class="field__label field__label--required" for="name">이름</label>
                     <input
@@ -142,6 +142,12 @@
                   대시보드의 "비상금 유지 개월" 계산에 쓰이는 분모입니다.
                 </p>
 
+                <div class="form-alert" role="alert" hidden id="emergencyAlert">
+                  <span aria-hidden="true">!</span>
+                  <span>목표 개월은 1~24 사이의 정수로 입력해야 합니다.</span>
+                </div>
+
+                <form novalidate id="emergencyForm">
                 <div class="field">
                   <label class="field__label" for="essentialReadonly">
                     월 필수지출 (지출 화면에서 계산)
@@ -186,10 +192,20 @@
                     max="24"
                     step="1"
                     value="6"
-                    aria-describedby="target-help"
+                    aria-describedby="target-help target-error"
                   />
                   <p class="field__help" id="target-help">권장 6개월입니다.</p>
+                  <p class="field__error" id="target-error" hidden>
+                    <span aria-hidden="true">!</span> 1~24 사이의 정수로 입력하세요.
+                  </p>
+                  <p class="field__help" role="status" id="targetStatus"></p>
                 </div>
+
+                <div class="actions">
+                  <button type="submit" class="btn btn--primary">저장</button>
+                  <button type="reset" class="btn">취소</button>
+                </div>
+                </form>
 
                 <div class="notice" role="status">
                   <span aria-hidden="true">i</span>
@@ -248,7 +264,9 @@
           " + 확정 미반영 " + f.formatKRW(d.expenses.notIncludedAmount) +
           (d.expenses.emergencyIncomplete ? " (미확정 항목 제외됨)" : "");
 
-        var form = document.querySelector("form");
+        // 폼을 id 로 찾는다. 비상금 폼이 추가되면서 querySelector("form")은
+        // 첫 번째 폼에만 묶여 있어 두 번째 폼의 저장을 놓친다.
+        var form = document.getElementById("profileForm");
         var alertBox = document.getElementById("saveAlert");
         var name = document.getElementById("name");
         var email = document.getElementById("email");
@@ -269,7 +287,89 @@
 
           document.getElementById("sumName").textContent = name.value.trim();
           document.getElementById("sumEmail").textContent = email.value.trim();
+          // 저장값이 취소(리셋) 복원 기준이 되도록 데이터에도 반영한다.
+          d.user.name = name.value.trim();
+          d.user.email = email.value.trim();
           alertBox.hidden = true;
+        });
+
+        form.addEventListener("reset", function (e) {
+          // 브라우저 기본 리셋은 value 속성이 없는 JS 주입 필드를 비운다.
+          // 막고 데이터 기준으로 직접 복원한다.
+          e.preventDefault();
+          name.value = d.user.name;
+          email.value = d.user.email;
+          name.removeAttribute("aria-invalid");
+          email.removeAttribute("aria-invalid");
+          nameError.hidden = true;
+          emailError.hidden = true;
+          alertBox.hidden = true;
+        });
+
+        /* ---- 비상금 목표 개월 (이전엔 어떤 처리도 없었다) ---- */
+        var emergencyForm = document.getElementById("emergencyForm");
+        var emergencyAlert = document.getElementById("emergencyAlert");
+        var target = document.getElementById("target");
+        var targetError = document.getElementById("target-error");
+        var targetStatus = document.getElementById("targetStatus");
+
+        // 데이터 기준으로 채우고 기본값도 함께 맞춘다(취소 버튼이 저장값으로 복귀).
+        function syncTargetFromData() {
+          target.value = String(d.emergency.targetMonths);
+          target.defaultValue = String(d.emergency.targetMonths);
+        }
+
+        function clearTargetFeedback() {
+          targetError.hidden = true;
+          emergencyAlert.hidden = true;
+          target.removeAttribute("aria-invalid");
+        }
+
+        syncTargetFromData();
+        // 오류 표시 초기 상태를 JS 로도 명시한다(HTML hidden 속성에만 의존하지 않는다).
+        clearTargetFeedback();
+        targetStatus.textContent = "";
+
+        target.addEventListener("input", function () {
+          clearTargetFeedback();
+          targetStatus.textContent = "";
+        });
+
+        emergencyForm.addEventListener("submit", function (e) {
+          e.preventDefault();
+          var raw = target.value.trim();
+          var v = Number(raw);
+          // min/max 속성이 없으면(하네스) HTML 과 동일한 1~24 를 쓴다.
+          var min = Number(target.min || 1);
+          var max = Number(target.max || 24);
+          var bad = raw === "" || !Number.isInteger(v) || v < min || v > max;
+          target.setAttribute("aria-invalid", String(bad));
+          targetError.hidden = !bad;
+          emergencyAlert.hidden = !bad;
+          if (bad) {
+            target.focus();
+            return;
+          }
+
+          // 단일 출처 갱신: 목표 개월이 바뀌면 목표 금액·달성 여부도 다시 나온다.
+          // 대시보드·지출 화면은 d.emergency 를 그대로 읽으므로 recompute 가 충분하다.
+          d.emergency.targetMonths = v;
+          window.AF.recompute();
+          syncTargetFromData();
+          clearTargetFeedback();
+          targetStatus.textContent =
+            "저장됨 · 목표 " + v + "개월 · 목표 금액 " +
+            f.formatKRW(d.emergency.targetAmount) +
+            (d.emergency.reached ? " · 달성" : " · 미달성");
+        });
+
+        emergencyForm.addEventListener("reset", function (e) {
+          // 기본 리셋은 value 속성이 없는 JS 주입 필드(필수지출·근거)를 비운다.
+          // 막고 데이터 기준으로 직접 복원한다.
+          e.preventDefault();
+          syncTargetFromData();
+          clearTargetFeedback();
+          targetStatus.textContent = "";
         });
       })();
     </script>
