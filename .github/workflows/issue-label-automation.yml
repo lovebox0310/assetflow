@@ -26,13 +26,36 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            // 스프린트 번호는 제목의 "[Sprint5]" 에서 읽는다. 하드코딩하면
+            // Sprint 2 이후 이슈마다 엉뚱한 스프린트 라벨이 붙는다.
+            const title = context.payload.issue.title || "";
+            const match = title.match(/\[Sprint\s*(\d+)\]/i);
+            const labels = ["status:ready"];
+            if (match) {
+              labels.unshift(`sprint:${match[1]}`);
+              // 라벨이 아직 없으면 addLabels 가 422 로 죽는다. 생성은 best-effort.
+              try {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: `sprint:${match[1]}`,
+                  color: "61c555",
+                  description: `Sprint ${match[1]} scope`
+                });
+              } catch (e) {
+                core.info(`label sprint:${match[1]} exists or cannot be created: ${e.message}`);
+              }
+            } else {
+              core.info(`no [SprintN] prefix in #${context.payload.issue.number} — sprint label skipped`);
+            }
+
             await github.rest.issues.addLabels({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.issue.number,
-              labels: ['sprint:1', 'status:ready']
+              labels
             });
-            core.info(`added sprint:1, status:ready to #${context.payload.issue.number}`);
+            core.info(`added ${labels.join(", ")} to #${context.payload.issue.number}`);
 
   label-pr-open:
     if: github.event_name == 'pull_request' && github.event.action == 'opened'
