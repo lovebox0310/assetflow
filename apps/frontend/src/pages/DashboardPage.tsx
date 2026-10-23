@@ -12,7 +12,14 @@ import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
 import { MetricCard } from "../components/MetricCard";
 import type { DashboardData } from "../data/dashboardMock";
 import { fetchCashflow, fetchDashboardSummary, type CashflowRow } from "../api/dashboardApi";
-import { assetComposition, emergencyMonths, monthlyBalance, netWorth } from "../dashboard/metrics";
+import {
+  assetComposition,
+  cashAccountCount,
+  cashflowWindow,
+  emergencyMonths,
+  monthlyBalance,
+  netWorth,
+} from "../dashboard/metrics";
 import { AssetCompositionList } from "../dashboard/AssetCompositionList";
 import {
   formatKrwAbbr,
@@ -23,6 +30,9 @@ import {
 import { clearToken } from "../auth/authStore";
 
 const CompositionDonut = lazy(() => import("../components/CompositionDonut").then(m => ({ default: m.CompositionDonut })));
+
+/** §35.1: 월별 현금흐름은 최근 6개월. 서버는 months 1..12 만 받는다. */
+const CASHFLOW_MONTHS = 6;
 
 interface DashboardPageProps {
   /** 로그아웃 후 로그인 화면으로 전환한다 (§21 로그아웃 처리). */
@@ -75,7 +85,7 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
         setSummaryError(e.message);
       });
 
-    fetchCashflow()
+    fetchCashflow(CASHFLOW_MONTHS)
       .then((rows) => {
         setCashflow(rows);
         setCashflowStatus(rows.length === 0 ? "empty" : "ready");
@@ -99,6 +109,13 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
   const dataReady = summaryStatus === "ready" && summary !== null;
   const composition = dataReady ? assetComposition(summary) : [];
   const cashRows = dataReady ? summary.assets.filter((a) => a.type === "cash") : [];
+  // #73: "현금 3계좌" 하드코딩 제거 — 실제 현금성 계좌 수를 센다.
+  const cashCount = dataReady ? cashAccountCount(summary) : 0;
+  const cashHeading = cashCount === 0 ? "현금 계좌" : `현금 ${cashCount}계좌`;
+  // #73: 3개월 → 6개월. 행이 없는 월은 0원이 아니라 "미확정"으로 남긴다(§34.6).
+  const cashflowRows = cashflow ? cashflowWindow(cashflow, CASHFLOW_MONTHS) : [];
+  const confirmedMonths = cashflowRows.filter((row) => row.confirmed).length;
+  const unconfirmedMonths = cashflowRows.length - confirmedMonths;
 
   return (
     <AppLayout
@@ -162,7 +179,7 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
 
       <section aria-labelledby="h-cash" style={{ marginBottom: 32 }}>
         <Typography.Title level={2} id="h-cash" style={{ fontSize: 16 }}>
-          현금 3계좌
+          {cashHeading}
         </Typography.Title>
         <Card>
           <StateBlock status={summaryStatus} onRetry={load} errorText={summaryError}>
@@ -187,49 +204,79 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
         </Typography.Title>
         <Card>
           <StateBlock status={cashflowStatus} onRetry={load}>
-            {cashflow && cashflow.length > 0 ? (
-              wide ? (
-                <table aria-labelledby="h-cashflow" style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr>
-                      <th scope="col" style={{ textAlign: "left", paddingBottom: 8 }}>월</th>
-                      <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>수입</th>
-                      <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>지출</th>
-                      <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>수지</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cashflow.map((row) => (
-                      <tr key={row.month}>
-                        <td style={{ paddingBottom: 6 }}>{row.month}</td>
-                        <td style={{ textAlign: "right" }}>{formatKrwAbbr(row.income)}</td>
-                        <td style={{ textAlign: "right" }}>{formatKrwAbbr(row.expenses)}</td>
-                        <td style={{ textAlign: "right" }}>{formatSignedKrw(row.income - row.expenses)}</td>
+            {cashflowRows.length > 0 ? (
+              <>
+                {unconfirmedMonths > 0 ? (
+                  <Typography.Paragraph
+                    type="secondary"
+                    role="status"
+                    style={{ marginTop: 0, marginBottom: 12 }}
+                  >
+                    확정 {confirmedMonths}개월 · 미확정 {unconfirmedMonths}개월 — 미확정 월은
+                    스냅샷이 확정되지 않아 금액을 표시하지 않습니다 (§34.6).
+                  </Typography.Paragraph>
+                ) : null}
+                {wide ? (
+                  <table aria-labelledby="h-cashflow" style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr>
+                        <th scope="col" style={{ textAlign: "left", paddingBottom: 8 }}>월</th>
+                        <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>수입</th>
+                        <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>지출</th>
+                        <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>수지</th>
                       </tr>
+                    </thead>
+                    <tbody>
+                      {cashflowRows.map((row) =>
+                        row.confirmed && row.income !== null && row.expenses !== null ? (
+                          <tr key={row.month}>
+                            <td style={{ paddingBottom: 6 }}>{row.month}</td>
+                            <td style={{ textAlign: "right" }}>{formatKrwAbbr(row.income)}</td>
+                            <td style={{ textAlign: "right" }}>{formatKrwAbbr(row.expenses)}</td>
+                            <td style={{ textAlign: "right" }}>{formatSignedKrw(row.income - row.expenses)}</td>
+                          </tr>
+                        ) : (
+                          <tr key={row.month}>
+                            <td style={{ paddingBottom: 6 }}>{row.month}</td>
+                            <td
+                              colSpan={3}
+                              style={{ textAlign: "right", color: "var(--af-muted-foreground)" }}
+                            >
+                              미확정
+                            </td>
+                          </tr>
+                        ),
+                      )}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div>
+                    {cashflowRows.map((row) => (
+                      <MobileListCardItem key={row.month}>
+                        {row.confirmed && row.income !== null && row.expenses !== null ? (
+                          <>
+                            <MobileListCardHeader
+                              title={row.month}
+                              value={formatSignedKrw(row.income - row.expenses)}
+                            />
+                            <MobileListCardMeta
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                              }}
+                            >
+                              <span>수입 {formatKrwAbbr(row.income)}</span>
+                              <span>지출 {formatKrwAbbr(row.expenses)}</span>
+                            </MobileListCardMeta>
+                          </>
+                        ) : (
+                          <MobileListCardHeader title={row.month} value="미확정" />
+                        )}
+                      </MobileListCardItem>
                     ))}
-                  </tbody>
-                </table>
-              ) : (
-                <div>
-                  {cashflow.map((row) => (
-                    <MobileListCardItem key={row.month}>
-                      <MobileListCardHeader
-                        title={row.month}
-                        value={formatSignedKrw(row.income - row.expenses)}
-                      />
-                      <MobileListCardMeta
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                        }}
-                      >
-                        <span>수입 {formatKrwAbbr(row.income)}</span>
-                        <span>지출 {formatKrwAbbr(row.expenses)}</span>
-                      </MobileListCardMeta>
-                    </MobileListCardItem>
-                  ))}
-                </div>
-              )
+                  </div>
+                )}
+              </>
             ) : (
               <Typography.Text type="secondary">표시할 월 데이터가 없습니다</Typography.Text>
             )}

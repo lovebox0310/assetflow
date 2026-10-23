@@ -183,7 +183,7 @@ export function CardImportPanel() {
               columns={[
                 { title: "가맹점", dataIndex: "merchant" },
                 { title: "건수", dataIndex: "count", width: 80 },
-                { title: "이용금액 합계", dataIndex: "gross", width: 160, render: (v: number) => v.toLocaleString("ko-KR") + "원" },
+                { title: "이용금액 합계", dataIndex: "gross", width: 160, render: (v: number) => formatKrwExact(v) },
                 {
                   title: "용도구분",
                   width: 200,
@@ -205,7 +205,7 @@ export function CardImportPanel() {
               ]}
             />
             <Typography.Text type="secondary">
-              분류된 가맹점 {classified.length}곳 · 합계 {totalGross.toLocaleString("ko-KR")}원 ·
+              분류된 가맹점 {classified.length}곳 · 합계 {formatKrwExact(totalGross)} ·
               미분류 {groups.length - classified.length}곳은 어느 합계에도 들어가지 않습니다 (§29.7)
               {skipped > 0 ? ` · 이미 임포트된 행 ${skipped}건은 서버가 건너뜁니다 (§29.6)` : ""}
             </Typography.Text>

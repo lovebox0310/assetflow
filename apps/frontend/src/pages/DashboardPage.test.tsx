@@ -13,6 +13,14 @@ import { dashboardMock } from "../data/dashboardMock";
 
 type Handler = (path: string) => Response | Promise<Response>;
 
+/** 현금흐름 창은 오늘 기준(§35.1). 고정 월에 묶이지 않도록 상대 월 키를 만든다. */
+function monthKey(offset: number): string {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() - offset);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 function stubFetch(handler: Handler) {
   const fetchMock = vi.fn((input: RequestInfo | URL) =>
     Promise.resolve(handler(String(input))),
@@ -32,9 +40,9 @@ function route(path: string): Response | Promise<Response> {
   if (path.includes("/dashboard/summary")) return apiResponse(dashboardMock);
   if (path.includes("/dashboard/cashflow")) {
     return apiResponse([
-      { month: "2026-10", income: 8_200_000, expenses: 4_960_000 },
-      { month: "2026-09", income: 7_950_000, expenses: 5_310_000 },
-      { month: "2026-08", income: 8_200_000, expenses: 4_720_000 },
+      { month: monthKey(0), income: 8_200_000, expenses: 4_960_000 },
+      { month: monthKey(1), income: 7_950_000, expenses: 5_310_000 },
+      { month: monthKey(2), income: 8_200_000, expenses: 4_720_000 },
     ]);
   }
   return apiResponse({}, false, 500);
@@ -70,7 +78,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     // 로딩이 끝나야 컨테이너에 실측 가능한 콘텐츠가 채워진다.
     await screen.findByText("6.9억");
     const content = (document.querySelector(".af-container") as HTMLElement).textContent ?? "";
-    const order = ["핵심 지표", "자산 구성비", "현금 3계좌", "월별 현금흐름"];
+    const order = ["핵심 지표", "자산 구성비", "현금 2계좌", "월별 현금흐름"];
     const positions = order.map((name) => content.indexOf(name));
     expect(positions.every((p) => p >= 0)).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
@@ -104,12 +112,12 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     // 구성비 카드와 도넛 범례가 같은 유형명을 보일 수 있어 getAll 로 존재를 검사한다.
     expect(screen.getAllByText("부동산·기타").length).toBeGreaterThan(0);
     expect(screen.getByText("84.1% · 6.4억")).toBeDefined();
-    // 현금 3계좌 섹션: summary 의 cash 계좌가 이름·금액으로 렌더
+    // 현금 계좌 섹션: summary 의 cash 계좌가 이름·금액으로 렌더
     expect(screen.getByText(/우리 파킹통장/)).toBeDefined();
-    // 월별 현금흐름 표: 3행 최신순
-    expect(screen.getByText("2026-10")).toBeDefined();
-    expect(screen.getByText("2026-09")).toBeDefined();
-    expect(screen.getByText("2026-08")).toBeDefined();
+    // 월별 현금흐름 표: 확정 3개월이 최신순으로 나온다
+    expect(screen.getByText(monthKey(0))).toBeDefined();
+    expect(screen.getByText(monthKey(1))).toBeDefined();
+    expect(screen.getByText(monthKey(2))).toBeDefined();
   });
 
   it("요청 중에는 로딩(스켈레톤)이 보인다 (§26 AC)", () => {
@@ -130,7 +138,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     await screen.findAllByText("데이터를 불러오지 못했습니다");
     expect(screen.queryByText("6.9억")).toBeNull();
     // cashflow 는 summary 실패와 무관하게 복구된다 (카드 단위 복구 우선)
-    await screen.findByText("2026-10");
+    await screen.findByText(monthKey(0));
 
     // 재시도: 서버가 정상 응답으로 바뀌면 카드가 복구된다
     fail = false;
@@ -161,6 +169,36 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     render(<DashboardPage onLogout={() => {}} />);
     expect((await screen.findAllByText("데이터가 없습니다")).length).toBeGreaterThan(0);
     expect(screen.queryByText("6.9억")).toBeNull();
+  });
+
+  it("현금흐름은 6개월 창을 보여 주고 미확정 월을 명시한다 (#73 AC)", async () => {
+    stubFetch(route);
+    render(<DashboardPage onLogout={() => {}} />);
+    await screen.findByText(monthKey(0));
+
+    // 확정 3개월 + 미확정 3개월 = 6개월 창
+    // 데스크톱(표)과 모바일(카드 리스트) 어느 쪽이든 월 6개가 한 번씩 나온다.
+    expect(screen.getAllByText(/^\d{4}-\d{2}$/).length).toBe(6);
+    expect(screen.getByText(/확정 3개월 · 미확정 3개월/)).toBeDefined();
+    expect(screen.getAllByText("미확정").length).toBe(3);
+    // 창의 가장 오래된 월까지 자리를 지킨다 (0원으로 채우지 않는다)
+    expect(screen.getByText(monthKey(5))).toBeDefined();
+  });
+
+  it("'현금 N계좌'는 실제 현금성 계좌 수를 따른다 (#73 AC)", async () => {
+    const oneCash = {
+      ...dashboardMock,
+      assets: [
+        { id: "c1", type: "cash" as const, name: "우리 파킹통장", value: 18_500_000 },
+        { id: "d1", type: "deposit" as const, name: "우리 예적금", value: 42_000_000 },
+      ],
+    };
+    stubFetch((path) =>
+      path.includes("/dashboard/summary") ? apiResponse(oneCash) : route(path),
+    );
+    render(<DashboardPage onLogout={() => {}} />);
+    expect(await screen.findByRole("heading", { name: "현금 1계좌" })).toBeDefined();
+    expect(screen.queryByRole("heading", { name: "현금 2계좌" })).toBeNull();
   });
 
   it("재요청 시 진행 중 요청은 중복으로 나가지 않는다 (§26 연동 기준)", async () => {

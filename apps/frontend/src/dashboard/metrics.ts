@@ -1,4 +1,5 @@
 import type { AssetType, DashboardData } from "../data/dashboardMock";
+import type { CashflowRow } from "../api/dashboardApi";
 
 /**
  * §23 표시 규칙의 단일 구현체. 카드는 이 값들을 포맷만 해 보여 준다 —
@@ -66,4 +67,44 @@ export function assetComposition(data: DashboardData): CompositionSlice[] {
   const biggest = rounded.reduce((bi, v, i) => (v > (rounded[bi] ?? -1) ? i : bi), 0);
   rounded[biggest] = Math.round(((rounded[biggest] ?? 0) + drift) * 10) / 10;
   return slices.map((s, i) => ({ ...s, percent: rounded[i] ?? s.percent }));
+}
+
+/** 현금 계좌 수 — 대시보드 "현금 N계좌" 제목의 단일 출처 (#73). */
+export function cashAccountCount(data: DashboardData): number {
+  return data.assets.filter((a) => a.type === "cash").length;
+}
+
+export interface CashflowMonth {
+  /** YYYY-MM */
+  month: string;
+  income: number | null;
+  expenses: number | null;
+  /** 확정 스냅샷이 있는 월인가. false 면 금액을 0 으로 메우지 않고 "미확정"으로 보여 준다. */
+  confirmed: boolean;
+}
+
+/**
+ * 최근 N개월(당월 포함) 창을 만든다 (§35.1 6개월, #73).
+ * 서버는 **확정된 스냅샷만** 돌려주므로(§34.6 폴다운) 행이 없는 월이 생긴다.
+ * 그 월을 mock 이나 0원으로 채우지 않고 `confirmed:false` 로 남겨 화면이 "미확정"을
+ * 드러내게 한다 (§34.6 "없는 값을 있는 척하지 않는다").
+ */
+export function cashflowWindow(
+  rows: CashflowRow[],
+  months: number,
+  today: Date = new Date(),
+): CashflowMonth[] {
+  const byMonth = new Map(rows.map((row) => [row.month, row]));
+  const window: CashflowMonth[] = [];
+  for (let i = 0; i < months; i += 1) {
+    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const row = byMonth.get(key);
+    window.push(
+      row
+        ? { month: key, income: row.income, expenses: row.expenses, confirmed: true }
+        : { month: key, income: null, expenses: null, confirmed: false },
+    );
+  }
+  return window;
 }
