@@ -239,6 +239,10 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
         <StandardNav current="assets" onOpenDashboard={onBack} onOpenExpenses={onOpenExpenses} onOpenSettings={onOpenSettings} />
       }
     >
+      {/* 이슈 #70: 페이지 h1 은 정확히 1개. 섹션(금융자산·부채 등)은 h2. */}
+      <Typography.Title level={1} id="h-assets-page" style={{ fontSize: 24, margin: 0, marginBottom: 16 }}>
+        자산
+      </Typography.Title>
       <section aria-labelledby="h-assets" style={{ marginBottom: 24 }}>
         {/*
          * #69: 저장/삭제 실패를 화면에 알린다. role="alert" 로 두어 스크린리더가
@@ -251,7 +255,7 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
           </Typography.Paragraph>
         ) : null}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
-          <Typography.Title level={4} id="h-assets" style={{ margin: 0 }}>금융자산</Typography.Title>
+          <Typography.Title level={2} id="h-assets" style={{ fontSize: 16, margin: 0 }}>금융자산</Typography.Title>
           <Button onClick={beginCreate} disabled={editingId !== null}>+ 자산 추가</Button>
         </div>
         <Card>
@@ -266,14 +270,14 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
               </div>
             ) : null}
             {wide ? (
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <table aria-labelledby="h-assets" style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr>
-                    <th style={{ textAlign: "left", paddingBottom: 8 }}>이름</th>
-                    <th style={{ textAlign: "left", paddingBottom: 8, width: 110 }}>계정 유형</th>
-                    <th style={{ textAlign: "left", paddingBottom: 8 }}>기관</th>
-                    <th style={{ textAlign: "right", paddingBottom: 8 }}>잔액</th>
-                    <th style={{ width: 120 }} />
+                    <th scope="col" style={{ textAlign: "left", paddingBottom: 8 }}>이름</th>
+                    <th scope="col" style={{ textAlign: "left", paddingBottom: 8, width: 110 }}>계정 유형</th>
+                    <th scope="col" style={{ textAlign: "left", paddingBottom: 8 }}>기관</th>
+                    <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>잔액</th>
+                    <th scope="col" style={{ width: 120 }} />
                   </tr>
                 </thead>
                 <tbody>{assets.map((r) => renderRow(r, false))}</tbody>
@@ -288,7 +292,7 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
 
       <section aria-labelledby="h-liab" style={{ marginBottom: 24 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
-          <Typography.Title level={4} id="h-liab" style={{ margin: 0 }}>부채</Typography.Title>
+          <Typography.Title level={2} id="h-liab" style={{ fontSize: 16, margin: 0 }}>부채</Typography.Title>
           <Button
             onClick={() => {
               setEditingId("new");
@@ -313,13 +317,13 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
             {liabilities.length === 0 ? (
               <Typography.Text type="secondary">부채가 비어 있는 것은 정상이다 (§31.4)</Typography.Text>
             ) : wide ? (
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <table aria-labelledby="h-liab" style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr>
-                    <th style={{ textAlign: "left", paddingBottom: 8 }}>이름</th>
-                    <th style={{ textAlign: "left", paddingBottom: 8 }}>기관</th>
-                    <th style={{ textAlign: "right", paddingBottom: 8 }}>잔액</th>
-                    <th style={{ width: 120 }} />
+                    <th scope="col" style={{ textAlign: "left", paddingBottom: 8 }}>이름</th>
+                    <th scope="col" style={{ textAlign: "left", paddingBottom: 8 }}>기관</th>
+                    <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>잔액</th>
+                    <th scope="col" style={{ width: 120 }} />
                   </tr>
                 </thead>
                 <tbody>{liabilities.map((r) => renderRow(r, true))}</tbody>
@@ -335,14 +339,14 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
       </section>
 
       <section aria-labelledby="h-readonly" style={{ marginBottom: 24 }}>
-        <Typography.Title level={4} id="h-readonly" style={{ margin: 0, marginBottom: 16 }}>
+        <Typography.Title level={2} id="h-readonly" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>
           카드 내역 가져오기
         </Typography.Title>
         <CardImportPanel />
       </section>
 
       <section aria-labelledby="h-expense-owned" style={{ marginBottom: 24 }}>
-        <Typography.Title level={4} id="h-expense-owned" style={{ margin: 0, marginBottom: 16 }}>
+        <Typography.Title level={2} id="h-expense-owned" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>
           다른 화면이 읽는 값
         </Typography.Title>
         <Card>

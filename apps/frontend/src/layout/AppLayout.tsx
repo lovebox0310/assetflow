@@ -67,6 +67,14 @@ export function AppLayout({ onLogout, nav, children }: AppLayoutProps) {
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
+      {/*
+        이슈 #70: 스킵 링크 — 첫 Tab 으로 헤더 내비를 건너뛰고 본문(#main)으로
+        직행한다. 포커스 전에는 화면 밖(-9999px)에 있다가 포커스 시 좌상단에
+        나타난다(스타일은 app.css .af-skip-link).
+      */}
+      <a href="#main" className="af-skip-link">
+        본문으로 건너뛰기
+      </a>
       <Header
         style={{
           display: "flex",
@@ -116,7 +124,13 @@ export function AppLayout({ onLogout, nav, children }: AppLayoutProps) {
           ) : null}
         </Space>
       </Header>
-      <Content className="af-container">{children}</Content>
+      <Content className="af-container">
+        {/* 이슈 #70: main 랜드마크 — 스킵 링크의 이동 대상. tabIndex=-1 로 선택
+            시 포커스가 들어오지만 탭 순서에는 참여하지 않는다. */}
+        <main id="main" tabIndex={-1}>
+          {children}
+        </main>
+      </Content>
     </Layout>
   );
 }

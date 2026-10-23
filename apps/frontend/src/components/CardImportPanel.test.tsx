@@ -77,7 +77,9 @@ describe("CardImportPanel (§29.7 흐름 이관)", () => {
     const cfb = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
     chooseFile(cfb);
 
-    const alert = await screen.findByRole("alert");
+    // 이슈 #70: 안내(알림)는 role=status + aria-live=polite — 스크린리더가 읽는다
+    const alert = await screen.findByRole("status");
+    expect(alert.getAttribute("aria-live")).toBe("polite");
     expect(alert.textContent).toMatch(/암호화된 카드사 파일/);
     // 비밀번호 입력란이 없어야 한다 — 열기 구현이 없는데 입력만 두면 사용자를 속인다
     expect(screen.queryByPlaceholderText(/비밀번호/i)).toBeNull();
