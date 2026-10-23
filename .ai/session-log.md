@@ -18,7 +18,7 @@
 
 ## 2026-10-23 — 프로토타입 비상금 저장 복구 + FE 접근성 AA 정합성 (#70) + 모바일 헤더 잘림
 
-세 작업을 **독립 브랜치 3개**로 나눠 커밋했다 (각각 main 기준 — `fix/mobile-header-wrap` · `fix/settings-emergency-save` · `feat/a11y-issue-70`). 로컬 검증은 끝났고 **푸시·PR 은 GitHub 인증 미연결로 대기**다.
+세 작업을 **독립 브랜치 3개**로 나눠 커밋하고 **PR 3건 생성·CI 전부 통과**했다 (각각 main 기준 — `fix/mobile-header-wrap` · `fix/settings-emergency-save` · `feat/a11y-issue-70`).
 
 ### 무엇을 했나
 
@@ -48,7 +48,9 @@
 
 ### 남은 것
 
-- [ ] **3개 브랜치 푸시 + PR 생성** — GitHub 인증 미연결 (OpenClaw Settings → Agents → Tools). PR 본문에 #70 AC 대비 계산 결과 첨부 예정. PR 규약: issue 링크 · 변경 요약 · 테스트 결과 (CONTRIBUTING)
+- [x] **3개 브랜치 푸시 + PR 생성** — `gh auth setup-git` 으로 git HTTPS 인증 연결 후 푸시. **PR #79(접근성, Closes #70) · #80(모바일 헤더) · #81(프로토타입 비상금 저장)**. PR #79 본문에 대비 계산 결과(16.01/14.51/6.13/6.00:1)·테스트 결과 첨부
+- [x] **CI quality-gate** — 3개 PR 전 게이트(backend·frontend·quality·label) **전부 PASS** (frontend-gate: 103 테스트)
+- [ ] **PR 3건 머지** — 리뷰어 승인 대기 (CONTRIBUTING: Blocker/Critical 0이면 머지 가능). 머지 순서는 #80 → #81 → #79 가 안전하다 (AppLayout 충돌 가능성; 실제로는 병합 무충돌·103건 PASS 확인済)
 - [ ] **실브라우저 키보드/스크린리더 실측** — jsdom 한계. 스킵 링크 첫 Tab · 포커스 링 · NVDA/보이스오버 낭독은 배포 후 수동 확인이 필요하다 (AC "이동할 수 있다/읽힌다" 의 실측)
 - [ ] 이전 항목에서 이어진 것: 화면 캡처, 대시보드 재시도 버튼 비활성 (이번 범위 밖)
 - [ ] settings.html 비상금 저장은 세션 내 반영이다 — 프로토타입 localStorage 정책은 지출·자산만 저장하는 기존 규약 유지 (새로고침 시 시드 복귀)
