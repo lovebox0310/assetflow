@@ -14,6 +14,37 @@
 
 ---
 
+## 2026-10-24 — 홈서버 FE·BE 배포 (Sprint 4 결과 반영)
+
+Sprint 4 머지분(main `dfd34f0`)을 홈서버 운영 환경에 배포했다. 서버에서 직접 빌드·스테이징한 뒤
+sudo 단계만 사용자가 실행했고, 배포 후 헬스·정적 자산·타이틀을 재확인했다.
+
+### 무엇을 했나
+
+| # | 작업 | 산출물 |
+|---|---|---|
+| 1 | BE 빌드 | 시스템 JRE 에 javac 가 없어 `JAVA_HOME=~/.gradle/jdks/eclipse_adoptium-21-amd64-linux.2` 로 빌드 → `assetflow-backend-0.0.1-SNAPSHOT.jar` (48.9MB) |
+| 2 | FE 빌드 | `pnpm build` → `dist/` (title `AssetFlow — 가계부·자산관리`, 해시 라우팅 포함) |
+| 3 | 스테이징 | `/tmp/opencode/deploy/{app.jar,dist}` + `deploy-assetflow.sh` (백업 → jar 원자적 교체 → 재시작 → 헬스 대기 → FE rsync → 검증) |
+| 4 | 배포 | `sudo bash /tmp/opencode/deploy-assetflow.sh` (사용자 실행) — jar 교체 후 `assetflow.service` 재시작, FE 를 `/opt/assetflow/frontend` 로 rsync |
+
+### 검증
+
+| 대상 | 방법 | 결과 |
+|---|---|---|
+| BE 헬스 | `curl http://127.0.0.1:8080/health` | `{"status":"UP"}` · `systemctl is-active assetflow` = active |
+| FE 타이틀 | `curl -k --resolve ... https://redbox9.iptime.org/` | `<title>AssetFlow — 가계부·자산관리</title>` (한국어 반영) |
+| 새 번들 | `/assets/index-D1EksHsi.js` · `index-Yn_P6Oaf.css` | HTTP **200** |
+| 롤백 자산 | `app.jar.bak-20261024-002450` · `backup-frontend-20261024-002450/frontend` | 존재 확인 |
+
+### 남은 것
+
+- [ ] **실브라우저 확인** — 해시 딥링크 새로고침(`#/assets` 등)·키보드 뒤로가기·탭 제목 변화는 jsdom 밖 실측이 필요하다
+- [ ] 이전 항목에서 이어진 것: 화면 캡처, 스크린리더 실측
+- [ ] **다음 스프린트 작업표 미정** — Sprint 1~4 종료, 열린 이슈 0건. 후보를 §53 으로 확정해야 한다
+
+---
+
 ## 2026-10-23 — Sprint 4 착수: 로그인 한국어화(#74) · 대시보드 6개월 현금흐름(#73) · URL 동기화(#72)
 
 열린 Sprint 4 이슈 3건을 **독립 브랜치 3개**로 처리했다. 선행 조건인 PR #75(백엔드 현금흐름
