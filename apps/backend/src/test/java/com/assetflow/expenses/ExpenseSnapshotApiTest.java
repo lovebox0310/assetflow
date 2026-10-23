@@ -34,7 +34,9 @@ class ExpenseSnapshotApiTest {
     @BeforeEach
     void setUp() {
         mvc = MockMvcBuilders.standaloneSetup(
-                        new ExpenseSnapshotController(snapshots, cardLedger, items, assets))
+                        new ExpenseSnapshotController(snapshots, cardLedger, items, assets,
+                                new com.assetflow.investments.PortfolioService(assets,
+                                        new com.assetflow.investments.InMemoryInvestmentLedger())))
                 .addInterceptors(new BearerTokenInterceptor(TOKENS))
                 .setControllerAdvice(new com.assetflow.common.api.ApiExceptionHandler())
                 .build();

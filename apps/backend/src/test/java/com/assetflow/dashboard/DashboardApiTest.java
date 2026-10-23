@@ -30,7 +30,10 @@ class DashboardApiTest {
     @BeforeEach
     void setUp() {
         snapshotLedger = new InMemoryExpenseSnapshotLedger();
-        DashboardService service = new DashboardService(new InMemoryAssetLedger(), snapshotLedger);
+        InMemoryAssetLedger assets = new InMemoryAssetLedger();
+        DashboardService service = new DashboardService(assets, snapshotLedger,
+                new com.assetflow.investments.PortfolioService(assets,
+                        new com.assetflow.investments.InMemoryInvestmentLedger()));
         mvc = MockMvcBuilders.standaloneSetup(new DashboardController(service), new MeController(new InMemoryUserSettingsLedger(), new com.assetflow.settings.AuthEmailResolver() {
                     @Override public String currentEmail() { return "user@example.com"; }
                 }))
@@ -47,6 +50,9 @@ class DashboardApiTest {
                 .andExpect(jsonPath("$.data.asOf").value("2026-10"))
                 .andExpect(jsonPath("$.data.assets[5].name").value("실거주 아파트"))
                 .andExpect(jsonPath("$.data.assets[5].value").value(640_000_000))
+                // §54.3: invest 행은 예수금 + 보유종목 평가액 (기준선 총액 유지)
+                .andExpect(jsonPath("$.data.assets[3].value").value(31_000_000))
+                .andExpect(jsonPath("$.data.assets[4].value").value(23_500_000))
                 .andExpect(jsonPath("$.data.liabilities[0].balance").value(69_355_560))
                 .andExpect(jsonPath("$.data.monthly.income").value(8_200_000))
                 .andExpect(jsonPath("$.data.monthly.essentialExpenses").value(2_317_180));

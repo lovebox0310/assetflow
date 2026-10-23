@@ -3,6 +3,7 @@ package com.assetflow.expenses;
 import com.assetflow.assets.AssetLedger;
 import com.assetflow.assets.CardImportLedger;
 import com.assetflow.common.api.ApiResponse;
+import com.assetflow.investments.PortfolioService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
@@ -27,15 +29,18 @@ public class ExpenseSnapshotController {
     private final CardImportLedger cardLedger;
     private final ExpenseItemLedger expenseLedger;
     private final AssetLedger assetLedger;
+    private final PortfolioService portfolioService;
 
     public ExpenseSnapshotController(ExpenseSnapshotLedger snapshots,
                                      CardImportLedger cardLedger,
                                      ExpenseItemLedger expenseLedger,
-                                     AssetLedger assetLedger) {
+                                     AssetLedger assetLedger,
+                                     PortfolioService portfolioService) {
         this.snapshots = snapshots;
         this.cardLedger = cardLedger;
         this.expenseLedger = expenseLedger;
         this.assetLedger = assetLedger;
+        this.portfolioService = portfolioService;
     }
 
     public record IncomeBody(Long income) {}
@@ -67,9 +72,15 @@ public class ExpenseSnapshotController {
             if (it.isEssential()) essential += it.amount();
         }
         long totalAssets = 0, totalDebts = 0;
+        Map<Long, Long> investTotals = portfolioService.totalByAccount();
         for (AssetLedger.AssetRow a : assetLedger.all()) {
-            if (a.isDebt()) totalDebts += a.balance();
-            else totalAssets += a.balance();
+            if (a.isDebt()) {
+                totalDebts += a.balance();
+            } else if ("invest".equals(a.accountType())) {
+                totalAssets += investTotals.getOrDefault(a.id(), a.balance());
+            } else {
+                totalAssets += a.balance();
+            }
         }
         ExpenseSnapshotLedger.Snapshot snap = new ExpenseSnapshotLedger.Snapshot(
                 m, totalAssets, totalDebts, body.income(), cardSpend + itemSpend, essential, true);

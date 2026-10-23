@@ -38,8 +38,9 @@ public class PostgresAssetLedger implements AssetLedger {
                     new AssetRow(0, "cash", "우리 파킹통장", "우리은행", 18_500_000L, false, null),
                     new AssetRow(0, "cash", "씨티 요구불", "씨티은행", 6_200_000L, false, null),
                     new AssetRow(0, "deposit", "우리 예적금", "우리은행", 42_000_000L, false, null),
-                    new AssetRow(0, "invest", "키움 투자금", "키움증권", 31_000_000L, false, null),
-                    new AssetRow(0, "invest", "미국주식", "", 23_500_000L, false, null),
+                    // §54.3: invest 계좌의 balance 는 예수금이다. 총액은 보유종목과 합쳐 계산한다.
+                    new AssetRow(0, "invest", "키움 투자금", "키움증권", 1_300_000L, false, null),
+                    new AssetRow(0, "invest", "미국주식", "", 100_000L, false, null),
                     new AssetRow(0, "realty", "실거주 아파트", "", 640_000_000L, false, null),
                     new AssetRow(0, "realty", "주택담보대출", "", 69_355_560L, true, null))) {
                 jdbc.update("""

@@ -25,8 +25,10 @@ public class InMemoryAssetLedger implements AssetLedger {
         seed.add(new AssetRow(id++, "cash", "우리 파킹통장", "우리은행", 18_500_000L, false, null));
         seed.add(new AssetRow(id++, "cash", "씨티 요구불", "씨티은행", 6_200_000L, false, null));
         seed.add(new AssetRow(id++, "deposit", "우리 예적금", "우리은행", 42_000_000L, false, null));
-        seed.add(new AssetRow(id++, "invest", "키움 투자금", "키움증권", 31_000_000L, false, null));
-        seed.add(new AssetRow(id++, "invest", "미국주식", "", 23_500_000L, false, null));
+        // §54.3: invest 계좌의 balance 는 예수금이다. 총액(31,000,000 / 23,500,000)은
+        // InMemoryInvestmentLedger 의 보유종목 평가액과 합쳐 만든다.
+        seed.add(new AssetRow(id++, "invest", "키움 투자금", "키움증권", 1_300_000L, false, null));
+        seed.add(new AssetRow(id++, "invest", "미국주식", "", 100_000L, false, null));
         seed.add(new AssetRow(id++, "realty", "실거주 아파트", "", 640_000_000L, false, null));
         seed.add(new AssetRow(id, "realty", "주택담보대출", "", 69_355_560L, true, null));
         return seed;
