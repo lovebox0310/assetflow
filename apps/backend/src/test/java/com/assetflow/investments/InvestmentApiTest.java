@@ -159,4 +159,30 @@ class InvestmentApiTest {
         mvc.perform(delete("/api/v1/investments/holdings/3").header("Authorization", TOKEN))
                 .andExpect(status().isNotFound());
     }
+
+    @Test
+    void fractionalValueIsRoundedHalfUpOnceAtAccountLevel() throws Exception {
+        // 0.5 × 1.01 = 0.505 → 계좌 합계에서 1회 HALF_UP → 1원 증가 (§54.4)
+        mvc.perform(post("/api/v1/investments/holdings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body(4, "crypto", "X", "소액", "KRW", "0.5", "1", "1.01", "1", null)))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/investments/holdings").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data.accounts[0].totalValue").value(31_000_001));
+    }
+
+    @Test
+    void tinyCryptoQuantitySurvivesStorageAndCalculation() throws Exception {
+        // 0.00000001 × 1억 = 1원 — NUMERIC(24,8) 이 소수 8자리를 보존한다
+        mvc.perform(post("/api/v1/investments/holdings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body(4, "crypto", "BTC", "사토시", "KRW",
+                                "0.00000001", "1", "100000000", "1", "2026-10-24")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.quantity").value(1e-8));
+
+        mvc.perform(get("/api/v1/investments/holdings").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data.accounts[0].holdingsValue").value(29_700_001));
+    }
 }

@@ -186,6 +186,27 @@ describe("InvestmentsPage (§54 E2)", () => {
     });
   });
 
+  it("가격 갱신은 현재가를 인라인 편집해 변경분만 PUT 으로 저장한다 (§54.4)", async () => {
+    render(<InvestmentsPage />);
+    await screen.findByText("삼성전자");
+
+    fireEvent.click(screen.getByRole("button", { name: "가격 갱신" }));
+    const priceInput = screen.getByLabelText("삼성전자 현재가");
+    fireEvent.change(priceInput, { target: { value: "80000" } });
+    fireEvent.click(screen.getByRole("button", { name: "가격 저장" }));
+
+    await waitFor(() => {
+      const puts = fetchMock.mock.calls.filter(
+        ([, init]) => (init as RequestInit | undefined)?.method === "PUT",
+      );
+      expect(puts.length).toBe(1); // 바꾼 1건만 저장한다
+      const body = JSON.parse(String((puts[0]?.[1] as RequestInit).body));
+      expect(body.marketPrice).toBe(80000);
+      // 수동 시세 갱신이므로 기준일은 저장 시점(오늘)이다
+      expect(body.priceAsOf).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+  });
+
   it("원금이 0이면 수익률을 0%가 아니라 — 로 표시한다 (§54.4)", async () => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(apiResponse(zeroCostFixture()))));
     render(<InvestmentsPage />);

@@ -106,6 +106,9 @@ export function InvestmentsPage({
   const [filter, setFilter] = useState<AssetClass | "all">("all");
   const [editingId, setEditingId] = useState<number | "new" | null>(null);
   const [busy, setBusy] = useState(false);
+  const [priceMode, setPriceMode] = useState(false);
+  const [priceDrafts, setPriceDrafts] = useState<Record<number, number>>({});
+  const [savingPrices, setSavingPrices] = useState(false);
   const [form] = Form.useForm<HoldingPayload>();
   const mountedRef = useRef(false);
 
@@ -198,6 +201,59 @@ export function InvestmentsPage({
   const cancelEdit = () => {
     setEditingId(null);
     form.resetFields();
+  };
+
+  /**
+   * §54.4 E4: 현재가는 자주 바뀌고 원금·수량은 거의 안 바뀐다. 표에서 현재가만
+   * 고쳐 한 번에 저장한다 — 종목마다 편집 폼을 여는 왕복을 줄인다.
+   * 저장 시 기준일을 오늘로 둔다(시세 API 가 없으므로 수동 갱신 시점이 기준).
+   */
+  const beginPriceMode = () => {
+    setActionError("");
+    setPriceDrafts(Object.fromEntries(holdings.map((h) => [h.id, h.marketPrice])));
+    setPriceMode(true);
+  };
+
+  const cancelPriceMode = () => {
+    setPriceMode(false);
+    setPriceDrafts({});
+  };
+
+  const savePrices = async () => {
+    const changed = holdings.filter(
+      (h) => priceDrafts[h.id] !== undefined && priceDrafts[h.id] !== h.marketPrice,
+    );
+    if (changed.length === 0) {
+      cancelPriceMode();
+      return;
+    }
+    setSavingPrices(true);
+    setActionError("");
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+      await Promise.all(
+        changed.map((h) =>
+          updateHolding(h.id, {
+            accountId: h.accountId,
+            assetClass: h.assetClass,
+            symbol: h.symbol,
+            name: h.name,
+            currency: h.currency,
+            quantity: h.quantity,
+            avgPrice: h.avgPrice,
+            marketPrice: priceDrafts[h.id] ?? h.marketPrice,
+            fxRate: h.fxRate,
+            priceAsOf: today,
+          }),
+        ),
+      );
+      cancelPriceMode();
+      load();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "가격을 저장하지 못했습니다");
+    } finally {
+      setSavingPrices(false);
+    }
   };
 
   const save = async () => {
@@ -320,11 +376,27 @@ export function InvestmentsPage({
           <Typography.Title level={2} id="h-holdings" style={{ fontSize: 16, margin: 0 }}>
             보유종목
           </Typography.Title>
-          <Space>
+          <Space wrap>
             {asOf ? <Typography.Text type="secondary">기준일 {asOf}</Typography.Text> : null}
-            <Button onClick={beginCreate} disabled={editingId !== null || accounts.length === 0}>
-              + 종목 추가
-            </Button>
+            {priceMode ? (
+              <>
+                <Button type="primary" onClick={() => void savePrices()} loading={savingPrices}>
+                  가격 저장
+                </Button>
+                <Button onClick={cancelPriceMode} disabled={savingPrices}>
+                  취소
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button onClick={beginPriceMode} disabled={editingId !== null || holdings.length === 0}>
+                  가격 갱신
+                </Button>
+                <Button onClick={beginCreate} disabled={editingId !== null || accounts.length === 0}>
+                  + 종목 추가
+                </Button>
+              </>
+            )}
           </Space>
         </div>
         {accounts.length === 0 && status === "ready" ? (
@@ -413,7 +485,23 @@ export function InvestmentsPage({
                                   </td>
                                   <td style={{ textAlign: "right" }}>{row.quantity.toLocaleString("ko-KR")}</td>
                                   <td style={{ textAlign: "right" }}>{priceText(row.avgPrice, row.currency)}</td>
-                                  <td style={{ textAlign: "right" }}>{priceText(row.marketPrice, row.currency)}</td>
+                                  <td style={{ textAlign: "right" }}>
+                                    {priceMode ? (
+                                      <InputNumber
+                                        size="small"
+                                        min={0}
+                                        precision={4}
+                                        aria-label={`${row.name} 현재가`}
+                                        value={priceDrafts[row.id] ?? row.marketPrice}
+                                        onChange={(v) =>
+                                          setPriceDrafts((prev) => ({ ...prev, [row.id]: v ?? 0 }))
+                                        }
+                                        style={{ width: 110 }}
+                                      />
+                                    ) : (
+                                      priceText(row.marketPrice, row.currency)
+                                    )}
+                                  </td>
                                   <td style={{ textAlign: "right" }}>{formatKrwExact(won(value))}</td>
                                   <td style={{ textAlign: "right" }}>
                                     {formatSignedKrw(won(value - cost))}
@@ -422,12 +510,14 @@ export function InvestmentsPage({
                                     </Typography.Text>
                                   </td>
                                   <td>
-                                    <Space>
-                                      <Button size="small" type="text" onClick={() => beginEdit(row)}>편집</Button>
-                                      <Popconfirm title="이 종목을 삭제할까요?" onConfirm={() => void remove(row.id)}>
-                                        <Button size="small" type="text" danger>삭제</Button>
-                                      </Popconfirm>
-                                    </Space>
+                                    {priceMode ? null : (
+                                      <Space>
+                                        <Button size="small" type="text" onClick={() => beginEdit(row)}>편집</Button>
+                                        <Popconfirm title="이 종목을 삭제할까요?" onConfirm={() => void remove(row.id)}>
+                                          <Button size="small" type="text" danger>삭제</Button>
+                                        </Popconfirm>
+                                      </Space>
+                                    )}
                                   </td>
                                 </tr>
                               );
@@ -447,10 +537,26 @@ export function InvestmentsPage({
                                   {" "}손익 {formatSignedKrw(won(value - cost))} ({returnText(cost, value)})
                                 </MobileListCardMeta>
                                 <MobileListCardActions>
-                                  <Button size="small" type="text" onClick={() => beginEdit(row)}>편집</Button>
-                                  <Popconfirm title="이 종목을 삭제할까요?" onConfirm={() => void remove(row.id)}>
-                                    <Button size="small" type="text" danger>삭제</Button>
-                                  </Popconfirm>
+                                  {priceMode ? (
+                                    <InputNumber
+                                      size="small"
+                                      min={0}
+                                      precision={4}
+                                      aria-label={`${row.name} 현재가`}
+                                      value={priceDrafts[row.id] ?? row.marketPrice}
+                                      onChange={(v) =>
+                                        setPriceDrafts((prev) => ({ ...prev, [row.id]: v ?? 0 }))
+                                      }
+                                      style={{ width: 130 }}
+                                    />
+                                  ) : (
+                                    <Space>
+                                      <Button size="small" type="text" onClick={() => beginEdit(row)}>편집</Button>
+                                      <Popconfirm title="이 종목을 삭제할까요?" onConfirm={() => void remove(row.id)}>
+                                        <Button size="small" type="text" danger>삭제</Button>
+                                      </Popconfirm>
+                                    </Space>
+                                  )}
                                 </MobileListCardActions>
                               </MobileListCardItem>
                             );
