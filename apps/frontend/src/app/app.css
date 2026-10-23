@@ -1,5 +1,9 @@
 /* Issue 2 (§21): 모바일 360px 에서 폼 레이아웃이 깨지지 않는다.
- * AC: 화면 증거 — 폼 최대폭 420px, 입력 width 100%, box-sizing:border-box. */
+ * AC: 화면 증거 — 폼 최대폭 420px, 입력 width 100%, box-sizing:border-box.
+ *
+ * §28.4 — 색상은 전부 `--af-*` CSS 변수만 쓴다.
+ * 원시값(hex/rgba) 보유처는 src/theme/tokens.ts 한 곳이다 (D4).
+ * 변수는 테마 스토어가 documentElement 에 주입한다 — 여기엔 값을 적지 않는다. */
 *,
 *::before,
 *::after {
@@ -8,10 +12,32 @@
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Pretendard, "Apple SD Gothic Neo",
-    "Malgun Gothic", "Noto Sans KR", sans-serif; /* §28.2 웹폰트 로드 없음 */
-  background: #f5f5f5;
-  color: #1f2328;
+  /* §28.2 웹폰트 로드 없음 — 스택 값의 보유처는 tokens.ts 의 FONT_FAMILY (§28.4) */
+  font-family: var(--af-font-sans);
+  background: var(--af-bg);
+  color: var(--af-foreground);
+}
+
+/* §28.4 — [data-theme] 는 themeStore 가 documentElement 에 심는 "현재 모드" 표시다.
+ * 색 값은 여기 두지 않는다(§28.4 — 원시값 보유처는 tokens.ts).
+ * `color-scheme` 만 선언해 브라우저 기본 UI(스크롤바·네이티브 컨트롤)가
+ * 테마를 따라가게 한다. 모드별 표면 재정의가 필요해지면 이 블록만 확장한다. */
+[data-theme="light"] {
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+/* 테마 전환을 부드럽게 — 색 계열만 전이한다 (§28.4) */
+body,
+.ant-card,
+.ant-table,
+.ant-layout {
+  transition: background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* §35 컨테이너: max 1200px, 거터 모바일 16px / 데스크톱(>=992) 24px */
@@ -54,8 +80,11 @@ body {
 .auth-page input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #d0d7de;
+  /* --af-input = 컨트롤 테두리(WCAG 1.4.11 3:1). 장식용 구분선은 --af-border. */
+  border: 1px solid var(--af-input);
   border-radius: 6px;
+  background: var(--af-card);
+  color: var(--af-foreground);
   font: inherit;
 }
 
@@ -64,20 +93,48 @@ body {
   padding: 10px 12px;
   border: none;
   border-radius: 6px;
-  background: #1d76db;
-  color: #fff;
+  background: var(--af-primary);
+  color: var(--af-primary-foreground);
   font: inherit;
   font-weight: 600;
   cursor: pointer;
+  transition: background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* 주 액션(잉크) hover/active — 잉크를 살짝 밝게/어둡게 (§28.5).
+ * 이전에는 hover 를 --af-foreground 로 줬는데 잉크 팔레트에서 primary 와 foreground 가
+ * 같은 값이라 변화가 없었다. 전용 토큰을 쓴다. */
 .auth-page button:hover {
-  background: #16589e;
+  background: var(--af-primary-hover);
+  color: var(--af-primary-foreground);
+}
+
+.auth-page button:active {
+  background: var(--af-primary-active);
+  color: var(--af-primary-foreground);
+}
+
+/* §28.5 포커스 표시 3:1 — 브라우저 기본 링에 의존하지 않는다.
+ * .auth-page 의 input/button 은 antd 컴포넌트가 아닌 순수 HTML 이므로
+ * controlOutline(colorPrimaryBorder) 을 받지 못해 명시한다.
+ * --af-ring = 라이트 #807b71 / 다크 #7d786f (bg·card·secondary 전부 3:1 이상). */
+.auth-page input:focus-visible,
+.auth-page button:focus-visible {
+  outline: 2px solid var(--af-ring);
+  outline-offset: 2px;
 }
 
 /* §28.2 숫자 표기: 금액·비율 세로 정렬 */
 .af-num {
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* D5: 모노는 숫자·코드에만. 한국어 라벨에는 쓰지 않는다. */
+.af-mono {
+  font-family: var(--af-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
 }
 
 /* 자산 구성비 카드: 라벨 · 값 양쪽 정렬 목록 */
@@ -99,10 +156,39 @@ body {
 .field-error,
 .form-error {
   margin: 0;
-  color: #b60205;
+  color: var(--af-destructive);
   font-size: 0.8rem;
 }
 
 .form-error {
   font-size: 0.85rem;
+}
+
+/* ── 접근성 (이슈 #70, §28.5) ─────────────────────────── */
+
+/* 스킵 링크: 포커스 전까지 화면 밖(-9999px), 포커스 시 좌상단에 나타난다.
+   첫 Tab 이 헤더 내비 대신 이 링크에 먼저 닿게 하는 것이 목적이다. */
+.af-skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 8px;
+  z-index: 1000;
+  padding: 8px 14px;
+  background: var(--af-card);
+  color: var(--af-foreground);
+  border: 1px solid var(--af-border-strong);
+  border-radius: 8px;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.af-skip-link:focus {
+  left: 8px;
+  outline: 2px solid var(--af-ring);
+  outline-offset: 2px;
+}
+
+/* 스킵 링크 이동 대상(#main): 포커스는 이동에만 쓰고 육안 링은 띄우지 않는다. */
+#main:focus {
+  outline: none;
 }

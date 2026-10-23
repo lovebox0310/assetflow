@@ -16,6 +16,169 @@
 
 ---
 
+## 2026-10-23 — 프로토타입 비상금 저장 복구 + FE 접근성 AA 정합성 (#70) + 모바일 헤더 잘림
+
+세 작업을 **독립 브랜치 3개**로 나눠 커밋하고 **PR 3건 생성·CI 전부 통과**했다 (각각 main 기준 — `fix/mobile-header-wrap` · `fix/settings-emergency-save` · `feat/a11y-issue-70`).
+
+### 무엇을 했나
+
+| # | 작업 | 산출물 |
+|---|---|---|
+| 1 | 모바일 헤더 잘림 | `AppLayout` 헤더 모바일 `flexWrap: wrap` + `height: auto`/`minHeight 48` (데스크톱 64 유지) |
+| 2 | `settings.html` 비상금 입력 무동작 (이전 남은 것) | 목표 개월 input 이 **어떤 폼 안에도 없었다** → `<form id=emergencyForm>` 감싸기 · 저장/취소 버튼 · 1~24 정수 검증(오류 경고+aria-invalid) · `d.emergency.targetMonths` 갱신 후 `AF.recompute()` · 상태라인(role=status) 표시. 프로필 폼도 id 로 찾도록 교정 — `querySelector("form")` 은 첫 폼에만 묶여 **두 번째 폼 저장을 놓쳤다**. 프로필 저장값은 `d.user` 에 반영하고 취소 시 그 값으로 복원 (기본 리셋은 JS 주입 readonly 필드를 비우므로 preventDefault) |
+| 3 | 프로토타입 회귀 테스트 신규 | `tools/test-settings-page.mjs` **70건** (문서 구조 원문 검사 · 저장 · 검증 · 복원 · 폼 분리), `run-all.mjs` 에 4번째 스위트로 등록 |
+| 4 | #70 현재 페이지 내비 | `StandardNav`: `disabled` → `aria-current="page"` + 잉크색(--af-foreground)·굵기. 대비 재계산 **16.01:1(라이트) / 14.51:1(다크)** · 링크 slate **6.13 / 6.00:1** · 구 disabled 색 **3.49:1** (이슈 실측과 일치 — 미달이었음이 재확인) |
+| 5 | #70 제목 체계 | 4개 화면 h1 정확히 1개(대시보드·자산·지출·설정, 24px — 프로토타입 page-title 과 동일) + 섹션 h4→h2(시각 16px 유지) + MetricCard 제목 h3 (프로토타입 h3.card__label 체계와 일치) |
+| 6 | #70 키보드 요소 | 정기 칩 `span onClick` → **실제 `<button type=button>`** (✕ 중지 버튼은 형제로 분리 — button 안의 button 제거). 지출 행 액션 접근 이름에 항목명 결합 ("부가가치세 이 달만 수정") — "편집" ×5 중복 라벨 해소 |
+| 7 | #70 알림·표 | 지출 notice `role=status aria-live=polite`, 오류 블록·카드 오류 `aria-live=assertive`(role=alert 유지), 카드 안내 role=status. antd 표 4개 `aria-label`, 원시 표 3개 `aria-labelledby` + `th scope="col"` (CompositionDonut 범례는 이미 aria-label 보유) |
+| 8 | #70 스킵 링크·랜드마크 | 문서 첫 `<a href="#main">본문으로 건너뛰기</a>` + `<main id="main" tabIndex=-1>`, `.af-skip-link` (포커스 전 -9999px, 포커스 시 좌상단 + 링) |
+| 9 | a11y 통합 테스트 | `src/app/AppA11y.test.tsx` **16건** — h1 개수(4화면)·aria-current·대비(토큰에서 WCAG 공식 직접 계산해 고정)·스킵 링크 순서·칩 button 동작·액션 이름 결합·알림 role/aria-live·표 접근 이름 4종 |
+
+### 검증
+
+| 대상 | 방법 | 결과 |
+|---|---|---|
+| 프로토타입 | `node design/prototype/tools/run-all.mjs` | **4/4 스위트 PASS** (513건) |
+| FE 타입·린트 | `pnpm typecheck` · `pnpm lint` | PASS · PASS |
+| FE 테스트 | `pnpm test` | **13파일 103건 전부 PASS** (기존 87 + 신규 16) |
+| FE 빌드 | `pnpm build` | 성공 (경고는 기존 chunk 크기·동적 import 관련만) |
+| 대비 | WCAG 공식을 토큰 hex 에 직접 계산, 테스트로 고정 | 16.01 / 14.51 / 6.13 / 6.00:1 — 전부 4.5:1 이상 |
+
+기존 테스트 2건은 접근 이름이 바뀐 것을 반영하지 못해 깨진 것이었다: `CardImportPanel`(안내 → role=status), `ExpensesPage`(행 액션 이름에 항목명 결합). 둘 다 새 시맨틱에 맞춰 갱신했다 — 규칙을 억지로 되돌리지 않았다.
+
+### 남은 것
+
+- [x] **3개 브랜치 푸시 + PR 생성** — `gh auth setup-git` 으로 git HTTPS 인증 연결 후 푸시. **PR #79(접근성, Closes #70) · #80(모바일 헤더) · #81(프로토타입 비상금 저장)**. PR #79 본문에 대비 계산 결과(16.01/14.51/6.13/6.00:1)·테스트 결과 첨부
+- [x] **CI quality-gate** — 3개 PR 전 게이트(backend·frontend·quality·label) **전부 PASS** (frontend-gate: 103 테스트)
+- [ ] **PR 3건 머지** — 리뷰어 승인 대기 (CONTRIBUTING: Blocker/Critical 0이면 머지 가능). 머지 순서는 #80 → #81 → #79 가 안전하다 (AppLayout 충돌 가능성; 실제로는 병합 무충돌·103건 PASS 확인済)
+- [ ] **실브라우저 키보드/스크린리더 실측** — jsdom 한계. 스킵 링크 첫 Tab · 포커스 링 · NVDA/보이스오버 낭독은 배포 후 수동 확인이 필요하다 (AC "이동할 수 있다/읽힌다" 의 실측)
+- [ ] 이전 항목에서 이어진 것: 화면 캡처, 대시보드 재시도 버튼 비활성 (이번 범위 밖)
+- [ ] settings.html 비상금 저장은 세션 내 반영이다 — 프로토타입 localStorage 정책은 지출·자산만 저장하는 기존 규약 유지 (새로고침 시 시드 복귀)
+
+---
+
+## 2026-10-21 — 상위 10개 저장소 스킬 2차 설치 (59종 추가, 누적 88종)
+
+### 무엇을 했나
+
+| # | 작업 | 산출물 |
+|---|---|---|
+| 1 | 10곳 저장소 실물 스캔 | `SKILL.md` 158개 발견 → 실제 배포 대상 147개 (테스트 픽스처 5 · ponytail 중복 6 제외) |
+| 2 | 도구 종속 판정 | **88개(60%)는 특정 CLI/앱 없이는 동작 불가** — OmniRoute 52 · Orca 11 · deepseek-harness 22 · archify 2 → **제외** |
+| 3 | 전역 설치 | mattpocock 38 · deepseek office 8 · ponytail 6 · archify 3 · diagram-design 1 · watermarks-remover 2 · MoneyPrinterTurbo 1 = **59종 추가** (누적 **88종**) |
+| 4 | ID 충돌 해결 | mattpocock `prototype` → **`throwaway-prototype`** (기존 Emil Kowalski `prototype` 와 폴더명 충돌) |
+| 5 | 자체 스킬 | `workflow-playbook`(엔진/문서 라우팅 인덱스) — `design-playbook` 짝 |
+| 6 | 런타임 추가 | `openpyxl` `pandas` `numpy` `python-docx` `python-pptx` `Pillow` `playwright` + Chromium |
+| 7 | `remove-ai-marks` 자립화 | 업스트림에 없는 `service/scripts/` 46개를 스킬 폴더에 동봉 (전부 표준 라이브러리만 사용) |
+| 8 | 자동 호출 정리 | 배치 2에서 21종에 `metadata.opencode/autoinvoke: false` 추가. 그중 8종은 업스트림이 이미 숨긴 상태였다. **누적 숨김 42개 · 노출 47개** |
+| 9 | 문서 | `project.md` §51 · `AGENTS.md` 코드맵 |
+
+### 검증
+
+| 대상 | 방법 | 결과 |
+|---|---|---|
+| 설치 완결 | 디렉터리 대조 | 59/59 존재 · 전부 `SKILL.md` 보유 · 전부 `LICENSE.upstream` 보유 |
+| frontmatter | 전수 파싱 | 이름 중복 0건 · frontmatter malformed 0건 · **노출 47 / 숨김 42** (OpenCode 목록과 일치 확인) |
+| `archify` | `archify.mjs render` (번들 예제) | 806KB HTML 생성 · `check` → `ok: true`. **`npm install` 불필요** |
+| `diagram-design` | `export_png.py` (Playwright) | 6.3KB PNG 생성. 입력 SVG 에 `viewBox` 가 없으면 실패(설계대로) |
+| `clean-user-facing-text` | `inspect_text.py --audit --json` | U+200B·U+00A0 탐지 확인 |
+| `remove-ai-marks` | `service/scripts/audit_dir.py <dir> --json` | `suspicious_text` 1건 검출 (호스팅 서비스 없이 로컬 동작) |
+| `office` (xlsx) | `openpyxl` 로 `samples/card/anonymized/synthetic-sample.xlsx` | 1시트 12행×8열 · 한국어 헤더 정상 |
+| OpenCode 인식 | 스킬 목록 | 자동 노출 47종 + 내장 2종(`opencode` `report`) · 숨김 42종 (숨겨도 ID 지정 호출은 가능) |
+
+### 남은 것
+
+- [ ] **LibreOffice sidecar 미설치** — `office-export-pdf` `office-render` `office-recalculate` 는 PDF 변환/렌더/재계산 불가
+- [ ] `office` 계열의 docx/pptx/pdf 경로 **미검증** (xlsx 읽기만 실측)
+- [ ] `dsh-*` 16종이 제외되어 아깝다 — description 이 "DeepSeek Harness" 를 명시하기 때문
+- [ ] 스킬 업데이트 절차 여전히 없음 — 2차 배치도 업스트림 스냅샷
+- [ ] `setup-matt-pocock-skills` 를 돌리지 않은 상태다 — `triage` `to-spec` `to-tickets` `wayfinder` 는 `docs/agents/` 레이아웃을 전제한다
+- [ ] **Python PATH 반영**: 레지스트리(HKCU\Environment)에는 `Python313\` 이 `WindowsApps` 보다 **앞**에 있다.
+      그래서 **새 터미널**에서는 `python` → 3.13.15 로 정상 해석된다(Store 스텁이 밀린다).
+      **하지만 이미 떠 있는 opencode 서비스는 옛 PATH 를 물려받는다.**
+      → **새 터미널을 연 뒤** `opencode service restart` 해야 한다.
+      옛 터미널에서 그대로 실행하면 옛 PATH 를 물려받아 또 Store 스텁이 잡힌다
+- [ ] 스킬 스크립트는 PATH 를 믿지 말고 **절대 경로**로 부른다 (playbook 에 절대경로를 적어 둠)
+- [ ] **세션의 시스템 프롬프트는 시작 시점 스냅샷** — 스킬 숨김 변경은 새 세션에서만 반영됨
+
+---
+
+## 2026-10-21 — 디자인 스킬 스위트 29개 설치 (전역) + Python 3.13 도입
+
+### 무엇을 했나
+
+| # | 작업 | 산출물 |
+|---|---|---|
+| 1 | 출처 8곳 실물 확인 | UI UX Pro Max · Vercel web-design-guidelines · Emil Kowalski · taste-skill · Hallmark · Impeccable · Anthropic frontend-design · Awesome Opus 5.5 videos |
+| 2 | 전역 설치 | `C:\Users\H\.config\opencode\skills\` — 업스트림 27개 + 자체 2개 = **29개 폴더(16.7MB)** |
+| 3 | 런타임 확보 | Python 3.13.15(winget user scope) — ui-ux-pro-max 검색 CLI 의 선행 조건. Node v24.22.0 는 기존 |
+| 4 | OpenCode 호환 패치 | `ui-ux-pro-max/SKILL.md` 의 `${CLAUDE_PLUGIN_ROOT}` 11곳 → 스킬 상대 경로(`scripts/search.py`) |
+| 5 | 자체 스킬 2종 | `awesome-opus-videos`(프롬프트 703건 + 검색 스크립트 `scripts/search.mjs`) · `design-playbook`(라우팅 인덱스) |
+| 6 | 라이선스 보존 | 스킬 폴더마다 `LICENSE.upstream` |
+| 7 | 자동 호출 정리 | Swift/React Native/Sonner 3종에 `metadata.opencode/autoinvoke: false` 추가 (업스트림이 이미 숨긴 3종과 합쳐 6종 숨김) |
+| 8 | 문서 | `project.md` §50 · `AGENTS.md` 코드맵 |
+
+### 검증
+
+| 대상 | 방법 | 결과 |
+|---|---|---|
+| 스킬 인식 | opencode 스킬 목록 | 23종 자동 노출 + 6종 숨김(명시 호출은 가능) + 자체 2종 노출 = 29 |
+| ui-ux-pro-max 검색 | `search.py "personal finance dashboard" --domain style` | `data-dense-dashboard` 등 3건 반환 |
+| ui-ux-pro-max 디자인 시스템 | `search.py "personal finance planning dashboard" --design-system -p AssetFlow` | 패턴·스타일·색·토큰 생성 |
+| awesome-opus-videos | `search.mjs "dashboard animation" --limit 2` | 2건 매칭, 프롬프트·링크 출력 |
+| taste-skill | `draw.mjs --list sectors` · `lint.mjs` | 섹터 14종 출력 · 저장소 대상 lint 동작 |
+| impeccable | `impeccable.cmd context` | projectRoot `D:\study\assetflow` 인식 (PRODUCT.md 없음 경고는 정상) |
+
+### 남은 것
+
+- [ ] 팀 공용 설치가 필요해지면 저장소 반영 방식 결정 (§50.6) — 현재는 이 PC 전용
+- [ ] 스킬 업데이트 절차 없음 — upstream 을 수동으로 다시 가져와 덮어써야 한다
+- [ ] `taste-skill` 린트가 지적한 모노스페이스 2건(`src/theme/tokens.ts`) vs §28.2 충돌 여부 판정
+- [ ] Python PATH 반영: 새 터미널은 자동, **이미 떠 있는 opencode 서비스는 `opencode service restart` 필요**
+- [ ] `ui-styling` 은 antd 6 이 아닌 shadcn/Tailwind 전제 — 패턴 참고로만 쓸 것 (§50.5)
+
+---
+
+## 2026-10-21 — 잉크(ink) 팔레트 테마 교체 + 다크 모드 (FieldRank 참고)
+
+### 무엇을 했나
+
+| # | 작업 | 산출물 |
+|---|---|---|
+| 1 | 참고 사이트 분해 | fieldrank.run 3개 페이지의 CSS 청크(87KB)를 직접 받아 `:root`/`.dark` 토큰 72개 + 타이포/레이아웃/컴포넌트 규칙 추출 |
+| 2 | FE 토큰 모듈 | `apps/frontend/src/theme/tokens.ts` — `AF_COLORS`(라이트/다크 2세트) · `createAfTheme(mode)` · `afCssVars()`. **원시 색상값의 단일 보유처**(§28.2/§28.4) |
+| 3 | 테마 스토어 | `src/theme/themeStore.ts` — `assetflow.theme` 키 · 기본 `system` · `useSyncExternalStore` 구독 · matchMedia 부재 시 light 폴백 |
+| 4 | 다크 모드 UI | 헤더(로그아웃 옆) 토글 버튼 — 인라인 SVG 해/달, `aria-label`/`aria-pressed`, 라이트↔다크 2상태 |
+| 5 | 하드코딩 색 제거 | `app.css` · `AppLayout` · `CompositionDonut` · `MobileListCard` · `ExpensesPage` · `.storybook/preview.tsx` → `var(--af-*)` 33종 |
+| 6 | 접근성 보정 | 포커스 링(`colorPrimaryBorder` = ring) 3:1 확보 · `borderStrong` 라이트 `#807b71`/다크 `#7d786f` · 다크 3·4단계 텍스트 `#969186` · 로그인 버튼 hover/active 전용 토큰 · 네이티브 컨트롤 `:focus-visible` |
+| 7 | 테스트 | `src/theme/theme.test.tsx` 8건(저장·복원·토글·system 폴백·다크 시나리오) |
+| 8 | 문서 | `.ai/project.md` §28.2 색상 토큰 확정 · §28.4 다크 모드 MVP 제외 해제 · §28.5 대비 기준·조정값 · §28.6 잔여 위험 |
+| 9 | 설정 화면 결함 | 비상금 기준 카드의 도움 문장("지출 화면의 '필수' 항목 합계 · 월 확정 시 스냅샷에 저장")이 카드 밖으로 넘침. 원인 = antd 인라인 폼(`flex: none` + `control` max-content). Form.Item `flex: 0 1 320px` + 문장 `maxWidth 260`/`whiteSpace: normal` 로 줄바꿈 처리 |
+
+### 검증
+
+| 대상 | 방법 | 결과 |
+|---|---|---|
+| FE 테스트 | `pnpm test` | 82건 PASS (기존 74 + 신규 8) |
+| FE 타입 | `pnpm typecheck` | 클린 |
+| FE lint | `pnpm lint` | 클린 |
+| FE 빌드 | `pnpm build` | 성공 |
+| Storybook | `pnpm build-storybook` | 성공 (다크 스토리 포함) |
+| 하드코딩 색 | grep `hex`/`rgba` | `src/theme/tokens.ts` 밖 **0건** |
+| 미정의 CSS 변수 | 사용 vs 정의 대조 | 0건 |
+| 프로토타입 | `node design/prototype/tools/run-all.mjs` | PASS (3/3) — 프로토타입 무변경 |
+
+### 남은 것
+
+- [ ] 커밋/PR (사용자 확인 후) — 미추적 3파일(`themeStore.ts`·`theme.test.tsx`·`MobileListCard.tsx`) 포함 필수
+- [ ] 브랜치 정리 — 워킹 트리가 `feat/merchant-rule-inheritance` 에 있고 이번 작업과 무관한 백엔드 5파일 변경이 섞여 있음
+- [ ] 다크 모드 육안 확인 (Storybook `대시보드/핵심카드--다크모드`, 앱 헤더 토글)
+- [ ] `design/prototype/common/tokens.css` 정렬 (FE 토큰과 동일 값으로) — 별건
+- [ ] `colorPrimaryBorder` 전역 오버라이드 — Slider/DatePicker/Notification 도입 시 재검토
+- [ ] Storybook a11y addon 도입 (§28.5 미이행 항목)
+
+---
+
 ## 2026-10-20 — #49 카드 가맹점 용도구분 자동 승계 구현
 
 ### 무엇을 했나

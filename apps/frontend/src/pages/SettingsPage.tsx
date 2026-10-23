@@ -82,12 +82,13 @@ export function SettingsPage({ onOpenDashboard, onOpenAssets, onOpenExpenses }: 
       onLogout={handleLogout}
       nav={<StandardNav current="settings" onOpenDashboard={onOpenDashboard} onOpenAssets={onOpenAssets} onOpenExpenses={onOpenExpenses} />}
     >
-      <Typography.Title level={4} id="h-settings" style={{ margin: 0, marginBottom: 16 }}>설정</Typography.Title>
+      {/* 이슈 #70: 페이지 h1 은 정확히 1개. 섹션은 h2, 계정 요약도 병렬 섹션이라 h2. */}
+      <Typography.Title level={1} id="h-settings" style={{ fontSize: 24, margin: 0, marginBottom: 16 }}>설정</Typography.Title>
 
       <div style={screens.md ? { display: "flex", gap: 24, alignItems: "flex-start" } : undefined}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <section aria-labelledby="h-profile" style={{ marginBottom: 24 }}>
-            <Typography.Title level={4} id="h-profile" style={{ margin: 0, marginBottom: 16 }}>프로필</Typography.Title>
+            <Typography.Title level={2} id="h-profile" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>프로필</Typography.Title>
             <Card>
               <StateBlock status={status} onRetry={load} errorText={errorText}>
                 {settings ? (
@@ -101,14 +102,14 @@ export function SettingsPage({ onOpenDashboard, onOpenAssets, onOpenExpenses }: 
           </section>
 
           <section aria-labelledby="h-emergency" style={{ marginBottom: 24 }}>
-            <Typography.Title level={4} id="h-emergency" style={{ margin: 0, marginBottom: 16 }}>비상금 기준</Typography.Title>
+            <Typography.Title level={2} id="h-emergency" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>비상금 기준</Typography.Title>
             <Card>
               <StateBlock status={status} onRetry={load} errorText={errorText}>
                 {settings ? (
                   <Form form={form} layout="inline" style={{ display: "flex", flexWrap: "wrap", gap: "10px 12px" }}>
-                    <Form.Item label="필수지출(월)" style={{ marginBottom: 0 }}>
+                    <Form.Item label="필수지출(월)" style={{ marginBottom: 0, flex: "0 1 320px", minWidth: 0 }}>
                       <Typography.Text strong>{summary ? formatKrwExact(summary.essential) : "—"}</Typography.Text>
-                      <Typography.Text type="secondary" style={{ fontSize: 12, display: "block" }}>
+                      <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", maxWidth: 260, whiteSpace: "normal", lineHeight: 1.5 }}>
                         지출 화면의 '필수' 항목 합계 · 월 확정 시 스냅샷에 저장
                       </Typography.Text>
                     </Form.Item>
@@ -126,8 +127,9 @@ export function SettingsPage({ onOpenDashboard, onOpenAssets, onOpenExpenses }: 
 
         <aside aria-labelledby="h-summary" style={screens.md ? { width: 300, flexShrink: 0 } : { marginTop: 24 }}>
           <Card>
-            <Typography.Title level={5} id="h-summary" style={{ margin: 0, marginBottom: 12 }}>계정 요약</Typography.Title>
+            <Typography.Title level={2} id="h-summary" style={{ fontSize: 14, margin: 0, marginBottom: 12 }}>계정 요약</Typography.Title>
             <Table
+              aria-label="계정 요약"
               size="small"
               pagination={false}
               showHeader={false}

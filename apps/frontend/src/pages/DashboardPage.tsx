@@ -1,5 +1,10 @@
 import { useCallback, Suspense, lazy, useEffect, useRef, useState } from "react";
-import { Card, Skeleton, Typography } from "antd";
+import { Card, Grid, Skeleton, Typography } from "antd";
+import {
+  MobileListCardHeader,
+  MobileListCardItem,
+  MobileListCardMeta,
+} from "../components/MobileListCard";
 import { AppLayout } from "../layout/AppLayout";
 import { ResponsiveGrid } from "../layout/ResponsiveGrid";
 import { StandardNav } from "../layout/StandardNav";
@@ -39,6 +44,10 @@ interface DashboardPageProps {
  * - 계산은 여전히 metrics.ts 단일 출처(§34.6). 여기선 데이터를 씌우는 것만 한다.
  */
 export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSettings }: DashboardPageProps) {
+  const screens = Grid.useBreakpoint();
+  // §35 중단점: md 미만은 표 대신 카드형 리스트
+  const wide = Boolean(screens.md);
+
   const [summary, setSummary] = useState<DashboardData | null>(null);
   const [summaryStatus, setSummaryStatus] = useState<SurfaceStatus>("loading");
   const [summaryError, setSummaryError] = useState("");
@@ -96,8 +105,12 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
       onLogout={handleLogout}
       nav={<StandardNav current="dashboard" onOpenAssets={onOpenAssets} onOpenExpenses={onOpenExpenses} onOpenSettings={onOpenSettings} />}
     >
+      {/* 이슈 #70: 페이지 h1 은 정확히 1개 (§28.5 제목 체계). 섹션은 h2. */}
+      <Typography.Title level={1} id="h-dashboard" style={{ fontSize: 24, margin: 0, marginBottom: 16 }}>
+        대시보드
+      </Typography.Title>
       <section aria-labelledby="h-core" style={{ marginBottom: 32 }}>
-        <Typography.Title level={4} id="h-core" style={{ margin: 0, marginBottom: 16 }}>
+        <Typography.Title level={2} id="h-core" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>
           핵심 지표
         </Typography.Title>
         <ResponsiveGrid>
@@ -132,7 +145,7 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
       </section>
 
       <section aria-labelledby="h-composition" style={{ marginBottom: 32 }}>
-        <Typography.Title level={4} id="h-composition">
+        <Typography.Title level={2} id="h-composition" style={{ fontSize: 16 }}>
           자산 구성비
         </Typography.Title>
         <Card>
@@ -148,7 +161,7 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
       </section>
 
       <section aria-labelledby="h-cash" style={{ marginBottom: 32 }}>
-        <Typography.Title level={4} id="h-cash">
+        <Typography.Title level={2} id="h-cash" style={{ fontSize: 16 }}>
           현금 3계좌
         </Typography.Title>
         <Card>
@@ -169,32 +182,54 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
       </section>
 
       <section aria-labelledby="h-cashflow">
-        <Typography.Title level={4} id="h-cashflow">
+        <Typography.Title level={2} id="h-cashflow" style={{ fontSize: 16 }}>
           월별 현금흐름
         </Typography.Title>
         <Card>
           <StateBlock status={cashflowStatus} onRetry={load}>
             {cashflow && cashflow.length > 0 ? (
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    <th style={{ textAlign: "left", paddingBottom: 8 }}>월</th>
-                    <th style={{ textAlign: "right", paddingBottom: 8 }}>수입</th>
-                    <th style={{ textAlign: "right", paddingBottom: 8 }}>지출</th>
-                    <th style={{ textAlign: "right", paddingBottom: 8 }}>수지</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cashflow.map((row) => (
-                    <tr key={row.month}>
-                      <td style={{ paddingBottom: 6 }}>{row.month}</td>
-                      <td style={{ textAlign: "right" }}>{formatKrwAbbr(row.income)}</td>
-                      <td style={{ textAlign: "right" }}>{formatKrwAbbr(row.expenses)}</td>
-                      <td style={{ textAlign: "right" }}>{formatSignedKrw(row.income - row.expenses)}</td>
+              wide ? (
+                <table aria-labelledby="h-cashflow" style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      <th scope="col" style={{ textAlign: "left", paddingBottom: 8 }}>월</th>
+                      <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>수입</th>
+                      <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>지출</th>
+                      <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>수지</th>
                     </tr>
+                  </thead>
+                  <tbody>
+                    {cashflow.map((row) => (
+                      <tr key={row.month}>
+                        <td style={{ paddingBottom: 6 }}>{row.month}</td>
+                        <td style={{ textAlign: "right" }}>{formatKrwAbbr(row.income)}</td>
+                        <td style={{ textAlign: "right" }}>{formatKrwAbbr(row.expenses)}</td>
+                        <td style={{ textAlign: "right" }}>{formatSignedKrw(row.income - row.expenses)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div>
+                  {cashflow.map((row) => (
+                    <MobileListCardItem key={row.month}>
+                      <MobileListCardHeader
+                        title={row.month}
+                        value={formatSignedKrw(row.income - row.expenses)}
+                      />
+                      <MobileListCardMeta
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <span>수입 {formatKrwAbbr(row.income)}</span>
+                        <span>지출 {formatKrwAbbr(row.expenses)}</span>
+                      </MobileListCardMeta>
+                    </MobileListCardItem>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              )
             ) : (
               <Typography.Text type="secondary">표시할 월 데이터가 없습니다</Typography.Text>
             )}
