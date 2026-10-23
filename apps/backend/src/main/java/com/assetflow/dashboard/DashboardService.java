@@ -55,6 +55,13 @@ public class DashboardService {
         if (months < 1 || months > 12) {
             throw new IllegalArgumentException("months must be between 1 and 12");
         }
+        // §34.6: 확정된 월 스냅샷이 있으면 실데이터, 없으면 mock 기준선 폴다운.
+        List<ExpenseSnapshotLedger.Snapshot> snaps = snapshotLedger.recent(MockDashboardSource.AS_OF, months);
+        if (!snaps.isEmpty()) {
+            return snaps.stream()
+                    .map(s -> new CashflowMonth(s.month(), s.income(), s.expenses()))
+                    .toList();
+        }
         List<CashflowMonth> all = MockDashboardSource.cashflow();
         return all.subList(0, Math.min(months, all.size()));
     }
