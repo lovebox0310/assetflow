@@ -236,7 +236,8 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
     });
     render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "정기 항목으로 등록" }));
+    // 이슈 #70: 행 액션 접근 이름에 항목명이 결합된다 ("편집" 중복 라벨 문제 해소)
+    fireEvent.click(await screen.findByRole("button", { name: "DB손해보험 정기 항목으로 등록" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v1/expenses/items/9/convert-to-recurring", expect.objectContaining({ method: "POST" })));
   });
 });
