@@ -89,3 +89,80 @@ describe("401 자동 로그아웃 (이슈 #38)", () => {
   });
 });
 });
+
+describe("URL 상태 동기화 (이슈 #72)", () => {
+  afterEach(cleanup);
+
+  beforeEach(() => {
+    // 테스트마다 주소·제목을 초기화한다. 이전 테스트의 해시가 남으면 App 의 초기 화면이 흔들린다.
+    window.history.replaceState(null, "", "/");
+    document.title = "";
+    clearToken();
+    saveToken("tok", Date.now() + 60_000);
+  });
+
+  it("내비 클릭이 URL·탭 제목·aria-current 를 함께 바꾼다", async () => {
+    render(<App />);
+    await screen.findByText("핵심 지표");
+
+    fireEvent.click(screen.getByRole("button", { name: "자산" }));
+
+    expect(await screen.findByRole("heading", { name: "자산" })).toBeDefined();
+    expect(window.location.hash).toBe("#/assets");
+    expect(document.title).toBe("자산 · AssetFlow");
+    expect(screen.getByRole("button", { name: "자산" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("button", { name: "대시보드" }).getAttribute("aria-current")).toBeNull();
+  });
+
+  it("뒤로가기(popstate) 면 이전 화면으로 돌아온다", async () => {
+    render(<App />);
+    await screen.findByText("핵심 지표");
+    fireEvent.click(screen.getByRole("button", { name: "지출" }));
+    await screen.findByRole("heading", { name: "지출" });
+
+    // jsdom 의 history.back() 은 비동기·불안정하므로, 주소를 되돌린 뒤 브라우저가 보내는
+    // popstate 를 직접 보낸다. App 의 리스너 경로는 실제 뒤로가기와 같다.
+    window.history.replaceState(null, "", "#/");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+
+    expect(await screen.findByText("핵심 지표")).toBeDefined();
+    expect(document.title).toBe("대시보드 · AssetFlow");
+    expect(screen.getByRole("button", { name: "대시보드" }).getAttribute("aria-current")).toBe("page");
+  });
+
+  it("새로고침·딥링크: 해시로 진입하면 그 화면이 유지된다", async () => {
+    window.history.replaceState(null, "", "#/settings");
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "설정" })).toBeDefined();
+    expect(document.title).toBe("설정 · AssetFlow");
+    expect(window.location.hash).toBe("#/settings");
+  });
+
+  it("미인증 딥링크는 로그인 화면을 거쳐 원래 경로로 복귀한다", async () => {
+    clearToken();
+    window.history.replaceState(null, "", "#/expenses");
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: /로그인|login/i })).toBeDefined();
+    expect(document.title).toBe("로그인 · AssetFlow");
+
+    // #74(한국어화) 전후 어느 라벨이든 통과하도록 두 언어를 함께 받는다.
+    fireEvent.change(screen.getByLabelText(/이메일|email/i), { target: { value: "a@b.com" } });
+    fireEvent.change(screen.getByLabelText(/비밀번호|password/i), { target: { value: "password1" } });
+    const form = screen.getByRole("button", { name: /로그인|sign in/i }).closest("form");
+    fireEvent.submit(form as HTMLFormElement);
+
+    expect(await screen.findByRole("heading", { name: "지출" })).toBeDefined();
+    expect(window.location.hash).toBe("#/expenses");
+  });
+
+  it("알 수 없는 해시는 대시보드로 정규화한다", async () => {
+    window.history.replaceState(null, "", "#/nope");
+    render(<App />);
+
+    expect(await screen.findByText("핵심 지표")).toBeDefined();
+    expect(window.location.hash).toBe("#/");
+    expect(document.title).toBe("대시보드 · AssetFlow");
+  });
+});
