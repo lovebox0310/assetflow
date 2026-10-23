@@ -35,7 +35,9 @@ class AssetAccountApiTest {
         mvc = MockMvcBuilders
                 .standaloneSetup(
                         new AssetAccountController(ledger),
-                        new DashboardController(new DashboardService(ledger, new InMemoryExpenseSnapshotLedger())))
+                        new DashboardController(new DashboardService(ledger, new InMemoryExpenseSnapshotLedger(),
+                                new com.assetflow.investments.PortfolioService(ledger,
+                                        new com.assetflow.investments.InMemoryInvestmentLedger()))))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .addInterceptors(new BearerTokenInterceptor(new TokenService("test-secret-0123456789-0123456789-0123456789")))
                 .build();
