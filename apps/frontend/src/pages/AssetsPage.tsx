@@ -19,6 +19,7 @@ import {
 } from "../api/assetsApi";
 import { clearInflight } from "../api/client";
 import { clearToken } from "../auth/authStore";
+import { formatKrwExact } from "../utils/formatters";
 import { CardImportPanel } from "../components/CardImportPanel";
 
 interface AssetsPageProps {
@@ -198,7 +199,7 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
           <Tag>{TYPE_LABELS[row.accountType]}</Tag>
         </td>
         <td>{row.institutionName || "—"}</td>
-        <td style={{ textAlign: "right" }}>{row.balance.toLocaleString("ko-KR")}원</td>
+        <td style={{ textAlign: "right" }}>{formatKrwExact(row.balance)}</td>
         <td>
           <Space>
             <Button size="small" type="text" onClick={() => beginEdit(row)}>편집</Button>
@@ -210,7 +211,7 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
       </tr>
     ) : (
       <MobileListCardItem key={row.id}>
-        <MobileListCardHeader title={row.name} value={`${row.balance.toLocaleString("ko-KR")}원`} />
+        <MobileListCardHeader title={row.name} value={`${formatKrwExact(row.balance)}`} />
         <MobileListCardMeta>
           {TYPE_LABELS[row.accountType]}
           {row.institutionName ? ` · ${row.institutionName}` : ""}
@@ -332,7 +333,7 @@ export function AssetsPage({ onBack, onOpenExpenses, onOpenSettings }: AssetsPag
               <div>{liabilities.map((r) => renderRow(r, true))}</div>
             )}
             <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
-              합계 {totalLiabilities.toLocaleString("ko-KR")}원
+              합계 {formatKrwExact(totalLiabilities)}
             </Typography.Paragraph>
           </StateBlock>
         </Card>
@@ -379,13 +380,13 @@ function AssetTotals({ assets, total }: { assets: AssetAccountRow[]; total: numb
           const tone = sum > 0 ? {} : { type: "secondary" as const };
           return (
             <Typography.Text key={type} {...tone}>
-              {TYPE_LABELS[type]} {sum.toLocaleString("ko-KR")}원
+              {TYPE_LABELS[type]} {formatKrwExact(sum)}
             </Typography.Text>
           );
         })}
       </Space>
       <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
-        합계 {total.toLocaleString("ko-KR")}원 — 저장하지 않고 행에서 재계산한다 (§31.1)
+        합계 {formatKrwExact(total)} — 저장하지 않고 행에서 재계산한다 (§31.1)
       </Typography.Paragraph>
     </div>
   );

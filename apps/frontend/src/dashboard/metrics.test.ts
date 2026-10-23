@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assetComposition, emergencyMonths, monthlyBalance, netWorth } from "./metrics";
+import { assetComposition, cashAccountCount, cashflowWindow, emergencyMonths, monthlyBalance, netWorth } from "./metrics";
 import type { DashboardData } from "../data/dashboardMock";
 
 const base: DashboardData = {
@@ -60,5 +60,54 @@ describe("metrics (§23 표시 규칙)", () => {
     const comp = assetComposition(dashboardMock);
     expect(comp.map((c) => c.percent)).toEqual([3.2, 5.5, 7.2, 84.1]);
     expect(Math.round(comp.reduce((a, c) => a + c.percent, 0) * 10)).toBe(1000);
+  });
+});
+
+describe("cashflowWindow — 최근 6개월 창 (#73, §35.1)", () => {
+  const today = new Date(2026, 9, 23); // 2026-10-23
+
+  it("당월부터 내림차순으로 요청한 개월 수만큼 만든다", () => {
+    const window = cashflowWindow([], 6, today);
+    expect(window.map((m) => m.month)).toEqual([
+      "2026-10", "2026-09", "2026-08", "2026-07", "2026-06", "2026-05",
+    ]);
+  });
+
+  it("스냅샷이 없는 월은 0원으로 메우지 않고 미확정(null)으로 남긴다", () => {
+    const window = cashflowWindow(
+      [
+        { month: "2026-10", income: 8_200_000, expenses: 4_960_000 },
+        { month: "2026-08", income: 8_200_000, expenses: 4_720_000 },
+      ],
+      6,
+      today,
+    );
+    expect(window[0]).toEqual({ month: "2026-10", income: 8_200_000, expenses: 4_960_000, confirmed: true });
+    expect(window[1]).toEqual({ month: "2026-09", income: null, expenses: null, confirmed: false });
+    expect(window[2]).toEqual({ month: "2026-08", income: 8_200_000, expenses: 4_720_000, confirmed: true });
+    expect(window.filter((m) => !m.confirmed)).toHaveLength(4);
+  });
+
+  it("연 경계를 넘어가도 월 키가 정확하다", () => {
+    const window = cashflowWindow([], 6, new Date(2026, 0, 15)); // 2026-01
+    expect(window.map((m) => m.month)).toEqual([
+      "2026-01", "2025-12", "2025-11", "2025-10", "2025-09", "2025-08",
+    ]);
+  });
+});
+
+describe("cashAccountCount (#73 — '현금 N계좌' 제목)", () => {
+  it("현금성(cash) 행만 센다", () => {
+    expect(cashAccountCount(base)).toBe(1);
+    expect(
+      cashAccountCount({
+        ...base,
+        assets: [
+          { id: "c1", type: "cash", name: "파킹", value: 1 },
+          { id: "c2", type: "cash", name: "요구불", value: 2 },
+          { id: "d1", type: "deposit", name: "예적금", value: 3 },
+        ],
+      }),
+    ).toBe(2);
   });
 });
