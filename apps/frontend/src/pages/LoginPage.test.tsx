@@ -19,22 +19,32 @@ describe("LoginPage", () => {
   });
 
   const fill = (email: string, password: string) => {
-    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: email } });
-    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: password } });
+    fireEvent.change(screen.getByLabelText("이메일"), { target: { value: email } });
+    fireEvent.change(screen.getByLabelText("비밀번호"), { target: { value: password } });
   };
 
   const submit = () => {
-    const form = screen.getByRole("button", { name: /sign in/i }).closest("form");
+    const form = screen.getByRole("button", { name: "로그인" }).closest("form");
     expect(form).not.toBeNull();
     fireEvent.submit(form as HTMLFormElement);
   };
 
   it("이메일·비밀번호 칸과 로그인 버튼을 보여 준다", () => {
     render(<LoginPage onSuccess={() => {}} />);
-    expect(screen.getByLabelText(/email/i)).toBeDefined();
-    expect(screen.getByLabelText(/password/i)).toBeDefined();
-    expect(screen.getByRole("button", { name: /sign in/i })).toBeDefined();
+    expect(screen.getByLabelText("이메일")).toBeDefined();
+    expect(screen.getByLabelText("비밀번호")).toBeDefined();
+    expect(screen.getByRole("button", { name: "로그인" })).toBeDefined();
     expect(isAuthenticated()).toBe(false);
+  });
+
+  // 이슈 #74 AC: 로그인 화면에 영문 사용자 대면 문구가 남아 있지 않다.
+  it("사용자 대면 문구가 전부 한국어다 (#74)", () => {
+    render(<LoginPage onSuccess={() => {}} />);
+    const text = document.body.textContent ?? "";
+    expect(text).not.toMatch(/Sign in|Email|Password|Login/i);
+    expect(text).toContain("로그인");
+    expect(text).toContain("이메일");
+    expect(text).toContain("비밀번호");
   });
 
   // 빈 값으로 보내는 경로는 브라우저 검증이 막기 전에 화면이 막아 줘야 한다.
@@ -58,7 +68,7 @@ describe("LoginPage", () => {
     submit();
 
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toMatch(/valid email/i);
+    expect(alert.textContent).toBe("이메일 형식이 올바르지 않습니다.");
     expect(loginMock).not.toHaveBeenCalled();
     expect(onSuccess).not.toHaveBeenCalled();
   });
@@ -70,8 +80,39 @@ describe("LoginPage", () => {
     submit();
 
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toMatch(/at least 8/i);
+    expect(alert.textContent).toBe("비밀번호는 8자 이상이어야 합니다.");
     expect(onSuccess).not.toHaveBeenCalled();
+  });
+
+  // 이슈 #74 AC: 오류 메시지가 필드별로 구분되고 aria-describedby 로 연결된다.
+  it("이메일 오류는 입력의 aria-describedby 로 연결된다 (#74)", async () => {
+    render(<LoginPage onSuccess={() => {}} />);
+    fill("not-an-email", "password1");
+    submit();
+
+    const input = screen.getByLabelText("이메일") as HTMLInputElement;
+    await screen.findByRole("alert");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(input.getAttribute("aria-describedby")).toBe("login-email-help login-email-error");
+    expect(document.getElementById("login-email-error")?.textContent).toBe(
+      "이메일 형식이 올바르지 않습니다.",
+    );
+    // 비밀번호 칸은 오류가 없으므로 invalid 표시가 남지 않아야 한다.
+    expect(screen.getByLabelText("비밀번호").getAttribute("aria-invalid")).toBeNull();
+  });
+
+  it("비밀번호 오류도 자기 입력에만 연결된다 (#74)", async () => {
+    render(<LoginPage onSuccess={() => {}} />);
+    fill("a@b.com", "short");
+    submit();
+
+    const input = screen.getByLabelText("비밀번호") as HTMLInputElement;
+    await screen.findByRole("alert");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(input.getAttribute("aria-describedby")).toBe(
+      "login-password-help login-password-error",
+    );
+    expect(screen.getByLabelText("이메일").getAttribute("aria-invalid")).toBeNull();
   });
 
   it("로그인 실패는 공통 오류 메시지를 보여 준다 (§21 실패 처리)", async () => {
@@ -81,7 +122,9 @@ describe("LoginPage", () => {
     submit();
 
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toBe("Invalid credentials");
+    expect(alert.textContent).toBe(
+      "이메일 또는 비밀번호를 확인해 주세요. 입력하신 정보가 맞지 않습니다.",
+    );
     expect(isAuthenticated()).toBe(false);
   });
 
