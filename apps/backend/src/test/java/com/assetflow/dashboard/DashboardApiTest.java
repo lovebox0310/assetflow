@@ -6,6 +6,7 @@ import com.assetflow.assets.InMemoryAssetLedger;
 import com.assetflow.common.api.ApiExceptionHandler;
 import com.assetflow.auth.TokenService;
 import com.assetflow.common.web.BearerTokenInterceptor;
+import com.assetflow.expenses.ExpenseSnapshotLedger;
 import com.assetflow.expenses.InMemoryExpenseSnapshotLedger;
 import com.assetflow.settings.InMemoryUserSettingsLedger;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,10 +25,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class DashboardApiTest {
 
     private MockMvc mvc;
+    private InMemoryExpenseSnapshotLedger snapshotLedger;
 
     @BeforeEach
     void setUp() {
-        DashboardService service = new DashboardService(new InMemoryAssetLedger(), new InMemoryExpenseSnapshotLedger());
+        snapshotLedger = new InMemoryExpenseSnapshotLedger();
+        DashboardService service = new DashboardService(new InMemoryAssetLedger(), snapshotLedger);
         mvc = MockMvcBuilders.standaloneSetup(new DashboardController(service), new MeController(new InMemoryUserSettingsLedger(), new com.assetflow.settings.AuthEmailResolver() {
                     @Override public String currentEmail() { return "user@example.com"; }
                 }))
@@ -67,6 +70,22 @@ class DashboardApiTest {
         mvc.perform(get("/api/v1/dashboard/cashflow").header("Authorization", "Bearer " + new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(3)); // 기본값 months=3
+    }
+
+    @Test
+    void cashflowUsesSnapshotDataWhenAvailable() throws Exception {
+        snapshotLedger.upsert(new ExpenseSnapshotLedger.Snapshot("2026-10", 0, 0, 9_000_000L, 5_000_000L, 0, true));
+        snapshotLedger.upsert(new ExpenseSnapshotLedger.Snapshot("2026-09", 0, 0, 8_500_000L, 4_800_000L, 0, true));
+        String token = new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com");
+
+        mvc.perform(get("/api/v1/dashboard/cashflow?months=3").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].month").value("2026-10"))
+                .andExpect(jsonPath("$.data[0].income").value(9_000_000))
+                .andExpect(jsonPath("$.data[0].expenses").value(5_000_000))
+                .andExpect(jsonPath("$.data[1].month").value("2026-09"))
+                .andExpect(jsonPath("$.data[1].income").value(8_500_000));
     }
 
     @Test
