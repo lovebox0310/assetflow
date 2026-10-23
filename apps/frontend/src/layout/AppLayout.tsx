@@ -72,12 +72,16 @@ export function AppLayout({ onLogout, nav, children }: AppLayoutProps) {
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          flexWrap: "nowrap",
-          overflow: "hidden",
+          /* 모바일: 좁은 폭에서 두 번째 줄로 넘어가도록 허용한다(화면 밖 잘림 방지). */
+          flexWrap: mobile ? "wrap" : "nowrap",
+          rowGap: mobile ? 4 : 0,
+          overflow: "visible",
           background: "var(--af-card)",
           paddingInline: mobile ? 10 : 16,
+          paddingBlock: mobile ? 8 : 0,
           borderBottom: "1px solid var(--af-border)",
-          height: mobile ? 48 : 64,
+          height: mobile ? "auto" : 64,
+          minHeight: mobile ? 48 : 64,
         }}
       >
         <Space size={mobile ? 6 : 16} style={{ minWidth: 0 }}>
