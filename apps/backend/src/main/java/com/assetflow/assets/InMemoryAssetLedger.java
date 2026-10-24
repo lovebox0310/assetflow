@@ -40,6 +40,15 @@ public class InMemoryAssetLedger implements AssetLedger {
         }
     }
 
+    public AssetRow byId(long id) {
+        synchronized (rows) {
+            for (AssetRow r : rows) {
+                if (r.id() == id) return r;
+            }
+        }
+        return null;
+    }
+
     public AssetRow create(String accountType, String name, String institutionName,
                            long balance, boolean isDebt, String openedAt) {
         AssetRow row = new AssetRow(nextId.getAndIncrement(), accountType, name,
