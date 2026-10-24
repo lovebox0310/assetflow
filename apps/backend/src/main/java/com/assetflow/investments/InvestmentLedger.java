@@ -21,4 +21,7 @@ public interface InvestmentLedger {
     HoldingRow update(long id, HoldingRow row);
 
     void delete(long id);
+
+    /** 계좌 삭제/타입 변경 시 해당 계좌의 보유종목을 일괄 삭제한다. */
+    void deleteByAccountId(long accountId);
 }

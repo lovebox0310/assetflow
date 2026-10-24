@@ -15,6 +15,9 @@ public interface AssetLedger {
 
     List<AssetRow> all();
 
+    /** 없으면 null. */
+    AssetRow byId(long id);
+
     AssetRow create(String accountType, String name, String institutionName,
                     long balance, boolean isDebt, String openedAt);
 

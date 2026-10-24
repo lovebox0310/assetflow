@@ -7,6 +7,10 @@ import com.assetflow.expenses.InMemoryExpenseSnapshotLedger;
 import com.assetflow.common.web.BearerTokenInterceptor;
 import com.assetflow.dashboard.DashboardController;
 import com.assetflow.dashboard.DashboardService;
+import com.assetflow.investments.InMemoryInvestmentLedger;
+import com.assetflow.investments.InvestmentController;
+import com.assetflow.investments.InvestmentLedger;
+import com.assetflow.investments.PortfolioService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -28,16 +32,18 @@ class AssetAccountApiTest {
 
     private MockMvc mvc;
     private AssetLedger ledger;
+    private InvestmentLedger investmentLedger;
 
     @BeforeEach
     void setUp() {
         ledger = new InMemoryAssetLedger();
+        investmentLedger = new InMemoryInvestmentLedger();
+        PortfolioService portfolioService = new PortfolioService(ledger, investmentLedger);
         mvc = MockMvcBuilders
                 .standaloneSetup(
-                        new AssetAccountController(ledger),
-                        new DashboardController(new DashboardService(ledger, new InMemoryExpenseSnapshotLedger(),
-                                new com.assetflow.investments.PortfolioService(ledger,
-                                        new com.assetflow.investments.InMemoryInvestmentLedger()))))
+                        new AssetAccountController(ledger, investmentLedger),
+                        new DashboardController(new DashboardService(ledger, new InMemoryExpenseSnapshotLedger(), portfolioService)),
+                        new InvestmentController(investmentLedger, ledger, portfolioService))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .addInterceptors(new BearerTokenInterceptor(new TokenService("test-secret-0123456789-0123456789-0123456789")))
                 .build();
@@ -106,6 +112,30 @@ class AssetAccountApiTest {
 
         mvc.perform(get("/api/v1/assets/accounts").header("Authorization", TOKEN))
                 .andExpect(jsonPath("$.data.length()").value(6));
+    }
+
+    @Test
+    void changingInvestTypeWithHoldingsIsBlocked() throws Exception {
+        // id 4 = 키움 투자금 (시드에 보유종목 있음)
+        mvc.perform(put("/api/v1/assets/accounts/4").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(1_300_000, "cash", "키움 투자금", false)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void deletingInvestAccountRemovesHoldings() throws Exception {
+        // id 5 = 미국주식 (시드에 AAPL 보유)
+        mvc.perform(delete("/api/v1/assets/accounts/5").header("Authorization", TOKEN))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/assets/accounts").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data.length()").value(6));
+
+        // 보유종목에서도 사라짐
+        mvc.perform(get("/api/v1/investments/holdings").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.holdings.length()").value(3));
     }
 
     @Test
