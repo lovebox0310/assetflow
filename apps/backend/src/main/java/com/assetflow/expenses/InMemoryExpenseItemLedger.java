@@ -72,6 +72,22 @@ public class InMemoryExpenseItemLedger implements ExpenseItemLedger {
         }
     }
 
+    public void updateRecurringRows(long recurringId,
+                                    long oldAmount, boolean oldEssential, long oldPurchaseVat,
+                                    long newAmount, boolean newEssential, long newPurchaseVat) {
+        synchronized (rows) {
+            for (int i = 0; i < rows.size(); i++) {
+                ExpenseItem r = rows.get(i);
+                if (r.recurringId() != null && r.recurringId() == recurringId
+                        && r.amount() == oldAmount
+                        && r.isEssential() == oldEssential
+                        && r.purchaseVat() == oldPurchaseVat) {
+                    rows.set(i, new ExpenseItem(r.id(), r.month(), r.label(), newAmount, newEssential, newPurchaseVat, r.recurringId()));
+                }
+            }
+        }
+    }
+
     public void linkRecurring(long id, Long recurringId) {
         synchronized (rows) {
             for (int i = 0; i < rows.size(); i++) {
