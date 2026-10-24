@@ -88,13 +88,21 @@ public class RecurringExpenseController {
                 .findFirst()
                 .orElseThrow(() -> new NotFoundException("recurring id " + id));
         String label = body.label().trim();
+        boolean isEssential = body.isEssential() == null ? false : body.isEssential();
+        long purchaseVat = body.purchaseVat() == null ? 0 : body.purchaseVat();
+
         if (!before.label().equals(label)) {
             itemLedger.renameRecurringRows(id, before.label(), label);
         }
+        if (before.amount() != body.amount()
+                || before.isEssential() != isEssential
+                || before.purchaseVat() != purchaseVat) {
+            itemLedger.updateRecurringRows(id,
+                    before.amount(), before.isEssential(), before.purchaseVat(),
+                    body.amount(), isEssential, purchaseVat);
+        }
         return new ApiResponse<>("OK", "Recurring updated",
-                ledger.update(id, label, body.amount(),
-                        body.isEssential() == null ? false : body.isEssential(),
-                        body.purchaseVat() == null ? 0 : body.purchaseVat(),
+                ledger.update(id, label, body.amount(), isEssential, purchaseVat,
                         body.startMonth(), body.endMonth()));
     }
 
