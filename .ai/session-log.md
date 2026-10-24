@@ -14,6 +14,50 @@
 
 ---
 
+## 2026-10-24 — Sprint 5 홈서버 배포 + 배포 후 스모크 23/23 PASS (JWT 매핑 버그 수정)
+
+Sprint 5 머지분을 홈서버 운영 환경에 배포하고 스모크를 돌렸다. 스모크 중 운영
+`JWT_SECRET` 이 실제로 적용되지 않는 버그를 발견해 함께 고쳤다.
+
+### 배포
+
+| # | 작업 | 결과 |
+|---|---|---|
+| 1 | BE `bootJar`(테스트 포함) | `assetflow-backend-0.0.1-SNAPSHOT.jar` (48.9MB) |
+| 2 | FE `pnpm build` | `dist/` — `assets/index-CMqwnAFT.js` |
+| 3 | 스테이징·교체 | `/tmp/opencode/deploy` → 백업(`app.jar.bak-20261024-103738`, `backup-frontend-20261024-103738/`) 후 jar 원자적 교체, `assetflow.service` 재시작, FE rsync |
+
+### 발견·수정 — JWT_SECRET 무시
+
+- `TokenService` 는 `@Value("${app.jwt-secret:}")` 를 읽는데 `application.yml` 에 매핑이 없어
+  **부팅마다 랜덤 키**가 생성됐다. 운영 `JWT_SECRET` 은 계속 무시되고, 재시작 때마다 모든 토큰이 무효화됐다.
+- `application.yml` 에 `jwt-secret: ${JWT_SECRET:}` 추가 → 재빌드·재배포 → 발급 토큰으로 `/api/v1/me` 200 확인.
+
+### 스모크 결과 (23/23 PASS)
+
+| 영역 | 확인 |
+|---|---|
+| 인프라 | `systemctl is-active`=active, `/health`=UP, `/api/v1/me`=owner |
+| 스키마 | `investment_holdings` 테이블 생성 확인 |
+| 투자 API | 임시 invest 계좌(예수금 1,000,000) + 종목(2주×100,000) → 총액 1,200,000 · 평가액 200,000 |
+| 연동 | 대시보드 invest 행 = 계좌 총액 1,200,000, 자산 계좌 `balance` 는 예수금 유지 |
+| E4 | 현재가 150,000 갱신 → `priceAsOf` 2026-10-24, 총액 1,300,000 |
+| 원복 | 임시 계좌·종목 삭제, 보유종목 0건 복귀 |
+| FE | title·새 번들 HTTP 200·`investments` 라우트 포함·`#/investments` 딥링크 200 |
+
+### 운영 데이터 상태 (스모크 후)
+
+- `asset_accounts` 5건(cash 3·realty 2), 투자 계좌 **0건**, `investment_holdings` **0건**
+- 즉 투자 화면은 **빈 상태**로 뜬다. 로그에 적힌 invest 시드(31,000,000·23,500,000)는
+  운영 DB 에 존재하지 않는다(과거 삭제됨). 예수금 전환 로직은 해당 행이 없어 동작하지 않는다.
+
+### 남은 것
+
+- [ ] 실브라우저 확인 — `#/investments` 진입·종목 추가·가격 갱신, 좁은 화면 레이아웃
+- [ ] 라벨 자동화 수정 — OAuth 토큰 `workflow` 스코프 필요 (`gh auth refresh -s workflow`)
+
+---
+
 ## 2026-10-24 — Sprint 5 완료: 투자 포트폴리오 E1~E4 (#95~#98)
 
 Sprint 5 범위 E1~E4 를 모두 머지했다. CI 3잡(quality/frontend/backend) PASS, Blocker/Critical 0.
