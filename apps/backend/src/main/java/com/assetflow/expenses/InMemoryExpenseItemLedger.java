@@ -38,13 +38,35 @@ public class InMemoryExpenseItemLedger implements ExpenseItemLedger {
             for (RecurringExpenseLedger.Recurring def : defs) {
                 boolean exists = false;
                 for (ExpenseItem r : rows) {
-                    if (r.month().equals(month) && r.label().equals(def.label())) {
+                    if (r.month().equals(month)
+                            && (def.id() == r.recurringId()
+                            || (r.recurringId() == null && r.label().equals(def.label())))) {
                         exists = true;
                         break;
                     }
                 }
                 if (!exists) {
                     rows.add(new ExpenseItem(nextId++, month, def.label(), def.amount(), def.isEssential(), def.purchaseVat(), def.id()));
+                }
+            }
+        }
+    }
+
+    public void renameRecurringRows(long recurringId, String oldLabel, String newLabel) {
+        synchronized (rows) {
+            for (ExpenseItem r : rows) {
+                if (r.recurringId() != null && r.recurringId() == recurringId
+                        && r.label().equals(newLabel)) {
+                    continue; // 이미 원하는 이름 — 충돌 검사에서 제외
+                }
+                if (r.label().equals(newLabel) && (r.recurringId() == null || r.recurringId() != recurringId)) {
+                    throw new IllegalArgumentException("label conflict in month " + r.month());
+                }
+            }
+            for (int i = 0; i < rows.size(); i++) {
+                ExpenseItem r = rows.get(i);
+                if (r.recurringId() != null && r.recurringId() == recurringId && r.label().equals(oldLabel)) {
+                    rows.set(i, new ExpenseItem(r.id(), r.month(), newLabel, r.amount(), r.isEssential(), r.purchaseVat(), r.recurringId()));
                 }
             }
         }

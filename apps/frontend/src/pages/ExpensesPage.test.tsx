@@ -179,6 +179,23 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
     expect(screen.queryByText("수동")).toBeNull();
   });
 
+  it("정기 정의 금액과 다른 행에는 '이 달만 수정' 표시가 붙는다", async () => {
+    stubFetch((path) => {
+      if (path.includes("/expenses/recurring")) return apiResponse([
+        { id: 3, label: "임대료", amount: 200_000, isEssential: true, purchaseVat: 0, startMonth: "2026-10", endMonth: null },
+      ]);
+      if (path.includes("/expenses/items")) return apiResponse([
+        { id: 7, month: "2026-10", label: "임대료", amount: 1_200_000, isEssential: true, purchaseVat: 0, recurringId: 3 },
+      ]);
+      if (path.includes("/assets/card-imports")) return apiResponse([]);
+      if (path.includes("/expenses/snapshots")) return apiResponse(null);
+      return apiResponse({}, false, 500);
+    });
+    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
+
+    expect(await screen.findByText("이 달만 수정")).toBeDefined();
+  });
+
   it("빈 월에서 지난달 복사 배너가 제안되고 클릭 시 POST copy가 불린다 (§45.4)", async () => {
     const fetchMock = stubFetch((path) => {
       if (path.includes("/items/copy")) return apiResponse(2);
