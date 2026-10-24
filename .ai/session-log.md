@@ -14,6 +14,35 @@
 
 ---
 
+## 2026-10-24 — 서비스 식별/동기화 헛점 추가 수정 + 재배포
+
+사용자 의견("이런 헛점이 많을 것 같은데 서비스마다 확인이 필요")에 따라 전체
+백엔드를 점검하고 추가 수정·재배포를 했다.
+
+### 추가 수정 (PR #103)
+
+| # | 위치 | 문제 | 수정 |
+|---|---|---|---|
+| 1 | `Postgres/InMemoryExpenseItemLedger.copyMonth` | 중복 판단을 `label`만 함 | `recurring_id` 기준도 추가 |
+| 2 | `InMemoryExpenseItemLedger.ensureRecurringRows` | Postgres 와 dedup 정책 불일치 | 같은 `label`이면 무조건 skip (Postgres 와 동일) |
+| 3 | `PostgresExpenseItemLedger.update` | 반환 객체에 `recurring_id`가 null | 기존 `recurring_id` 보존 |
+| 4 | `AssetAccountController` | `invest` 계정 타입 변경/삭제 시 보유종목 동기화 누락 | 타입 변경 가드 400, 삭제 시 `deleteByAccountId` cascade |
+| 5 | `AssetLedger` | `byId` 메서드 없음 | 추가 (Postgres/InMemory) |
+
+### 검증
+
+- BE `./gradlew test` PASS
+- FE `pnpm test` 131 PASS, `pnpm build` PASS
+- 홈서버 재배포 완료 — `/health` UP, `/api/v1/me` 200, 지출/자산 API 정상
+
+### 남은 점검 항목
+
+- `PostgresInvestmentLedger.seedIfEmpty` 가 계정을 `name` 문자열로 찾는 부분은
+  1회성 마이그레이션/시드이므로 현재 운영에는 영향 없음. 향후 시드 구조 변경 시
+  안정적인 식별자 사용 검토.
+
+---
+
 ## 2026-10-24 — 정기 항목 이름 변경 버그 수정 + 운영 데이터 정리 + 재배포
 
 사용자 제보("월 지출 항목 정기 항목 수정 시 행이 추가됨")를 받아 원인을
