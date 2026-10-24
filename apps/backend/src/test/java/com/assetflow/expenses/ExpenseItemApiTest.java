@@ -29,7 +29,9 @@ class ExpenseItemApiTest {
 
     @BeforeEach
     void setUp() {
-        mvc = MockMvcBuilders.standaloneSetup(new ExpenseItemController(ledger, recurring))
+        mvc = MockMvcBuilders.standaloneSetup(
+                        new ExpenseItemController(ledger, recurring),
+                        new RecurringExpenseController(recurring, ledger))
                 .addInterceptors(new BearerTokenInterceptor(new TokenService("test-secret-0123456789-0123456789-0123456789")))
                 .setControllerAdvice(new com.assetflow.common.api.ApiExceptionHandler())
                 .build();
@@ -153,6 +155,32 @@ class ExpenseItemApiTest {
         mvc.perform(get("/api/v1/expenses/items?month=2026-10").header("Authorization", TOKEN))
                 .andExpect(jsonPath("$.data[0].label").value("주유비"))
                 .andExpect(jsonPath("$.data[0].amount").value(100000));
+    }
+
+    @Test
+    void copyMonthDoesNotDuplicateAfterRecurringRename() throws Exception {
+        // 2026-09에 정기 항목 "임대료"를 만들고 복사
+        mvc.perform(post("/api/v1/expenses/recurring").header("Authorization", TOKEN)
+                        .contentType("application/json")
+                        .content("{\"label\":\"임대료\",\"amount\":200000,\"isEssential\":true,\"startMonth\":\"2026-09\"}"))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/v1/expenses/items?month=2026-09").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data.length()").value(1));
+        mvc.perform(post("/api/v1/expenses/items/copy?from=2026-09&to=2026-10").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data").value(1));
+
+        // 정의 이름 변경 → 9월 행도 이름이 바뀜
+        mvc.perform(put("/api/v1/expenses/recurring/1").header("Authorization", TOKEN)
+                        .contentType("application/json")
+                        .content("{\"label\":\"맥엔피씨임대료\",\"amount\":200000,\"isEssential\":true,\"startMonth\":\"2026-09\"}"))
+                .andExpect(status().isOk());
+
+        // 9월 → 10월 다시 복사핟도 recurring_id 기준으로 중복 없음
+        mvc.perform(post("/api/v1/expenses/items/copy?from=2026-09&to=2026-10").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data").value(0));
+        mvc.perform(get("/api/v1/expenses/items?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].label").value("맥엔피씨임대료"));
     }
 
     @Test

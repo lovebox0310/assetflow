@@ -38,9 +38,9 @@ public class InMemoryExpenseItemLedger implements ExpenseItemLedger {
             for (RecurringExpenseLedger.Recurring def : defs) {
                 boolean exists = false;
                 for (ExpenseItem r : rows) {
+                    // Postgres 와 동일: 같은 recurring_id 면 skip, 수동 행은 같은 label 이면 skip
                     if (r.month().equals(month)
-                            && (def.id() == r.recurringId()
-                            || (r.recurringId() == null && r.label().equals(def.label())))) {
+                            && (def.id() == r.recurringId() || r.label().equals(def.label()))) {
                         exists = true;
                         break;
                     }
@@ -93,7 +93,10 @@ public class InMemoryExpenseItemLedger implements ExpenseItemLedger {
                 if (!r.month().equals(from)) continue;
                 boolean exists = false;
                 for (ExpenseItem t2 : rows) {
-                    if (t2.month().equals(to) && t2.label().equals(r.label())) {
+                    if (!t2.month().equals(to)) continue;
+                    // Postgres 와 동일: 같은 recurring_id(정기) 또는 같은 label 이면 skip
+                    if ((r.recurringId() != null && r.recurringId().equals(t2.recurringId()))
+                            || r.label().equals(t2.label())) {
                         exists = true;
                         break;
                     }

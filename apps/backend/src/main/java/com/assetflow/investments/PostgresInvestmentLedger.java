@@ -155,4 +155,9 @@ public class PostgresInvestmentLedger implements InvestmentLedger {
             throw new NotFoundException("holding id " + id);
         }
     }
+
+    @Override
+    public void deleteByAccountId(long accountId) {
+        jdbc.update("DELETE FROM investment_holdings WHERE account_id = ? AND user_id = ?", accountId, userId);
+    }
 }
