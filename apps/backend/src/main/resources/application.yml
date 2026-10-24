@@ -22,3 +22,6 @@ server:
 app:
   # 배포 프론트엔드 출처(쉼표 구분). 미설정이면 CORS 미허용(동일 출처만).
   allowed-origins: ${ALLOWED_ORIGIN:}
+  # JWT 서명 키. 이 매핑이 없으면 TokenService 가 부팅마다 랜덤 키를 만들어
+  # 재시작 때마다 모든 토큰이 무효화된다(운영 JWT_SECRET 무시).
+  jwt-secret: ${JWT_SECRET:}
