@@ -3,6 +3,7 @@ package com.assetflow.assets;
 import com.assetflow.assets.AssetLedger.AssetRow;
 import com.assetflow.common.api.ApiResponse;
 import com.assetflow.common.api.NotFoundException;
+import com.assetflow.investments.InvestmentLedger;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,9 +28,11 @@ public class AssetAccountController {
     private static final Set<String> TYPES = Set.of("cash", "deposit", "invest", "realty");
 
     private final AssetLedger ledger;
+    private final InvestmentLedger investmentLedger;
 
-    public AssetAccountController(AssetLedger ledger) {
+    public AssetAccountController(AssetLedger ledger, InvestmentLedger investmentLedger) {
         this.ledger = ledger;
+        this.investmentLedger = investmentLedger;
     }
 
     public record UpsertRequest(String accountType, String name, String institutionName,
@@ -51,12 +54,30 @@ public class AssetAccountController {
     @PutMapping("/accounts/{id}")
     public ApiResponse<AssetRow> update(@PathVariable long id, @RequestBody UpsertRequest request) {
         validate(request);
+        AssetRow existing = ledger.byId(id);
+        if (existing == null) {
+            throw new NotFoundException("account id " + id);
+        }
+        // invest 계정에서 다른 타입으로 바꾸려면 보유종목이 없어야 한다
+        if ("invest".equals(existing.accountType()) && !"invest".equals(request.accountType())) {
+            boolean hasHoldings = investmentLedger.all().stream().anyMatch(h -> h.accountId() == id);
+            if (hasHoldings) {
+                throw new IllegalArgumentException("cannot change type: account has holdings");
+            }
+        }
         return new ApiResponse<>("OK", "Account updated", ledger.update(id, request.accountType(),
                 request.name(), request.institutionName(), request.balance(), request.isDebt(), request.openedAt()));
     }
 
     @DeleteMapping("/accounts/{id}")
     public ApiResponse<Long> delete(@PathVariable long id) {
+        AssetRow existing = ledger.byId(id);
+        if (existing == null) {
+            throw new NotFoundException("account id " + id);
+        }
+        if ("invest".equals(existing.accountType())) {
+            investmentLedger.deleteByAccountId(id);
+        }
         ledger.delete(id);
         return new ApiResponse<>("OK", "Account deleted", id);
     }

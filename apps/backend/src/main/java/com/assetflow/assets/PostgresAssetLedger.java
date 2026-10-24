@@ -75,6 +75,14 @@ public class PostgresAssetLedger implements AssetLedger {
                 """, PostgresAssetLedger::map, userId);
     }
 
+    public AssetRow byId(long id) {
+        List<AssetRow> rows = jdbc.query("""
+                SELECT id, account_type, name, institution_name, balance, is_debt, opened_at
+                FROM asset_accounts WHERE id = ? AND user_id = ?
+                """, PostgresAssetLedger::map, id, userId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
     public AssetRow create(String accountType, String name, String institutionName,
                            long balance, boolean isDebt, String openedAt) {
         Long id = jdbc.queryForObject("""

@@ -80,4 +80,11 @@ public class InMemoryInvestmentLedger implements InvestmentLedger {
             }
         }
     }
+
+    @Override
+    public void deleteByAccountId(long accountId) {
+        synchronized (rows) {
+            rows.removeIf(r -> r.accountId() == accountId);
+        }
+    }
 }

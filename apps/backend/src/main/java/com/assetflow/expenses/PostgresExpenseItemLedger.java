@@ -108,7 +108,11 @@ public class PostgresExpenseItemLedger implements ExpenseItemLedger {
                 WHERE user_id = ? AND month = ?
                   AND NOT EXISTS (
                       SELECT 1 FROM monthly_expense_items dst
-                      WHERE dst.user_id = ? AND dst.month = ? AND dst.label = src.label
+                      WHERE dst.user_id = ? AND dst.month = ?
+                        AND (
+                            (src.recurring_id IS NOT NULL AND dst.recurring_id IS NOT DISTINCT FROM src.recurring_id)
+                            OR dst.label = src.label
+                        )
                   )
                 """, to, userId, from, userId, to);
     }
@@ -131,7 +135,10 @@ public class PostgresExpenseItemLedger implements ExpenseItemLedger {
             if (updated == 0) {
                 throw new com.assetflow.common.api.NotFoundException("expense item id " + id);
             }
-            return new ExpenseItem(id, month, label, amount, isEssential, purchaseVat, null);
+            ExpenseItem existing = byId(id);
+            return existing != null
+                    ? new ExpenseItem(id, month, label, amount, isEssential, purchaseVat, existing.recurringId())
+                    : new ExpenseItem(id, month, label, amount, isEssential, purchaseVat, null);
         } catch (DataIntegrityViolationException e) {
             throw new IllegalArgumentException("duplicate label: " + label);
         }
