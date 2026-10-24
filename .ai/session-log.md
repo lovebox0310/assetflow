@@ -14,6 +14,47 @@
 
 ---
 
+## 2026-10-24 — 정기 항목 이름 변경 버그 수정 + 운영 데이터 정리 + 재배포
+
+사용자 제보("월 지출 항목 정기 항목 수정 시 행이 추가됨")를 받아 원인을
+분석하고 수정·재배포·데이터 정리를 했다.
+
+### 원인
+
+- `ensureRecurringRows` 가 `(user_id, month, label)` 로만 중복을 판단
+- 정의 이름을 바꾸면 기존 `recurring_id` 와 연결된 행은 무시되고, 새 이름 행이
+  INSERT 되어 **중복 발생**
+- 정의 수정이 월 행 이름에 전혀 반영되지 않음
+
+### 수정
+
+| 범위 | 내용 |
+|---|---|
+| BE | `ensureRecurringRows` — `recurring_id` 우선 매칭, 수동 행은 label 우선 |
+| BE | `PUT /api/v1/expenses/recurring/{id}` — 이름 변경 시 연결된 월 행 소급(금액·필수·세액은 시점값 유지) |
+| FE | 정의 금액과 다른 행에 "이 달만 수정" 배지, 정기 항목 수정 폼에 힌트 |
+| 문서 | §45.2 개정: 멱등 조건 및 이름 소급 규칙 기록 |
+| 테스트 | `RecurringExpenseApiTest` 3건 추가, `ExpensesPage.test.tsx` 1건 추가 |
+
+### PR / 배포
+
+- PR #100(JWT_SECRET 매핑 누락) · PR #101(정기 항목 수정 버그) main 머지
+- 홈서버 재배포 완료 — BE jar + FE `index-DL4L9JsB.js`
+
+### 운영 데이터 정리
+
+- `monthly_expense_items` id=180 중복 행 삭제
+- `recurring_id=1` 인 `임대료` 행 23건 → `맥엔피씨임대료` 200,000원으로 일괄 변경
+- 백업: `/tmp/opencode/cleanup_before.sql`
+
+### 검증
+
+- `GET /api/v1/expenses/items?month=2026-10` — `맥엔피씨임대료` 200,000원 1걸음, 중복 없음
+- `GET /api/v1/expenses/recurring` — `맥엔피씨임대료` 200,000원
+- `./gradlew test bootJar` PASS, `pnpm test` 131 PASS, `pnpm build` PASS
+
+---
+
 ## 2026-10-24 — Sprint 5 홈서버 배포 + 배포 후 스모크 23/23 PASS (JWT 매핑 버그 수정)
 
 Sprint 5 머지분을 홈서버 운영 환경에 배포하고 스모크를 돌렸다. 스모크 중 운영
