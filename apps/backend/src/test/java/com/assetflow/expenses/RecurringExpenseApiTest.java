@@ -165,4 +165,34 @@ class RecurringExpenseApiTest {
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].label").value("임대료(10월)"));
     }
+
+    @Test
+    void amountChangePropagatesToUntouchedRowsOnly() throws Exception {
+        mvc.perform(post("/api/v1/expenses/recurring").header("Authorization", TOKEN)
+                        .contentType("application/json")
+                        .content("{\"label\":\"임대료\",\"amount\":200000,\"isEssential\":true,\"startMonth\":\"2025-01\"}"))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/v1/expenses/items?month=2026-09").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data[0].amount").value(200_000));
+        mvc.perform(get("/api/v1/expenses/items?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data[0].amount").value(200_000));
+
+        // 10월 행만 수동으로 1,200,000 으로 변경
+        mvc.perform(put("/api/v1/expenses/items/2").header("Authorization", TOKEN)
+                        .contentType("application/json")
+                        .content("{\"label\":\"임대료\",\"amount\":1200000,\"isEssential\":true}"))
+                .andExpect(status().isOk());
+
+        // 정의 금액을 250,000 으로 변경
+        mvc.perform(put("/api/v1/expenses/recurring/1").header("Authorization", TOKEN)
+                        .contentType("application/json")
+                        .content("{\"label\":\"임대료\",\"amount\":250000,\"isEssential\":true,\"startMonth\":\"2025-01\"}"))
+                .andExpect(status().isOk());
+
+        // 수동으로 바꾸지 않은 9월 행은 새 금액 적용, 10월 행은 시점값 유지
+        mvc.perform(get("/api/v1/expenses/items?month=2026-09").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data[0].amount").value(250_000));
+        mvc.perform(get("/api/v1/expenses/items?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data[0].amount").value(1_200_000));
+    }
 }

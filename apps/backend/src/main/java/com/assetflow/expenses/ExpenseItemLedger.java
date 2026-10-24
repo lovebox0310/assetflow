@@ -27,6 +27,14 @@ public interface ExpenseItemLedger {
      */
     void renameRecurringRows(long recurringId, String oldLabel, String newLabel);
 
+    /**
+     * §45.2 개정: 정기 항목의 금액·필수·세액 변경을, 아직 수동으로 바꾸지 않은 연결 행에 소급한다.
+     * '수동으로 바꾸지 않았다'는 기준은 amount·isEssential·purchaseVat 이 모두 old 값과 같을 때다.
+     */
+    void updateRecurringRows(long recurringId,
+                             long oldAmount, boolean oldEssential, long oldPurchaseVat,
+                             long newAmount, boolean newEssential, long newPurchaseVat);
+
     /** §45.3: from 월의 항목을 to 월로 복사(중복 label 은 걸러뜀) — 복사된 건수. */
     int copyMonth(String from, String to);
 
