@@ -91,6 +91,18 @@ public class PostgresExpenseItemLedger implements ExpenseItemLedger {
                 """, newLabel, userId, recurringId, oldLabel);
     }
 
+    public void updateRecurringRows(long recurringId,
+                                    long oldAmount, boolean oldEssential, long oldPurchaseVat,
+                                    long newAmount, boolean newEssential, long newPurchaseVat) {
+        jdbc.update("""
+                UPDATE monthly_expense_items
+                SET amount = ?, is_essential = ?, purchase_vat = ?, updated_at = now()
+                WHERE user_id = ? AND recurring_id = ?
+                  AND amount = ? AND is_essential = ? AND purchase_vat = ?
+                """, newAmount, newEssential, newPurchaseVat, userId, recurringId,
+                oldAmount, oldEssential, oldPurchaseVat);
+    }
+
     public void linkRecurring(long id, Long recurringId) {
         int updated = jdbc.update(
                 "UPDATE monthly_expense_items SET recurring_id = ?, updated_at = now() WHERE id = ? AND user_id = ?",
