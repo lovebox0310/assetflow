@@ -338,7 +338,27 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
       row.recurringId
         ? <span style={recurringBadgeStyle}>정기</span>
         : <Typography.Text type="secondary" style={{ fontSize: 12 }}>수동</Typography.Text> },
-    { title: "월 금액", dataIndex: "amount", align: "right" as const, width: 140, className: "af-num", render: (v: number) => formatKrwExact(v) },
+    {
+      title: "월 금액",
+      dataIndex: "amount",
+      align: "right" as const,
+      width: 140,
+      className: "af-num",
+      render: (v: number, row: ExpenseItemRow) => {
+        const def = row.recurringId ? recurring?.find((d) => d.id === row.recurringId) : undefined;
+        const overridden = Boolean(def && def.amount !== v);
+        return (
+          <div style={{ textAlign: "right" }}>
+            <div>{formatKrwExact(v)}</div>
+            {overridden ? (
+              <Typography.Text type="secondary" style={{ fontSize: 11 }} title={`정기 정의 ${formatKrwExact(def!.amount)}`}>
+                이 달만 수정
+              </Typography.Text>
+            ) : null}
+          </div>
+        );
+      },
+    },
     { title: "필수", dataIndex: "isEssential", width: 70, render: (v: boolean) => (v ? "필수" : "—") },
     { title: "매입세액", dataIndex: "purchaseVat", align: "right" as const, width: 120, className: "af-num", render: (v: number) => (v > 0 ? formatKrwExact(v) : "—") },
     {
@@ -442,6 +462,12 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
                       />
                       <MobileListCardMeta>
                         매입세액 {it.purchaseVat > 0 ? formatKrwExact(it.purchaseVat) : "—"}
+                        {it.recurringId && recurring
+                          ? (() => {
+                              const def = recurring.find((d) => d.id === it.recurringId);
+                              return def && def.amount !== it.amount ? " · 이 달만 수정" : "";
+                            })()
+                          : ""}
                       </MobileListCardMeta>
                       <MobileListCardActions>
                         <Button size="small" type="text" onClick={() => beginEdit(it)} aria-label={`${it.label} 이 달만 수정`}>이 달만 수정</Button>
@@ -525,6 +551,11 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
               </div>
               {recForm ? (
                 <div style={{ marginTop: 12, borderTop: "1px solid var(--af-border)", paddingTop: 12 }}>
+                  {recForm !== "new" ? (
+                    <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 8 }}>
+                      이미 만들어진 달의 금액은 그 달 값으로 유지됩니다. 이름 변경은 연결된 월에 반영됩니다.
+                    </Typography.Text>
+                  ) : null}
                   <Form form={recFormInstance} layout="inline" style={{ display: "flex", flexWrap: "wrap", gap: wide ? "10px 12px" : "12px" }}>
                     <Form.Item name="label" rules={[{ required: true, message: "항목명을 입력하세요" }]} style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}>
                       <Input placeholder="항목명" style={{ width: wide ? 140 : "100%" }} aria-label="정기 항목 이름" />
