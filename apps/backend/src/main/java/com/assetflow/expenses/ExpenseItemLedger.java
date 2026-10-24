@@ -20,7 +20,14 @@ public interface ExpenseItemLedger {
     /** §45.5: 월 항목을 정기 정의에 연결(recurring_id 세팅) — 변환 후 "정기 항목 수정" 링크가 붙는다. */
     void linkRecurring(long id, Long recurringId);
 
-    /** §45.3: from 월의 항목을 to 월로 복사(중복 label 은 건너뜀) — 복사된 건수. */
+    /**
+     * §45.2 개정: 정기 항목 이름 변경을 연결된 월 행에 소급한다.
+     * 기존 oldLabel 과 연결된 행만 이름을 바꾸며, 금액·필수·세액은 그 달의 시점값으로 유지한다.
+     * 다른 행과 같은 이름이 충돌하면 IllegalArgumentException 을 던진다.
+     */
+    void renameRecurringRows(long recurringId, String oldLabel, String newLabel);
+
+    /** §45.3: from 월의 항목을 to 월로 복사(중복 label 은 걸러뜀) — 복사된 건수. */
     int copyMonth(String from, String to);
 
     /** 없으면 null — PUT 의 월 유지 판단용. */

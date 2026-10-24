@@ -1,6 +1,8 @@
 package com.assetflow.expenses;
 
 import com.assetflow.common.api.ApiResponse;
+import com.assetflow.common.api.NotFoundException;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,9 +25,11 @@ public class RecurringExpenseController {
     private static final Pattern MONTH = Pattern.compile("\\d{4}-(0[1-9]|1[0-2])");
 
     private final RecurringExpenseLedger ledger;
+    private final ExpenseItemLedger itemLedger;
 
-    public RecurringExpenseController(RecurringExpenseLedger ledger) {
+    public RecurringExpenseController(RecurringExpenseLedger ledger, ExpenseItemLedger itemLedger) {
         this.ledger = ledger;
+        this.itemLedger = itemLedger;
     }
 
     public record RecurringBody(String label, Long amount, Boolean isEssential, Long purchaseVat,
@@ -75,11 +79,20 @@ public class RecurringExpenseController {
         }
     }
 
+    @Transactional
     @PutMapping("/recurring/{id}")
     public ApiResponse<RecurringExpenseLedger.Recurring> update(@PathVariable long id, @RequestBody RecurringBody body) {
         validate(body);
+        RecurringExpenseLedger.Recurring before = ledger.all().stream()
+                .filter(r -> r.id() == id)
+                .findFirst()
+                .orElseThrow(() -> new NotFoundException("recurring id " + id));
+        String label = body.label().trim();
+        if (!before.label().equals(label)) {
+            itemLedger.renameRecurringRows(id, before.label(), label);
+        }
         return new ApiResponse<>("OK", "Recurring updated",
-                ledger.update(id, body.label().trim(), body.amount(),
+                ledger.update(id, label, body.amount(),
                         body.isEssential() == null ? false : body.isEssential(),
                         body.purchaseVat() == null ? 0 : body.purchaseVat(),
                         body.startMonth(), body.endMonth()));

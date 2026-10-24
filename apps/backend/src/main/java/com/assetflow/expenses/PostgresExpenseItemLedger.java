@@ -60,15 +60,35 @@ public class PostgresExpenseItemLedger implements ExpenseItemLedger {
 
     public void ensureRecurringRows(String month, List<RecurringExpenseLedger.Recurring> defs) {
         for (RecurringExpenseLedger.Recurring def : defs) {
+            // §45.2 개정: 같은 recurring_id 가 이미 물리행으로 있으면 중복 삽입하지 않는다.
+            // 수동 행이 같은 이름이면 그 행을 우선해 정의 행을 생성하지 않는다.
             jdbc.update("""
                     INSERT INTO monthly_expense_items (user_id, month, label, amount, is_essential, purchase_vat, recurring_id)
                     SELECT ?, ?, ?, ?, ?, ?, ?
                     WHERE NOT EXISTS (
-                        SELECT 1 FROM monthly_expense_items WHERE user_id = ? AND month = ? AND label = ?
+                        SELECT 1 FROM monthly_expense_items
+                        WHERE user_id = ? AND month = ?
+                          AND (recurring_id = ? OR label = ?)
                     )
                     """, userId, month, def.label(), def.amount(), def.isEssential(), def.purchaseVat(), def.id(),
-                    userId, month, def.label());
+                    userId, month, def.id(), def.label());
         }
+    }
+
+    public void renameRecurringRows(long recurringId, String oldLabel, String newLabel) {
+        List<String> conflicts = jdbc.queryForList("""
+                SELECT month FROM monthly_expense_items
+                WHERE user_id = ? AND label = ? AND recurring_id IS DISTINCT FROM ?
+                LIMIT 1
+                """, String.class, userId, newLabel, recurringId);
+        if (!conflicts.isEmpty()) {
+            throw new IllegalArgumentException("label conflict in month " + conflicts.get(0));
+        }
+        jdbc.update("""
+                UPDATE monthly_expense_items
+                SET label = ?, updated_at = now()
+                WHERE user_id = ? AND recurring_id = ? AND label = ?
+                """, newLabel, userId, recurringId, oldLabel);
     }
 
     public void linkRecurring(long id, Long recurringId) {
