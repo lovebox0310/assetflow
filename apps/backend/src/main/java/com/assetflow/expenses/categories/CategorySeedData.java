@@ -38,6 +38,8 @@ public class CategorySeedData implements CommandLineRunner {
         categories.put("주거비", true);
         categories.put("통신비", true);
         categories.put("쇼핑", false);
+        categories.put("미용", false);
+        categories.put("의류", false);
         categories.put("의료비", false);
         categories.put("여가/취미", false);
         categories.put("교육비", false);
@@ -133,6 +135,15 @@ public class CategorySeedData implements CommandLineRunner {
                 "신성통상", "포레스트아웃팅스", "수선");
         addKeywords(keywordCategory, "경조사비", "플라워");
         addKeywords(keywordCategory, "기타", "github", "자동차세", "재산세");
+
+        // 3차 — 미용·의류를 쇼핑에서 분리 (2026-10-25).
+        // "피부"는 "피부과"(의료비)와 겹치므로 넣지 않는다 — 키워드가 길수록 우선이라 피부과가 이긴다.
+        addKeywords(keywordCategory, "미용",
+                "살롱", "미용", "헤어", "네일", "에스테틱", "왁싱", "속눈썹", "바버샵", "뷰티");
+        // 위 쇼핑 목록에 있던 의류 브랜드는 여기서 의류로 덮어쓴다(뒤에 put 하는 쪽이 이긴다).
+        addKeywords(keywordCategory, "의류",
+                "의류", "패션", "무신사", "유니클로", "자라", "신발", "아울렛",
+                "에이블리", "스쿨룩스", "폴햄", "휠라");
 
         for (Map.Entry<String, String> e : keywordCategory.entrySet()) {
             // 업종을 직접 가리키는 키워드는 주소·건물명 키워드("병원", "버스")보다 먼저 매칭돼야 한다.
