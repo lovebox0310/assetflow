@@ -90,4 +90,46 @@ describe("SettingsPage (스프린트 3 #37)", () => {
 
     await screen.findAllByText(/인증|로그인/i);
   });
+
+  it("비밀번호 변경은 PUT /api/v1/auth/password 로 전송된다", async () => {
+    const fetchMock = stubFetch((path, init) => {
+      if (path.includes("/auth/password") && init?.method === "PUT") {
+        return apiResponse(null);
+      }
+      if (path.includes("/settings")) return apiResponse({ id: 1, email: "user@example.com", displayName: "AssetFlow", targetMonths: 6 });
+      if (path.includes("/dashboard/summary")) return apiResponse({ asOf: "2026-10", assets: [], liabilities: [], monthly: { income: 0, expenses: 0, essentialExpenses: 0, essentialComplete: false } });
+      if (path.includes("/dashboard/cashflow")) return apiResponse([]);
+      return apiResponse({}, false, 500);
+    });
+    render(<SettingsPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenExpenses={() => {}} />);
+
+    await screen.findByText("AssetFlow");
+    fireEvent.change(screen.getByLabelText("현재 비밀번호"), { target: { value: "oldpass123" } });
+    fireEvent.change(screen.getByLabelText("새 비밀번호"), { target: { value: "newpass123" } });
+    fireEvent.change(screen.getByLabelText("새 비밀번호 확인"), { target: { value: "newpass123" } });
+    fireEvent.click(screen.getByRole("button", { name: "비밀번호 변경" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v1/auth/password", expect.objectContaining({
+      method: "PUT",
+      body: JSON.stringify({ currentPassword: "oldpass123", newPassword: "newpass123" }),
+    })));
+    expect(await screen.findByText("비밀번호가 변경되었습니다.")).toBeDefined();
+  });
+
+  it("비밀번호 변경 시 새 비밀번호와 확인이 일치하지 않으면 검증 에러가 표시된다", async () => {
+    stubFetch((path) => {
+      if (path.includes("/settings")) return apiResponse({ id: 1, email: "user@example.com", displayName: "AssetFlow", targetMonths: 6 });
+      if (path.includes("/dashboard")) return apiResponse([]);
+      return apiResponse({}, false, 500);
+    });
+    render(<SettingsPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenExpenses={() => {}} />);
+
+    await screen.findByText("AssetFlow");
+    fireEvent.change(screen.getByLabelText("현재 비밀번호"), { target: { value: "oldpass123" } });
+    fireEvent.change(screen.getByLabelText("새 비밀번호"), { target: { value: "newpass123" } });
+    fireEvent.change(screen.getByLabelText("새 비밀번호 확인"), { target: { value: "different123" } });
+    fireEvent.click(screen.getByRole("button", { name: "비밀번호 변경" }));
+
+    expect(await screen.findByText("비밀번호가 일치하지 않습니다")).toBeDefined();
+  });
 });

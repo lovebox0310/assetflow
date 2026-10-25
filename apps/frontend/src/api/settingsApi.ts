@@ -19,3 +19,16 @@ export function updateSettings(targetMonths: number): Promise<UserSettings> {
     body: JSON.stringify({ targetMonths }),
   });
 }
+
+export interface PasswordUpdateInput {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export function updatePassword(input: PasswordUpdateInput): Promise<void> {
+  return apiFetch<void>("/api/v1/auth/password", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}

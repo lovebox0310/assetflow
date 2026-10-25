@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Card, Form, Grid, InputNumber, Space, Table, Typography } from "antd";
+import { Alert, Button, Card, Form, Grid, Input, InputNumber, Space, Table, Typography } from "antd";
 import { AppLayout } from "../layout/AppLayout";
 import { StandardNav } from "../layout/StandardNav";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
 import { clearInflight } from "../api/client";
 import { clearToken } from "../auth/authStore";
-import { getSettings, updateSettings, type UserSettings } from "../api/settingsApi";
+import { getSettings, updatePassword, updateSettings, type UserSettings } from "../api/settingsApi";
 import { fetchDashboardSummary } from "../api/dashboardApi";
 import { formatKrwExact } from "../utils/formatters";
 
@@ -26,7 +26,11 @@ export function SettingsPage({ onOpenDashboard, onOpenAssets, onOpenExpenses }: 
   const [errorText, setErrorText] = useState("");
   const [saving, setSaving] = useState(false);
   const [summary, setSummary] = useState<{ totalAssets: number; totalDebts: number; income: number; expenses: number; essential: number } | null>(null);
+  const [passwordStatus, setPasswordStatus] = useState<SurfaceStatus>("ready");
+  const [passwordMessage, setPasswordMessage] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
   const [form] = Form.useForm();
+  const [passwordForm] = Form.useForm();
   const mountedRef = useRef(false);
 
   const load = useCallback(() => {
@@ -72,6 +76,28 @@ export function SettingsPage({ onOpenDashboard, onOpenAssets, onOpenExpenses }: 
       setSettings(updated);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const savePassword = async () => {
+    const values = await passwordForm.validateFields();
+    if (values.newPassword !== values.confirmPassword) {
+      passwordForm.setFields([{ name: "confirmPassword", errors: ["비밀번호가 일치하지 않습니다"] }]);
+      return;
+    }
+    setPasswordStatus("ready");
+    setPasswordMessage("");
+    setPasswordSaving(true);
+    try {
+      await updatePassword({ currentPassword: values.currentPassword, newPassword: values.newPassword });
+      setPasswordStatus("ready");
+      setPasswordMessage("비밀번호가 변경되었습니다.");
+      passwordForm.resetFields();
+    } catch (e: unknown) {
+      setPasswordStatus("error");
+      setPasswordMessage(e instanceof Error ? e.message : "비밀번호 변경에 실패했습니다.");
+    } finally {
+      setPasswordSaving(false);
     }
   };
 
@@ -121,6 +147,49 @@ export function SettingsPage({ onOpenDashboard, onOpenAssets, onOpenExpenses }: 
                   </Form>
                 ) : null}
               </StateBlock>
+            </Card>
+          </section>
+
+          <section aria-labelledby="h-password" style={{ marginBottom: 24 }}>
+            <Typography.Title level={2} id="h-password" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>비밀번호 변경</Typography.Title>
+            <Card>
+              {passwordStatus === "error" && (
+                <Alert
+                  type="error"
+                  showIcon
+                  message="비밀번호 변경 실패"
+                  description={passwordMessage}
+                  style={{ marginBottom: 16 }}
+                  aria-live="assertive"
+                />
+              )}
+              {passwordStatus === "ready" && passwordMessage && (
+                <Alert
+                  type="success"
+                  showIcon
+                  message={passwordMessage}
+                  style={{ marginBottom: 16 }}
+                  aria-live="polite"
+                />
+              )}
+              <Form form={passwordForm} layout="vertical" style={{ maxWidth: 320 }}>
+                <Form.Item name="currentPassword" label="현재 비밀번호"
+                  rules={[{ required: true, message: "현재 비밀번호를 입력하세요" }]}>
+                  <Input.Password aria-label="현재 비밀번호" autoComplete="current-password" />
+                </Form.Item>
+                <Form.Item name="newPassword" label="새 비밀번호"
+                  rules={[
+                    { required: true, message: "새 비밀번호를 입력하세요" },
+                    { min: 8, message: "비밀번호는 8자 이상이어야 합니다" },
+                  ]}>
+                  <Input.Password aria-label="새 비밀번호" autoComplete="new-password" />
+                </Form.Item>
+                <Form.Item name="confirmPassword" label="새 비밀번호 확인"
+                  rules={[{ required: true, message: "새 비밀번호 확인을 입력하세요" }]}>
+                  <Input.Password aria-label="새 비밀번호 확인" autoComplete="new-password" />
+                </Form.Item>
+                <Button type="primary" loading={passwordSaving} onClick={() => void savePassword()}>비밀번호 변경</Button>
+              </Form>
             </Card>
           </section>
         </div>
