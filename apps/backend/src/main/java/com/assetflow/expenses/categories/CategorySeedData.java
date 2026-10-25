@@ -145,6 +145,14 @@ public class CategorySeedData implements CommandLineRunner {
                 "의류", "패션", "무신사", "유니클로", "자라", "신발", "아울렛",
                 "에이블리", "스쿨룩스", "폴햄", "휠라");
 
+        // 4차 — 2026-10-26 미분류 작업함 상위 가맹점 기준.
+        // PG/VAN 사업자명(나이스·토스페이먼츠·갤럭시아머니트리 등)은 실제 구매처가 아니므로 넣지 않는다.
+        addKeywords(keywordCategory, "식비",
+                "농협하나로", "본죽", "더벤티", "코이라멘", "솔솥", "카츠랩");
+        addKeywords(keywordCategory, "여가/취미",
+                "벌툰", "볼링", "방방", "피나클랜드", "사진관");
+        addKeywords(keywordCategory, "쇼핑", "미니골드", "aliexpress");
+
         for (Map.Entry<String, String> e : keywordCategory.entrySet()) {
             // 업종을 직접 가리키는 키워드는 주소·건물명 키워드("병원", "버스")보다 먼저 매칭돼야 한다.
             // 예: "메가커피 ... 서울병원점" 은 병원이 아니라 커피집이다.
