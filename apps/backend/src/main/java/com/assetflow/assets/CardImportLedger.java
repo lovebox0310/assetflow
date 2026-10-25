@@ -1,6 +1,7 @@
 package com.assetflow.assets;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -23,4 +24,13 @@ public interface CardImportLedger {
 
     /** 이미 있는 rowKey 는 건너뛴다(§29.6 중복 반영 금지). 새로 저장된 건수를 돌려준다. */
     int addAll(List<ImportedRow> incoming);
+
+    /** rowKey 로 한 행을 찾는다 — 카테고리 수정 API 용 (§55.8). */
+    Optional<ImportedRow> find(String rowKey);
+
+    /** 기존 행의 용도구분을 변경한다 (§55.8 일괄 재분류). 변경된 행이 있으면 true. */
+    boolean updateExpenseKind(String rowKey, String expenseKind);
+
+    /** 같은 가맹점의 모든 행을 한 카테고리로 바꾼다 (§55.8 사용자 수정). 변경 건수를 돌려준다. */
+    int updateExpenseKindByMerchant(String merchantName, String expenseKind);
 }

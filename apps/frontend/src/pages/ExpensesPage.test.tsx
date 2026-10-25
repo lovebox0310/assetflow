@@ -257,4 +257,33 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
     fireEvent.click(await screen.findByRole("button", { name: "DB손해보험 정기 항목으로 등록" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v1/expenses/items/9/convert-to-recurring", expect.objectContaining({ method: "POST" })));
   });
+
+  it("카테고리 자동 분류 버튼은 reclassify 를 호출하고 결과를 안내한다 (§55.8)", async () => {
+    const fetchMock = stubFetch((path, init) => {
+      if (path.includes("/card-imports/reclassify") && init?.method === "POST") {
+        return apiResponse({ total: 12, updated: 7 });
+      }
+      if (path.includes("/expenses/recurring")) return apiResponse([]);
+      if (path.includes("/expenses/items")) return apiResponse([]);
+      if (path.includes("/assets/card-imports")) {
+        return apiResponse([
+          { rowKey: "k1", approvedAt: "2026-10-01", merchantName: "스타벅스 강남점", supplyExVat: 4500, vat: 500, grossAmount: 5000, cardMasked: "1234", expenseKind: "식비" },
+        ]);
+      }
+      if (path.includes("/expenses/snapshots")) return apiResponse(null);
+      return apiResponse({}, false, 500);
+    });
+    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "카테고리 자동 분류" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/assets/card-imports/reclassify",
+      expect.objectContaining({ method: "POST" }),
+    ));
+    expect(await screen.findByText(/12건 중 7건을 자동 분류했습니다/)).toBeDefined();
+    // 재분류 후 카드 내역을 다시 읽어 카테고리 열과 카테고리별 합계가 갱신된다
+    expect((await screen.findAllByText(/식비/)).length).toBeGreaterThan(0);
+    expect(await screen.findByText("카테고리별 합계")).toBeDefined();
+  });
 });

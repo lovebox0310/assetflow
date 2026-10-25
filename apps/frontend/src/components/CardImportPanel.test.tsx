@@ -137,4 +137,29 @@ describe("CardImportPanel (§29.7 흐름 이관)", () => {
     // 샘플에 존재하는 가맹점에 대해 모킹된 규칙 값이 화면에 노출된다
     await screen.findByText("사업비용");
   });
+
+  it("저장된 규칙이 없는 가맹점도 키워드 자동 분류 결과가 미리보기에 채워진다 (§55.8)", async () => {
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.includes("/card-imports/row-keys")) return Promise.resolve(apiResponse([]));
+      if (path.includes("/card-imports/merchant-rules")) return Promise.resolve(apiResponse({ "합성카페": "식비" }));
+      return Promise.resolve(apiResponse({}, false, 500));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CardImportPanel />);
+    chooseFile(HYUNDAI_TEXT);
+
+    // 서버가 키워드 제안을 돌려주려면 가맹점 목록을 함께 보내야 한다
+    const rulesCall = await vi.waitFor(() => {
+      const call = fetchMock.mock.calls.find((c) =>
+        String(c[0]).includes("/card-imports/merchant-rules") && String(c[0]).includes("merchant="),
+      );
+      if (!call) throw new Error("가맹점 목록을 실은 규칙 조회가 없다");
+      return call;
+    });
+    expect(String(rulesCall[0])).toContain("merchant=");
+    // 자동 분류 결과가 카테고리 선택값으로 노출된다
+    expect(await screen.findByText("식비")).toBeDefined();
+  });
 });
