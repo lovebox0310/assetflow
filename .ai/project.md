@@ -222,39 +222,48 @@ PR 병합 규칙:
 - 기본값 의존을 줄이고 필수 키 누락 시 애플리케이션이 즉시 실패하도록 설정한다.
 
 공통 키 (Backend):
-- APP_ENV
-- SERVER_PORT
-- DB_URL
-- DB_USER
-- DB_PASSWORD
-- JWT_SECRET
-- CORS_ALLOWED_ORIGINS
-- LOG_LEVEL
-- HEALTH_CHECK_PATH
+- `APP_ENV`
+- `SERVER_PORT` (기본 8080)
+- `DB_URL`
+- `DB_USER`
+- `DB_PASSWORD`
+- `JWT_SECRET` (32바이트 이상, 운영 환경에서는 고정값 필수)
+- `OWNER_EMAIL` (단일 사용자 원장 소유자, `users` 테이블 행과 일치)
+- `ALLOWED_ORIGIN` (CORS 허용 출처, 쉼표 구분. 동일 출처 시 생략 가능)
+- `LOG_LEVEL` (선택, 기본 INFO)
 
 공통 키 (Frontend):
-- API_BASE_URL
-- APP_ENV
-- SENTRY_DSN (선택)
+- `API_BASE_URL` (절대 URL 또는 상대경로 `/`)
+- `APP_ENV`
+- `SENTRY_DSN` (선택)
+
+매핑 주의:
+- `JWT_SECRET` 환경변수는 `application.yml`의 `app.jwt-secret: ${JWT_SECRET:}` 로 매핑된다.
+  설정하지 않으면 부팅마다 랜덤 키가 생성되어 기존 토큰이 모두 무효화된다.
+- `ALLOWED_ORIGIN` 환경변수는 `application.yml`의 `app.allowed-origins: ${ALLOWED_ORIGIN:}` 로 매핑된다.
+
+헬스체크:
+- 경로: `/health`
+- 응답: `{"status":"UP"}`
 
 환경별 예시 값:
-| Key | dev | stg | prod |
-|---|---|---|---|
-| APP_ENV | dev | stg | prod |
-| SERVER_PORT | 8080 | 8080 | 8080 |
-| API_BASE_URL | https://api-dev.example.com | https://api-stg.example.com | https://api.example.com |
-| DB_URL | jdbc:postgresql://dev-host:5432/app | jdbc:postgresql://stg-host:5432/app | jdbc:postgresql://prod-host:5432/app |
-| DB_USER | app_dev | app_stg | app_prod |
-| DB_PASSWORD | secret manager 사용 | secret manager 사용 | secret manager 사용 |
-| JWT_SECRET | 32자 이상 랜덤 | 32자 이상 랜덤 | 32자 이상 랜덤 |
-| CORS_ALLOWED_ORIGINS | http://localhost:3000 | https://stg.example.com | https://example.com |
-| LOG_LEVEL | DEBUG | INFO | WARN |
-| HEALTH_CHECK_PATH | /actuator/health | /actuator/health | /actuator/health |
+| Key | dev | prod (홈서버) |
+|---|---|---|
+| APP_ENV | dev | prod |
+| SERVER_PORT | 8080 | 8080 |
+| API_BASE_URL | http://localhost:8080 | (상대경로 또는 동일 출처) |
+| DB_URL | jdbc:postgresql://localhost:5432/assetflow | jdbc:postgresql://localhost:5432/assetflow |
+| DB_USER | assetflow | assetflow |
+| DB_PASSWORD | CHANGE_ME_DEV | secret manager 또는 환경변수로 분리 |
+| JWT_SECRET | CHANGE_ME_DEV_32_PLUS | 32바이트 이상 고정 랜덤값 |
+| OWNER_EMAIL | user@example.com | lovebox0310@gmail.com |
+| ALLOWED_ORIGIN | http://localhost:5173 | (동일 출처이면 생략) |
+| LOG_LEVEL | DEBUG | INFO |
 
 플랫폼 권장 설정:
-1. Vercel/Cloudflare Pages: Frontend 키만 등록
-2. Render/Railway: Backend 키 등록 + Secret 기능 사용
-3. DB 플랫폼(Neon/Supabase): 접속 문자열은 복사 후 즉시 Secret 저장
+1. 홈서버: Backend + Frontend 를 같은 서버에 두고 Caddy/nginx 로 동일 출처 서빙. `ALLOWED_ORIGIN` 은 선택.
+2. 클라우드 분리 배포 시: Backend 에 `ALLOWED_ORIGIN` 로 Frontend 도메인 등록, Frontend 에 `API_BASE_URL` 로 Backend 도메인 등록.
+3. DB 는 외부 노출하지 않고 localhost 또는 사설망으로 제한. 비밀번호는 Secret 관리.
 
 검증 체크리스트:
 1. 배포 전: 필수 키 누락 여부 점검
@@ -270,45 +279,46 @@ PR 병합 규칙:
 ```env
 APP_ENV=dev
 SERVER_PORT=8080
-DB_URL=jdbc:postgresql://dev-host:5432/app
-DB_USER=app_dev
+DB_URL=jdbc:postgresql://localhost:5432/assetflow
+DB_USER=assetflow
 DB_PASSWORD=CHANGE_ME_DEV
 JWT_SECRET=CHANGE_ME_DEV_32_PLUS
-CORS_ALLOWED_ORIGINS=http://localhost:3000
+OWNER_EMAIL=lovebox0310@gmail.com
+ALLOWED_ORIGIN=http://localhost:5173
 LOG_LEVEL=DEBUG
-HEALTH_CHECK_PATH=/actuator/health
 ```
 
 .env.stg (backend 예시):
 ```env
 APP_ENV=stg
 SERVER_PORT=8080
-DB_URL=jdbc:postgresql://stg-host:5432/app
-DB_USER=app_stg
+DB_URL=jdbc:postgresql://stg-host:5432/assetflow
+DB_USER=assetflow
 DB_PASSWORD=CHANGE_ME_STG
 JWT_SECRET=CHANGE_ME_STG_32_PLUS
-CORS_ALLOWED_ORIGINS=https://stg.example.com
+OWNER_EMAIL=lovebox0310@gmail.com
+ALLOWED_ORIGIN=https://stg.example.com
 LOG_LEVEL=INFO
-HEALTH_CHECK_PATH=/actuator/health
 ```
 
-.env.prod (backend 예시):
+.env.prod (backend 예시 — 홈서버):
 ```env
 APP_ENV=prod
 SERVER_PORT=8080
-DB_URL=jdbc:postgresql://prod-host:5432/app
-DB_USER=app_prod
+DB_URL=jdbc:postgresql://localhost:5432/assetflow
+DB_USER=assetflow
 DB_PASSWORD=CHANGE_ME_PROD
-JWT_SECRET=CHANGE_ME_PROD_32_PLUS
-CORS_ALLOWED_ORIGINS=https://example.com
-LOG_LEVEL=WARN
-HEALTH_CHECK_PATH=/actuator/health
+JWT_SECRET=<32바이트_이상_고정_랜덤값>
+OWNER_EMAIL=lovebox0310@gmail.com
+# ALLOWED_ORIGIN=                    # 동일 출처(Caddy)이면 생략
+LOG_LEVEL=INFO
 ```
 
 .env.dev (frontend 예시):
 ```env
 APP_ENV=dev
-API_BASE_URL=https://api-dev.example.com
+# API_BASE_URL=                       # dev 프록시 사용 시 상대경로
+API_BASE_URL=http://localhost:8080
 SENTRY_DSN=
 ```
 
@@ -319,10 +329,11 @@ API_BASE_URL=https://api-stg.example.com
 SENTRY_DSN=
 ```
 
-.env.prod (frontend 예시):
+.env.prod (frontend 예시 — 홈서버):
 ```env
 APP_ENV=prod
-API_BASE_URL=https://api.example.com
+# API_BASE_URL=                       # Caddy 동일 출처 서빙 시 상대경로
+API_BASE_URL=https://redbox9.iptime.org
 SENTRY_DSN=
 ```
 
