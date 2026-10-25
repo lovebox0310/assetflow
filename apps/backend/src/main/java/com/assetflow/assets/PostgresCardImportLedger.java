@@ -104,4 +104,30 @@ public class PostgresCardImportLedger implements CardImportLedger {
                 WHERE user_id = ? AND merchant_name = ?
                 """, expenseKind, userId, merchantName);
     }
+
+    public List<UnclassifiedGroup> unclassifiedGroups() {
+        return jdbc.query("""
+                SELECT merchant_name, COUNT(*) AS cnt, SUM(gross_amount) AS gross_total,
+                       MIN(approved_at) AS first_at, MAX(approved_at) AS last_at
+                FROM card_imports
+                WHERE user_id = ? AND (expense_kind IS NULL OR expense_kind = '' OR expense_kind = 'unclassified')
+                GROUP BY merchant_name
+                ORDER BY gross_total DESC, cnt DESC, merchant_name
+                """,
+                (rs, n) -> new UnclassifiedGroup(
+                        rs.getString("merchant_name"),
+                        rs.getInt("cnt"),
+                        rs.getLong("gross_total"),
+                        rs.getString("first_at"),
+                        rs.getString("last_at")),
+                userId);
+    }
+
+    public int clearExpenseKindByMerchant(String merchantName) {
+        return jdbc.update("""
+                UPDATE card_imports
+                SET expense_kind = '', updated_at = now()
+                WHERE user_id = ? AND merchant_name = ?
+                """, userId, merchantName);
+    }
 }

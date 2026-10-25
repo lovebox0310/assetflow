@@ -66,6 +66,40 @@ export interface CategoryUpdateResult {
   updatedRows: number;
 }
 
+export interface UnclassifiedGroup {
+  merchantName: string;
+  count: number;
+  grossTotal: number;
+  firstApprovedAt: string;
+  lastApprovedAt: string;
+}
+
+export interface MerchantCategoryResult {
+  merchantName: string;
+  category: string;
+  updatedRows: number;
+}
+
+/** §55.8 미분류 작업함 — 가맹점 단위 묶음. 금액 큰 순으로 내려온다. */
+export function listUnclassifiedGroups(): Promise<UnclassifiedGroup[]> {
+  return apiFetch<UnclassifiedGroup[]>("/api/v1/assets/card-imports/unclassified");
+}
+
+/**
+ * §55.8: 가맹점 하나의 모든 카드 행을 한 카테고리로 바꾼다.
+ * category 를 빈 문자열로 보내면 미분류로 되돌리고 저장된 규칙도 지운다(되돌리기).
+ */
+export function assignMerchantCategory(
+  merchantName: string,
+  category: string,
+): Promise<MerchantCategoryResult> {
+  return apiFetch<MerchantCategoryResult>("/api/v1/assets/card-imports/merchant-category", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ merchantName, category }),
+  });
+}
+
 /**
  * §55.8: 한 카드 행의 카테고리를 직접 바꾼다.
  * 같은 가맹점 행 전체와 향후 임포트 규칙(merchant_rules)에 함께 반영된다.

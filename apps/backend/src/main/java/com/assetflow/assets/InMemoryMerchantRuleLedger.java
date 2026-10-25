@@ -41,4 +41,11 @@ public class InMemoryMerchantRuleLedger implements MerchantRuleLedger {
             rules.putAll(incoming);
         }
     }
+
+    @Override
+    public void delete(String merchantName) {
+        synchronized (rules) {
+            rules.remove(merchantName);
+        }
+    }
 }

@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { reclassifyCardImports, updateCardImportCategory } from "./cardImportApi";
+import {
+  assignMerchantCategory,
+  listUnclassifiedGroups,
+  reclassifyCardImports,
+  updateCardImportCategory,
+} from "./cardImportApi";
 import { clearToken, saveToken } from "../auth/authStore";
 import { clearInflight } from "./client";
 
@@ -50,5 +55,36 @@ describe("cardImportApi (§55.8)", () => {
     expect(init.method).toBe("PATCH");
     expect(JSON.parse(String(init.body))).toEqual({ rowKey: "k 1", category: "식비" });
     expect(result.updatedRows).toBe(2);
+  });
+
+  it("미분류 작업함은 GET /card-imports/unclassified 로 묶음을 읽는다", async () => {
+    saveToken("tok", Date.now() + 60_000);
+    const groups = [
+      { merchantName: "네이버페이", count: 37, grossTotal: 1_658_960, firstApprovedAt: "2026-08-01", lastApprovedAt: "2026-10-20" },
+    ];
+    const fetchMock = stubFetch(groups);
+
+    const result = await listUnclassifiedGroups();
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(String(url)).toContain("/api/v1/assets/card-imports/unclassified");
+    expect(init?.method ?? "GET").toBe("GET");
+    expect(result).toEqual(groups);
+  });
+
+  it("가맹점 일괄 지정은 merchant-category 로 PATCH 하고 되돌리기는 빈 카테고리를 보낸다", async () => {
+    saveToken("tok", Date.now() + 60_000);
+    const fetchMock = stubFetch({ merchantName: "네이버페이", category: "쇼핑", updatedRows: 37 });
+
+    const result = await assignMerchantCategory("네이버페이", "쇼핑");
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(String(url)).toContain("/api/v1/assets/card-imports/merchant-category");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(String(init.body))).toEqual({ merchantName: "네이버페이", category: "쇼핑" });
+    expect(result.updatedRows).toBe(37);
+
+    await assignMerchantCategory("네이버페이", "");
+    const [, undoInit] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(undoInit.body))).toEqual({ merchantName: "네이버페이", category: "" });
   });
 });
