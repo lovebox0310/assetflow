@@ -3308,6 +3308,25 @@ GET /api/v1/expenses/categories?month=2026-02
 - 지출 화면: 월별 카테고리별 합계 테이블
 - 카드내역/수기 지출 입력: 카테고리 선택 필수 또는 선택 가능
 
+#### 55.8.4 자동 분류 구현 계획 (2026-10-25)
+
+카드 내역이 많을 때 수동 분류는 부담이 크다. 따라서 **규칙 기반 자동 분류**를 먼저 적용하고, 키워드로 못 맞춘 항목은 사용자가 한 번 지정하면 다음부터 자동 승계한다.
+
+**데이터 모델**
+- `merchant_category_keywords(keyword, category_id, priority)`: 키워드 → 카테고리 매핑
+- `merchant_rules`에 `category_id` 추가 — 사용자가 지정한 가맹점 규칙
+- `card_imports`에 `category_id` 추가
+
+**분류 우선순위**
+1. `merchant_rules`에서 가맹점 일치 → 사용자가 지정한 카테고리
+2. `merchant_category_keywords`에서 키워드 일치 → 키워드 매핑 카테고리
+3. 매칭 실패 → "미분류"
+
+**API/화면**
+- 카드 임포트 미리보기/확정 시 자동 분류 실행
+- `POST /api/v1/assets/card-imports/reclassify`: 기존 카드 내역 일괄 재분류
+- 사용자가 카테고리 수정하면 `merchant_rules`에 저장되어 다음 반영에 자동 적용
+
 ### 55.9 아직 미확정
 
 - 공휴일 조정 여부
