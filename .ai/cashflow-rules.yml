@@ -1,0 +1,98 @@
+# AssetFlow 현금흐름 규칙서 (Cashflow Rules)
+# Generated: 2026-10-25
+#
+# 목적: "언제 사용했는가"가 아니라 "언제 계좌에 실제로 입출금되는가"를 계산하기 위한
+#       사용자/계약별 시점 규칙.
+#
+# 사용처:
+#   - 현금흐름 화면(#/cashflow)의 입출금 예정일 계산
+#   - 대시보드 "이번 달 살림" 카드
+#   - 카드내역의 "결제 예정일" 배지
+#
+# 확장 가이드:
+#   - 새 규칙은 rule_id 를 UNIQUE 하게 부여한다.
+#   - 휴일 조정이 필요해지면 weekend_adjust 옆에 holiday_adjust 를 추가한다.
+#   - 규칙은 사용자가 직접 추가/편집할 수 있도록 UI 에서 관리한다.
+
+cashflow_rules:
+  - rule_id: salary_main
+    type: income
+    label: 회사 월급
+    description: 지난달 근무에 대한 월급
+    basis:
+      period_unit: month
+      period_relation: previous            # 정산 대상 월의 직전 월이 근무 월
+      range: first_day_to_last_day
+    settlement:
+      month_relation: current              # basis(직전 월)의 다음 달
+      day_of_month: 10
+    weekend_adjust:
+      if: [saturday, sunday]
+      then: previous_friday                # 같은 주 금요일로 앞당김
+      note: "10일이 토/일이면 그 주 금요일"
+    examples:
+      - basis_month: "2026-01"
+        settlement_date: "2026-02-10"
+        weekday: tuesday
+      - basis_month: "2026-02"
+        settlement_date: "2026-03-10"
+        weekday: tuesday
+      - basis_month: "2026-03"
+        settlement_date: "2026-03-06"
+        weekday: friday
+        reason: "3/10(일) → 그 주 금요일"
+
+  - rule_id: card_payment_standard
+    type: expense
+    label: 카드 결제
+    description: 전월 카드 사용금 결제
+    basis:
+      period_unit: month
+      period_relation: previous            # 정산 대상 월의 직전 월이 사용 월
+      range: first_day_to_last_day
+    settlement:
+      month_relation: current              # basis(직전 월)의 다음 달
+      day_of_month: 15
+    weekend_adjust:
+      if: [saturday, sunday]
+      then: next_monday                    # 다음 주 월요일로 미룸
+      note: "15일이 토/일이면 다음 주 월요일"
+    examples:
+      - basis_month: "2026-01"
+        settlement_date: "2026-02-16"
+        weekday: monday
+        reason: "2/15(일) → 다음 주 월요일"
+      - basis_month: "2026-02"
+        settlement_date: "2026-03-16"
+        weekday: monday
+        reason: "3/15(일) → 다음 주 월요일"
+      - basis_month: "2026-03"
+        settlement_date: "2026-04-15"
+        weekday: wednesday
+
+# 향후 추가 예시
+#  - rule_id: rent
+#    type: expense
+#    label: 임대료
+#    basis:
+#      period_unit: month
+#      period_relation: current
+#      range: first_day_to_last_day
+#    settlement:
+#      month_relation: current
+#      day_of_month: 1
+#    weekend_adjust:
+#      if: [saturday, sunday]
+#      then: next_monday
+#
+#  - rule_id: bonus_irregular
+#    type: income
+#    label: 비정기 복지/성과급
+#    basis:
+#      period_unit: none                  # 단건 지정
+#      date: "2026-06-30"
+#    settlement:
+#      date: "2026-06-30"
+#    weekend_adjust:
+#      if: [saturday, sunday]
+#      then: previous_friday
