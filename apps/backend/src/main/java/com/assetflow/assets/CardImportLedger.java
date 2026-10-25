@@ -15,6 +15,10 @@ public interface CardImportLedger {
                        long supplyExVat, long vat, long grossAmount,
                        String cardMasked, String expenseKind) {}
 
+    /** 미분류 작업함의 가맹점 묶음 (§55.8). */
+    record UnclassifiedGroup(String merchantName, int count, long grossTotal,
+                             String firstApprovedAt, String lastApprovedAt) {}
+
     List<ImportedRow> all();
 
     /** 승인일이 해당 월(YYYY-MM)인 행 — 지출 화면의 "가져온 카드내역" 표용 (§42). */
@@ -33,4 +37,10 @@ public interface CardImportLedger {
 
     /** 같은 가맹점의 모든 행을 한 카테고리로 바꾼다 (§55.8 사용자 수정). 변경 건수를 돌려준다. */
     int updateExpenseKindByMerchant(String merchantName, String expenseKind);
+
+    /** 미분류 행을 가맹점 단위로 묶어 금액 큰 순으로 돌려준다 (§55.8 작업함). */
+    List<UnclassifiedGroup> unclassifiedGroups();
+
+    /** 같은 가맹점의 모든 행을 미분류로 되돌린다 (§55.8 되돌리기). 변경 건수를 돌려준다. */
+    int clearExpenseKindByMerchant(String merchantName);
 }

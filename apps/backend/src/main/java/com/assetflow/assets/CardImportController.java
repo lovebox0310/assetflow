@@ -50,6 +50,8 @@ public class CardImportController {
 
     public record CategoryUpdate(String rowKey, String category) {}
 
+    public record MerchantCategoryUpdate(String merchantName, String category) {}
+
     /**
      * 가맹점별 용도구분 제안 (§55.8).
      * 저장된 사용자 규칙이 1순위, 없으면 키워드 기반 자동 분류 결과를 함께 돌려준다.
@@ -202,6 +204,37 @@ public class CardImportController {
         return new ApiResponse<>("OK", "Category updated", Map.of(
                 "rowKey", rowKey,
                 "merchantName", row.merchantName(),
+                "category", category,
+                "updatedRows", updatedRows));
+    }
+
+    /** 미분류 정리 작업함 — 가맹점별 묶음 (§55.8). */
+    @GetMapping("/card-imports/unclassified")
+    public ApiResponse<List<CardImportLedger.UnclassifiedGroup>> unclassified() {
+        return new ApiResponse<>("OK", "Unclassified groups loaded", ledger.unclassifiedGroups());
+    }
+
+    /**
+     * 가맹점 단위 일괄 분류/되돌리기 (§55.8 작업함).
+     * category 가 비어 있으면 그 가맹점 행을 모두 미분류로 되돌리고 규칙도 지운다.
+     */
+    @PatchMapping("/card-imports/merchant-category")
+    public ApiResponse<Map<String, Object>> updateMerchantCategory(@RequestBody MerchantCategoryUpdate request) {
+        String merchantName = requiredText(request.merchantName(), "merchantName");
+        String category = request.category() == null ? "" : request.category().trim();
+        if (category.length() > 20) {
+            throw new IllegalArgumentException("category must be 20 characters or fewer");
+        }
+        int updatedRows;
+        if (category.isBlank()) {
+            updatedRows = ledger.clearExpenseKindByMerchant(merchantName);
+            ruleLedger.delete(merchantName);
+        } else {
+            updatedRows = ledger.updateExpenseKindByMerchant(merchantName, category);
+            ruleLedger.saveAll(Map.of(merchantName, category));
+        }
+        return new ApiResponse<>("OK", "Merchant category updated", Map.of(
+                "merchantName", merchantName,
                 "category", category,
                 "updatedRows", updatedRows));
     }

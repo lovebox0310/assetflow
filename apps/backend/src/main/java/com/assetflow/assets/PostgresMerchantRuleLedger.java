@@ -78,4 +78,10 @@ public class PostgresMerchantRuleLedger implements MerchantRuleLedger {
                     """, userId, e.getKey(), e.getValue());
         }
     }
+
+    @Override
+    public void delete(String merchantName) {
+        jdbc.update("DELETE FROM merchant_rules WHERE user_id = ? AND merchant_name = ?",
+                userId, merchantName);
+    }
 }
