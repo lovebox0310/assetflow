@@ -291,4 +291,58 @@ class CardImportApiTest {
                         .contentType(MediaType.APPLICATION_JSON).content("{\"rowKey\":\"nope\",\"category\":\"식비\"}"))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void unclassifiedGroupsAreAggregatedByMerchantAndOrderedByAmount() throws Exception {
+        String body = "{\"rows\":["
+                + row("k1", "2026-09-01", "가맹점A", 9000, 1000, 10000)
+                + "," + row("k2", "2026-10-01", "가맹점A", 18000, 2000, 20000)
+                + "," + row("k3", "2026-10-02", "가맹점B", 4500, 500, 5000)
+                + "],\"merchantRules\":{}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/assets/card-imports/unclassified").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].merchantName").value("가맹점A"))
+                .andExpect(jsonPath("$.data[0].count").value(2))
+                .andExpect(jsonPath("$.data[0].grossTotal").value(30000))
+                .andExpect(jsonPath("$.data[0].firstApprovedAt").value("2026-09-01"))
+                .andExpect(jsonPath("$.data[0].lastApprovedAt").value("2026-10-01"))
+                .andExpect(jsonPath("$.data[1].merchantName").value("가맹점B"));
+    }
+
+    @Test
+    void merchantCategoryAssignsAllRowsAndUndoRestoresUnclassified() throws Exception {
+        String body = "{\"rows\":["
+                + row("k1", "2026-09-01", "가맹점A", 9000, 1000, 10000)
+                + "," + row("k2", "2026-10-01", "가맹점A", 18000, 2000, 20000)
+                + "],\"merchantRules\":{}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        mvc.perform(patch("/api/v1/assets/card-imports/merchant-category").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"merchantName\":\"가맹점A\",\"category\":\"식비\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.updatedRows").value(2));
+        org.junit.jupiter.api.Assertions.assertEquals("식비", ruleLedger.allRules().get("가맹점A"));
+        mvc.perform(get("/api/v1/assets/card-imports/unclassified").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data.length()").value(0));
+
+        // 되돌리기: 빈 카테고리 → 미분류 복원 + 규칙 삭제
+        mvc.perform(patch("/api/v1/assets/card-imports/merchant-category").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"merchantName\":\"가맹점A\",\"category\":\"\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.updatedRows").value(2));
+        org.junit.jupiter.api.Assertions.assertNull(ruleLedger.allRules().get("가맹점A"));
+        mvc.perform(get("/api/v1/assets/card-imports/unclassified").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].merchantName").value("가맹점A"))
+                .andExpect(jsonPath("$.data[0].count").value(2));
+    }
 }

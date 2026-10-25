@@ -4,8 +4,11 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -86,6 +89,38 @@ public class InMemoryCardImportLedger implements CardImportLedger {
             }
         }
         return updated;
+    }
+
+    public List<UnclassifiedGroup> unclassifiedGroups() {
+        synchronized (rows) {
+            Map<String, List<ImportedRow>> byMerchant = new LinkedHashMap<>();
+            for (ImportedRow r : rows) {
+                if (isUnclassified(r.expenseKind())) {
+                    byMerchant.computeIfAbsent(r.merchantName(), k -> new ArrayList<>()).add(r);
+                }
+            }
+            List<UnclassifiedGroup> groups = new ArrayList<>();
+            for (Map.Entry<String, List<ImportedRow>> e : byMerchant.entrySet()) {
+                List<ImportedRow> list = e.getValue();
+                long gross = list.stream().mapToLong(ImportedRow::grossAmount).sum();
+                String first = list.stream().map(ImportedRow::approvedAt).min(String::compareTo).orElse("");
+                String last = list.stream().map(ImportedRow::approvedAt).max(String::compareTo).orElse("");
+                groups.add(new UnclassifiedGroup(e.getKey(), list.size(), gross, first, last));
+            }
+            groups.sort(Comparator
+                    .comparingLong(UnclassifiedGroup::grossTotal).reversed()
+                    .thenComparing(Comparator.comparingInt(UnclassifiedGroup::count).reversed())
+                    .thenComparing(UnclassifiedGroup::merchantName));
+            return groups;
+        }
+    }
+
+    public int clearExpenseKindByMerchant(String merchantName) {
+        return updateExpenseKindByMerchant(merchantName, "");
+    }
+
+    private static boolean isUnclassified(String kind) {
+        return kind == null || kind.isBlank() || "unclassified".equals(kind);
     }
 
     private static ImportedRow withKind(ImportedRow r, String expenseKind) {

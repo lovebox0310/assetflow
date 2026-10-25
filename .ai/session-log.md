@@ -14,6 +14,62 @@
 
 ---
 
+## 2026-10-25 — 미분류 정리 작업함 + 카드 표 필터/페이지 유지
+
+미분류 559행/274가맹점을 한 건씩 고치면 목록이 새로 조회되며 페이지를 잃는 문제.
+검색으로 확인한 패턴(Monarch `Edit Multiple`, YNAB payee 자동 적용, "Needs review" 큐,
+표는 수정 후 재조회하지 않는다)을 참고해 **가맹점 단위 작업함(B) + 표 필터/페이지 유지(A)** 로 정리했다.
+
+### 백엔드 (§55.8.6)
+
+- `CardImportLedger.UnclassifiedGroup` + `unclassifiedGroups()`
+  - Postgres: `merchant_name` GROUP BY, `SUM(gross_amount)` DESC
+  - InMemory: 같은 규칙을 메모리에서 집계 (테스트용)
+  - 미분류 = `NULL` / `''` / legacy `'unclassified'`
+- `clearExpenseKindByMerchant(merchantName)` — 되돌리기용, 행 전체를 `''` 로
+- `MerchantRuleLedger.delete(merchantName)` — 되돌릴 때 저장 규칙도 삭제
+- `GET /api/v1/assets/card-imports/unclassified`
+- `PATCH /api/v1/assets/card-imports/merchant-category` `{merchantName, category}`
+  - 빈 `category` = 되돌리기(행 전체 미분류 + 규칙 삭제)
+- `CardImportApiTest`: 묶음 집계·정렬, 일괄 지정, 되돌리기 3건 추가 (총 85)
+
+### 프론트엔드
+
+- `ExpensesPage` 상단 **미분류 정리** 섹션
+  - 진행률 `정리한 가맹점/처음 가맹점`, 남은 가맹점·건수·금액, 금액 큰 순
+  - 가맹점 이름 검색, 페이지 10개, 행마다 카테고리 Select → PATCH
+  - 지정 즉시 목록에서 사라지고 알림 카드의 **되돌리기**로 복원
+- 카드 표: **미분류만 보기** 체크박스(건수 표시), 승인일·가맹점·이용금액 정렬,
+  페이지 상태를 컴포넌트가 소유
+- 카테고리 수정은 재조회 없이 해당 가맹점 행만 로컬 갱신 → 페이지·스크롤 유지
+- `cardImportApi`: `listUnclassifiedGroups()`, `assignMerchantCategory()` + 타입
+- 테스트: API 2건(경로·본문·되돌리기 빈 값), 화면 3건(작업함 지정/되돌리기,
+  미분류 필터, 데스크톱 2페이지에서 수정 후 재조회 없음·페이지 유지) — 총 142
+
+### 검증
+
+```
+cd apps/backend && ./gradlew test     # BUILD SUCCESSFUL (85)
+cd apps/frontend && pnpm typecheck    # 통과
+cd apps/frontend && pnpm lint         # 통과
+cd apps/frontend && pnpm test         # 142 passed
+cd apps/frontend && pnpm build        # 성공 (index-DwM2PKtP.js)
+```
+
+### 배포·실호출
+
+- 홈서버 재배포 (BE jar + FE `index-DwM2PKtP.js`), `/health` UP
+- `GET /card-imports/unclassified` → 274묶음, 금액 DESC(네이버페이 37건 1,658,960원 → …)
+- `PATCH /merchant-category`: `홍콩반점` 1행 지정 → 273묶음, 규칙 저장 → 되돌리기 →
+  274묶음 복원, `expense_kind=''`, `merchant_rules` 0건
+
+### 남은 것
+
+- [ ] 사용자 실제 화면 확인(작업함에서 정리 → 되돌리기 → 표 필터)
+- [ ] 카테고리별 월 집계 API·화면(§55.8.3) — 아직 없음
+
+---
+
 ## 2026-10-25 — 카드 내역 카테고리 자동 분류 (규칙 + 키워드)
 
 카드 내역이 많아 수동 분류가 부담이라는 요구(§55.8.4). LLM 없이 규칙 기반으로

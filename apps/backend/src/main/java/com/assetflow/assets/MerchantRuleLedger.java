@@ -15,4 +15,7 @@ public interface MerchantRuleLedger {
     Map<String, String> rulesFor(Set<String> merchantNames);
 
     void saveAll(Map<String, String> rules);
+
+    /** 사용자가 되돌린 가맹점 규칙을 지운다 (§55.8 미분류 작업함 되돌리기). */
+    void delete(String merchantName);
 }
