@@ -14,6 +14,70 @@
 
 ---
 
+## 2026-10-25 — 카드 내역 카테고리 자동 분류 (규칙 + 키워드)
+
+카드 내역이 많아 수동 분류가 부담이라는 요구(§55.8.4). LLM 없이 규칙 기반으로
+가맹점 규칙 → 키워드 → "미분류" 순서로 분류하고, 기존에 등록된 카드 내역도
+한 번에 재분류할 수 있게 했다.
+
+### 백엔드
+
+- `expenses/categories` 패키지 신설: `CategoryClassifier` + Postgres/InMemory 구현
+  - 1순위 `merchant_rules`(사용자가 지정한 가맹점), 2순위 `merchant_category_keywords`
+  - 반환값은 카테고리 **이름** — 기존 `expense_kind` 계약을 그대로 쓴다
+- `CategorySeedData`: 기본 카테고리 10종과 키워드 시드. `CommandLineRunner` 라
+  분류기 생성자보다 늦게 돈다 → 분류기는 키워드를 지연 로드한다
+- `GET /card-imports/merchant-rules?merchant=`: 저장 규칙 + 키워드 제안 병합
+- `POST /card-imports`: 분류가 비어 있으면 자동 분류 결과로 채움
+- `POST /card-imports/reclassify`: 기존 카드 행 일괄 재분류, `{total, updated}` 반환
+- `PATCH /card-imports/category` `{rowKey, category}`: 한 행을 고치면 **같은 가맹점 행 전체**가 바뀌고
+  `merchant_rules` 에 저장돼 다음 임포트에도 적용된다
+- `schema.sql` + `db/migrations/2026-10-25-add-category-classification.sql`:
+  `merchant_rules.category_id`, `card_imports.category_id`, `monthly_expense_items.category_id`,
+  `merchant_category_keywords` 추가
+
+### 프론트엔드
+
+- 미리보기는 기존 `merchant-rules` 호출을 그대로 쓴다 — 서버가 키워드 제안까지
+  섞어 주므로 추가 호출 없이 자동 선택된다
+- 카테고리 선택지 10종 + legacy 3종(`src/data/expenseCategories.ts`)
+- 지출 화면 "가져온 카드내역" 옆 **카테고리 자동 분류** 버튼 → reclassify → 목록 재조회
+- 카드 표의 카테고리 셀이 Select 로 바뀌어 행마다 직접 수정 가능(→ PATCH)
+- 이 달 카드 사용금의 **카테고리별 합계** 표 추가
+- 열 이름 "용도구분" → "카테고리" (저장 컬럼은 `expense_kind` 그대로)
+
+### 검증
+
+```
+cd apps/backend && ./gradlew test          # BUILD SUCCESSFUL
+cd apps/frontend && pnpm typecheck          # 통과
+cd apps/frontend && pnpm lint               # 통과
+cd apps/frontend && pnpm test               # 137 passed
+cd apps/frontend && pnpm build              # 성공 (index-BO5deL05.js)
+```
+
+- 추가 테스트: `InMemoryCategoryClassifierTest`(5), `CardImportApiTest`(제안·재분류·카테고리 수정 6),
+  `ExpensesPage`(재분류 버튼), `CardImportPanel`(키워드 제안 채움), `cardImportApi`(2)
+
+### 배포·데이터
+
+- 홈서버 DB 마이그레이션 적용, FE/BE 재배포 (index-DXRuw2nu.js)
+- 부팅 시드: 카테고리 11종, 키워드 177개
+- 기존 카드 2,710행 재분류 — 미분류 2,073 → **678행**
+  - 식비 1,056 · 교통비 292 · 쇼핑 227 · 의료비 157 · 통신비 85 · 여가/취미 80 ·
+    주거비 53 · 보험료 40 · 교육비 33 · 기타 8 · 경조사비 1
+- 실호출 확인: `POST /reclassify`(1,253 → 150 → 6행 갱신), `PATCH /category`(가맹점 12행 갱신 + 규칙 저장),
+  없는 rowKey → 400
+
+### 남은 것
+
+- [x] 홈서버 DB 마이그레이션 적용 + 재배포 (2026-10-25 22:12)
+- [ ] 배포 후 실제 카드 내역에서 재분류 버튼 동작 확인(사용자 확인 예정)
+- [ ] 카테고리별 월 집계 API·화면(§55.8.3) — 아직 없음
+- [ ] `category_id` 쓰기 경로 — 지금은 `expense_kind` 문자열만 채운다
+
+---
+
 ## 2026-10-24 — 정기 항목 금액·필수·세액 변경도 연결 행에 소급 + 재배포
 
 사용자 추가 제보("정기 항목 수정 맥엔피씨임대료 동작 안됨"): 금액을 200,000 → 2,000,003 으로

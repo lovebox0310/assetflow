@@ -3,6 +3,7 @@ package com.assetflow.assets;
 import com.assetflow.assets.CardImportLedger.ImportedRow;
 import com.assetflow.common.api.ApiResponse;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -31,10 +32,14 @@ public class CardImportController {
 
     private final CardImportLedger ledger;
     private final MerchantRuleLedger ruleLedger;
+    private final com.assetflow.expenses.categories.CategoryClassifier categoryClassifier;
 
-    public CardImportController(CardImportLedger ledger, MerchantRuleLedger ruleLedger) {
+    public CardImportController(CardImportLedger ledger,
+                                MerchantRuleLedger ruleLedger,
+                                com.assetflow.expenses.categories.CategoryClassifier categoryClassifier) {
         this.ledger = ledger;
         this.ruleLedger = ruleLedger;
+        this.categoryClassifier = categoryClassifier;
     }
 
     public record ImportRow(String rowKey, String approvedAt, String merchantName,
@@ -43,11 +48,28 @@ public class CardImportController {
 
     public record ImportRequest(List<ImportRow> rows, Map<String, String> merchantRules) {}
 
+    public record CategoryUpdate(String rowKey, String category) {}
+
+    /**
+     * 가맹점별 용도구분 제안 (§55.8).
+     * 저장된 사용자 규칙이 1순위, 없으면 키워드 기반 자동 분류 결과를 함께 돌려준다.
+     * merchant 파라미터가 없으면 저장된 규칙 전체만 반환한다(키워드 제안은 대상 가맹점이 필요).
+     */
     @GetMapping("/card-imports/merchant-rules")
     public ApiResponse<Map<String, String>> merchantRules(@RequestParam(value = "merchant", required = false) List<String> merchants) {
-        Map<String, String> rules = (merchants == null || merchants.isEmpty())
-                ? ruleLedger.allRules()
-                : ruleLedger.rulesFor(Set.copyOf(merchants));
+        if (merchants == null || merchants.isEmpty()) {
+            return new ApiResponse<>("OK", "Merchant rules loaded", Map.copyOf(ruleLedger.allRules()));
+        }
+        Map<String, String> rules = new HashMap<>(ruleLedger.rulesFor(Set.copyOf(merchants)));
+        for (String merchant : merchants) {
+            if (merchant == null || merchant.isBlank() || rules.containsKey(merchant)) {
+                continue;
+            }
+            String classified = categoryClassifier.classify(merchant);
+            if (classified != null) {
+                rules.put(merchant, classified);
+            }
+        }
         return new ApiResponse<>("OK", "Merchant rules loaded", Map.copyOf(rules));
     }
 
@@ -86,6 +108,13 @@ public class CardImportController {
             String kind = submittedRules.getOrDefault(row.merchantName(), "");
             if (kind.isBlank()) {
                 kind = storedRules.getOrDefault(row.merchantName(), "");
+            }
+            // §55.8: 제출/저장 규칙이 없으면 키워드 기반 자동 분류를 제안한다.
+            if (kind.isBlank()) {
+                String classified = categoryClassifier.classify(row.merchantName());
+                if (classified != null) {
+                    kind = classified;
+                }
             }
             ImportedRow r = new ImportedRow(
                     requiredText(row.rowKey(), "rowKey"),
@@ -134,6 +163,47 @@ public class CardImportController {
                 "knownRowKeys", keys.size(),
                 "totals", Map.of("gross", gross, "vat", vat, "supplyExVat", supply),
                 "supplyInconsistentRows", supplyInconsistent));
+    }
+
+    /** 기존 카드 내역을 키워드/규칙 기반으로 일괄 재분류한다 (§55.8). */
+    @PostMapping("/card-imports/reclassify")
+    public ApiResponse<Map<String, Object>> reclassify() {
+        List<ImportedRow> rows = ledger.all();
+        int updated = 0;
+        for (ImportedRow row : rows) {
+            if (row.merchantName() == null || row.merchantName().isBlank()) {
+                continue;
+            }
+            String classified = categoryClassifier.classify(row.merchantName());
+            if (classified != null && !classified.equals(row.expenseKind())) {
+                ledger.updateExpenseKind(row.rowKey(), classified);
+                updated++;
+            }
+        }
+        return new ApiResponse<>("OK", "Reclassification completed", Map.of(
+                "total", rows.size(),
+                "updated", updated));
+    }
+
+    /** 한 카드 행의 카테고리를 사용자가 직접 바꾼다. 같은 가맹점 행 전체 + 향후 임포트 규칙에 반영한다. */
+    @PatchMapping("/card-imports/category")
+    public ApiResponse<Map<String, Object>> updateCategory(@RequestBody CategoryUpdate request) {
+        String rowKey = requiredText(request.rowKey(), "rowKey");
+        String category = requiredText(request.category(), "category").trim();
+        if (category.length() > 20) {
+            throw new IllegalArgumentException("category must be 20 characters or fewer");
+        }
+        ImportedRow row = ledger.find(rowKey)
+                .orElseThrow(() -> new IllegalArgumentException("unknown rowKey: " + rowKey));
+        ledger.updateExpenseKind(rowKey, category);
+        // 같은 가맹점의 다른 달 행도 함께 맞춘다 — 월별 합계가 서로 어긋나지 않게.
+        int updatedRows = ledger.updateExpenseKindByMerchant(row.merchantName(), category);
+        ruleLedger.saveAll(Map.of(row.merchantName(), category));
+        return new ApiResponse<>("OK", "Category updated", Map.of(
+                "rowKey", rowKey,
+                "merchantName", row.merchantName(),
+                "category", category,
+                "updatedRows", updatedRows));
     }
 
     private String requiredText(String value, String field) {

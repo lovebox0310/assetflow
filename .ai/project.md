@@ -3241,6 +3241,7 @@ income_items (
 | 보험료 | 생명·손해·건강보험 등 |
 | 경조사비 | 축의금, 부의금, 선물 등 |
 | 주거비 | 임대료, 관리비, 공과금 등 |
+| 통신비 | 이동통신, 인터넷, 휴대폰 요금 등 (2026-10-25 추가) |
 | 쇼핑 | 의류, 가전, 생활용품 등 |
 | 의료비 | 병원, 약국, 건강검진 등 |
 | 여가/취미 | 여행, 운동, 구독 등 |
@@ -3326,6 +3327,41 @@ GET /api/v1/expenses/categories?month=2026-02
 - 카드 임포트 미리보기/확정 시 자동 분류 실행
 - `POST /api/v1/assets/card-imports/reclassify`: 기존 카드 내역 일괄 재분류
 - 사용자가 카테고리 수정하면 `merchant_rules`에 저장되어 다음 반영에 자동 적용
+
+#### 55.8.5 자동 분류 구현 결과 (2026-10-25)
+
+**백엔드**
+- `CategoryClassifier` — 가맹점명 → 카테고리 **이름** 반환(없으면 null). `expense_kind` 계약을 그대로 쓴다
+  - `PostgresCategoryClassifier`: 1순위 `merchant_rules`, 2순위 `merchant_category_keywords`
+  - 키워드는 **priority DESC → 길이 DESC → 키워드** 순. `priority=10` 은 업종 자체를 가리키는
+    키워드(커피·치킨·마라탕 등)로, 상호에 섞인 위치/건물 단어(병원·버스)보다 먼저 매칭된다
+    — 예: "메가커피 ... 서울병원점" 은 의료비가 아니라 식비
+  - 공백 제거·소문자 정규화 후 부분 일치
+  - `InMemoryCategoryClassifier`: 테스트·CI용
+- `CategorySeedData`: 부팅 시 기본 카테고리 11종 + 키워드 시드(멱등, 2026-10-25 실제 카드 가맹점 브랜드 보강)
+  - 키워드 시드는 `CommandLineRunner` 라 분류기 생성자보다 늦게 실행된다 → 분류기는 키워드 목록을 **지연 로드**한다
+- `GET /api/v1/assets/card-imports/merchant-rules?merchant=...`
+  - 저장된 사용자 규칙이 있으면 그 값, 없으면 키워드 자동 분류 결과를 함께 반환
+  - 파라미터가 없으면 저장된 규칙 전체만 반환
+- `POST /api/v1/assets/card-imports` — 제출/저장 규칙이 비어 있으면 자동 분류 결과로 채운다
+- `POST /api/v1/assets/card-imports/reclassify` — 저장된 모든 카드 행을 다시 분류하고 `{total, updated}` 반환
+- `PATCH /api/v1/assets/card-imports/category` `{ "rowKey": "...", "category": "식비" }`
+  - rowKey 에 `|` 나 `/` 가 들어가므로 경로 변수 대신 본문으로 받는다
+  - 그 행 + **같은 가맹점의 모든 행**을 한 카테고리로 바꾸고 `merchant_rules` 에도 저장한다
+  - 월별 합계가 서로 어긋나지 않게 하기 위한 선택. 다음 임포트부터 자동 적용된다
+
+**프론트엔드**
+- `CardImportPanel`: 미리보기에서 `merchant-rules` 응답을 그대로 채운다 → 저장 규칙과 키워드 제안이 같은 경로로 자동 선택된다
+- 카테고리 선택지는 `src/data/expenseCategories.ts` 의 11종 + legacy 3종(§49 값 호환)
+- `ExpensesPage` "가져온 카드내역" 제목 옆 **카테고리 자동 분류** 버튼 → reclassify 호출 후 목록 재조회
+- 같은 화면에 이 달 카드 사용금의 **카테고리별 합계** 표(고객이 "어디에 썼나"를 바로 확인)
+- 카드 표의 열 이름을 "용도구분" → "카테고리" 로 바꾸고, 각 행에서 카테고리를 직접 고칠 수 있다(→ PATCH)
+- 저장 위치(`expense_kind`)는 그대로다
+
+**남은 한계**
+- `category_id` 는 스키마에만 있고 아직 쓰기 경로가 없다 — 모든 분류는 `expense_kind` 문자열로 저장된다
+- 미리보기에서 카테고리를 바꾼 것은 확정 시 제출된 규칙만 저장된다(미리보기 단계 자체는 저장하지 않음)
+- 월별 카테고리 집계 API(`GET /api/v1/expenses/categories?month=`)는 아직 없다
 
 ### 55.9 아직 미확정
 

@@ -3,6 +3,7 @@ import { Alert, Button, Card, Select, Space, Table, Typography } from "antd";
 import contractJson from "../../../../samples/card/card-columns.json";
 import { detectCardCompany, inspectContainer, parserFor } from "../lib/card/detect-card.mjs";
 import { getImportedRowKeys, getMerchantRules, submitCardImports, type CardImportRow, type CardImportResult } from "../api/cardImportApi";
+import { EXPENSE_CATEGORY_OPTIONS } from "../data/expenseCategories";
 import { formatKrwExact } from "../utils/formatters";
 
 const contract = contractJson as Parameters<typeof detectCardCompany>[1];
@@ -12,7 +13,7 @@ type Phase = "idle" | "parsing" | "review" | "submitting" | "done" | "error";
 /**
  * 스프린트 2 #22: 카드 내역 가져오기 (§29.7 흐름의 React 이관).
  * - 업로드 → 컨테이너 판별(매직 바이트) → 카드사 판별(계약 시그니처) → 파싱 →
- *   가맹점 단위 미리보기(용도구분 선택) → 확정(서버 재검증·저장).
+ *   가맹점 단위 미리보기(카테고리 선택·자동 분류 제안) → 확정(서버 재검증·저장).
  * - 암호화 CFB 는 열지 않는다(§29.5.1) — 비밀번호 입력란도 두지 않는다.
  * - 합계는 행에서 재계산. 미분류 가맹점은 어느 합계에도 들어가지 않는다.
  */
@@ -185,7 +186,7 @@ export function CardImportPanel() {
                 { title: "건수", dataIndex: "count", width: 80 },
                 { title: "이용금액 합계", dataIndex: "gross", width: 160, render: (v: number) => formatKrwExact(v) },
                 {
-                  title: "용도구분",
+                  title: "카테고리",
                   width: 200,
                   render: (_: unknown, g: { merchant: string }) => (
                     <Select
@@ -194,11 +195,7 @@ export function CardImportPanel() {
                       placeholder="미분류"
                       value={kinds[g.merchant] || null}
                       onChange={(v: string) => setKinds((prev) => ({ ...prev, [g.merchant]: v }))}
-                      options={[
-                        { value: "사업비용", label: "사업비용" },
-                        { value: "개인지출", label: "개인지출" },
-                        { value: "자산취득", label: "자산취득" },
-                      ]}
+                      options={EXPENSE_CATEGORY_OPTIONS}
                     />
                   ),
                 },

@@ -26,10 +26,16 @@ public class PostgresMerchantRuleLedger implements MerchantRuleLedger {
     @Override
     public Map<String, String> allRules() {
         return jdbc.query(
-                "SELECT merchant_name, expense_kind FROM merchant_rules WHERE user_id = ?",
-                (rs, n) -> Map.entry(rs.getString("merchant_name"), rs.getString("expense_kind")),
+                """
+                        SELECT r.merchant_name, COALESCE(c.name, r.expense_kind) AS kind
+                        FROM merchant_rules r
+                        LEFT JOIN expense_categories c ON c.id = r.category_id
+                        WHERE r.user_id = ?
+                        """,
+                (rs, n) -> Map.entry(rs.getString("merchant_name"), rs.getString("kind")),
                 userId)
                 .stream()
+                .filter(e -> e.getValue() != null)
                 .collect(HashMap::new, (m, e) -> m.put(e.getKey(), e.getValue()), HashMap::putAll);
     }
 
@@ -46,11 +52,15 @@ public class PostgresMerchantRuleLedger implements MerchantRuleLedger {
             params[i++] = name;
         }
         return jdbc.query(
-                "SELECT merchant_name, expense_kind FROM merchant_rules WHERE user_id = ? AND merchant_name IN ("
-                        + placeholders + ")",
-                (rs, n) -> Map.entry(rs.getString("merchant_name"), rs.getString("expense_kind")),
+                """
+                        SELECT r.merchant_name, COALESCE(c.name, r.expense_kind) AS kind
+                        FROM merchant_rules r
+                        LEFT JOIN expense_categories c ON c.id = r.category_id
+                        WHERE r.user_id = ? AND r.merchant_name IN (""" + placeholders + ")",
+                (rs, n) -> Map.entry(rs.getString("merchant_name"), rs.getString("kind")),
                 params)
                 .stream()
+                .filter(e -> e.getValue() != null)
                 .collect(HashMap::new, (m, e) -> m.put(e.getKey(), e.getValue()), HashMap::putAll);
     }
 
