@@ -3228,8 +3228,89 @@ income_items (
 
 월급 등 정기 수입은 `deposit_date` 기준으로 집계한다.
 
-### 55.8 아직 미확정
+### 55.8 지출 용도 분류(카테고리)
+
+"돈이 어디로 사용되었는지"를 월별로 한눈에 보기 위해서는 모든 지출 항목에 **용도/카테고리**가 필요하다.
+
+#### 55.8.1 필요한 분류
+
+| 분류 예시 | 설명 |
+|---|---|
+| 식비 | 식료품, 외식, 배달 등 |
+| 교통비 | 대중교통, 주유, 통행료 등 |
+| 보험료 | 생명·손해·건강보험 등 |
+| 경조사비 | 축의금, 부의금, 선물 등 |
+| 주거비 | 임대료, 관리비, 공과금 등 |
+| 쇼핑 | 의류, 가전, 생활용품 등 |
+| 의료비 | 병원, 약국, 건강검진 등 |
+| 여가/취미 | 여행, 운동, 구독 등 |
+| 교육비 | 학원, 도서, 강의 등 |
+| 기타 | 위 항목에 속하지 않는 지출 |
+
+기본 카테고리는 `expense_categories` 테이블의 `user_id IS NULL` 행으로 제공하고, 사용자가 필요에 따라 커스텀 카테고리를 추가할 수 있어야 한다.
+
+#### 55.8.2 데이터 모델 확장
+
+**`monthly_expense_items` — 수기/고정 지출 항목**
+
+```sql
+monthly_expense_items (
+    id,
+    user_id,
+    month,
+    payment_date,
+    category_id,          -- expense_categories.id 참조
+    label,
+    amount,
+    is_essential,
+    purchase_vat,
+    recurring_id
+);
+```
+
+- `category_id`가 NULL이면 "미분류"로 처리한다.
+- `is_essential`은 여전히 비상금 분모(월 필수지출) 집계에 사용한다.
+
+**`card_imports` — 카드 사용 내역**
+
+```sql
+card_imports (
+    id,
+    user_id,
+    row_key,
+    approved_at,
+    payment_date,
+    merchant_name,
+    supply_ex_vat,
+    vat,
+    gross_amount,
+    card_masked,
+    expense_kind,         -- 기존 문자열 용도구분(§49)
+    category_id,          -- expense_categories.id 참조(신규)
+    ...
+);
+```
+
+- 기존 `expense_kind`는 사용자가 입력한 자유 문자열 용도구분이다.
+- `category_id`는 표준 카테고리로 집계하기 위한 참조키다.
+- 향후 `expense_kind`를 `category_id`로 매핑하거나, `expense_kind`를 `category_id`의 display name 으로 대체할 수 있다.
+
+#### 55.8.3 집계 및 화면
+
+**API**
+```
+GET /api/v1/expenses/categories?month=2026-02
+→ { "식비": 450000, "교통비": 120000, "보험료": 174130, ... }
+```
+
+**화면**
+- 대시보드: "이번 달 지출 구성" 파이 차트 또는 누적 막대 차트
+- 지출 화면: 월별 카테고리별 합계 테이블
+- 카드내역/수기 지출 입력: 카테고리 선택 필수 또는 선택 가능
+
+### 55.9 아직 미확정
 
 - 공휴일 조정 여부
 - 현금흐름 화면의 정확한 UI 형태(달력 vs 리스트)
 - `monthly_snapshots` 테이블을 현금 기준으로 대체할지, 별도의 현금흐름 스냅샷을 둘지
+- 카드 `expense_kind` 를 `category_id` 로 완전 대체할지, 병행할지
