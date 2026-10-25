@@ -1,77 +1,128 @@
-# AssetFlow 배포 런북 (스프린트 1 리허설 - §12 "배포 순서" 집행용)
+# AssetFlow 배포 런북 (홈서버)
 
-목표 조합: **Neon(PostgreSQL) + Render(Backend) + Vercel(Frontend)** — 월 비용 Free~Starter 범위(§12 상한 50,000원).
+현재 운영 환경은 **사무실 홈서버**(Ubuntu + PostgreSQL + systemd + Caddy)입니다.  
+과거에 검토했던 Render + Vercel + Neon 조합은 [부록 A](#부록-a-render--vercel--neon-역사적-참고)에 남겨두었습니다.
 
-## 0. 현재 코드 상태
-
-- 백엔드 원장은 **프로필 분기**: 기본값은 인메모리(테스트·CI), `--spring.profiles.active=postgres` + `DB_URL/DB_USER/DB_PASSWORD` 가 주어지면 `Postgres*Ledger` 가 실 DB 원장으로 동작한다(§39 단일 교체 지점 — API 계약 불변).
-- DDL 단일 출처는 `apps/backend/db/schema.sql` 이며 postgres 프로필 부팅 시 Spring SQL init 이 자동 적용한다(이미 있으면 무시).
-- 프론트는 `VITE_API_BASE_URL` 이 없으면 상대경로(dev 프록시), 있으면 절대 URL.
-
-## 1. DB 생성 (Neon)
-
-1. neon.tech 가입 → 새 프로젝트 생성 (지역: 서울 또는 가까운 리전)
-2. 연결 문자열 확인: `postgresql://<user>:<password>@<host>/<db>?sslmode=require`
-3. **dev/prod 분리**: 브랜치 또는 별도 프로젝트로 두 개 발급 (§12 2단계)
-4. DDL 적용 — 로컬에서:
-   ```bash
-   psql "<연결 문자열>" -f apps/backend/db/schema.sql
-   ```
-
-## 2. Backend 배포 (Render)
-
-1. render.com 가입 → New → Web Service → 이 저장소 연결
-2. 설정:
-   - Runtime: Java 21 (Render 기본 JDK 선택, 없으면 Dockerfile)
-   - Build: `./gradlew clean build -x test`
-   - Start: `./gradlew bootRun --args="--server.port=$PORT"` 또는 jar 실행
-3. 환경변수:
-   - `DB_URL`, `DB_USER`, `DB_PASSWORD` — 1단계 값
-   - `ALLOWED_ORIGIN` — Vercel 도메인(3단계 후 확정, 쉼표 구분)
-   - `SERVER_PORT` — Render가 주는 `$PORT` 사용 권장
-4. **DB 연결(프로필 활성화)**: 시작 명령에 `--spring.profiles.active=postgres` 를 추가한다(예: `java -jar app.jar --spring.profiles.active=postgres`). 부팅 시 스키마가 자동 적용되고 원장이 Postgres 로 전환된다. 프로필 없이 뜨면 인메모리 원장으로 뜬다(부팅은 됨).
-5. 배포 후 확인: `curl https://<render-domain>/health` → `{"status":"UP"}`
-
-## 3. Frontend 배포 (Vercel)
-
-1. vercel.com 가입 → Add New Project → 저장소 연결
-2. Root Directory: `apps/frontend`, Build Command: `corepack pnpm install && corepack pnpm build`
-3. 환경변수:
-   - `VITE_API_BASE_URL` — 2단계 Render 도메인 (`https://...`, 슬래시 없이)
-4. 배포 후 확인: 대시보드에서 로그인 → 실 데이터 렌더
-5. 도메인 접속 허용: Render의 `ALLOWED_ORIGIN`에 Vercel 도메인 추가 → 재배포
-
-## 4. 헬스체크 + 알람
-
-- Render 대시보드의 Health Check Path: `/health`
-- 알람: Render 이메일 알림 활성화 (무료 tier 기준, §12 6단계의 최소 충족)
-
-## 5. 롤백 절차 리허설 (§12 7단계)
-
-1. Render → Deployments 탭 → 직전 배포 선택 → **Rollback**
-2. 롤백 후 `/health` 재확인
-3. 기록: 롤백 소요 시간과 성공 여부를 `.ai/session-log.md`에 남긴다
-
-## 6. main 보호 규칙 (GitHub 설정) — 2026-10-18 적용 완료
-
-- 필수 상태 체크: `quality-gate`, `frontend-gate`, `backend-gate` (strict)
-- 승인 요구: **제거됨** — 단독 개발자는 자신의 PR을 승인할 수 없어 병합 불가가 되기 때문(사용자 결정). 규칙 변경은 GitHub Settings → Branches 또는 `gh api -X PUT .../branches/main/protection`
-
-## 7. 사무실 홈서버 구성 (2026-10-18 완료 — 카페24·가비아 대신 자체 장비 운영)
-
-가비아 Gen2 월 20,000원이 예산(9,000원) 초과라, 사무실의 우분투 컴퓨터(Ubuntu 26.04, 15GB RAM)를 홈서버로 사용하기로 했다. 구성:
+## 1. 홈서버 구성
 
 | 구성요소 | 내용 |
 |---|---|
-| 접속 | `ssh redbox9@redbox9.iptime.org -p 2222` (ipTIME DDNS, 공유기 2222→22 포워딩) — 배포용 키 등록 완료 |
-| Postgres 18.6 | 서버 로컬 전용(5432 외부 미개방). DB `assetflow`, 계정 `assetflow`, 스키마·시드 적용 완료 |
-| Backend | `/opt/assetflow/app.jar` + systemd(`assetflow.service`) — postgres 프로필, `-Xmx512m`, Restart=always |
-| HTTPS | Caddy 역방향 프록시 — `https://redbox9.iptime.org` (자체 서명 인증서, 브라우저 경고 수락 필요). 정식 인증서는 iptime.org CAA 차단으로 불가 — 도메인 구입 시 Caddyfile 도메인만 교체하면 자동 발급으로 전환 |
-| 방화벽 | ufw: 22/2222, 80, 443 허용. **5432 는 개방 금지** |
+| 접속 | `ssh redbox9@redbox9.iptime.org -p 2222` (ipTIME DDNS, 공유기 2222→22 포워딩) |
+| OS | Ubuntu 26.04, 15GB RAM |
+| PostgreSQL | 18.6, `localhost:5432`, DB/유저 `assetflow` |
+| Backend | `/opt/assetflow/app.jar` + systemd `assetflow.service` — postgres 프로필, `-Xmx512m`, Restart=always |
+| Frontend | `/opt/assetflow/frontend` — Caddy 정적 서빙 |
+| HTTPS | Caddy 역방향 프록시 — `https://redbox9.iptime.org` (자체 서명 인증서). 정식 인증서는 `iptime.org` CAA 차단으로 불가; 도메인 구입 시 Caddyfile 도메인만 교체하면 자동 발급으로 전환 |
+| 방화벽 | ufw: 22/2222, 80, 443 허용. **5432 외부 개방 금지** |
 
 공유기 포트포워딩(사용자 완료): 외부 80→80, 443→443 (192.168.0.102). 80은 ipTIME 원격 관리 서버(Httpd/1.0)가 선점해 404 응답 — HTTP-01 챌린지 불가, TLS-ALPN(443)도 CAA 차단으로 전환해 자체 서명으로 확정.
 
-### 7.1 데이터 이관 절차 (로컬 Windows → 홈서버)
+## 2. 필수 환경변수
+
+`/etc/systemd/system/assetflow.service`에 설정되어 있습니다.
+
+| 변수 | 용도 | 비고 |
+|---|---|---|
+| `DB_URL` | `jdbc:postgresql://localhost:5432/assetflow` | postgres 프로필 활성화 시 사용 |
+| `DB_USER` | PostgreSQL 계정 | |
+| `DB_PASSWORD` | PostgreSQL 비밀번호 | |
+| `JWT_SECRET` | JWT 서명 키 (32바이트 이상 랜덤 문자열) | **고정값 필수**. 누락 시 부팅마다 랜덤 키가 생성되어 모든 토큰 무효화 |
+| `OWNER_EMAIL` | 단일 사용자 원장 소유자 이메일 | `users` 테이블 행과 일치해야 함 |
+| `SERVER_PORT` | 8080 | |
+| `ALLOWED_ORIGIN` | CORS 허용 출처(쉼표 구분) | 홈서버 동일 출처 시 생략 가능 |
+
+`JWT_SECRET`은 `apps/backend/src/main/resources/application.yml`의 `app.jwt-secret: ${JWT_SECRET:}` 매핑을 통해 `TokenService`에 전달됩니다. 실제 JWT 발급·검증이 이미 구현되어 있으므로(2026-10-18), 운영 환경에서는 반드시 고정된 `JWT_SECRET`을 설정해야 합니다.
+
+## 3. 빌드·배포
+
+### 3.1 사전 준비
+
+로컬(또는 CI)에서 빌드에 필요한 JDK는 `~/.gradle/jdks/eclipse_adoptium-21-amd64-linux.2`에 있습니다.
+
+```bash
+# 1) 백엔드 빌드
+cd apps/backend
+JAVA_HOME=$HOME/.gradle/jdks/eclipse_adoptium-21-amd64-linux.2 ./gradlew bootJar -x test
+
+# 2) 프론트엔드 빌드
+cd ../frontend
+pnpm build
+```
+
+### 3.2 스테이징·배포
+
+```bash
+# 3) 스테이징
+mkdir -p /tmp/opencode/deploy
+cp apps/backend/build/libs/assetflow-backend-0.0.1-SNAPSHOT.jar /tmp/opencode/deploy/app.jar
+rsync -a --delete apps/frontend/dist/ /tmp/opencode/deploy/dist/
+
+# 4) 서버에서 sudo로 배포 스크립트 실행
+sudo bash /tmp/opencode/deploy-assetflow.sh
+```
+
+`/tmp/opencode/deploy-assetflow.sh`는 다음 순서로 동작합니다:
+
+1. BE jar + FE 디렉터리 백업
+2. BE jar 원자적 교체
+3. `assetflow.service` 재시작 후 `/health` 응답 대기(최대 120초)
+4. FE 정적 파일 `rsync`
+5. 헬스·타이틀·번들 검증
+
+실패 시 BE는 백업 jar로 자동 롤백됩니다.
+
+### 3.3 배포 후 검증
+
+```bash
+# BE 헬스
+curl http://127.0.0.1:8080/health
+
+# FE 타이틀 + 번들
+curl -sk --resolve redbox9.iptime.org:443:127.0.0.1 \
+  https://redbox9.iptime.org/ | grep -o '<title>[^<]*</title>'
+```
+
+## 4. 롤백 절차
+
+스크립트가 생성한 백업 목록을 확인합니다.
+
+```bash
+ls -la /opt/assetflow/app.jar.bak-* /opt/assetflow/backup-frontend-*/
+```
+
+수동 롤백:
+
+```bash
+sudo systemctl stop assetflow
+sudo cp /opt/assetflow/app.jar.bak-<STAMP> /opt/assetflow/app.jar
+sudo rsync -a --delete /opt/assetflow/backup-frontend-<STAMP>/frontend/ /opt/assetflow/frontend/
+sudo systemctl start assetflow
+curl http://127.0.0.1:8080/health
+```
+
+롤백 소요 시간과 성공 여부는 `.ai/session-log.md`에 기록합니다.
+
+## 5. DB 백업·복원
+
+### 5.1 백업
+
+- **자동**: 매일 03:15 cron (`/etc/cron.d/assetflow-backup` → `/opt/assetflow/backup.sh`)
+- **저장**: `/var/backups/assetflow/assetflow-YYYY-MM-DD.sql.gz`
+- **보관**: 7일분
+- **수동**: `sudo -u postgres /opt/assetflow/backup.sh`
+- **복원 검증 이력**: 2026-10-18 임시 DB 복원 → 1,341행 일치 확인
+
+### 5.2 복원
+
+```bash
+sudo systemctl stop assetflow
+zcat /var/backups/assetflow/assetflow-YYYY-MM-DD.sql.gz | \
+  sudo -u postgres psql -U assetflow -d assetflow
+sudo systemctl start assetflow
+curl http://127.0.0.1:8080/health
+```
+
+### 5.3 데이터 이관 (로컬 Windows → 홈서버)
 
 1. **로컬 덤프 생성** (Windows):
    ```bash
@@ -83,21 +134,55 @@
    scp -P 2222 assetflow-dump.sql redbox9@redbox9.iptime.org:/tmp/
    PGPASSWORD='<assetflow 비밀번호>' psql -h localhost -U assetflow -d assetflow -f /tmp/assetflow-dump.sql
    ```
-3. **백업 자동화 — 설치 완료 (2026-10-18)**: 매일 03:15 cron 실행(`/etc/cron.d/assetflow-backup` → `/opt/assetflow/backup.sh`), 백업 파일 `/var/backups/assetflow/assetflow-YYYY-MM-DD.sql.gz`, 7일분 보관. 수동 실행: `sudo -u postgres /opt/assetflow/backup.sh`. 복원 검증 완료(임시 DB 복원 → 1,341행 일치)
-4. **나중에 카페24·VPS로 이관할 때**: 같은 pg_dump/복원 절차를 대상 서버에 반복한다 — 계약 변화 없음
+3. **향후 VPS 등으로 이관할 때**: 같은 `pg_dump`/`psql` 절차 반복 — 계약 변화 없음
 
-### 7.2 백엔드 재배포 (새 jar 나올 때)
+## 6. main 보호 규칙 (GitHub)
 
-```bash
-# 로컬: bootJar 빌드 후 전송
-cd apps/backend && ./gradlew bootJar
-scp -P 2222 build/libs/assetflow-backend-0.0.1-SNAPSHOT.jar \
-  redbox9@redbox9.iptime.org:/tmp/assetflow.jar
-# 서버: 교체·재기동
-sudo mv /tmp/assetflow.jar /opt/assetflow/app.jar && sudo systemctl restart assetflow
-```
+- 필수 상태 체크: `quality-gate`, `frontend-gate`, `backend-gate` (strict)
+- 승인 요구: **제거됨** — 단독 개발자는 자신의 PR을 승인할 수 없어 병합 불가가 되기 때문(사용자 결정). 규칙 변경은 GitHub Settings → Branches 또는 `gh api -X PUT .../branches/main/protection`
 
-## 8. 카페24·VPS 에 PostgreSQL 설치·이관 (참고용 — 현재는 홈서버 사용)
+---
+
+## 부록 A: Render + Vercel + Neon (역사적 참고)
+
+초기 스프린트 1에서는 **Neon(PostgreSQL) + Render(Backend) + Vercel(Frontend)** 조합을 검토했습니다. 예산(월 50,000원 이내)과 인프라 단순성을 비교한 결과, 2026-10-18에 **홈서버 운영**으로 전환했습니다. 아래 절차는 참고용입니다.
+
+### A.1 DB 생성 (Neon)
+
+1. neon.tech 가입 → 새 프로젝트 생성 (지역: 서울 또는 가까운 리전)
+2. 연결 문자열 확인: `postgresql://<user>:<password>@<host>/<db>?sslmode=require`
+3. **dev/prod 분리**: 브랜치 또는 별도 프로젝트로 두 개 발급
+4. DDL 적용:
+   ```bash
+   psql "<연결 문자열>" -f apps/backend/db/schema.sql
+   ```
+
+### A.2 Backend 배포 (Render)
+
+1. render.com 가입 → New → Web Service → 이 저장소 연결
+2. 설정:
+   - Runtime: Java 21
+   - Build: `./gradlew clean build -x test`
+   - Start: `java -jar app.jar --spring.profiles.active=postgres`
+3. 환경변수: `DB_URL`, `DB_USER`, `DB_PASSWORD`, `JWT_SECRET`, `ALLOWED_ORIGIN`, `SERVER_PORT`
+4. 배포 후 확인: `curl https://<render-domain>/health` → `{"status":"UP"}`
+
+### A.3 Frontend 배포 (Vercel)
+
+1. vercel.com 가입 → Add New Project → 저장소 연결
+2. Root Directory: `apps/frontend`, Build Command: `corepack pnpm install && corepack pnpm build`
+3. 환경변수: `VITE_API_BASE_URL` — Render 도메인
+4. Render의 `ALLOWED_ORIGIN`에 Vercel 도메인 추가 → 재배포
+
+### A.4 Render 물리 인스턴스 한계
+
+- Render 물리 인스턴스는 비활성 시 sleep → 첫 요청 지연.
+- 월 1만~1.8천원 Starter tier로 해결 가능(§12 예산선 내).
+- 현재는 홈서버를 사용하므로 해당 한계는 적용되지 않음.
+
+---
+
+## 부록 B: VPS 이관
 
 VPS 를 쓰게 될 경우의 절차. 원본 진리는 로컬 DB, 대상 서버는 이관 대상이다.
 
@@ -127,8 +212,3 @@ VPS 를 쓰게 될 경우의 절차. 원본 진리는 로컬 DB, 대상 서버�
    - 방화벽: 5432 외부 개방은 하지 않는다 — 백엔드가 서버 안에서 localhost 로 접속
 6. **백엔드 연결**: 백엔드를 같은 서버에 두고 `DB_URL=jdbc:postgresql://localhost:5432/assetflow`
 7. **정기 백업**: cron 에 `pg_dump` 매일 1회, 7일분 보관
-
-## 알려진 한계
-
-- JWT_SECRET: 백엔드가 아직 실제 JWT를 발급하지 않는다(모크 토큰). 실발급 도입 시 `JWT_SECRET` 환경변수를 Render에 추가 (§13 환경변수 표준)
-- Render 무료 인스턴스는 비활성 시 sleep → 첫 요청 지연. 월 1만~1.8천원 Starter로 해결(§12 예산선 내)
