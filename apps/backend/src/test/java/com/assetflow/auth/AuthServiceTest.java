@@ -50,4 +50,28 @@ class AuthServiceTest {
 
         assertThrows(IllegalArgumentException.class, () -> service.login(request));
     }
+
+    @Test
+    void updatesPasswordAndAuthenticatesWithNewOne() {
+        service.updatePassword("user@example.com", "password", "newpass123");
+
+        LoginRequest request = new LoginRequest();
+        request.setEmail("user@example.com");
+        request.setPassword("newpass123");
+
+        LoginResponse response = service.login(request);
+        assertTrue(response.getToken().split("\\.").length == 3);
+    }
+
+    @Test
+    void rejectsPasswordUpdateWithWrongCurrentPassword() {
+        assertThrows(AuthRequiredException.class,
+                () -> service.updatePassword("user@example.com", "wrong-password", "newpass123"));
+    }
+
+    @Test
+    void rejectsPasswordUpdateWithTooShortNewPassword() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.updatePassword("user@example.com", "password", "short"));
+    }
 }
