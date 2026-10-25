@@ -2651,9 +2651,18 @@ GET /api/v1/settings → data = { id, email, displayName, targetMonths }
 PUT /api/v1/settings → 본문 { targetMonths: 1..60 } → data = 갱신된 값
 ```
 - 이메일은 토큰 subject 에서(AuthEmailResolver) — 요청 파라미터로 다른 사용자를 만지지 않는다.
-### 46.3 me 실검증 — GET /api/v1/me 가 하드코딩 mock 대신 users 테이블의 id·이메일·표시명을 반환한다(JWT subject 일치).
-### 46.4 스냅샷↔대시보드 — summary.monthly 는 AS_OF 월의 스냅샷이 확정돼 있으면 실데이터(§34.6), 없으면 모크 폴백.
-### 46.5 cashflow↔스냅샷 — GET /api/v1/dashboard/cashflow 도 확정 스냅샷이 하나 이상 있으면 실데이터를, **전혀 없을 때만** 모크 기준선을 내려준다(§34.6 폴다운과 같은 규칙).
+### 46.3 비밀번호 변경 (Bearer 필수, /api/v1/auth/password)
+```
+PUT /api/v1/auth/password → 본문 { currentPassword, newPassword }
+  → 200 OK { code: "OK", message: "Password updated", data: null }
+```
+- `currentPassword` 검증 후 `users.password_hash` 를 BCrypt 해시로 갱신한다.
+- `newPassword` 는 8자 이상이어야 한다.
+- 현재 비밀번호가 틀리면 401 `AUTH_REQUIRED` (§21 동일 메시지).
+- `/api/v1/auth/login` 만 인터셉터 제외 — `/api/v1/auth/password` 는 보호 경로이다.
+### 46.4 me 실검증 — GET /api/v1/me 가 하드코딩 mock 대신 users 테이블의 id·이메일·표시명을 반환한다(JWT subject 일치).
+### 46.5 스냅샷↔대시보드 — summary.monthly 는 AS_OF 월의 스냅샷이 확정돼 있으면 실데이터(§34.6), 없으면 모크 폭백.
+### 46.6 cashflow↔스냅샷 — GET /api/v1/dashboard/cashflow 도 확정 스냅샷이 하나 이상 있으면 실데이터를, **전혀 없을 때만** 모크 기준선을 날려준다(§34.6 폴다운과 같은 규칙).
 - 계약: `ExpenseSnapshotLedger.recent(asOf, months)` — asOf 이하의 최근 months 개를 **최신 월부터** 내림차순. 스냅샷이 없으면 빈 리스트. 폴다운 여부는 호출 측(`DashboardService`)이 결정한다.
 - 구현은 InMemory(테스트·CI) / Postgres(실 DB) 두 원장 모두 제공한다 — §39 단일 교체 지점, API 계약 불변.
 - 응답 순서는 모크 경로와 동일하게 최신 월 우선이다. 기존 소비자(대시보드 3개월 표)의 순서가 바뀌지 않는다.
