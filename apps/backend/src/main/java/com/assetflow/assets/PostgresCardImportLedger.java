@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import java.sql.Date;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -77,5 +78,30 @@ public class PostgresCardImportLedger implements CardImportLedger {
                     r.supplyExVat(), r.vat(), r.grossAmount(), r.cardMasked(), r.expenseKind());
         }
         return stored;
+    }
+
+    public Optional<CardImportLedger.ImportedRow> find(String rowKey) {
+        return jdbc.query("""
+                SELECT row_key, approved_at, merchant_name, supply_ex_vat, vat, gross_amount,
+                       card_masked, expense_kind
+                FROM card_imports WHERE user_id = ? AND row_key = ?
+                """, PostgresCardImportLedger::map, userId, rowKey)
+                .stream().findFirst();
+    }
+
+    public boolean updateExpenseKind(String rowKey, String expenseKind) {
+        return jdbc.update("""
+                UPDATE card_imports
+                SET expense_kind = ?, updated_at = now()
+                WHERE user_id = ? AND row_key = ?
+                """, expenseKind, userId, rowKey) > 0;
+    }
+
+    public int updateExpenseKindByMerchant(String merchantName, String expenseKind) {
+        return jdbc.update("""
+                UPDATE card_imports
+                SET expense_kind = ?, updated_at = now()
+                WHERE user_id = ? AND merchant_name = ?
+                """, expenseKind, userId, merchantName);
     }
 }

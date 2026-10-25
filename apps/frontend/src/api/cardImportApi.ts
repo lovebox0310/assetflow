@@ -46,3 +46,34 @@ export function submitCardImports(
     body: JSON.stringify({ rows, merchantRules }),
   });
 }
+
+export interface ReclassifyResult {
+  total: number;
+  updated: number;
+}
+
+/** §55.8: 저장된 기존 카드 내역을 가맹점 규칙·키워드로 일괄 재분류한다. */
+export function reclassifyCardImports(): Promise<ReclassifyResult> {
+  return apiFetch<ReclassifyResult>("/api/v1/assets/card-imports/reclassify", {
+    method: "POST",
+  });
+}
+
+export interface CategoryUpdateResult {
+  rowKey: string;
+  merchantName: string;
+  category: string;
+  updatedRows: number;
+}
+
+/**
+ * §55.8: 한 카드 행의 카테고리를 직접 바꾼다.
+ * 같은 가맹점 행 전체와 향후 임포트 규칙(merchant_rules)에 함께 반영된다.
+ */
+export function updateCardImportCategory(rowKey: string, category: string): Promise<CategoryUpdateResult> {
+  return apiFetch<CategoryUpdateResult>("/api/v1/assets/card-imports/category", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rowKey, category }),
+  });
+}

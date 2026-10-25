@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Card, Checkbox, Form, Grid, Input, InputNumber, Popconfirm, Select, Space, Table, Typography } from "antd";
 import { AppLayout } from "../layout/AppLayout";
 import { StandardNav } from "../layout/StandardNav";
@@ -11,6 +11,8 @@ import {
 } from "../components/MobileListCard";
 import { clearInflight } from "../api/client";
 import { clearToken } from "../auth/authStore";
+import { reclassifyCardImports, updateCardImportCategory } from "../api/cardImportApi";
+import { EXPENSE_CATEGORY_OPTIONS } from "../data/expenseCategories";
 import {
   confirmMonth,
   copyItems,
@@ -103,6 +105,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
   const [confirming, setConfirming] = useState(false);
   const [notice, setNotice] = useState("");
   const [cardLimit, setCardLimit] = useState(20);
+  const [reclassifying, setReclassifying] = useState(false);
   const [recurring, setRecurring] = useState<RecurringRow[] | null>(null);
   const [recForm, setRecForm] = useState<RecurringRow | "new" | null>(null);
   const [prevCount, setPrevCount] = useState<number | null>(null);
@@ -140,6 +143,38 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
         setCardError(e.message);
       });
   }, [month]);
+
+  /** §55.8: 기존 카드 내역을 키워드·가맹점 규칙으로 일괄 재분류한 뒤 다시 읽는다. */
+  const handleReclassify = useCallback(async () => {
+    setReclassifying(true);
+    setNotice("");
+    try {
+      const result = await reclassifyCardImports();
+      setNotice(
+        result.updated > 0
+          ? `카드내역 ${result.total}건 중 ${result.updated}건을 자동 분류했습니다.`
+          : `카드내역 ${result.total}건을 확인했습니다 — 새로 분류된 항목은 없습니다.`,
+      );
+      loadCard();
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "재분류에 실패했습니다.");
+    } finally {
+      setReclassifying(false);
+    }
+  }, [loadCard]);
+
+  /** §55.8: 사용자가 행의 카테고리를 고치면 같은 가맹점 행 전체 + 다음 임포트 규칙에 반영된다. */
+  const handleCardCategory = useCallback(async (row: CardImportRowFull, category: string) => {
+    if (!category || category === row.expenseKind) return;
+    setNotice("");
+    try {
+      const result = await updateCardImportCategory(row.rowKey, category);
+      setNotice(`${result.merchantName} → ${result.category} (${result.updatedRows}건 반영)`);
+      loadCard();
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "카테고리 변경에 실패했습니다.");
+    }
+  }, [loadCard]);
 
   const loadSnapshot = useCallback(() => {
     clearInflight();
@@ -332,6 +367,19 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
   const essentialTotal = (items ?? []).filter((r) => r.isEssential).reduce((acc, r) => acc + r.amount, 0);
   const cardTotal = (cardRows ?? []).reduce((acc, r) => acc + r.grossAmount, 0);
 
+  /** §55.8: 이 달 카드 사용금을 카테고리별로 합산 — "어디에 썼나"를 바로 보여 준다. */
+  const cardCategoryTotals = useMemo(() => {
+    const map = new Map<string, { category: string; count: number; gross: number }>();
+    for (const r of cardRows ?? []) {
+      const category = r.expenseKind?.trim() || "미분류";
+      const row = map.get(category) ?? { category, count: 0, gross: 0 };
+      row.count += 1;
+      row.gross += r.grossAmount;
+      map.set(category, row);
+    }
+    return [...map.values()].sort((a, b) => b.gross - a.gross);
+  }, [cardRows]);
+
   const itemColumns = [
     { title: "항목", dataIndex: "label" },
     { title: "구분", width: 84, render: (_: unknown, row: ExpenseItemRow) =>
@@ -382,7 +430,22 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
     { title: "공급가액", dataIndex: "supplyExVat", align: "right" as const, width: 120, className: "af-num", render: (v: number) => formatKrwExact(v) },
     { title: "부가세", dataIndex: "vat", align: "right" as const, width: 110, className: "af-num", render: (v: number) => formatKrwExact(v) },
     { title: "이용금액", dataIndex: "grossAmount", align: "right" as const, width: 130, className: "af-num", render: (v: number) => formatKrwExact(v) },
-    { title: "용도구분", dataIndex: "expenseKind", width: 110, render: (v: string | undefined) => v || "미분류" },
+    {
+      title: "카테고리",
+      dataIndex: "expenseKind",
+      width: 170,
+      render: (v: string | undefined, row: CardImportRowFull) => (
+        <Select
+          size="small"
+          style={{ width: 150 }}
+          placeholder="미분류"
+          value={v || null}
+          options={EXPENSE_CATEGORY_OPTIONS}
+          onChange={(category: string) => void handleCardCategory(row, category)}
+          aria-label={`${row.merchantName} 카테고리`}
+        />
+      ),
+    },
   ];
 
   return (
@@ -616,8 +679,41 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
       </section>
 
       <section aria-labelledby="h-card-imports" style={{ marginBottom: 32 }}>
-        <Typography.Title level={2} id="h-card-imports" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>가져온 카드내역</Typography.Title>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
+          <Typography.Title level={2} id="h-card-imports" style={{ fontSize: 16, margin: 0 }}>가져온 카드내역</Typography.Title>
+          <Button
+            size="small"
+            loading={reclassifying}
+            onClick={() => void handleReclassify()}
+            title="저장된 카드 내역을 가맹점 규칙·키워드로 다시 분류합니다"
+          >
+            카테고리 자동 분류
+          </Button>
+        </div>
         <Card>
+          {cardStatus === "ready" && cardCategoryTotals.length > 0 ? (
+            <div style={{ marginBottom: 20 }} aria-label="이 달 카드 카테고리별 합계">
+              <Typography.Text strong style={{ display: "block", marginBottom: 8 }}>카테고리별 합계</Typography.Text>
+              <Table
+                size="small"
+                rowKey="category"
+                pagination={false}
+                dataSource={cardCategoryTotals}
+                columns={[
+                  { title: "카테고리", dataIndex: "category" },
+                  { title: "건수", dataIndex: "count", width: 80, align: "right" as const },
+                  { title: "이용금액", dataIndex: "gross", width: 140, align: "right" as const, render: (v: number) => formatKrwExact(v) },
+                ]}
+                summary={() => (
+                  <Table.Summary.Row style={{ fontWeight: 600 }}>
+                    <Table.Summary.Cell index={0}>합계</Table.Summary.Cell>
+                    <Table.Summary.Cell index={1} align="right">{(cardRows ?? []).length}건</Table.Summary.Cell>
+                    <Table.Summary.Cell index={2} align="right">{formatKrwExact(cardTotal)}</Table.Summary.Cell>
+                  </Table.Summary.Row>
+                )}
+              />
+            </div>
+          ) : null}
           <StateBlock status={cardStatus} onRetry={loadCard} errorText={cardError} emptyText="이 월에 반영된 카드 내역이 없습니다">
             {cardRows ? (
               wide ? (

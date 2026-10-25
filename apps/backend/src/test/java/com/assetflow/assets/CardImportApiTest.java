@@ -5,6 +5,7 @@ import com.assetflow.assets.CardImportController.ImportRow;
 import com.assetflow.common.api.ApiExceptionHandler;
 import com.assetflow.auth.TokenService;
 import com.assetflow.common.web.BearerTokenInterceptor;
+import com.assetflow.expenses.categories.InMemoryCategoryClassifier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -28,11 +30,12 @@ class CardImportApiTest {
     private static final String TOKEN = "Bearer " + new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com");
     private final InMemoryCardImportLedger ledger = new InMemoryCardImportLedger();
     private final InMemoryMerchantRuleLedger ruleLedger = new InMemoryMerchantRuleLedger();
+    private final InMemoryCategoryClassifier classifier = new InMemoryCategoryClassifier();
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
-        mvc = MockMvcBuilders.standaloneSetup(new CardImportController(ledger, ruleLedger))
+        mvc = MockMvcBuilders.standaloneSetup(new CardImportController(ledger, ruleLedger, classifier))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .addInterceptors(new BearerTokenInterceptor(new TokenService("test-secret-0123456789-0123456789-0123456789")))
                 .build();
@@ -209,5 +212,83 @@ class CardImportApiTest {
         mvc.perform(get("/api/v1/assets/card-imports/merchant-rules?merchant=가맹점A").header("Authorization", TOKEN))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.가맹점A").value("사업비용"));
+    }
+
+    @Test
+    void merchantRulesEndpointAddsKeywordSuggestionForUnknownMerchant() throws Exception {
+        // §55.8: 저장된 규칙이 없는 가맹점은 키워드 자동 분류 결과를 제안한다
+        classifier.addKeyword("스타벅스", "식비", 0);
+
+        mvc.perform(get("/api/v1/assets/card-imports/merchant-rules?merchant=스타벅스 강남점")
+                        .header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data['스타벅스 강남점']").value("식비"));
+    }
+
+    @Test
+    void storedRuleWinsOverKeywordSuggestion() throws Exception {
+        classifier.addKeyword("스타벅스", "식비", 0);
+        ruleLedger.saveAll(Map.of("스타벅스 강남점", "여가/취미"));
+
+        mvc.perform(get("/api/v1/assets/card-imports/merchant-rules?merchant=스타벅스 강남점")
+                        .header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data['스타벅스 강남점']").value("여가/취미"));
+    }
+
+    @Test
+    void reclassifyUpdatesExistingRowsWithKeywordResult() throws Exception {
+        // 분류 없이 저장된 기존 행을 일괄 재분류한다 (§55.8)
+        String body = "{\"rows\":["
+                + row("k1", "2026-10-01", "스타벅스 강남점", 4500, 500, 5000)
+                + "],\"merchantRules\":{}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/v1/assets/card-imports?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].expenseKind").value(""));
+
+        classifier.addKeyword("스타벅스", "식비", 0);
+
+        mvc.perform(post("/api/v1/assets/card-imports/reclassify").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.updated").value(1));
+
+        mvc.perform(get("/api/v1/assets/card-imports?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].expenseKind").value("식비"));
+    }
+
+    @Test
+    void userCanChangeCategoryOfExistingRowAndRuleAppliesToThatMerchant() throws Exception {
+        // 같은 가맹점 2행을 저장한 뒤 k1 만 수정 → 같은 가맹점 k2 도 함께 바뀌고 규칙이 남는다
+        String body = "{\"rows\":["
+                + row("k1", "2026-10-01", "한국유통용인", 9000, 1000, 10000)
+                + ","
+                + row("k2", "2026-11-01", "한국유통용인", 18000, 2000, 20000)
+                + "],\"merchantRules\":{}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        mvc.perform(patch("/api/v1/assets/card-imports/category").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"rowKey\":\"k1\",\"category\":\"식비\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.category").value("식비"))
+                .andExpect(jsonPath("$.data.updatedRows").value(2));
+
+        mvc.perform(get("/api/v1/assets/card-imports?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].expenseKind").value("식비"));
+        mvc.perform(get("/api/v1/assets/card-imports?month=2026-11").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k2')].expenseKind").value("식비"));
+        // 다음 임포트에도 자동 적용되도록 가맹점 규칙이 저장된다
+        org.junit.jupiter.api.Assertions.assertEquals("식비", ruleLedger.allRules().get("한국유통용인"));
+    }
+
+    @Test
+    void changingCategoryOfUnknownRowIsRejected() throws Exception {
+        mvc.perform(patch("/api/v1/assets/card-imports/category").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"rowKey\":\"nope\",\"category\":\"식비\"}"))
+                .andExpect(status().isBadRequest());
     }
 }

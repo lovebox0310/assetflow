@@ -87,14 +87,15 @@ CREATE TABLE monthly_snapshots (
 -- (user_id, snapshot_month) 범위 스캔으로 충분하다 — 별도 인덱스 불필요.
 
 -- ---------------------------------------------------------------------------
--- merchant_rules: 가맹점 용도구분 자동 승계 규칙 (§49 — 스프린트 3).
--- 한 사용자가 한 번 분류한 가맹점은 다음 반영 때 자동으로 같은 구분을 제안한다.
+-- merchant_rules: 가맹점 용도구분 자동 승계 규칙 (§49 · §55.8).
+-- 한 사용자가 한 번 분류한 가맹점은 다음 반영 때 자동으로 같은 분류를 제안한다.
 -- ---------------------------------------------------------------------------
 CREATE TABLE merchant_rules (
     id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id       BIGINT NOT NULL REFERENCES users (id),
     merchant_name VARCHAR(100) NOT NULL,
-    expense_kind  VARCHAR(20) NOT NULL,
+    expense_kind  VARCHAR(20),                    -- §49 legacy 용도구분 문자열
+    category_id   BIGINT REFERENCES expense_categories (id), -- §55.8 표준 카테고리
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_merchant_rules_user_merchant UNIQUE (user_id, merchant_name)
@@ -115,10 +116,25 @@ CREATE TABLE card_imports (
     vat           BIGINT NOT NULL,                 -- 부가세 (원)
     gross_amount  BIGINT NOT NULL,                 -- 공급대가 (원) = supply_ex_vat + vat
     card_masked   VARCHAR(32),                     -- 마스킹된 카드번호
-    expense_kind  VARCHAR(20),                     -- 용도구분 (확정 시 확정)
+    expense_kind  VARCHAR(20),                     -- 용도구분 (§49 legacy)
+    category_id   BIGINT REFERENCES expense_categories (id), -- §55.8 표준 카테고리
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_card_imports_user_rowkey UNIQUE (user_id, row_key)
+);
+
+-- ---------------------------------------------------------------------------
+-- merchant_category_keywords: 가맹점명 키워드 → 카테고리 매핑 (§55.8).
+-- 우선순위가 높을수록 먼저 매칭한다.
+-- ---------------------------------------------------------------------------
+CREATE TABLE merchant_category_keywords (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    keyword     VARCHAR(50) NOT NULL,
+    category_id BIGINT NOT NULL REFERENCES expense_categories (id),
+    priority    INT NOT NULL DEFAULT 0,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_merchant_category_keywords_keyword UNIQUE (keyword)
 );
 
 -- ---------------------------------------------------------------------------
@@ -129,6 +145,7 @@ CREATE TABLE monthly_expense_items (
     id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id      BIGINT NOT NULL REFERENCES users (id),
     month        CHAR(7) NOT NULL,             -- 'YYYY-MM'
+    category_id  BIGINT REFERENCES expense_categories (id), -- §55.8 표준 카테고리
     label        VARCHAR(50) NOT NULL,         -- 항목명
     amount       BIGINT NOT NULL,              -- 월 금액 (원)
     is_essential BOOLEAN NOT NULL DEFAULT FALSE,
