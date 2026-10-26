@@ -113,9 +113,9 @@ describe("CardImportPanel (§29.7 흐름 이관)", () => {
     const banner = await screen.findByText(/반영 완료 — 새로 저장 75건/);
     expect(banner).toBeDefined();
 
-    // POST 로 행이 갔는지: 호출 본문 검사
+    // POST 로 행이 갔는지: 호출 본문 검사 (merchant-rules POST 와 구분)
     const postCall = fetchMock.mock.calls.find(
-      (c) => String(c[0]).includes("/card-imports") && c[1]?.method === "POST",
+      (c) => String(c[0]) === "/api/v1/assets/card-imports" && c[1]?.method === "POST",
     );
     if (!postCall) throw new Error("POST 없음");
     const sent = JSON.parse(String(postCall[1].body));
@@ -150,15 +150,18 @@ describe("CardImportPanel (§29.7 흐름 이관)", () => {
     render(<CardImportPanel />);
     chooseFile(HYUNDAI_TEXT);
 
-    // 서버가 키워드 제안을 돌려주려면 가맹점 목록을 함께 보내야 한다
+    // 서버가 키워드 제안을 돌려주려면 가맹점 목록을 POST body 에 함께 본내야 한다
     const rulesCall = await vi.waitFor(() => {
       const call = fetchMock.mock.calls.find((c) =>
-        String(c[0]).includes("/card-imports/merchant-rules") && String(c[0]).includes("merchant="),
+        String(c[0]).includes("/card-imports/merchant-rules") && (c[1]?.method ?? "GET") === "POST",
       );
       if (!call) throw new Error("가맹점 목록을 실은 규칙 조회가 없다");
       return call;
     });
-    expect(String(rulesCall[0])).toContain("merchant=");
+    expect((rulesCall[1] as RequestInit | undefined)?.method).toBe("POST");
+    expect(JSON.parse(String((rulesCall[1] as RequestInit | undefined)?.body))).toEqual(
+      expect.objectContaining({ merchants: expect.any(Array) }),
+    );
     // 자동 분류 결과가 카테고리 선택값으로 노출된다
     expect(await screen.findByText("식비")).toBeDefined();
   });
