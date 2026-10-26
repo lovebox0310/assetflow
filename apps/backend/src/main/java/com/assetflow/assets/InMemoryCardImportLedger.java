@@ -127,6 +127,7 @@ public class InMemoryCardImportLedger implements CardImportLedger {
         return new ImportedRow(
                 r.rowKey(), r.approvedAt(), r.merchantName(),
                 r.supplyExVat(), r.vat(), r.grossAmount(),
-                r.cardMasked(), category, subCategory == null ? "" : subCategory);
+                r.cardMasked(), category, subCategory == null ? "" : subCategory,
+                r.businessNo(), r.businessCategory());
     }
 }

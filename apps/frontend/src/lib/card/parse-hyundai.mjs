@@ -144,6 +144,8 @@ export function parseHyundaiCardStatement(input, contract) {
       });
     }
 
+    const businessNo = at(r, "businessNo").replace(/-/g, "");
+
     const row = {
       approvedAt: isoDate,
       merchantName: merchant,
@@ -153,6 +155,7 @@ export function parseHyundaiCardStatement(input, contract) {
       expenseKind: (contract.fields && contract.fields.expenseKind && contract.fields.expenseKind.default) || "unclassified",
       approvalNo: null, // 현대 명세에는 승인번호 컬럼이 없다
       cardMasked: maskCardNumber(at(r, "cardMasked")),
+      businessNo: businessNo || null,
       businessCategory: at(r, "businessCategory") || null,
       approvedAmount: parseAmount(at(r, "approvedAmount")),
       installmentCount: parseAmount(at(r, "installmentCount")),

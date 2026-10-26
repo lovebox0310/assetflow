@@ -98,6 +98,7 @@ export function parseSamsungCardStatement(input, contract) {
     const approvalNo = at(r, "approvalNo");
     const approvedAt = at(r, "approvedAt");
     const cardMasked = at(r, "cardMasked");
+    const businessNo = at(r, "businessNo").replace(/-/g, "");
 
     const row = {
       approvedAt,
@@ -108,6 +109,7 @@ export function parseSamsungCardStatement(input, contract) {
       expenseKind: (contract.fields && contract.fields.expenseKind && contract.fields.expenseKind.default) || "unclassified",
       approvalNo: approvalNo || null,
       cardMasked: cardMasked || null,
+      businessNo: businessNo || null,
       businessCategory: at(r, "businessCategory") || null,
       // 별도 취소 컬럼이 없으므로 음수 금액이 취소다.
       reversal: gross < 0 ? "매입취소" : "매입",

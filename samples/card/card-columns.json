@@ -101,6 +101,14 @@
       "note": "마스킹된 값만 저장한다. 복호화된 파일에는 실제 카드번호가 있으므로 FE 밖으로 나가지 않게 한다.",
       "headerAliases": ["카드번호", "카드번호(마스킹)"]
     },
+    "businessNo": {
+      "label": "사업자번호",
+      "type": "string",
+      "required": false,
+      "sensitive": true,
+      "note": "가맹점 사업자등록번호. 삼성/현대 모두 명세서에 포함된다. 자동 분류나 가맹점 식별용으로 저장한다.",
+      "headerAliases": ["사업자번호", "사업자등록번호"]
+    },
     "businessCategory": {
       "label": "업종",
       "type": "string",
@@ -261,7 +269,7 @@
         {"index": 7, "name": "부가세(원)", "mapsTo": "vat", "note": "행별로 존재한다. 이 덕분에 supplyExVat 를 역산할 수 있다."},
         {"index": 8, "name": "가맹점명", "mapsTo": "merchantName"},
         {"index": 9, "name": "승인번호", "mapsTo": "approvalNo", "note": "중복 있다. rowKey 로 잡는다."},
-        {"index": 10, "name": "사업자번호", "mapsTo": null, "sensitive": true, "note": "가맹점 사업자번호. 임포트의 기본 단위는 아니므로 저장하지 않는다."},
+        {"index": 10, "name": "사업자번호", "mapsTo": "businessNo", "sensitive": true, "note": "가맹점 사업자등록번호. 자동 분류·가맹점 식별용."},
         {"index": 11, "name": "업종", "mapsTo": "businessCategory"}
       ],
       "nonTableRows": [
@@ -328,7 +336,7 @@
         {"index": 7, "name": "할부", "mapsTo": "installmentCount", "note": "값은 개월 수(2, 3). 6건."},
         {"index": 8, "name": "상태", "mapsTo": "reversal", "note": "정상 1,300건 / 취소 23건. 전용 컬럼이 있으므로 부호 추측보다 우선한다."},
         {"index": 9, "name": "가맹점번호", "mapsTo": null, "sensitive": true, "note": "가맹점 식별번호. 결측 0건. 저장하지 않는다."},
-        {"index": 10, "name": "사업자등록번호", "mapsTo": null, "sensitive": true, "note": "가맹점 사업자번호. 결측 3건. 저장하지 않는다."}
+        {"index": 10, "name": "사업자등록번호", "mapsTo": "businessNo", "sensitive": true, "note": "가맹점 사업자등록번호. 결측 3건. 자동 분류·가맹점 식별용."}
       ],
       "nonTableRows": [
         {"row": 1, "role": "title", "value": "현대카드 이용내역"},

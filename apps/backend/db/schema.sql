@@ -117,10 +117,12 @@ CREATE TABLE card_imports (
     vat           BIGINT NOT NULL,                 -- 부가세 (원)
     gross_amount  BIGINT NOT NULL,                 -- 공급대가 (원) = supply_ex_vat + vat
     card_masked   VARCHAR(32),                     -- 마스킹된 카드번호
-    expense_kind  VARCHAR(20),                     -- §55.10 대분류(§49 legacy 용도구분 문자열과 동일)
-    sub_category  VARCHAR(30),                     -- §55.10 세부 분류
-    category_id   BIGINT REFERENCES expense_categories (id), -- §55.8 표준 카테고리
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expense_kind      VARCHAR(20),                 -- §55.10 대분류(§49 legacy 용도구분 문자열과 동일)
+    sub_category      VARCHAR(30),                 -- §55.10 세부 분류
+    business_no       VARCHAR(20),                 -- 가맹점 사업자등록번호(하이픈 제거)
+    business_category VARCHAR(50),                 -- 카드사가 붙인 업종
+    category_id       BIGINT REFERENCES expense_categories (id), -- §55.8 표준 카테고리
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_card_imports_user_rowkey UNIQUE (user_id, row_key)
 );
