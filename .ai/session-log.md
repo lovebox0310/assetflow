@@ -26,6 +26,20 @@
 
 ---
 
+## 2026-10-26 — 가맹점 규칙 조회를 POST 로 변경
+
+사용자가 `/card-imports/merchant-rules` 호출에서 `HTTP 400`을 받았다.
+원인은 GET 쿼리스트링으로 긴 가맹점 목록(특수문자/공백 포함)을 본낼 때
+Tomcat/Spring 이 요청을 거부한 것으로 추정.
+
+- 백엔드: `CardImportController.merchantRules` 를 `@GetMapping` → `@PostMapping` 으로 변경
+  - 요청 본문: `MerchantRulesRequest(List<String> merchants)`
+- 프론트엔드: `getMerchantRules` 를 POST JSON body 로 변경
+- 테스트 갱신: `CardImportApiTest`, `cardImportApi.test.ts`, `CardImportPanel.test.tsx`
+- 검증: 백엔드/프론트엔드 테스트·빌드 통과, 운영 배포 후 POST 호출 200 OK 확인
+
+---
+
 ## 2026-10-26 — 카드 내역 표에서 공급가액 컬럼 숨김
 
 사용자 요청으로 지출 화면 카드 내역 표에서 **공급가액 컬럼**도 제거했다.
