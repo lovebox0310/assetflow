@@ -46,16 +46,36 @@ public class InMemoryCardImportLedger implements CardImportLedger {
     public int addAll(List<ImportedRow> incoming) {
         int stored = 0;
         synchronized (rows) {
-            Set<String> keys = new HashSet<>();
-            for (ImportedRow r : rows) keys.add(r.rowKey());
+            Map<String, Integer> indexByKey = new LinkedHashMap<>();
+            for (int i = 0; i < rows.size(); i++) {
+                indexByKey.put(rows.get(i).rowKey(), i);
+            }
             for (ImportedRow r : incoming) {
-                if (keys.add(r.rowKey())) {
+                Integer existing = indexByKey.get(r.rowKey());
+                if (existing == null) {
                     rows.add(r);
+                    indexByKey.put(r.rowKey(), rows.size() - 1);
+                    stored++;
+                } else if (isBlank(rows.get(existing).businessNo()) && !isBlank(r.businessNo())) {
+                    // business_no/business_category 가 비어 있는 기존 행에 최신 값을 채운다
+                    rows.set(existing, withBusinessInfo(rows.get(existing), r.businessNo(), r.businessCategory()));
                     stored++;
                 }
             }
         }
         return stored;
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.isBlank();
+    }
+
+    private static ImportedRow withBusinessInfo(ImportedRow r, String businessNo, String businessCategory) {
+        return new ImportedRow(
+                r.rowKey(), r.approvedAt(), r.merchantName(),
+                r.supplyExVat(), r.vat(), r.grossAmount(),
+                r.cardMasked(), r.expenseKind(), r.subCategory(),
+                businessNo, businessCategory);
     }
 
     public Optional<ImportedRow> find(String rowKey) {
