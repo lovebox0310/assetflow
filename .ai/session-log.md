@@ -41,7 +41,8 @@
 
 - 백엔드: `./gradlew test bootJar` 통과
 - 프론트엔드: `pnpm typecheck && pnpm lint && pnpm test && pnpm build` 통과
-- 운영: DB 마이그레이션 적용 후 `POST /card-imports/reclassify`로 기존 2,710행 재분류 예정
+- 운영: DB 마이그레이션 적용 후 `POST /card-imports/reclassify` 실행 → 2,710행 중 **2,078행** 재분류
+- 운영 현황: 분류된 지출 합계 81,511,418원 / 고정비 14,560,434원 / 변동비 66,950,984원 / 자산 이동 332,900원 / 미분류 177건 2,684,813원
 
 ---
 
