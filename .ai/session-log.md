@@ -14,6 +14,27 @@
 
 ---
 
+## 2026-10-26 — 사업자 정보 모달 (bizno.net 수집·캐시)
+
+사업자번호를 누르면 화면 이동 없이 사업자 정보를 보여준다. 백엔드가 bizno.net 을 읽어
+`merchant_business_info` 에 캐시하고, 모달은 그 값을 표시한다. (결정 근거: project.md §56)
+
+- 백엔드
+  - `merchant_business_info` 테이블 + 마이그레이션(운영 적용 완료)
+  - `BiznoScraper` (Jsoup): 라벨/값 표·dl·본문 텍스트 3단 파싱, "접속대기" 감지
+  - `MerchantBusinessInfoService`: 30일 캐시, 수집 실패 시 만료 캐시 반환
+  - `GET /api/v1/assets/business-info/{businessNo}` → `503 / BIZNO_BUSY` 처리
+  - 테스트: `BiznoScraperTest` (표·dl·평문·접속대기 4케이스)
+- 프론트엔드
+  - `api/businessInfoApi.ts`, `components/BusinessInfoModal.tsx`
+  - 카드 표·미분류 정리 표의 사업자번호를 링크로 변경(여러 개면 각각)
+  - 조회 실패 시 모달 안에서 재시도, 원문은 `bizno.net에서 열기`(새 탭)
+- 검증: `./gradlew test bootJar`, `pnpm typecheck/lint/test/build` 통과, 운영 배포·헬스 OK
+  - 캐시 조회 경로는 임시 행으로 200 OK 확인 후 삭제
+  - **수집 경로는 bizno.net 이 "접속대기" 상태여서 라이브 검증 못 함** — 503/BIZNO_BUSY 응답은 확인
+
+---
+
 ## 2026-10-26 — 카드 내역 표에서 부가세 컬럼 숨김
 
 사용자 요청으로 지출 화면의 카드 내역 표에서 **부가세 컬럼**을 제거했다.
