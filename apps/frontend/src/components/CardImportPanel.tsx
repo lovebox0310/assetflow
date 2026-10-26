@@ -210,8 +210,16 @@ export function CardImportPanel() {
               pagination={false}
               columns={[
                 { title: "가맹점", dataIndex: "merchant" },
-                { title: "건수", dataIndex: "count", width: 80 },
-                { title: "이용금액 합계", dataIndex: "gross", width: 140, render: (v: number) => formatKrwExact(v) },
+                { title: "건수", dataIndex: "count", width: 70 },
+                { title: "이용금액 합계", dataIndex: "gross", width: 130, render: (v: number) => formatKrwExact(v) },
+                {
+                  title: "업종",
+                  width: 120,
+                  render: (_: unknown, g: { merchant: string; rows: CardImportRow[] }) => {
+                    const bc = g.rows.find((r) => r.businessCategory)?.businessCategory;
+                    return <Typography.Text type="secondary" style={{ fontSize: 12 }}>{bc || "—"}</Typography.Text>;
+                  },
+                },
                 {
                   title: "대분류",
                   width: 150,

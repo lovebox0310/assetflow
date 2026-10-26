@@ -47,6 +47,14 @@ class CardImportApiTest {
                 + ",\"cardMasked\":\"1234\",\"expenseKind\":\"\",\"subCategory\":\"\"}";
     }
 
+    private String row(String rowKey, String date, String merchant, long supply, long vat, long gross,
+                       String businessNo, String businessCategory) {
+        return "{\"rowKey\":\"" + rowKey + "\",\"approvedAt\":\"" + date + "\",\"merchantName\":\"" + merchant
+                + "\",\"supplyExVat\":" + supply + ",\"vat\":" + vat + ",\"grossAmount\":" + gross
+                + ",\"cardMasked\":\"1234\",\"expenseKind\":\"\",\"subCategory\":\"\","
+                + "\"businessNo\":\"" + businessNo + "\",\"businessCategory\":\"" + businessCategory + "\"}";
+    }
+
     @Test
     void storesRowsAndRecalculatesTotalsFromRows() throws Exception {
         String body = "{\"rows\":[" + row("k1", "2026-10-01", "가맹점A", 9000, 1000, 10000)
@@ -147,8 +155,8 @@ class CardImportApiTest {
     @Test
     void monthRowsReturnsOnlyThatMonth() throws Exception {
         ledger.addAll(List.of(
-                new CardImportLedger.ImportedRow("m1", "2025-01-03", "가맹점A", 1000, 100, 1100, "", "", ""),
-                new CardImportLedger.ImportedRow("m2", "2025-02-05", "가맹점B", 2000, 200, 2200, "", "", "")));
+                new CardImportLedger.ImportedRow("m1", "2025-01-03", "가맹점A", 1000, 100, 1100, "", "", "", "", ""),
+                new CardImportLedger.ImportedRow("m2", "2025-02-05", "가맹점B", 2000, 200, 2200, "", "", "", "", "")));
         mvc.perform(get("/api/v1/assets/card-imports?month=2025-01").header("Authorization", TOKEN))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))

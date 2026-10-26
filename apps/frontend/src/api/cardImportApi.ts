@@ -11,6 +11,8 @@ export interface CardImportRow {
   cardMasked?: string;
   expenseKind?: string;
   subCategory?: string;
+  businessNo?: string;
+  businessCategory?: string;
 }
 
 export interface MerchantRule {

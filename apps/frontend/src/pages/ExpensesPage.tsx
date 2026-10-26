@@ -591,13 +591,21 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
       dataIndex: "merchantName",
       sorter: (a: CardImportRowFull, b: CardImportRowFull) => a.merchantName.localeCompare(b.merchantName),
     },
-    { title: "공급가액", dataIndex: "supplyExVat", align: "right" as const, width: 120, className: "af-num", render: (v: number) => formatKrwExact(v) },
-    { title: "부가세", dataIndex: "vat", align: "right" as const, width: 100, className: "af-num", render: (v: number) => formatKrwExact(v) },
+    {
+      title: "업종",
+      dataIndex: "businessCategory",
+      width: 110,
+      render: (v: string | undefined) => (
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>{v || "—"}</Typography.Text>
+      ),
+    },
+    { title: "공급가액", dataIndex: "supplyExVat", align: "right" as const, width: 110, className: "af-num", render: (v: number) => formatKrwExact(v) },
+    { title: "부가세", dataIndex: "vat", align: "right" as const, width: 90, className: "af-num", render: (v: number) => formatKrwExact(v) },
     {
       title: "이용금액",
       dataIndex: "grossAmount",
       align: "right" as const,
-      width: 120,
+      width: 110,
       className: "af-num",
       sorter: (a: CardImportRowFull, b: CardImportRowFull) => a.grossAmount - b.grossAmount,
       render: (v: number) => formatKrwExact(v),
@@ -605,11 +613,11 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
     {
       title: "대분류",
       dataIndex: "expenseKind",
-      width: 150,
+      width: 140,
       render: (v: string | undefined, row: CardImportRowFull) => (
         <Select
           size="small"
-          style={{ width: 140 }}
+          style={{ width: 130 }}
           placeholder="미분류"
           value={v || null}
           options={CATEGORY_GROUP_OPTIONS}
@@ -621,11 +629,11 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
     {
       title: "세부 분류",
       dataIndex: "subCategory",
-      width: 140,
+      width: 130,
       render: (v: string | undefined, row: CardImportRowFull) => (
         <Select
           size="small"
-          style={{ width: 130 }}
+          style={{ width: 120 }}
           placeholder="-"
           value={v || null}
           options={subCategoryOptions(row.expenseKind)}
@@ -634,6 +642,13 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
           aria-label={`${row.merchantName} 세부 분류`}
         />
       ),
+    },
+    {
+      title: "사업자번호",
+      dataIndex: "businessNo",
+      width: 120,
+      className: "af-mono",
+      render: (v: string | undefined) => v || "—",
     },
   ];
 
@@ -1089,18 +1104,19 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
                   <Table.Summary fixed>
                     <Table.Summary.Row style={{ fontWeight: 600 }}>
                       <Table.Summary.Cell index={0} colSpan={2}>합계 ({visibleCardRows.length}건)</Table.Summary.Cell>
-                      <Table.Summary.Cell index={1} align="right" />
-                      <Table.Summary.Cell index={2} align="right">
+                      <Table.Summary.Cell index={2} align="right" />
+                      <Table.Summary.Cell index={3} align="right">
                         {formatKrwExact(visibleCardRows.reduce((acc, r) => acc + r.supplyExVat, 0))}
                       </Table.Summary.Cell>
-                      <Table.Summary.Cell index={3} align="right">
+                      <Table.Summary.Cell index={4} align="right">
                         {formatKrwExact(visibleCardRows.reduce((acc, r) => acc + r.vat, 0))}
                       </Table.Summary.Cell>
-                      <Table.Summary.Cell index={4} align="right">
+                      <Table.Summary.Cell index={5} align="right">
                         {formatKrwExact(visibleCardRows.reduce((acc, r) => acc + r.grossAmount, 0))}
                       </Table.Summary.Cell>
-                      <Table.Summary.Cell index={5} />
                       <Table.Summary.Cell index={6} />
+                      <Table.Summary.Cell index={7} />
+                      <Table.Summary.Cell index={8} />
                     </Table.Summary.Row>
                   </Table.Summary>
                 )}
@@ -1111,7 +1127,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
                     <MobileListCardItem key={r.rowKey}>
                       <MobileListCardHeader title={r.merchantName} value={formatKrwExact(r.grossAmount)} />
                       <MobileListCardMeta>
-                        <span className="af-mono">{r.approvedAt}</span> · 공급 {formatKrwExact(r.supplyExVat)} · 부가세 {formatKrwExact(r.vat)} · {(r.expenseKind?.trim() || "미분류")}{r.subCategory?.trim() ? `/${r.subCategory.trim()}` : ""}
+                        <span className="af-mono">{r.approvedAt}</span> · 공급 {formatKrwExact(r.supplyExVat)} · 부가세 {formatKrwExact(r.vat)}{r.businessCategory?.trim() ? ` · ${r.businessCategory.trim()}` : ""} · {(r.expenseKind?.trim() || "미분류")}{r.subCategory?.trim() ? `/${r.subCategory.trim()}` : ""}
                       </MobileListCardMeta>
                     </MobileListCardItem>
                   ))}
