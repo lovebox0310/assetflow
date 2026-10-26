@@ -40,6 +40,18 @@ Tomcat/Spring 이 요청을 거부한 것으로 추정.
 
 ---
 
+## 2026-10-26 — 중복 재임포트 시 사업자번호/업종 채우기
+
+사용자가 CSV 재업로드 후에도 `business_no`/`business_category`가 비어 있었다.
+원인은 `rowKey`가 기존과 같아 `ON CONFLICT DO NOTHING`으로 무시되었기 때문.
+
+- `PostgresCardImportLedger.addAll`: `ON CONFLICT DO UPDATE SET business_no/business_category`
+  - 단, 기존 `business_no`가 비어 있을 때만 업데이트
+- `InMemoryCardImportLedger.addAll`: 동일 정책 적용
+- 배포 후 사용자가 같은 파일을 다시 업로드하면 기존 행의 사업자번호/업종이 채워짐
+
+---
+
 ## 2026-10-26 — 카드 내역 표에서 공급가액 컬럼 숨김
 
 사용자 요청으로 지출 화면 카드 내역 표에서 **공급가액 컬럼**도 제거했다.
