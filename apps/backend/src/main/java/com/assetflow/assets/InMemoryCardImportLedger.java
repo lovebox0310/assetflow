@@ -125,7 +125,17 @@ public class InMemoryCardImportLedger implements CardImportLedger {
                 long gross = list.stream().mapToLong(ImportedRow::grossAmount).sum();
                 String first = list.stream().map(ImportedRow::approvedAt).min(String::compareTo).orElse("");
                 String last = list.stream().map(ImportedRow::approvedAt).max(String::compareTo).orElse("");
-                groups.add(new UnclassifiedGroup(e.getKey(), list.size(), gross, first, last));
+                String businessCategory = list.stream()
+                        .map(ImportedRow::businessCategory)
+                        .filter(v -> v != null && !v.isBlank())
+                        .distinct()
+                        .collect(java.util.stream.Collectors.joining(", "));
+                String businessNo = list.stream()
+                        .map(ImportedRow::businessNo)
+                        .filter(v -> v != null && !v.isBlank())
+                        .distinct()
+                        .collect(java.util.stream.Collectors.joining(", "));
+                groups.add(new UnclassifiedGroup(e.getKey(), list.size(), gross, first, last, businessCategory, businessNo));
             }
             groups.sort(Comparator
                     .comparingLong(UnclassifiedGroup::grossTotal).reversed()

@@ -117,7 +117,9 @@ public class PostgresCardImportLedger implements CardImportLedger {
     public List<UnclassifiedGroup> unclassifiedGroups() {
         return jdbc.query("""
                 SELECT merchant_name, COUNT(*) AS cnt, SUM(gross_amount) AS gross_total,
-                       MIN(approved_at) AS first_at, MAX(approved_at) AS last_at
+                       MIN(approved_at) AS first_at, MAX(approved_at) AS last_at,
+                       STRING_AGG(DISTINCT NULLIF(business_category, ''), ', ' ORDER BY NULLIF(business_category, '')) AS business_category,
+                       STRING_AGG(DISTINCT NULLIF(business_no, ''), ', ' ORDER BY NULLIF(business_no, '')) AS business_no
                 FROM card_imports
                 WHERE user_id = ? AND (expense_kind IS NULL OR expense_kind = '' OR expense_kind = 'unclassified')
                 GROUP BY merchant_name
@@ -128,7 +130,9 @@ public class PostgresCardImportLedger implements CardImportLedger {
                         rs.getInt("cnt"),
                         rs.getLong("gross_total"),
                         rs.getString("first_at"),
-                        rs.getString("last_at")),
+                        rs.getString("last_at"),
+                        rs.getString("business_category"),
+                        rs.getString("business_no")),
                 userId);
     }
 
