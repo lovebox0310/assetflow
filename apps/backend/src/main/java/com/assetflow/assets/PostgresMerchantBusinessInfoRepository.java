@@ -110,6 +110,7 @@ public class PostgresMerchantBusinessInfoRepository implements MerchantBusinessI
                 info.homepage(), info.irHomepage(), info.email(), info.businessStatus(), info.corporateRegNo(),
                 info.employees(), info.zipCode(), info.address(), info.taxOffice(), info.fiscalMonth(),
                 info.source(),
-                info.fetchedAt() == null ? Instant.now() : info.fetchedAt());
+                info.fetchedAt() == null ? java.sql.Timestamp.from(Instant.now())
+                        : java.sql.Timestamp.from(info.fetchedAt()));
     }
 }

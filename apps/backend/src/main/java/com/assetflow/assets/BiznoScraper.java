@@ -4,6 +4,9 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -30,11 +33,14 @@ import java.util.regex.Pattern;
 @Component
 public class BiznoScraper {
 
+    private static final Logger log = LoggerFactory.getLogger(BiznoScraper.class);
+
     static final String SOURCE = "bizno.net";
     private static final String ARTICLE_URL = "https://bizno.net/article/";
     private static final String USER_AGENT =
             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
     private static final int TIMEOUT_MS = 10_000;
+    private static final int READER_TIMEOUT_MS = 30_000;
 
     /** 페이지에서 쓰는 라벨(공백 제거 정규화). */
     private static final Set<String> LABELS = Set.of(
@@ -75,6 +81,21 @@ public class BiznoScraper {
     private static final Pattern DIGITS = Pattern.compile("\\d+");
     private static final Pattern ISO_DATE = Pattern.compile("(\\d{4})[.-](\\d{1,2})[.-](\\d{1,2})");
 
+    /**
+     * bizno.net 이 접속대기로 막을 때 대신 읽어 주는 리더 서비스.
+     * 비워 두면(<code>""</code>) 폴백을 쓰지 않는다. 읽기 전용 텍스트 중계라
+     * 개인정보가 아닌 공개 사업자 정보만 오간다.
+     */
+    private final String fallbackReaderBase;
+
+    public BiznoScraper(@Value("${app.business-info.fallback-reader:https://r.jina.ai/}") String fallbackReaderBase) {
+        this.fallbackReaderBase = fallbackReaderBase == null ? "" : fallbackReaderBase.trim();
+    }
+
+    public BiznoScraper() {
+        this("https://r.jina.ai/");
+    }
+
     /** 실제 페이지를 가져와 파싱한다. */
     public MerchantBusinessInfo scrape(String businessNo) {
         String html = fetch(businessNo);
@@ -86,6 +107,18 @@ public class BiznoScraper {
     }
 
     String fetch(String businessNo) {
+        try {
+            return fetchDirect(businessNo);
+        } catch (BiznoUnavailableException direct) {
+            if (fallbackReaderBase.isBlank()) {
+                throw direct;
+            }
+            log.warn("bizno.net direct fetch failed for {} — trying reader fallback", businessNo, direct);
+            return fetchViaReader(businessNo);
+        }
+    }
+
+    private String fetchDirect(String businessNo) {
         try {
             Document doc = Jsoup.connect(ARTICLE_URL + businessNo)
                     .userAgent(USER_AGENT)
@@ -103,6 +136,27 @@ public class BiznoScraper {
             throw e;
         } catch (IOException e) {
             throw new BiznoUnavailableException("failed to fetch bizno.net", e);
+        }
+    }
+
+    private String fetchViaReader(String businessNo) {
+        String url = fallbackReaderBase + ARTICLE_URL + businessNo;
+        try {
+            Document doc = Jsoup.connect(url)
+                    .userAgent(USER_AGENT)
+                    .header("X-Respond-With", "html")
+                    .header("Accept", "text/html,application/xhtml+xml")
+                    .timeout(READER_TIMEOUT_MS)
+                    .followRedirects(true)
+                    .get();
+            if (isBusyPage(doc)) {
+                throw new BiznoUnavailableException("bizno.net is busy (접속대기)");
+            }
+            return doc.outerHtml();
+        } catch (BiznoUnavailableException e) {
+            throw e;
+        } catch (IOException e) {
+            throw new BiznoUnavailableException("failed to fetch bizno.net via reader", e);
         }
     }
 
@@ -353,9 +407,35 @@ public class BiznoScraper {
         if (cleaned == null) {
             return null;
         }
-        // 우편번호/도로명/지번이 한 줄에 붙는 경우가 있어 앞쪽 주소만 남긴다.
-        cleaned = cleaned.replaceAll("\\([^)]*\\)\\s*$", "").trim();
+        // 영문 주소가 앞에 붙는 경우가 있다 — 한글 주소부터 쓴다.
+        int hangul = firstHangulIndex(cleaned);
+        if (hangul > 0) {
+            cleaned = cleaned.substring(hangul).trim();
+        }
+        // "도로명주소 (동) 지번주소" 처럼 두 주소가 붙는 경우 도로명 주소만 남긴다.
+        int close = cleaned.indexOf(')');
+        if (close > 0 && close < cleaned.length() - 1) {
+            return cleaned.substring(0, close + 1).trim();
+        }
+        // 괄호가 없으면 같은 시작 토큰이 반복되는 지점에서 자른다.
+        String head = cleaned.substring(0, Math.min(cleaned.length(), 12)).trim();
+        if (!head.isEmpty()) {
+            int again = cleaned.indexOf(head, head.length());
+            if (again > 0) {
+                cleaned = cleaned.substring(0, again).trim();
+            }
+        }
         return cleaned.isEmpty() ? null : cleaned;
+    }
+
+    private static int firstHangulIndex(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c >= '가' && c <= '힣') {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private static String cleanTaxOffice(String value) {
