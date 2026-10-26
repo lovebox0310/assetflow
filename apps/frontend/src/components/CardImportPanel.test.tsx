@@ -53,7 +53,7 @@ describe("CardImportPanel (§29.7 흐름 이관)", () => {
     fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input);
       if (path.includes("/card-imports/row-keys")) return Promise.resolve(apiResponse([]));
-      if (path.includes("/card-imports/merchant-rules")) return Promise.resolve(apiResponse({ "합성카페": "사업비용" }));
+      if (path.includes("/card-imports/merchant-rules")) return Promise.resolve(apiResponse({ "합성카페": { category: "사업비용", subCategory: "" } }));
       if (init?.method === "POST") {
         return Promise.resolve(apiResponse({
           stored: 75, received: 75, totalRows: 75, duplicatesInBatch: 0, knownRowKeys: 75,
@@ -142,7 +142,7 @@ describe("CardImportPanel (§29.7 흐름 이관)", () => {
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const path = String(input);
       if (path.includes("/card-imports/row-keys")) return Promise.resolve(apiResponse([]));
-      if (path.includes("/card-imports/merchant-rules")) return Promise.resolve(apiResponse({ "합성카페": "식비" }));
+      if (path.includes("/card-imports/merchant-rules")) return Promise.resolve(apiResponse({ "합성카페": { category: "식비", subCategory: "" } }));
       return Promise.resolve(apiResponse({}, false, 500));
     });
     vi.stubGlobal("fetch", fetchMock);

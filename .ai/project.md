@@ -3450,3 +3450,57 @@ GET /api/v1/expenses/categories?month=2026-02
 - 현금흐름 화면의 정확한 UI 형태(달력 vs 리스트)
 - `monthly_snapshots` 테이블을 현금 기준으로 대체할지, 별도의 현금흐름 스냅샷을 둘지
 - 카드 `expense_kind` 를 `category_id` 로 완전 대체할지, 병행할지
+
+### 55.10 가계부 카테고리 기준 (2026-10-26)
+
+사용자가 제시한 「가계부 카테고리 기준」 8개 그룹을 AssetFlow 에 도입하고,
+누락된 항목을 보완해 **9개 대분류 + 세부 분류** 체계로 확정했다.
+자세한 내용은 `docs/category-standard.md` 를 본다.
+
+#### 55.10.1 확정한 체계
+
+- 9개 대분류: 식비 · 주거/통신 · 교통/차량 · 쇼핑/생활 · 건강/의료 · 문화/여가 · 금융/세금 · 기타/경조사 · 교육
+- 각 대분류 아래 2~4개 세부 분류
+- 고정비: 주거비, 통신비, 보험료, 세금/공과금, 학원/교육
+  - 장보기는 문서의 "고정 식비"와 달리 변동비로 본다(금액이 매달 변함).
+- `저축/투자`는 지출이 아닌 자산 이동 → 월 지출 총합에서 제외.
+- 자동차 보험료는 `교통/차량/차량유지비`.
+- 도서 구매는 `문화/여가/취미·여가`.
+
+#### 55.10.2 보충한 항목
+
+| 보충 항목 | 처리 | 근거 |
+|---|---|---|
+| 교육 | 별도 9번째 대분류 | 문서에 없었으나 실제 지출이 있음(교육비) |
+| 미용 | `쇼핑/생활/미용·뷰티` 세부로 추가 | 문서에 없었으나 살롱·뷰티 지출이 있음 |
+| 자동차 보험료 | `교통/차량/차량유지비` | 사용자 결정 |
+| 저축/투자 | 지출 합계 제외 | 지출이 아닌 자산 이동 |
+
+#### 55.10.3 데이터 모델
+
+- `card_imports.expense_kind` → 대분류(VARCHAR(20))
+- `card_imports.sub_category` → 세부 분류(VARCHAR(30))
+- `merchant_rules.sub_category` → 규칙에도 세부 저장
+- `merchant_category_keywords.sub_category` → 키워드에도 세부 저장
+- 마이그레이션: `apps/backend/db/migrations/2026-10-26-category-groups.sql`
+
+#### 55.10.4 구현
+
+**백엔드**
+- `CategoryTaxonomy`: 9개 대분류/세부/고정비/자산이동 정의
+- `CategoryClassifier.classify()` → `Classification(category, subCategory)` 반환
+- `CategorySeedData`: 9그룹 키워드 시드
+- `CardImportController`: Import/재분류/PATCH API 모두 대분류+세부 처리
+- `MerchantRuleLedger`: `MerchantRule(category, subCategory)` 상세 규칙 지원
+- `PostgresCardImportLedger`/`InMemoryCardImportLedger`: `sub_category` 읽기/쓰기
+
+**프론트엔드**
+- `expenseCategories.ts`: 9그룹 + 세부 + 고정비/자산이동 헬퍼
+- `CardImportPanel`: 가맹점 미리보기에서 대분류·세부 각각 선택
+- `ExpensesPage`: 카드 표에 대분류/세부 컬럼, 카테고리별 합계(고정비/변동비/자산이동), CSV 다운로드
+
+#### 55.10.5 출력 규칙
+
+- 행 단위: `[날짜 | 사용처(가맹점) | 금액 | 카테고리 | 세부 분류]`
+- 월 집계: 카테고리별 합계 + 전체 지출 총합(자산 이동 제외) + 고정비/변동비 구분
+- CSV: `날짜,사용처(가맹점),금액,카테고리,세부 분류`

@@ -44,7 +44,7 @@ class CardImportApiTest {
     private String row(String rowKey, String date, String merchant, long supply, long vat, long gross) {
         return "{\"rowKey\":\"" + rowKey + "\",\"approvedAt\":\"" + date + "\",\"merchantName\":\"" + merchant
                 + "\",\"supplyExVat\":" + supply + ",\"vat\":" + vat + ",\"grossAmount\":" + gross
-                + ",\"cardMasked\":\"1234\",\"expenseKind\":\"\"}";
+                + ",\"cardMasked\":\"1234\",\"expenseKind\":\"\",\"subCategory\":\"\"}";
     }
 
     @Test
@@ -147,8 +147,8 @@ class CardImportApiTest {
     @Test
     void monthRowsReturnsOnlyThatMonth() throws Exception {
         ledger.addAll(List.of(
-                new CardImportLedger.ImportedRow("m1", "2025-01-03", "가맹점A", 1000, 100, 1100, "", ""),
-                new CardImportLedger.ImportedRow("m2", "2025-02-05", "가맹점B", 2000, 200, 2200, "", "")));
+                new CardImportLedger.ImportedRow("m1", "2025-01-03", "가맹점A", 1000, 100, 1100, "", "", ""),
+                new CardImportLedger.ImportedRow("m2", "2025-02-05", "가맹점B", 2000, 200, 2200, "", "", "")));
         mvc.perform(get("/api/v1/assets/card-imports?month=2025-01").header("Authorization", TOKEN))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))
@@ -185,7 +185,7 @@ class CardImportApiTest {
 
         String first = "{\"rows\":["
                 + row("k1", "2026-10-01", "가맹점A", 9000, 1000, 10000)
-                + "],\"merchantRules\":{\"가맹점A\":\"개인지출\"}}";
+                + "],\"merchantRules\":{\"가맹점A\":{\"category\":\"개인지출\",\"subCategory\":\"\"}}}";
 
         mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
                         .contentType(MediaType.APPLICATION_JSON).content(first))
@@ -211,7 +211,7 @@ class CardImportApiTest {
 
         mvc.perform(get("/api/v1/assets/card-imports/merchant-rules?merchant=가맹점A").header("Authorization", TOKEN))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.가맹점A").value("사업비용"));
+                .andExpect(jsonPath("$.data.가맹점A.category").value("사업비용"));
     }
 
     @Test
@@ -222,7 +222,7 @@ class CardImportApiTest {
         mvc.perform(get("/api/v1/assets/card-imports/merchant-rules?merchant=스타벅스 강남점")
                         .header("Authorization", TOKEN))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data['스타벅스 강남점']").value("식비"));
+                .andExpect(jsonPath("$.data['스타벅스 강남점'].category").value("식비"));
     }
 
     @Test
@@ -233,7 +233,7 @@ class CardImportApiTest {
         mvc.perform(get("/api/v1/assets/card-imports/merchant-rules?merchant=스타벅스 강남점")
                         .header("Authorization", TOKEN))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data['스타벅스 강남점']").value("여가/취미"));
+                .andExpect(jsonPath("$.data['스타벅스 강남점'].category").value("여가/취미"));
     }
 
     @Test

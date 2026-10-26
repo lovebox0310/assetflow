@@ -64,12 +64,12 @@ public class InMemoryCardImportLedger implements CardImportLedger {
         }
     }
 
-    public boolean updateExpenseKind(String rowKey, String expenseKind) {
+    public boolean updateClassification(String rowKey, String category, String subCategory) {
         synchronized (rows) {
             for (int i = 0; i < rows.size(); i++) {
                 ImportedRow r = rows.get(i);
                 if (r.rowKey().equals(rowKey)) {
-                    rows.set(i, withKind(r, expenseKind));
+                    rows.set(i, withClassification(r, category, subCategory));
                     return true;
                 }
             }
@@ -77,13 +77,13 @@ public class InMemoryCardImportLedger implements CardImportLedger {
         return false;
     }
 
-    public int updateExpenseKindByMerchant(String merchantName, String expenseKind) {
+    public int updateClassificationByMerchant(String merchantName, String category, String subCategory) {
         int updated = 0;
         synchronized (rows) {
             for (int i = 0; i < rows.size(); i++) {
                 ImportedRow r = rows.get(i);
                 if (r.merchantName().equals(merchantName)) {
-                    rows.set(i, withKind(r, expenseKind));
+                    rows.set(i, withClassification(r, category, subCategory));
                     updated++;
                 }
             }
@@ -115,18 +115,18 @@ public class InMemoryCardImportLedger implements CardImportLedger {
         }
     }
 
-    public int clearExpenseKindByMerchant(String merchantName) {
-        return updateExpenseKindByMerchant(merchantName, "");
+    public int clearClassificationByMerchant(String merchantName) {
+        return updateClassificationByMerchant(merchantName, "", "");
     }
 
     private static boolean isUnclassified(String kind) {
         return kind == null || kind.isBlank() || "unclassified".equals(kind);
     }
 
-    private static ImportedRow withKind(ImportedRow r, String expenseKind) {
+    private static ImportedRow withClassification(ImportedRow r, String category, String subCategory) {
         return new ImportedRow(
                 r.rowKey(), r.approvedAt(), r.merchantName(),
                 r.supplyExVat(), r.vat(), r.grossAmount(),
-                r.cardMasked(), expenseKind);
+                r.cardMasked(), category, subCategory == null ? "" : subCategory);
     }
 }

@@ -38,13 +38,14 @@ public class PostgresCardImportLedger implements CardImportLedger {
                 rs.getLong("vat"),
                 rs.getLong("gross_amount"),
                 rs.getString("card_masked") == null ? "" : rs.getString("card_masked"),
-                rs.getString("expense_kind") == null ? "" : rs.getString("expense_kind"));
+                rs.getString("expense_kind") == null ? "" : rs.getString("expense_kind"),
+                rs.getString("sub_category") == null ? "" : rs.getString("sub_category"));
     }
 
     public List<CardImportLedger.ImportedRow> all() {
         return jdbc.query("""
                 SELECT row_key, approved_at, merchant_name, supply_ex_vat, vat, gross_amount,
-                       card_masked, expense_kind
+                       card_masked, expense_kind, sub_category
                 FROM card_imports WHERE user_id = ? ORDER BY id
                 """, PostgresCardImportLedger::map, userId);
     }
@@ -54,7 +55,7 @@ public class PostgresCardImportLedger implements CardImportLedger {
         java.sql.Date end = java.sql.Date.valueOf(java.time.YearMonth.parse(month).plusMonths(1).atDay(1));
         return jdbc.query("""
                 SELECT row_key, approved_at, merchant_name, supply_ex_vat, vat, gross_amount,
-                       card_masked, expense_kind
+                       card_masked, expense_kind, sub_category
                 FROM card_imports
                 WHERE user_id = ? AND approved_at >= ? AND approved_at < ?
                 ORDER BY approved_at, id
@@ -71,11 +72,13 @@ public class PostgresCardImportLedger implements CardImportLedger {
         for (CardImportLedger.ImportedRow r : incoming) {
             stored += jdbc.update("""
                     INSERT INTO card_imports (user_id, row_key, approved_at, merchant_name,
-                                              supply_ex_vat, vat, gross_amount, card_masked, expense_kind)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                              supply_ex_vat, vat, gross_amount, card_masked,
+                                              expense_kind, sub_category)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (user_id, row_key) DO NOTHING
                     """, userId, r.rowKey(), Date.valueOf(r.approvedAt()), r.merchantName(),
-                    r.supplyExVat(), r.vat(), r.grossAmount(), r.cardMasked(), r.expenseKind());
+                    r.supplyExVat(), r.vat(), r.grossAmount(), r.cardMasked(),
+                    r.expenseKind(), r.subCategory());
         }
         return stored;
     }
@@ -83,26 +86,26 @@ public class PostgresCardImportLedger implements CardImportLedger {
     public Optional<CardImportLedger.ImportedRow> find(String rowKey) {
         return jdbc.query("""
                 SELECT row_key, approved_at, merchant_name, supply_ex_vat, vat, gross_amount,
-                       card_masked, expense_kind
+                       card_masked, expense_kind, sub_category
                 FROM card_imports WHERE user_id = ? AND row_key = ?
                 """, PostgresCardImportLedger::map, userId, rowKey)
                 .stream().findFirst();
     }
 
-    public boolean updateExpenseKind(String rowKey, String expenseKind) {
+    public boolean updateClassification(String rowKey, String category, String subCategory) {
         return jdbc.update("""
                 UPDATE card_imports
-                SET expense_kind = ?, updated_at = now()
+                SET expense_kind = ?, sub_category = ?, updated_at = now()
                 WHERE user_id = ? AND row_key = ?
-                """, expenseKind, userId, rowKey) > 0;
+                """, category, subCategory, userId, rowKey) > 0;
     }
 
-    public int updateExpenseKindByMerchant(String merchantName, String expenseKind) {
+    public int updateClassificationByMerchant(String merchantName, String category, String subCategory) {
         return jdbc.update("""
                 UPDATE card_imports
-                SET expense_kind = ?, updated_at = now()
+                SET expense_kind = ?, sub_category = ?, updated_at = now()
                 WHERE user_id = ? AND merchant_name = ?
-                """, expenseKind, userId, merchantName);
+                """, category, subCategory, userId, merchantName);
     }
 
     public List<UnclassifiedGroup> unclassifiedGroups() {
@@ -123,10 +126,10 @@ public class PostgresCardImportLedger implements CardImportLedger {
                 userId);
     }
 
-    public int clearExpenseKindByMerchant(String merchantName) {
+    public int clearClassificationByMerchant(String merchantName) {
         return jdbc.update("""
                 UPDATE card_imports
-                SET expense_kind = '', updated_at = now()
+                SET expense_kind = '', sub_category = '', updated_at = now()
                 WHERE user_id = ? AND merchant_name = ?
                 """, userId, merchantName);
     }

@@ -321,7 +321,7 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
     const fetchMock = stubFetch((path, init) => {
       if (path.includes("/card-imports/merchant-category") && init?.method === "PATCH") {
         const body = JSON.parse(String(init.body));
-        return apiResponse({ merchantName: body.merchantName, category: body.category, updatedRows: 2 });
+        return apiResponse({ merchantName: body.merchantName, category: body.category, subCategory: body.subCategory ?? "", updatedRows: 2 });
       }
       if (path.includes("/expenses/recurring")) return apiResponse([]);
       if (path.includes("/expenses/items")) return apiResponse([]);
@@ -347,12 +347,12 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
 
     const combo = await screen.findByRole("combobox", { name: "네이버페이 카테고리 지정" });
     fireEvent.mouseDown(combo);
-    fireEvent.click(await screen.findByTitle("쇼핑"));
+    fireEvent.click(await screen.findByTitle("쇼핑/생활"));
 
     await waitFor(() => {
       const patch = fetchMock.mock.calls.find((c) => (c[1]?.method ?? "GET") === "PATCH");
       expect(patch).toBeDefined();
-      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ merchantName: "네이버페이", category: "쇼핑" });
+      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ merchantName: "네이버페이", category: "쇼핑/생활", subCategory: "" });
     });
     // 묶음은 재조회 없이 사라지고, 되돌리기 버튼이 뜬다
     expect(await screen.findByText("미분류 1개 가맹점을 모두 정리했습니다.")).toBeDefined();
@@ -363,7 +363,7 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
     await waitFor(() => {
       const patches = fetchMock.mock.calls.filter((c) => (c[1]?.method ?? "GET") === "PATCH");
       expect(patches.length).toBe(2);
-      expect(JSON.parse(String(patches[1]?.[1]?.body))).toEqual({ merchantName: "네이버페이", category: "" });
+      expect(JSON.parse(String(patches[1]?.[1]?.body))).toEqual({ merchantName: "네이버페이", category: "", subCategory: "" });
     });
     // 되돌리면 묶음이 작업함에 다시 나타난다
     expect(await screen.findByText("남은 가맹점 1개")).toBeDefined();
@@ -413,7 +413,7 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
       if (path.includes("/card-imports/category") && init?.method === "PATCH") {
         const body = JSON.parse(String(init.body));
         const row = rows.find((r) => r.rowKey === body.rowKey);
-        return apiResponse({ rowKey: body.rowKey, merchantName: row?.merchantName, category: body.category, updatedRows: 1 });
+        return apiResponse({ rowKey: body.rowKey, merchantName: row?.merchantName, category: body.category, subCategory: body.subCategory ?? "", updatedRows: 1 });
       }
       if (path.includes("/expenses/recurring")) return apiResponse([]);
       if (path.includes("/expenses/items")) return apiResponse([]);
@@ -433,7 +433,11 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
     const combo = await screen.findByRole("combobox", { name: "가맹점11 카테고리" });
     fireEvent.mouseDown(combo);
     fireEvent.click(await screen.findByTitle("식비"));
-    await waitFor(() => expect(fetchMock.mock.calls.some((c) => (c[1]?.method ?? "GET") === "PATCH")).toBe(true));
+    await waitFor(() => {
+      const patch = fetchMock.mock.calls.find((c) => (c[1]?.method ?? "GET") === "PATCH");
+      expect(patch).toBeDefined();
+      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ rowKey: "k11", category: "식비", subCategory: "" });
+    });
 
     // 재조회 없음 + 2페이지 그대로 (가맹점12 가 계속 보인다)
     const cardGets = fetchMock.mock.calls.filter(([url, init]) =>
