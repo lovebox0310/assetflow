@@ -14,6 +14,45 @@
 
 ---
 
+## 2026-10-26 — 카드 내역에 가맹점 사업자번호·업종 저장
+
+사용자가 카드 원본을 다시 임포트하면 `business_no`/`business_category` 가 채워지도록
+백엔드·프론트엔드·DB 계약을 함께 확장했다.
+
+### 변경
+
+- `samples/card/card-columns.json`
+  - `businessNo` 필드 신규 (mapsTo 추가)
+  - 삼성/현대 프로파일의 `사업자번호`/`사업자등록번호` mapsTo 를 `businessNo` 로 변경
+- `apps/frontend/src/lib/card/parse-samsung.mjs` / `parse-hyundai.mjs`
+  - `businessNo` 추출 시 하이픈 제거
+  - 삼성은 `businessCategory` 그대로 추출
+- `apps/backend/db/schema.sql` + 마이그레이션 `2026-10-26-add-business-info.sql`
+  - `card_imports` 에 `business_no VARCHAR(20)`, `business_category VARCHAR(50)` 추가
+- 백엔드
+  - `CardImportLedger.ImportedRow` 에 `businessNo`, `businessCategory` 추가
+  - `CardImportController.ImportRow` 에 동일 필드 추가
+  - `PostgresCardImportLedger` / `InMemoryCardImportLedger` 읽기/쓰기/보존
+- 프론트엔드
+  - `CardImportRow`, `CardImportRowFull` 타입 확장
+  - `CardImportPanel` 미리보기에 업종 컬럼 추가
+  - `ExpensesPage` 카드 표에 업종·사업자번호 컬럼 추가, summary colSpan/index 조정
+- 테스트 갱신: `CardImportApiTest`, `ExpenseSnapshotApiTest`
+
+### 검증
+
+- 백엔드: `./gradlew test bootJar` 통과
+- 프론트엔드: `pnpm typecheck && pnpm lint && pnpm test && pnpm build` 통과
+- DB 마이그레이션 적용 완료
+- 운영 배포 완료 (assetflow.service 재시작, 헬스 OK)
+
+### 다음 단계
+
+- 사용자가 카드 원본 파일을 다시 업로드하면 `business_no`/`business_category` 가 채워진다.
+- 업종/사업자번호 기반 자동 분류는 아직 연결하지 않았다 — 별도 기획 후 진행.
+
+---
+
 ## 2026-10-26 — 가계부 카테고리 기준 도입 (§55.10)
 
 사용자가 제시한 8개 그룹을 보완해 **9개 대분류 + 세부 분류** 체계로 확정하고
