@@ -14,6 +14,18 @@
 
 ---
 
+## 2026-10-26 — 카드 내역 표에서 부가세 컬럼 숨김
+
+사용자 요청으로 지출 화면의 카드 내역 표에서 **부가세 컬럼**을 제거했다.
+공급가액·이용금액·업종·카테고리·사업자번호는 그대로 노출.
+모바일 카드 리스트에서도 부가세 텍스트를 제거.
+
+- 변경: `apps/frontend/src/pages/ExpensesPage.tsx`
+- 검증: `pnpm typecheck && pnpm lint && pnpm test && pnpm build` 통과
+- 배포: FE dist만 교체, 운영 정상
+
+---
+
 ## 2026-10-26 — 카드 내역에 가맹점 사업자번호·업종 저장
 
 사용자가 카드 원본을 다시 임포트하면 `business_no`/`business_category` 가 채워지도록
