@@ -52,6 +52,19 @@ Tomcat/Spring 이 요청을 거부한 것으로 추정.
 
 ---
 
+## 2026-10-26 — 미분류 정리에 업종·사업자번호 컬럼 추가
+
+사용자가 미분류 정리 작업함에서 업종/사업자번호를 보고 분류 결정을 내리고 싶다고 해서
+해당 컬럼을 추가했다.
+
+- 백엔드 `UnclassifiedGroup` 에 `businessCategory`, `businessNo` 추가
+- `PostgresCardImportLedger.unclassifiedGroups()` 에서 `STRING_AGG(DISTINCT ...)` 로 집계
+- `InMemoryCardImportLedger.unclassifiedGroups()` 에서도 고유값 수집
+- 프론트엔드 `UnclassifiedGroup` 타입 확장 + `ExpensesPage` 미분류 테이블에 컬럼 추가
+- 검증·빌드·배포 완료
+
+---
+
 ## 2026-10-26 — 카드 내역 표에서 공급가액 컬럼 숨김
 
 사용자 요청으로 지출 화면 카드 내역 표에서 **공급가액 컬럼**도 제거했다.
