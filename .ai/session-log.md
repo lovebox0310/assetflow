@@ -26,6 +26,18 @@
 
 ---
 
+## 2026-10-26 — 카드 내역 표에서 공급가액 컬럼 숨김
+
+사용자 요청으로 지출 화면 카드 내역 표에서 **공급가액 컬럼**도 제거했다.
+이용금액·업종·대분류·세부분류·사업자번호만 노출.
+모바일 카드 리스트에서도 공급가액 텍스트 제거.
+
+- 변경: `apps/frontend/src/pages/ExpensesPage.tsx`
+- 검증: `pnpm typecheck && pnpm lint && pnpm test && pnpm build` 통과
+- 배포: FE dist 교체, 운영 정상
+
+---
+
 ## 2026-10-26 — 카드 내역에 가맹점 사업자번호·업종 저장
 
 사용자가 카드 원본을 다시 임포트하면 `business_no`/`business_category` 가 채워지도록
