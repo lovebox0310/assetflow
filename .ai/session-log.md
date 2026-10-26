@@ -22,16 +22,18 @@
 - 백엔드
   - `merchant_business_info` 테이블 + 마이그레이션(운영 적용 완료)
   - `BiznoScraper` (Jsoup): 라벨/값 표·dl·본문 텍스트 3단 파싱, "접속대기" 감지
+  - 접속대기면 리더 폴백(`r.jina.ai`, `X-Respond-With: html`)으로 실제 페이지 HTML 수집
   - `MerchantBusinessInfoService`: 30일 캐시, 수집 실패 시 만료 캐시 반환
   - `GET /api/v1/assets/business-info/{businessNo}` → `503 / BIZNO_BUSY` 처리
-  - 테스트: `BiznoScraperTest` (표·dl·평문·접속대기 4케이스)
+  - 테스트: `BiznoScraperTest` (표·dl·평문·인라인 span·주소 정리·접속대기)
+  - 실제 페이지 HTML 로 파서 출력 전 필드 일치 확인(임시 프로브, 저장소 미포함)
 - 프론트엔드
-  - `api/businessInfoApi.ts`, `components/BusinessInfoModal.tsx`
+  - `api/businessInfoApi.ts`, `components/BusinessInfoModal.tsx` (+ 테스트 2건)
   - 카드 표·미분류 정리 표의 사업자번호를 링크로 변경(여러 개면 각각)
   - 조회 실패 시 모달 안에서 재시도, 원문은 `bizno.net에서 열기`(새 탭)
 - 검증: `./gradlew test bootJar`, `pnpm typecheck/lint/test/build` 통과, 운영 배포·헬스 OK
-  - 캐시 조회 경로는 임시 행으로 200 OK 확인 후 삭제
-  - **수집 경로는 bizno.net 이 "접속대기" 상태여서 라이브 검증 못 함** — 503/BIZNO_BUSY 응답은 확인
+  - 운영 API 실호출: `2208155597`·`2028145602`·`4801702202` 200 OK(첫 호출 수집, 재호출 38ms 캐시)
+  - `bigserial`/`Instant` 바인딩 오류(`Can't infer the SQL type`) 발견 → `Timestamp` 로 수정 후 재배포
 
 ---
 

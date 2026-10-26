@@ -3529,7 +3529,8 @@ bizno.net 은 `X-Frame-Options` 가 없지만 광고가 많아 iframe 품질이 
 - `GET /api/v1/assets/business-info/{businessNo}` (숫자 10자리)
 - 캐시가 30일 이내면 그대로 반환(`cached=true`)
 - 없거나 오래됐으면 bizno.net 조회 → 저장 후 반환
-- bizno.net 이 "접속대기"면 `503 / BIZNO_BUSY` — 화면은 재시도 안내를 띄운다
+- bizno.net 이 "접속대기"면 **리더 폴백**(`app.business-info.fallback-reader`, 기본 `https://r.jina.ai/`)으로
+  같은 페이지 HTML 을 받아 파싱한다. 폴백도 실패하면 `503 / BIZNO_BUSY` — 화면은 재시도 안내를 띄운다
 - 새로 긁기에 실패해도 만료된 캐시가 있으면 그 값을 반환한다(가용성 우선)
 
 #### 56.3 화면
@@ -3541,6 +3542,8 @@ bizno.net 은 `X-Frame-Options` 가 없지만 광고가 많아 iframe 품질이 
 #### 56.4 제약 (중요)
 
 - bizno.net 은 동시 접속이 많으면 **IP 단위로 "접속대기" 정적 페이지**를 돌려준다.
-  이때는 수집이 불가능하므로 **캐시 + 재시도**가 유일한 완충 장치다.
+  이때는 같은 페이지를 리더(`r.jina.ai`, `X-Respond-With: html`)로 우회해 읽는다.
+  리더가 없거나 실패하면 캐시 + 재시도가 완충 장치다.
+- 리더 폴백은 공개 사업자 정보만 중계한다. 끄려면 `app.business-info.fallback-reader` 를 빈 값으로 둔다.
 - 요청은 사용자가 링크를 누를 때만 발생한다(주기적 크롤링 금지). 페이지 구조가 바뀌면 파서가 깨질 수 있다.
 - bizno.net 약관은 무단 DB 수집을 금지한다. 개인용도 범위에서만 사용한다.

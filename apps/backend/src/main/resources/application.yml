@@ -25,3 +25,6 @@ app:
   # JWT 서명 키. 이 매핑이 없으면 TokenService 가 부팅마다 랜덤 키를 만들어
   # 재시작 때마다 모든 토큰이 무효화된다(운영 JWT_SECRET 무시).
   jwt-secret: ${JWT_SECRET:}
+  # bizno.net 이 접속대기로 막을 때 대신 읽는 리더 서비스(비우면 폴백 없음).
+  business-info:
+    fallback-reader: ${BIZNO_FALLBACK_READER:https://r.jina.ai/}
