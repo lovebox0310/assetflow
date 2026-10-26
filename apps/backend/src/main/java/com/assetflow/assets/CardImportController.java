@@ -57,14 +57,18 @@ public class CardImportController {
 
     public record MerchantCategoryUpdate(String merchantName, String category, String subCategory) {}
 
+    public record MerchantRulesRequest(List<String> merchants) {}
+
     /**
      * 가맹점별 카테고리 제안 (§55.8, §55.10).
      * 저장된 사용자 규칙이 1순위, 없으면 키워드 기반 자동 분류 결과를 함께 돌려준다.
-     * merchant 파라미터가 없으면 저장된 규칙 전체만 반환한다(키워드 제안은 대상 가맹점이 필요).
+     * 요청 본문에 merchants 가 없으면 저장된 규칙 전천리만 반환한다(키워드 제안은 대상 가맹점이 필요).
+     * GET 쿼리스트링으로 긴 가맹점 목록을 본낼 때 URL 길이/특수문자 제한 때문에 400 이 발생할 수 있어 POST 를 쓴다.
      */
-    @GetMapping("/card-imports/merchant-rules")
+    @PostMapping("/card-imports/merchant-rules")
     public ApiResponse<Map<String, MerchantRule>> merchantRules(
-            @RequestParam(value = "merchant", required = false) List<String> merchants) {
+            @RequestBody(required = false) MerchantRulesRequest request) {
+        List<String> merchants = request == null ? List.of() : request.merchants();
         if (merchants == null || merchants.isEmpty()) {
             return new ApiResponse<>("OK", "Merchant rules loaded", Map.copyOf(ruleLedger.allRuleDetails()));
         }

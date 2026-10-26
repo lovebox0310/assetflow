@@ -217,7 +217,10 @@ class CardImportApiTest {
     void merchantRulesEndpointReturnsRulesForRequestedMerchants() throws Exception {
         ruleLedger.saveAll(Map.of("가맹점A", "사업비용", "가맹점B", "개인지출"));
 
-        mvc.perform(get("/api/v1/assets/card-imports/merchant-rules?merchant=가맹점A").header("Authorization", TOKEN))
+        mvc.perform(post("/api/v1/assets/card-imports/merchant-rules")
+                        .header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"merchants\":[\"가맹점A\"]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.가맹점A.category").value("사업비용"));
     }
@@ -227,8 +230,10 @@ class CardImportApiTest {
         // §55.8: 저장된 규칙이 없는 가맹점은 키워드 자동 분류 결과를 제안한다
         classifier.addKeyword("스타벅스", "식비", 0);
 
-        mvc.perform(get("/api/v1/assets/card-imports/merchant-rules?merchant=스타벅스 강남점")
-                        .header("Authorization", TOKEN))
+        mvc.perform(post("/api/v1/assets/card-imports/merchant-rules")
+                        .header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"merchants\":[\"스타벅스 강남점\"]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data['스타벅스 강남점'].category").value("식비"));
     }
@@ -238,8 +243,10 @@ class CardImportApiTest {
         classifier.addKeyword("스타벅스", "식비", 0);
         ruleLedger.saveAll(Map.of("스타벅스 강남점", "여가/취미"));
 
-        mvc.perform(get("/api/v1/assets/card-imports/merchant-rules?merchant=스타벅스 강남점")
-                        .header("Authorization", TOKEN))
+        mvc.perform(post("/api/v1/assets/card-imports/merchant-rules")
+                        .header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"merchants\":[\"스타벅스 강남점\"]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data['스타벅스 강남점'].category").value("여가/취미"));
     }

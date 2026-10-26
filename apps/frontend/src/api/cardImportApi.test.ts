@@ -46,16 +46,17 @@ describe("cardImportApi (§55.10)", () => {
     expect(result).toEqual({ total: 12, updated: 7 });
   });
 
-  it("가맹점 규칙 조회는 merchant 쿼리스트링을 사용하고 MerchantRule 을 받는다", async () => {
+  it("가맹점 규칙 조회는 POST body 에 merchants 를 실어 본다", async () => {
     saveToken("tok", Date.now() + 60_000);
     const rule: { category: string; subCategory: string } = { category: "식비", subCategory: "외식" };
     const fetchMock = stubFetch({ 스타벅스: rule });
 
     const result = await getMerchantRules(["스타벅스"]);
 
-    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(String(url)).toContain("/api/v1/assets/card-imports/merchant-rules");
-    expect(String(url)).toContain("merchant=%EC%8A%A4%ED%83%80%EB%B2%85%EC%8A%A4");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ merchants: ["스타벅스"] });
     expect(result["스타벅스"]).toEqual(rule);
   });
 

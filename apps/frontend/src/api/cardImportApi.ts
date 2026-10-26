@@ -38,13 +38,14 @@ export function getImportedRowKeys(): Promise<string[]> {
 /**
  * §49, §55.10: 저장된 가맹점 분류 규칙을 조회한다.
  * merchant 가 없으면 전체 규칙, 있으면 해당 가맹점만 — 자동 분류 제안을 포함한다.
+ * GET 쿼리스트링으로 긴 목록을 본낼 때 URL 길이/특수문자 제한으로 400 이 발생할 수 있어 POST 를 쓴다.
  */
 export function getMerchantRules(merchants?: string[]): Promise<Record<string, MerchantRule>> {
-  const query =
-    merchants && merchants.length > 0
-      ? "?" + new URLSearchParams(merchants.map((m) => ["merchant", m])).toString()
-      : "";
-  return apiFetch<Record<string, MerchantRule>>(`/api/v1/assets/card-imports/merchant-rules${query}`);
+  return apiFetch<Record<string, MerchantRule>>("/api/v1/assets/card-imports/merchant-rules", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ merchants: merchants ?? [] }),
+  });
 }
 
 /** §29.2: 확정 시 서버가 재검증하고 저장한다. 요청에는 합계를 싣지 않는다(§29.7). */
