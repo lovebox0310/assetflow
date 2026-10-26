@@ -969,23 +969,38 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
                 }}
                 columns={[
                   { title: "가맹점", dataIndex: "merchantName" },
-                  { title: "건수", dataIndex: "count", width: 80, align: "right" as const, render: (v: number) => `${v}건` },
+                  {
+                    title: "업종",
+                    dataIndex: "businessCategory",
+                    width: 130,
+                    render: (v: string | undefined) => (
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>{v || "—"}</Typography.Text>
+                    ),
+                  },
+                  {
+                    title: "사업자번호",
+                    dataIndex: "businessNo",
+                    width: 120,
+                    className: "af-mono",
+                    render: (v: string | undefined) => v || "—",
+                  },
+                  { title: "건수", dataIndex: "count", width: 70, align: "right" as const, render: (v: number) => `${v}건` },
                   {
                     title: "합계",
                     dataIndex: "grossTotal",
-                    width: 140,
+                    width: 130,
                     align: "right" as const,
                     className: "af-num",
                     render: (v: number) => formatKrwExact(v),
                   },
-                  { title: "최근 승인", dataIndex: "lastApprovedAt", width: 110, className: "af-mono" },
+                  { title: "최근 승인", dataIndex: "lastApprovedAt", width: 100, className: "af-mono" },
                   {
                     title: "대분류 지정",
-                    width: 160,
+                    width: 150,
                     render: (_: unknown, g: UnclassifiedGroup) => (
                       <Select
                         size="small"
-                        style={{ width: 150 }}
+                        style={{ width: 140 }}
                         placeholder="선택"
                         value={null}
                         options={CATEGORY_GROUP_OPTIONS}

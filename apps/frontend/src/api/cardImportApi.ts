@@ -86,6 +86,8 @@ export interface UnclassifiedGroup {
   grossTotal: number;
   firstApprovedAt: string;
   lastApprovedAt: string;
+  businessCategory?: string;
+  businessNo?: string;
 }
 
 export interface MerchantCategoryResult {
