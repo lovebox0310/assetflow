@@ -25,6 +25,8 @@ import {
   isUnclassified,
   subCategoryOptions,
 } from "../data/expenseCategories";
+import { BusinessInfoModal } from "../components/BusinessInfoModal";
+import { formatBusinessNo } from "../api/businessInfoApi";
 import {
   confirmMonth,
   copyItems,
@@ -127,6 +129,8 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
   const [undo, setUndo] = useState<{ group: UnclassifiedGroup; category: string } | null>(null);
   const [cardPage, setCardPage] = useState(1);
   const [unclassifiedOnly, setUnclassifiedOnly] = useState(false);
+  /** 사업자번호 클릭 → 사업자 정보 모달 (화면 이동 없음). */
+  const [businessInfoTarget, setBusinessInfoTarget] = useState<{ businessNo: string; merchantName: string } | null>(null);
   const [recurring, setRecurring] = useState<RecurringRow[] | null>(null);
   const [recForm, setRecForm] = useState<RecurringRow | "new" | null>(null);
   const [prevCount, setPrevCount] = useState<number | null>(null);
@@ -644,9 +648,23 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
     {
       title: "사업자번호",
       dataIndex: "businessNo",
-      width: 120,
+      width: 130,
       className: "af-mono",
-      render: (v: string | undefined) => v || "—",
+      render: (v: string | undefined, row: CardImportRowFull) => {
+        const businessNo = (v ?? "").trim();
+        if (!businessNo) return "—";
+        return (
+          <Button
+            type="link"
+            size="small"
+            style={{ padding: 0, height: "auto" }}
+            onClick={() => setBusinessInfoTarget({ businessNo, merchantName: row.merchantName })}
+            aria-label={`${row.merchantName} 사업자 정보 보기`}
+          >
+            {formatBusinessNo(businessNo)}
+          </Button>
+        );
+      },
     },
   ];
 
@@ -980,9 +998,31 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
                   {
                     title: "사업자번호",
                     dataIndex: "businessNo",
-                    width: 120,
+                    width: 130,
                     className: "af-mono",
-                    render: (v: string | undefined) => v || "—",
+                    render: (v: string | undefined, g: UnclassifiedGroup) => {
+                      const numbers = (v ?? "")
+                        .split(",")
+                        .map((n) => n.trim())
+                        .filter((n) => n.length > 0);
+                      if (numbers.length === 0) return "—";
+                      return (
+                        <Space size={4} wrap>
+                          {numbers.map((businessNo) => (
+                            <Button
+                              key={businessNo}
+                              type="link"
+                              size="small"
+                              style={{ padding: 0, height: "auto" }}
+                              onClick={() => setBusinessInfoTarget({ businessNo, merchantName: g.merchantName })}
+                              aria-label={`${g.merchantName} ${businessNo} 사업자 정보 보기`}
+                            >
+                              {formatBusinessNo(businessNo)}
+                            </Button>
+                          ))}
+                        </Space>
+                      );
+                    },
                   },
                   { title: "건수", dataIndex: "count", width: 70, align: "right" as const, render: (v: number) => `${v}건` },
                   {
@@ -1153,6 +1193,13 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
           </StateBlock>
         </Card>
       </section>
+
+      <BusinessInfoModal
+        open={businessInfoTarget !== null}
+        businessNo={businessInfoTarget?.businessNo ?? null}
+        merchantName={businessInfoTarget?.merchantName}
+        onClose={() => setBusinessInfoTarget(null)}
+      />
     </AppLayout>
   );
 }

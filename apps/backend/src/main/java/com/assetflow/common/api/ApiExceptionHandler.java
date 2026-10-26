@@ -34,6 +34,13 @@ public class ApiExceptionHandler {
                 .body(ErrorResponse.of("PERMISSION_DENIED", "Permission denied", e.getMessage()));
     }
 
+    /** 외부 사이트(bizno.net)가 혼잡해 조회할 수 없을 때 — 화면이 재시도 안내를 띄운다. */
+    @ExceptionHandler(com.assetflow.assets.BiznoUnavailableException.class)
+    public ResponseEntity<ErrorResponse> biznoUnavailable(com.assetflow.assets.BiznoUnavailableException e) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ErrorResponse.of("BIZNO_BUSY", "Business info source is busy", e.getMessage()));
+    }
+
     /** GET 으로 POST 전용 API 를 호출하는 경우(브라우저 주소창 접속 등) — 500 이 아니라 405 다. */
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<ErrorResponse> methodNotSupported(HttpRequestMethodNotSupportedException e) {
