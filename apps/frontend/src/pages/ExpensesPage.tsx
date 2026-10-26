@@ -599,7 +599,6 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>{v || "—"}</Typography.Text>
       ),
     },
-    { title: "공급가액", dataIndex: "supplyExVat", align: "right" as const, width: 110, className: "af-num", render: (v: number) => formatKrwExact(v) },
     {
       title: "이용금액",
       dataIndex: "grossAmount",
@@ -1105,14 +1104,11 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
                       <Table.Summary.Cell index={0} colSpan={2}>합계 ({visibleCardRows.length}건)</Table.Summary.Cell>
                       <Table.Summary.Cell index={2} align="right" />
                       <Table.Summary.Cell index={3} align="right">
-                        {formatKrwExact(visibleCardRows.reduce((acc, r) => acc + r.supplyExVat, 0))}
-                      </Table.Summary.Cell>
-                      <Table.Summary.Cell index={4} align="right">
                         {formatKrwExact(visibleCardRows.reduce((acc, r) => acc + r.grossAmount, 0))}
                       </Table.Summary.Cell>
+                      <Table.Summary.Cell index={4} />
                       <Table.Summary.Cell index={5} />
                       <Table.Summary.Cell index={6} />
-                      <Table.Summary.Cell index={7} />
                     </Table.Summary.Row>
                   </Table.Summary>
                 )}
@@ -1123,7 +1119,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
                     <MobileListCardItem key={r.rowKey}>
                       <MobileListCardHeader title={r.merchantName} value={formatKrwExact(r.grossAmount)} />
                       <MobileListCardMeta>
-                        <span className="af-mono">{r.approvedAt}</span> · 공급 {formatKrwExact(r.supplyExVat)}{r.businessCategory?.trim() ? ` · ${r.businessCategory.trim()}` : ""} · {(r.expenseKind?.trim() || "미분류")}{r.subCategory?.trim() ? `/${r.subCategory.trim()}` : ""}
+                        <span className="af-mono">{r.approvedAt}</span>{r.businessCategory?.trim() ? ` · ${r.businessCategory.trim()}` : ""} · {(r.expenseKind?.trim() || "미분류")}{r.subCategory?.trim() ? `/${r.subCategory.trim()}` : ""}
                       </MobileListCardMeta>
                     </MobileListCardItem>
                   ))}
