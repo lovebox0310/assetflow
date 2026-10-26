@@ -21,6 +21,7 @@ export interface CardImportRowFull {
   grossAmount: number;
   cardMasked?: string;
   expenseKind?: string;
+  subCategory?: string;
 }
 
 /** §44 — 월 스냅샷(시점값, §37). */

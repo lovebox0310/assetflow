@@ -25,22 +25,38 @@ public class PostgresMerchantRuleLedger implements MerchantRuleLedger {
 
     @Override
     public Map<String, String> allRules() {
-        return jdbc.query(
-                """
-                        SELECT r.merchant_name, COALESCE(c.name, r.expense_kind) AS kind
-                        FROM merchant_rules r
-                        LEFT JOIN expense_categories c ON c.id = r.category_id
-                        WHERE r.user_id = ?
-                        """,
-                (rs, n) -> Map.entry(rs.getString("merchant_name"), rs.getString("kind")),
-                userId)
-                .stream()
-                .filter(e -> e.getValue() != null)
-                .collect(HashMap::new, (m, e) -> m.put(e.getKey(), e.getValue()), HashMap::putAll);
+        Map<String, String> out = new HashMap<>();
+        allRuleDetails().forEach((merchant, rule) -> out.put(merchant, rule.category()));
+        return Map.copyOf(out);
     }
 
     @Override
     public Map<String, String> rulesFor(Set<String> merchantNames) {
+        Map<String, String> out = new HashMap<>();
+        ruleDetailsFor(merchantNames).forEach((merchant, rule) -> out.put(merchant, rule.category()));
+        return Map.copyOf(out);
+    }
+
+    @Override
+    public Map<String, MerchantRule> allRuleDetails() {
+        return jdbc.query(
+                """
+                        SELECT r.merchant_name, COALESCE(c.name, r.expense_kind) AS kind,
+                               COALESCE(r.sub_category, '') AS sub_category
+                        FROM merchant_rules r
+                        LEFT JOIN expense_categories c ON c.id = r.category_id
+                        WHERE r.user_id = ?
+                        """,
+                (rs, n) -> Map.entry(rs.getString("merchant_name"),
+                        new MerchantRule(rs.getString("kind"), rs.getString("sub_category"))),
+                userId)
+                .stream()
+                .filter(e -> e.getValue().category() != null)
+                .collect(HashMap::new, (m, e) -> m.put(e.getKey(), e.getValue()), HashMap::putAll);
+    }
+
+    @Override
+    public Map<String, MerchantRule> ruleDetailsFor(Set<String> merchantNames) {
         if (merchantNames == null || merchantNames.isEmpty()) {
             return Map.of();
         }
@@ -53,14 +69,16 @@ public class PostgresMerchantRuleLedger implements MerchantRuleLedger {
         }
         return jdbc.query(
                 """
-                        SELECT r.merchant_name, COALESCE(c.name, r.expense_kind) AS kind
+                        SELECT r.merchant_name, COALESCE(c.name, r.expense_kind) AS kind,
+                               COALESCE(r.sub_category, '') AS sub_category
                         FROM merchant_rules r
                         LEFT JOIN expense_categories c ON c.id = r.category_id
                         WHERE r.user_id = ? AND r.merchant_name IN (""" + placeholders + ")",
-                (rs, n) -> Map.entry(rs.getString("merchant_name"), rs.getString("kind")),
+                (rs, n) -> Map.entry(rs.getString("merchant_name"),
+                        new MerchantRule(rs.getString("kind"), rs.getString("sub_category"))),
                 params)
                 .stream()
-                .filter(e -> e.getValue() != null)
+                .filter(e -> e.getValue().category() != null)
                 .collect(HashMap::new, (m, e) -> m.put(e.getKey(), e.getValue()), HashMap::putAll);
     }
 
@@ -69,13 +87,24 @@ public class PostgresMerchantRuleLedger implements MerchantRuleLedger {
         if (rules == null || rules.isEmpty()) {
             return;
         }
-        for (Map.Entry<String, String> e : rules.entrySet()) {
+        Map<String, MerchantRule> details = new HashMap<>();
+        rules.forEach((merchant, category) -> details.put(merchant, new MerchantRule(category, "")));
+        saveAllDetails(details);
+    }
+
+    @Override
+    public void saveAllDetails(Map<String, MerchantRule> rules) {
+        if (rules == null || rules.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<String, MerchantRule> e : rules.entrySet()) {
             jdbc.update("""
-                    INSERT INTO merchant_rules (user_id, merchant_name, expense_kind)
-                    VALUES (?, ?, ?)
+                    INSERT INTO merchant_rules (user_id, merchant_name, expense_kind, sub_category)
+                    VALUES (?, ?, ?, ?)
                     ON CONFLICT (user_id, merchant_name) DO UPDATE SET expense_kind = EXCLUDED.expense_kind,
+                                                                       sub_category = EXCLUDED.sub_category,
                                                                        updated_at = now()
-                    """, userId, e.getKey(), e.getValue());
+                    """, userId, e.getKey(), e.getValue().category(), e.getValue().subCategory());
         }
     }
 

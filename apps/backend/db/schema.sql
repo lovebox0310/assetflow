@@ -94,7 +94,8 @@ CREATE TABLE merchant_rules (
     id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id       BIGINT NOT NULL REFERENCES users (id),
     merchant_name VARCHAR(100) NOT NULL,
-    expense_kind  VARCHAR(20),                    -- §49 legacy 용도구분 문자열
+    expense_kind  VARCHAR(20),                    -- §55.10 대분류(legacy 용도구분 문자열과 동일)
+    sub_category  VARCHAR(30),                    -- §55.10 세부 분류
     category_id   BIGINT REFERENCES expense_categories (id), -- §55.8 표준 카테고리
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -116,7 +117,8 @@ CREATE TABLE card_imports (
     vat           BIGINT NOT NULL,                 -- 부가세 (원)
     gross_amount  BIGINT NOT NULL,                 -- 공급대가 (원) = supply_ex_vat + vat
     card_masked   VARCHAR(32),                     -- 마스킹된 카드번호
-    expense_kind  VARCHAR(20),                     -- 용도구분 (§49 legacy)
+    expense_kind  VARCHAR(20),                     -- §55.10 대분류(§49 legacy 용도구분 문자열과 동일)
+    sub_category  VARCHAR(30),                     -- §55.10 세부 분류
     category_id   BIGINT REFERENCES expense_categories (id), -- §55.8 표준 카테고리
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -129,10 +131,11 @@ CREATE TABLE card_imports (
 -- ---------------------------------------------------------------------------
 CREATE TABLE merchant_category_keywords (
     id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    keyword     VARCHAR(50) NOT NULL,
-    category_id BIGINT NOT NULL REFERENCES expense_categories (id),
-    priority    INT NOT NULL DEFAULT 0,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    keyword      VARCHAR(50) NOT NULL,
+    category_id  BIGINT NOT NULL REFERENCES expense_categories (id),
+    sub_category VARCHAR(30),                    -- §55.10 세부 분류
+    priority     INT NOT NULL DEFAULT 0,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_merchant_category_keywords_keyword UNIQUE (keyword)
 );

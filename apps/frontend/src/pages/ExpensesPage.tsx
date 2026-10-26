@@ -18,7 +18,13 @@ import {
   updateCardImportCategory,
   type UnclassifiedGroup,
 } from "../api/cardImportApi";
-import { EXPENSE_CATEGORY_OPTIONS } from "../data/expenseCategories";
+import {
+  CATEGORY_GROUP_OPTIONS,
+  isAssetTransferSubCategory,
+  isFixedSubCategory,
+  isUnclassified,
+  subCategoryOptions,
+} from "../data/expenseCategories";
 import {
   confirmMonth,
   copyItems,
@@ -45,7 +51,7 @@ import { formatKrwExact } from "../utils/formatters";
 interface ExpensesPageProps {
   onOpenDashboard: () => void;
   onOpenAssets: () => void;
-  /** 헤더 내비게이션 — 설정 화면으로 이동 (§46). */
+  /** 헤더 나이게이션 — 설정 화면으로 이동 (§46). */
   onOpenSettings: () => void;
 }
 
@@ -58,12 +64,6 @@ function recentMonths(): string[] {
     out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
   }
   return out;
-}
-
-/** §55.8: 빈 값과 legacy "unclassified" 를 같은 미분류로 본다. */
-function isUnclassifiedKind(kind?: string): boolean {
-  const value = kind?.trim();
-  return !value || value === "unclassified";
 }
 
 /**
@@ -96,6 +96,7 @@ const essentialBadgeStyle: React.CSSProperties = {
  * 스프린트 3 #36: §31 지출 화면의 React 이관.
  * - 월 선택 → 월 지출 항목(CRUD) + 수입 입력·월 확정(§44 스냅샷) + 카드 원장 소비(§41).
  * - 합계·필수지출 합계는 행에서 재계산 — 저장하지 않는다(§34.6).
+ * - §55.10: 카드내역은 대분류+세부 두 단계, 고정비/변동비/자산 이동을 구분해 표시.
  */
 export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: ExpensesPageProps) {
   const screens = Grid.useBreakpoint();
@@ -176,11 +177,11 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
       .catch((e: Error) => setUnclassifiedError(e.message));
   }, []);
 
-  /** 서버가 이미 같은 가맹점 행 전체를 바꿨으므로, 화면도 재조회 없이 그 자리에서 맞춘다. */
-  const applyMerchantCategoryLocally = useCallback((merchantName: string, category: string) => {
+  /** 서버가 이미 같은 가맹점 행 전체를 바꿨으므로, 화멾도 재조회 없이 그 자리에서 맞춘다. */
+  const applyMerchantCategoryLocally = useCallback((merchantName: string, category: string, subCategory: string) => {
     setCardRows((prev) =>
       prev
-        ? prev.map((r) => (r.merchantName === merchantName ? { ...r, expenseKind: category } : r))
+        ? prev.map((r) => (r.merchantName === merchantName ? { ...r, expenseKind: category, subCategory } : r))
         : prev,
     );
     setUnclassified((prev) =>
@@ -191,7 +192,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
   const restoreMerchantLocally = useCallback((group: UnclassifiedGroup) => {
     setCardRows((prev) =>
       prev
-        ? prev.map((r) => (r.merchantName === group.merchantName ? { ...r, expenseKind: "" } : r))
+        ? prev.map((r) => (r.merchantName === group.merchantName ? { ...r, expenseKind: "", subCategory: "" } : r))
         : prev,
     );
     setUnclassified((prev) => {
@@ -221,27 +222,41 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
     }
   }, [loadCard, loadUnclassified]);
 
-  /** §55.8: 사용자가 행의 카테고리를 고치면 같은 가맹점 행 전체 + 다음 임포트 규칙에 반영된다. */
+  /** §55.10: 사용자가 행의 대분류를 고치면 같은 가맹점 행 전체 + 다음 임포트 규칙에 반영된다. */
   const handleCardCategory = useCallback(async (row: CardImportRowFull, category: string) => {
     if (!category || category === row.expenseKind) return;
     setNotice("");
     setUndo(null);
     try {
-      const result = await updateCardImportCategory(row.rowKey, category);
-      applyMerchantCategoryLocally(result.merchantName, result.category);
+      const result = await updateCardImportCategory(row.rowKey, category, "");
+      applyMerchantCategoryLocally(result.merchantName, result.category, result.subCategory);
       setNotice(`${result.merchantName} → ${result.category} (${result.updatedRows}건 반영)`);
     } catch (e) {
       setNotice(e instanceof Error ? e.message : "카테고리 변경에 실패했습니다.");
     }
   }, [applyMerchantCategoryLocally]);
 
-  /** §55.8 작업함: 가맹점 하나를 한 번에 분류한다 — 목록 재조회 없이 그 묶음만 사라진다. */
+  /** §55.10: 사용자가 행의 세부 분류를 고친다. */
+  const handleCardSubCategory = useCallback(async (row: CardImportRowFull, subCategory: string) => {
+    if (subCategory === row.subCategory) return;
+    setNotice("");
+    setUndo(null);
+    try {
+      const result = await updateCardImportCategory(row.rowKey, row.expenseKind || "", subCategory);
+      applyMerchantCategoryLocally(result.merchantName, result.category, result.subCategory);
+      setNotice(`${result.merchantName} → ${result.category}/${result.subCategory} (${result.updatedRows}건 반영)`);
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "세부 분류 변경에 실패했습니다.");
+    }
+  }, [applyMerchantCategoryLocally]);
+
+  /** §55.10 작업함: 가맹점 하나를 한 번에 분류한다 — 목록 재조회 없이 그 묶음만 사라진다. */
   const handleAssignMerchant = useCallback(async (group: UnclassifiedGroup, category: string) => {
     if (!category) return;
     setNotice("");
     try {
-      const result = await assignMerchantCategory(group.merchantName, category);
-      applyMerchantCategoryLocally(group.merchantName, category);
+      const result = await assignMerchantCategory(group.merchantName, category, "");
+      applyMerchantCategoryLocally(group.merchantName, category, "");
       setUndo({ group, category });
       setNotice(`${result.merchantName} → ${result.category} (${result.updatedRows}건 반영)`);
     } catch (e) {
@@ -253,7 +268,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
   const handleUndo = useCallback(async () => {
     if (!undo) return;
     try {
-      await assignMerchantCategory(undo.group.merchantName, "");
+      await assignMerchantCategory(undo.group.merchantName, "", "");
       restoreMerchantLocally(undo.group);
       setNotice(`${undo.group.merchantName} 분류를 되돌렸습니다.`);
       setUndo(null);
@@ -452,20 +467,40 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
   const totalAmount = (items ?? []).reduce((acc, r) => acc + r.amount, 0);
   const totalVat = (items ?? []).reduce((acc, r) => acc + r.purchaseVat, 0);
   const essentialTotal = (items ?? []).filter((r) => r.isEssential).reduce((acc, r) => acc + r.amount, 0);
-  const cardTotal = (cardRows ?? []).reduce((acc, r) => acc + r.grossAmount, 0);
 
-  /** §55.8: 이 달 카드 사용금을 카테고리별로 합산 — "어디에 썼나"를 바로 보여 준다. */
-  const cardCategoryTotals = useMemo(() => {
-    const map = new Map<string, { category: string; count: number; gross: number }>();
+  /** §55.10: 이 달 카드 사용금을 대분류·세부로 합산 — "어디에 썼나"를 바로 보여 준다. */
+  const cardSubTotals = useMemo(() => {
+    const map = new Map<string, { category: string; subCategory: string; count: number; gross: number }>();
     for (const r of cardRows ?? []) {
       const category = r.expenseKind?.trim() || "미분류";
-      const row = map.get(category) ?? { category, count: 0, gross: 0 };
+      const subCategory = isUnclassified(category) ? "" : (r.subCategory?.trim() || "미지정");
+      const key = `${category}|${subCategory}`;
+      const row = map.get(key) ?? { category, subCategory, count: 0, gross: 0 };
       row.count += 1;
       row.gross += r.grossAmount;
-      map.set(category, row);
+      map.set(key, row);
     }
     return [...map.values()].sort((a, b) => b.gross - a.gross);
   }, [cardRows]);
+
+  /** §55.10: 지출 합계(자산 이동 제외), 고정비, 변동비. */
+  const cardSpendingTotal = useMemo(
+    () => (cardRows ?? []).filter((r) => !isUnclassified(r.expenseKind) && !isAssetTransferSubCategory(r.subCategory)).reduce((acc, r) => acc + r.grossAmount, 0),
+    [cardRows],
+  );
+  const cardFixedTotal = useMemo(
+    () => (cardRows ?? []).filter((r) => isFixedSubCategory(r.subCategory)).reduce((acc, r) => acc + r.grossAmount, 0),
+    [cardRows],
+  );
+  const cardVariableTotal = cardSpendingTotal - cardFixedTotal;
+  const cardAssetTransferTotal = useMemo(
+    () => (cardRows ?? []).filter((r) => isAssetTransferSubCategory(r.subCategory)).reduce((acc, r) => acc + r.grossAmount, 0),
+    [cardRows],
+  );
+  const cardUnclassifiedTotal = useMemo(
+    () => (cardRows ?? []).filter((r) => isUnclassified(r.expenseKind)).reduce((acc, r) => acc + r.grossAmount, 0),
+    [cardRows],
+  );
 
   /** §55.8 작업함: 검색어로 거른 가맹점 묶음. 정렬은 서버가 금액 큰 순으로 준 순서를 지킨다. */
   const visibleUnclassifiedGroups = useMemo(() => {
@@ -483,13 +518,13 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
 
   /** §55.8: 이 달 카드내역 중 아직 미분류인 행 (표 필터 배지에 쓴다). */
   const unclassifiedInMonth = useMemo(
-    () => (cardRows ?? []).filter((r) => isUnclassifiedKind(r.expenseKind)).length,
+    () => (cardRows ?? []).filter((r) => isUnclassified(r.expenseKind)).length,
     [cardRows],
   );
 
-  /** §55.8: "미분류만 보기" 필터. 재조회 없이 화면에서만 거르므로 페이지·스크롤이 유지된다. */
+  /** §55.8: "미분류만 보기" 필터. 재조회 없이 화면에서만 거륵으므로 페이지·스크롤이 유지된다. */
   const visibleCardRows = useMemo(
-    () => (unclassifiedOnly ? (cardRows ?? []).filter((r) => isUnclassifiedKind(r.expenseKind)) : cardRows ?? []),
+    () => (unclassifiedOnly ? (cardRows ?? []).filter((r) => isUnclassified(r.expenseKind)) : cardRows ?? []),
     [cardRows, unclassifiedOnly],
   );
 
@@ -557,33 +592,70 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
       sorter: (a: CardImportRowFull, b: CardImportRowFull) => a.merchantName.localeCompare(b.merchantName),
     },
     { title: "공급가액", dataIndex: "supplyExVat", align: "right" as const, width: 120, className: "af-num", render: (v: number) => formatKrwExact(v) },
-    { title: "부가세", dataIndex: "vat", align: "right" as const, width: 110, className: "af-num", render: (v: number) => formatKrwExact(v) },
+    { title: "부가세", dataIndex: "vat", align: "right" as const, width: 100, className: "af-num", render: (v: number) => formatKrwExact(v) },
     {
       title: "이용금액",
       dataIndex: "grossAmount",
       align: "right" as const,
-      width: 130,
+      width: 120,
       className: "af-num",
       sorter: (a: CardImportRowFull, b: CardImportRowFull) => a.grossAmount - b.grossAmount,
       render: (v: number) => formatKrwExact(v),
     },
     {
-      title: "카테고리",
+      title: "대분류",
       dataIndex: "expenseKind",
-      width: 170,
+      width: 150,
       render: (v: string | undefined, row: CardImportRowFull) => (
         <Select
           size="small"
-          style={{ width: 150 }}
+          style={{ width: 140 }}
           placeholder="미분류"
           value={v || null}
-          options={EXPENSE_CATEGORY_OPTIONS}
+          options={CATEGORY_GROUP_OPTIONS}
           onChange={(category: string) => void handleCardCategory(row, category)}
           aria-label={`${row.merchantName} 카테고리`}
         />
       ),
     },
+    {
+      title: "세부 분류",
+      dataIndex: "subCategory",
+      width: 140,
+      render: (v: string | undefined, row: CardImportRowFull) => (
+        <Select
+          size="small"
+          style={{ width: 130 }}
+          placeholder="-"
+          value={v || null}
+          options={subCategoryOptions(row.expenseKind)}
+          onChange={(subCategory: string) => void handleCardSubCategory(row, subCategory)}
+          disabled={isUnclassified(row.expenseKind)}
+          aria-label={`${row.merchantName} 세부 분류`}
+        />
+      ),
+    },
   ];
+
+  /** §55.10: CSV 낼출 [날짜 | 사용처(가맹점) | 금액 | 카테고리 | 세부 분류]. */
+  const downloadCsv = useCallback(() => {
+    const rows = visibleCardRows;
+    const header = "날짜,사용처(가맹점),금액,카테고리,세부 분류";
+    const lines = rows.map((r) => {
+      const category = r.expenseKind?.trim() || "미분류";
+      const sub = isUnclassified(category) ? "" : (r.subCategory?.trim() || "");
+      return [r.approvedAt, `"${r.merchantName.replace(/"/g, '""')}"`, String(r.grossAmount), `"${category}"`, `"${sub}"`].join(",");
+    });
+    const blob = new Blob([["\uFEFF", header, ...lines].join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `card-expenses-${month}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, [visibleCardRows, month]);
 
   return (
     <AppLayout
@@ -820,7 +892,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
                 자산 {formatKrwExact(snapshot.totalAssets)} · 부채 {formatKrwExact(snapshot.totalDebts)}
               </Typography.Text>
             ) : (
-              <Typography.Text type="secondary">아직 이 월은 확정되지 않았습니다 — 수입 입력 후 '월 확정'을 누르면 스냅샷이 갱신됩니다</Typography.Text>
+              <Typography.Text type="secondary">아직 이 월은 확정되지 않았습니다 — 수입 입력 후 '월 확정'을 누륶면 스냅샷이 갱신됩니다</Typography.Text>
             )}
           </Space>
         </Card>
@@ -830,7 +902,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
           <Typography.Title level={2} id="h-unclassified" style={{ fontSize: 16, margin: 0 }}>미분류 정리</Typography.Title>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            가맹점 하나를 고르면 같은 가맹점 내역 전체에 한 번에 적용됩니다
+            가맹점 하나를 고륵면 같은 가맹점 내역 전체에 한 번에 적용됩니다
           </Typography.Text>
         </div>
         <Card>
@@ -895,15 +967,15 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
                   },
                   { title: "최근 승인", dataIndex: "lastApprovedAt", width: 110, className: "af-mono" },
                   {
-                    title: "카테고리 지정",
-                    width: 170,
+                    title: "대분류 지정",
+                    width: 160,
                     render: (_: unknown, g: UnclassifiedGroup) => (
                       <Select
                         size="small"
                         style={{ width: 150 }}
                         placeholder="선택"
                         value={null}
-                        options={EXPENSE_CATEGORY_OPTIONS}
+                        options={CATEGORY_GROUP_OPTIONS}
                         onChange={(category: string) => void handleAssignMerchant(g, category)}
                         aria-label={`${g.merchantName} 카테고리 지정`}
                       />
@@ -919,14 +991,17 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
       <section aria-labelledby="h-card-imports" style={{ marginBottom: 32 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
           <Typography.Title level={2} id="h-card-imports" style={{ fontSize: 16, margin: 0 }}>가져온 카드내역</Typography.Title>
-          <Button
-            size="small"
-            loading={reclassifying}
-            onClick={() => void handleReclassify()}
-            title="저장된 카드 내역을 가맹점 규칙·키워드로 다시 분류합니다"
-          >
-            카테고리 자동 분류
-          </Button>
+          <Space>
+            <Button size="small" onClick={downloadCsv}>CSV 다운로드</Button>
+            <Button
+              size="small"
+              loading={reclassifying}
+              onClick={() => void handleReclassify()}
+              title="저장된 카드 내역을 가맹점 규칙·키워드로 다시 분류합니다"
+            >
+              카테고리 자동 분류
+            </Button>
+          </Space>
         </div>
         <Card>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
@@ -940,25 +1015,56 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
               카테고리를 바꿔도 목록을 다시 불러오지 않습니다 — 페이지와 스크롤이 그대로 유지됩니다
             </Typography.Text>
           </div>
-          {cardStatus === "ready" && cardCategoryTotals.length > 0 ? (
+          {cardStatus === "ready" && cardSubTotals.length > 0 ? (
             <div style={{ marginBottom: 20 }} aria-label="이 달 카드 카테고리별 합계">
               <Typography.Text strong style={{ display: "block", marginBottom: 8 }}>카테고리별 합계</Typography.Text>
               <Table
                 size="small"
-                rowKey="category"
+                rowKey={(r: { category: string; subCategory: string }) => `${r.category}|${r.subCategory}`}
                 pagination={false}
-                dataSource={cardCategoryTotals}
+                dataSource={cardSubTotals}
                 columns={[
-                  { title: "카테고리", dataIndex: "category" },
-                  { title: "건수", dataIndex: "count", width: 80, align: "right" as const },
-                  { title: "이용금액", dataIndex: "gross", width: 140, align: "right" as const, render: (v: number) => formatKrwExact(v) },
+                  { title: "대분류", dataIndex: "category" },
+                  { title: "세부 분류", dataIndex: "subCategory" },
+                  { title: "건수", dataIndex: "count", width: 70, align: "right" as const },
+                  { title: "이용금액", dataIndex: "gross", width: 130, align: "right" as const, render: (v: number) => formatKrwExact(v) },
                 ]}
                 summary={() => (
-                  <Table.Summary.Row style={{ fontWeight: 600 }}>
-                    <Table.Summary.Cell index={0}>합계</Table.Summary.Cell>
-                    <Table.Summary.Cell index={1} align="right">{(cardRows ?? []).length}건</Table.Summary.Cell>
-                    <Table.Summary.Cell index={2} align="right">{formatKrwExact(cardTotal)}</Table.Summary.Cell>
-                  </Table.Summary.Row>
+                  <Table.Summary>
+                    <Table.Summary.Row style={{ fontWeight: 600 }}>
+                      <Table.Summary.Cell index={0} colSpan={2}>지출 합계 (자산 이동 제외)</Table.Summary.Cell>
+                      <Table.Summary.Cell index={2} align="right">{(cardRows ?? []).filter((r) => !isUnclassified(r.expenseKind) && !isAssetTransferSubCategory(r.subCategory)).length}건</Table.Summary.Cell>
+                      <Table.Summary.Cell index={3} align="right">{formatKrwExact(cardSpendingTotal)}</Table.Summary.Cell>
+                    </Table.Summary.Row>
+                    {cardFixedTotal > 0 ? (
+                      <Table.Summary.Row>
+                        <Table.Summary.Cell index={0} colSpan={2}>└ 고정비</Table.Summary.Cell>
+                        <Table.Summary.Cell index={2} align="right" />
+                        <Table.Summary.Cell index={3} align="right">{formatKrwExact(cardFixedTotal)}</Table.Summary.Cell>
+                      </Table.Summary.Row>
+                    ) : null}
+                    {cardVariableTotal > 0 ? (
+                      <Table.Summary.Row>
+                        <Table.Summary.Cell index={0} colSpan={2}>└ 변동비</Table.Summary.Cell>
+                        <Table.Summary.Cell index={2} align="right" />
+                        <Table.Summary.Cell index={3} align="right">{formatKrwExact(cardVariableTotal)}</Table.Summary.Cell>
+                      </Table.Summary.Row>
+                    ) : null}
+                    {cardAssetTransferTotal > 0 ? (
+                      <Table.Summary.Row>
+                        <Table.Summary.Cell index={0} colSpan={2}>자산 이동 (지출 총합 제외)</Table.Summary.Cell>
+                        <Table.Summary.Cell index={2} align="right" />
+                        <Table.Summary.Cell index={3} align="right">{formatKrwExact(cardAssetTransferTotal)}</Table.Summary.Cell>
+                      </Table.Summary.Row>
+                    ) : null}
+                    {cardUnclassifiedTotal > 0 ? (
+                      <Table.Summary.Row>
+                        <Table.Summary.Cell index={0} colSpan={2}>미분류</Table.Summary.Cell>
+                        <Table.Summary.Cell index={2} align="right" />
+                        <Table.Summary.Cell index={3} align="right">{formatKrwExact(cardUnclassifiedTotal)}</Table.Summary.Cell>
+                      </Table.Summary.Row>
+                    ) : null}
+                  </Table.Summary>
                 )}
               />
             </div>
@@ -994,6 +1100,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
                         {formatKrwExact(visibleCardRows.reduce((acc, r) => acc + r.grossAmount, 0))}
                       </Table.Summary.Cell>
                       <Table.Summary.Cell index={5} />
+                      <Table.Summary.Cell index={6} />
                     </Table.Summary.Row>
                   </Table.Summary>
                 )}
@@ -1004,7 +1111,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
                     <MobileListCardItem key={r.rowKey}>
                       <MobileListCardHeader title={r.merchantName} value={formatKrwExact(r.grossAmount)} />
                       <MobileListCardMeta>
-                        <span className="af-mono">{r.approvedAt}</span> · 공급 {formatKrwExact(r.supplyExVat)} · 부가세 {formatKrwExact(r.vat)} · {r.expenseKind || "미분류"}
+                        <span className="af-mono">{r.approvedAt}</span> · 공급 {formatKrwExact(r.supplyExVat)} · 부가세 {formatKrwExact(r.vat)} · {(r.expenseKind?.trim() || "미분류")}{r.subCategory?.trim() ? `/${r.subCategory.trim()}` : ""}
                       </MobileListCardMeta>
                     </MobileListCardItem>
                   ))}

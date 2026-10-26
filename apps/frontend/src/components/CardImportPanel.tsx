@@ -2,8 +2,15 @@ import { useCallback, useEffect, useState } from "react";
 import { Alert, Button, Card, Select, Space, Table, Typography } from "antd";
 import contractJson from "../../../../samples/card/card-columns.json";
 import { detectCardCompany, inspectContainer, parserFor } from "../lib/card/detect-card.mjs";
-import { getImportedRowKeys, getMerchantRules, submitCardImports, type CardImportRow, type CardImportResult } from "../api/cardImportApi";
-import { EXPENSE_CATEGORY_OPTIONS } from "../data/expenseCategories";
+import {
+  getImportedRowKeys,
+  getMerchantRules,
+  submitCardImports,
+  type CardImportRow,
+  type CardImportResult,
+  type MerchantRule,
+} from "../api/cardImportApi";
+import { CATEGORY_GROUP_OPTIONS, isUnclassified, subCategoryOptions } from "../data/expenseCategories";
 import { formatKrwExact } from "../utils/formatters";
 
 const contract = contractJson as Parameters<typeof detectCardCompany>[1];
@@ -13,7 +20,7 @@ type Phase = "idle" | "parsing" | "review" | "submitting" | "done" | "error";
 /**
  * 스프린트 2 #22: 카드 내역 가져오기 (§29.7 흐름의 React 이관).
  * - 업로드 → 컨테이너 판별(매직 바이트) → 카드사 판별(계약 시그니처) → 파싱 →
- *   가맹점 단위 미리보기(카테고리 선택·자동 분류 제안) → 확정(서버 재검증·저장).
+ *   가맹점 단위 미리보기(대분류·세부 선택·자동 분류 제안) → 확정(서버 재검증·저장).
  * - 암호화 CFB 는 열지 않는다(§29.5.1) — 비밀번호 입력란도 두지 않는다.
  * - 합계는 행에서 재계산. 미분류 가맹점은 어느 합계에도 들어가지 않는다.
  */
@@ -22,12 +29,12 @@ export function CardImportPanel() {
   const [notice, setNotice] = useState("");
   const [errorText, setErrorText] = useState("");
   const [groups, setGroups] = useState<{ merchant: string; count: number; gross: number; rows: CardImportRow[] }[]>([]);
-  const [kinds, setKinds] = useState<Record<string, string>>({});
+  const [rules, setRules] = useState<Record<string, MerchantRule>>({});
   const [dupKeys, setDupKeys] = useState<Set<string>>(new Set());
   const [result, setResult] = useState<CardImportResult | null>(null);
 
   useEffect(() => {
-    // 미리보기에서 건너뛸 이미-임포트 행 키
+    // 미리보기에서 걸러뛸 이미-임포트 행 키
     getImportedRowKeys()
       .then((keys) => setDupKeys(new Set(keys)))
       .catch(() => setDupKeys(new Set()));
@@ -78,18 +85,20 @@ export function CardImportPanel() {
       const list = [...map.entries()].map(([merchant, v]) => ({ merchant, ...v }));
       setGroups(list);
       const merchants = list.map((g) => g.merchant);
-      const initialKinds = Object.fromEntries(merchants.map((m) => [m, ""]));
+      const initialRules: Record<string, MerchantRule> = Object.fromEntries(
+        merchants.map((m) => [m, { category: "", subCategory: "" }]),
+      );
       try {
-        const rules = await getMerchantRules(merchants);
+        const fetched = await getMerchantRules(merchants);
         for (const m of merchants) {
-          if (rules[m]) {
-            initialKinds[m] = rules[m];
+          if (fetched[m]) {
+            initialRules[m] = fetched[m];
           }
         }
       } catch {
         // 규칙 조회 실패 시 미분류 상태로 진행 — 반영은 가능해야 한다.
       }
-      setKinds(initialKinds);
+      setRules(initialRules);
       setPhase("review");
     } catch (e) {
       setErrorText(e instanceof Error ? e.message : "파싱에 실패했습니다.");
@@ -97,21 +106,39 @@ export function CardImportPanel() {
     }
   }, []);
 
+  const setCategory = useCallback((merchant: string, category: string) => {
+    setRules((prev) => {
+      const rule = prev[merchant] ?? { category: "", subCategory: "" };
+      const subOptions = subCategoryOptions(category).map((o) => o.value);
+      const subCategory = subOptions.includes(rule.subCategory) ? rule.subCategory : "";
+      return { ...prev, [merchant]: { category, subCategory } };
+    });
+  }, []);
+
+  const setSubCategory = useCallback((merchant: string, subCategory: string) => {
+    setRules((prev) => {
+      const rule = prev[merchant] ?? { category: "", subCategory: "" };
+      return { ...prev, [merchant]: { ...rule, subCategory } };
+    });
+  }, []);
+
   const confirm = useCallback(async () => {
     setPhase("submitting");
     try {
       const all = groups.flatMap((g) => g.rows);
-      const rules = Object.fromEntries(Object.entries(kinds).filter(([, v]) => v !== ""));
-      const res = await submitCardImports(all, rules);
+      const rulesToSave = Object.fromEntries(
+        Object.entries(rules).filter(([, r]) => !isUnclassified(r.category)),
+      );
+      const res = await submitCardImports(all, rulesToSave);
       setResult(res);
       setPhase("done");
     } catch (e) {
       setErrorText(e instanceof Error ? e.message : "반영에 실패했습니다.");
       setPhase("error");
     }
-  }, [groups, kinds]);
+  }, [groups, rules]);
 
-  const classified = groups.filter((g) => kinds[g.merchant]);
+  const classified = groups.filter((g) => !isUnclassified(rules[g.merchant]?.category));
   const totalGross = classified.reduce((acc, g) => acc + g.gross, 0);
   const skipped = groups.reduce((acc, g) => acc + g.rows.filter((r) => dupKeys.has(r.rowKey)).length, 0);
 
@@ -120,7 +147,7 @@ export function CardImportPanel() {
     setPhase("idle");
     setResult(null);
     setGroups([]);
-    setKinds({});
+    setRules({});
     setErrorText("");
     setNotice("");
     getImportedRowKeys()
@@ -184,18 +211,33 @@ export function CardImportPanel() {
               columns={[
                 { title: "가맹점", dataIndex: "merchant" },
                 { title: "건수", dataIndex: "count", width: 80 },
-                { title: "이용금액 합계", dataIndex: "gross", width: 160, render: (v: number) => formatKrwExact(v) },
+                { title: "이용금액 합계", dataIndex: "gross", width: 140, render: (v: number) => formatKrwExact(v) },
                 {
-                  title: "카테고리",
-                  width: 200,
+                  title: "대분류",
+                  width: 150,
                   render: (_: unknown, g: { merchant: string }) => (
                     <Select
                       size="small"
-                      style={{ width: 180 }}
+                      style={{ width: 140 }}
                       placeholder="미분류"
-                      value={kinds[g.merchant] || null}
-                      onChange={(v: string) => setKinds((prev) => ({ ...prev, [g.merchant]: v }))}
-                      options={EXPENSE_CATEGORY_OPTIONS}
+                      value={rules[g.merchant]?.category || null}
+                      onChange={(v: string) => setCategory(g.merchant, v)}
+                      options={CATEGORY_GROUP_OPTIONS}
+                    />
+                  ),
+                },
+                {
+                  title: "세부 분류",
+                  width: 150,
+                  render: (_: unknown, g: { merchant: string }) => (
+                    <Select
+                      size="small"
+                      style={{ width: 140 }}
+                      placeholder="-"
+                      value={rules[g.merchant]?.subCategory || null}
+                      onChange={(v: string) => setSubCategory(g.merchant, v)}
+                      options={subCategoryOptions(rules[g.merchant]?.category)}
+                      disabled={isUnclassified(rules[g.merchant]?.category)}
                     />
                   ),
                 },
@@ -204,7 +246,7 @@ export function CardImportPanel() {
             <Typography.Text type="secondary">
               분류된 가맹점 {classified.length}곳 · 합계 {formatKrwExact(totalGross)} ·
               미분류 {groups.length - classified.length}곳은 어느 합계에도 들어가지 않습니다 (§29.7)
-              {skipped > 0 ? ` · 이미 임포트된 행 ${skipped}건은 서버가 건너뜁니다 (§29.6)` : ""}
+              {skipped > 0 ? ` · 이미 임포트된 행 ${skipped}건은 서버가 걸너뜁니다 (§29.6)` : ""}
             </Typography.Text>
             <Space>
               <Button type="primary" onClick={confirm}>서버에 반영</Button>

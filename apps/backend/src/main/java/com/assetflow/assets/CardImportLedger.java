@@ -11,9 +11,10 @@ import java.util.Set;
  */
 public interface CardImportLedger {
 
+    /** §55.10: expenseKind = 대분류, subCategory = 세부 분류. */
     record ImportedRow(String rowKey, String approvedAt, String merchantName,
                        long supplyExVat, long vat, long grossAmount,
-                       String cardMasked, String expenseKind) {}
+                       String cardMasked, String expenseKind, String subCategory) {}
 
     /** 미분류 작업함의 가맹점 묶음 (§55.8). */
     record UnclassifiedGroup(String merchantName, int count, long grossTotal,
@@ -32,15 +33,15 @@ public interface CardImportLedger {
     /** rowKey 로 한 행을 찾는다 — 카테고리 수정 API 용 (§55.8). */
     Optional<ImportedRow> find(String rowKey);
 
-    /** 기존 행의 용도구분을 변경한다 (§55.8 일괄 재분류). 변경된 행이 있으면 true. */
-    boolean updateExpenseKind(String rowKey, String expenseKind);
+    /** 기존 행의 대분류·세부를 변경한다 (§55.8 일괄 재분류). 변경된 행이 있으면 true. */
+    boolean updateClassification(String rowKey, String category, String subCategory);
 
-    /** 같은 가맹점의 모든 행을 한 카테고리로 바꾼다 (§55.8 사용자 수정). 변경 건수를 돌려준다. */
-    int updateExpenseKindByMerchant(String merchantName, String expenseKind);
+    /** 같은 가맹점의 모든 행을 한 분류로 바꾼다 (§55.8 사용자 수정). 변경 건수를 돌려준다. */
+    int updateClassificationByMerchant(String merchantName, String category, String subCategory);
 
     /** 미분류 행을 가맹점 단위로 묶어 금액 큰 순으로 돌려준다 (§55.8 작업함). */
     List<UnclassifiedGroup> unclassifiedGroups();
 
     /** 같은 가맹점의 모든 행을 미분류로 되돌린다 (§55.8 되돌리기). 변경 건수를 돌려준다. */
-    int clearExpenseKindByMerchant(String merchantName);
+    int clearClassificationByMerchant(String merchantName);
 }

@@ -13,6 +13,7 @@ This repository tracks planning and execution artifacts for Sprint 1.
 - `.opencode/agent/`: AI subagents (analyst, architect, developer, reviewer, tester)
 - `.opencode/command/`: pipeline entry points — `/feature`, `/review`
 - `.github/workflows/`: automation workflows
+- `docs/category-standard.md`: 가계부 카테고리 기준 (§55.10)
 
 A document's path tells you what belongs in it. Records go into these files
 rather than new ones — see `.ai/project.md` §32 before adding a document.

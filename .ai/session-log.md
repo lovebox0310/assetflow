@@ -10,7 +10,38 @@
 > **이 파일 하나로 부족하다고 새 문서를 만들지 않습니다.** 기록할 곳이 없으면
 > `project.md` 에 다음 장을 추가합니다. 판단 기준은 `project.md` §32 다.
 > 문서의 성격은 **경로**로 구분합니다(§32.2). `.ai/` 루트에 새 파일을 늘리지
-> 말고, 분류가 필요하면 전용 폴더를 만듭니다
+> 말고, 분류가 필요하면 전용 폴드를 만듭니다
+
+---
+
+## 2026-10-26 — 가계부 카테고리 기준 도입 (§55.10)
+
+사용자가 제시한 8개 그룹을 보완해 **9개 대분류 + 세부 분류** 체계로 확정하고
+반영했다. 문서·커밋·배포까지 진행.
+
+### 변경
+
+- `docs/category-standard.md` 신규 — 가계부 카테고리 기준, 보충, 매핑, 출력 규칙
+- `.ai/project.md` §55.10 등록
+- `README.md` 에 `docs/category-standard.md` 색인 추가
+- 백엔드
+  - `CategoryTaxonomy` (9그룹/세부/고정비/자산이동)
+  - `CategoryClassifier` → `Classification(category, subCategory)`
+  - `CategorySeedData` 9그룹 키워드 시드
+  - `CardImportController`, `CardImportLedger`, `MerchantRuleLedger` 대분류+세부 처리
+  - DB 마이그레이션 `2026-10-26-category-groups.sql`, `schema.sql` 에 `sub_category` 컬럼 추가
+- 프론트엔드
+  - `expenseCategories.ts` 9그룹 + 세부 + 고정비/자산이동 헬퍼
+  - `CardImportPanel` 대분류·세부 각각 선택
+  - `ExpensesPage` 대분류/세부 컬럼, 카테고리별 합계(고정비/변동비/자산이동), CSV 다운로드
+- 테스트 갱신: `CardImportApiTest`, `InMemoryCategoryClassifierTest`, `ExpenseSnapshotApiTest`,
+  `cardImportApi.test.ts`, `CardImportPanel.test.tsx`, `ExpensesPage.test.tsx`, `expenseCategories.test.ts`
+
+### 검증
+
+- 백엔드: `./gradlew test bootJar` 통과
+- 프론트엔드: `pnpm typecheck && pnpm lint && pnpm test && pnpm build` 통과
+- 운영: DB 마이그레이션 적용 후 `POST /card-imports/reclassify`로 기존 2,710행 재분류 예정
 
 ---
 
