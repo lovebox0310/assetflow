@@ -77,7 +77,11 @@ public class PostgresCardImportLedger implements CardImportLedger {
                                               supply_ex_vat, vat, gross_amount, card_masked,
                                               expense_kind, sub_category, business_no, business_category)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT (user_id, row_key) DO NOTHING
+                    ON CONFLICT (user_id, row_key) DO UPDATE SET
+                        business_no = EXCLUDED.business_no,
+                        business_category = EXCLUDED.business_category,
+                        updated_at = now()
+                    WHERE card_imports.business_no IS NULL OR card_imports.business_no = ''
                     """, userId, r.rowKey(), Date.valueOf(r.approvedAt()), r.merchantName(),
                     r.supplyExVat(), r.vat(), r.grossAmount(), r.cardMasked(),
                     r.expenseKind(), r.subCategory(), r.businessNo(), r.businessCategory());
