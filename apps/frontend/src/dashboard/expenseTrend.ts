@@ -1,5 +1,6 @@
 import { CATEGORY_GROUPS } from "../data/expenseCategories";
 import type { MonthlyCategoryTotal } from "../api/cardImportApi";
+import type { MonthlyIncome } from "../api/dashboardApi";
 
 /**
  * 대시보드 지출 추이(스택 막대) 데이터 준비.
@@ -68,19 +69,31 @@ export function lastMonthsRange(months: number, today = new Date()): { from: str
 }
 
 export interface TrendSeries {
-  /** 빈 달까지 채운 월별 행. 값은 카테고리 이름 키. */
-  points: Array<Record<string, string | number>>;
+  /** 빈 달까지 채운 월별 행. 값은 카테고리 이름 키 + `income`. */
+  points: Array<Record<string, string | number | null>>;
   /** 범례/막대 순서 — 기준 분류 9개 먼저, 그다음 미분류·기타. */
   categories: string[];
   /** 범위 전체의 카테고리별 합계(범례 표시용). */
   totals: Record<string, number>;
+  /** 수입이 확정된 달 수 — points.length 보다 작으면 미확정 달이 섞여 있다. */
+  incomeMonths: number;
+  /** 범위 전체 수입 합계(확정 달만). */
+  incomeTotal: number;
 }
 
 /**
  * 서버 집계 행을 차트 데이터로 바꾼다.
  * 행이 없는 달은 0 으로 채워 X축이 끊기지 않게 한다.
+ *
+ * §57.8: 수입은 확정된 달만 값이 있고, 미확정 달은 `null` 이다 —
+ * 0 으로 채우면 "그 달 수입이 없었다"는 잘못된 인상을 준다(§34.6).
  */
-export function buildExpenseTrend(rows: MonthlyCategoryTotal[], from: string, to: string): TrendSeries {
+export function buildExpenseTrend(
+  rows: MonthlyCategoryTotal[],
+  from: string,
+  to: string,
+  incomeRows: MonthlyIncome[] = [],
+): TrendSeries {
   const months = monthsBetween(from, to);
   const sums = new Map<string, Map<string, number>>();
 
@@ -91,6 +104,12 @@ export function buildExpenseTrend(rows: MonthlyCategoryTotal[], from: string, to
     const perMonth = sums.get(month) ?? new Map<string, number>();
     perMonth.set(row.category, (perMonth.get(row.category) ?? 0) + amount);
     sums.set(month, perMonth);
+  }
+
+  const incomeByMonth = new Map<string, number>();
+  for (const row of incomeRows) {
+    if (!months.includes(row.month)) continue;
+    incomeByMonth.set(row.month, Number(row.income) || 0);
   }
 
   const seen = new Set<string>();
@@ -112,7 +131,11 @@ export function buildExpenseTrend(rows: MonthlyCategoryTotal[], from: string, to
   for (const category of categories) totals[category] = 0;
 
   const points = months.map((month) => {
-    const point: Record<string, string | number> = { month };
+    const point: Record<string, string | number | null> = {
+      month,
+      // 확정된 달만 숫자, 미확정 달은 null — 차트가 수입 막대를 그리지 않는다.
+      income: incomeByMonth.get(month) ?? null,
+    };
     const perMonth = sums.get(month);
     for (const category of categories) {
       const value = perMonth?.get(category) ?? 0;
@@ -122,7 +145,15 @@ export function buildExpenseTrend(rows: MonthlyCategoryTotal[], from: string, to
     return point;
   });
 
-  return { points, categories, totals };
+  const incomeTotal = [...incomeByMonth.values()].reduce((acc, v) => acc + v, 0);
+
+  return {
+    points,
+    categories,
+    totals,
+    incomeMonths: incomeByMonth.size,
+    incomeTotal,
+  };
 }
 
 /** "2026-03" → "26.03" (X축 라벨). */

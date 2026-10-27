@@ -12,7 +12,13 @@ import { StandardNav } from "../layout/StandardNav";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
 import { MetricCard } from "../components/MetricCard";
 import type { DashboardData } from "../data/dashboardMock";
-import { fetchCashflow, fetchDashboardSummary, type CashflowRow } from "../api/dashboardApi";
+import {
+  fetchCashflow,
+  fetchDashboardSummary,
+  fetchMonthlyIncome,
+  type CashflowRow,
+  type MonthlyIncome,
+} from "../api/dashboardApi";
 import {
   assetComposition,
   cashAccountCount,
@@ -75,6 +81,8 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
   // §57: 지출 추이 — 년월 범위로 조회. 기본은 최근 12개월.
   const [trendRange, setTrendRange] = useState<{ from: string; to: string }>(DEFAULT_TREND_RANGE);
   const [trend, setTrend] = useState<MonthlyCategoryTotal[] | null>(null);
+  // §57.8: 수입 막대용 확정 월 수입. 실패해도 지출 차트는 그대로 그린다(막대만 빠진다).
+  const [income, setIncome] = useState<MonthlyIncome[]>([]);
   const [trendStatus, setTrendStatus] = useState<SurfaceStatus>("loading");
   const [trendError, setTrendError] = useState("");
   const [trendRangeNotice, setTrendRangeNotice] = useState("");
@@ -86,10 +94,14 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
   const loadTrend = useCallback((from: string, to: string) => {
     setTrendStatus("loading");
     setTrendError("");
-    listMonthlyCategoryTotals(from, to)
-      .then((rows) => {
+    // §57.8: 수입 조회 실패는 지출 추이를 막지 않는다 — 막대 하나가 빠질 뿐이다.
+    const incomeRequest = fetchMonthlyIncome(from, to).catch(() => [] as MonthlyIncome[]);
+    Promise.all([listMonthlyCategoryTotals(from, to), incomeRequest])
+      .then(([rows, incomeRows]) => {
         setTrend(rows);
-        setTrendStatus(rows.length === 0 ? "empty" : "ready");
+        setIncome(incomeRows);
+        // 지출도 수입도 없는 달만 있으면 빈 상태 — 수입만 있는 달도 차트에 그린다.
+        setTrendStatus(rows.length === 0 && incomeRows.length === 0 ? "empty" : "ready");
       })
       .catch((e: Error) => {
         setTrendStatus("error");
@@ -130,7 +142,7 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
     loadTrend(DEFAULT_TREND_RANGE.from, DEFAULT_TREND_RANGE.to);
   }, [load, loadTrend]);
 
-  const trendSeries = trend ? buildExpenseTrend(trend, trendRange.from, trendRange.to) : null;
+  const trendSeries = trend ? buildExpenseTrend(trend, trendRange.from, trendRange.to, income) : null;
 
   const handleLogout = () => {
     clearToken();
@@ -326,7 +338,7 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
           지출 추이
         </Typography.Title>
         <Typography.Text type="secondary" style={{ display: "block", marginTop: -8, marginBottom: 16, fontSize: 13 }}>
-          카드내역 + 고정/정기 항목 · 자산 이동(저축/투자) 제외
+          카드내역 + 고정/정기 항목 · 자산 이동(저축/투자) 제외 · 수입은 확정된 달만
         </Typography.Text>
         <Card>
           <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>

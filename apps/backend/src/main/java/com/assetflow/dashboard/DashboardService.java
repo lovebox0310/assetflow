@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * 대시보드 API 3종(§25)의 서비스 계층. §31.1 단일 출처: 자산·부채 행은
@@ -26,6 +27,11 @@ public class DashboardService {
                                    List<LiabilityRow> liabilities, MonthlySummary monthly) {}
 
     public record Me(Long id, String email, String displayName) {}
+
+    /** §57.8: 월별 확정 수입 — 지출 추이 차트의 수입 막대용. */
+    public record MonthlyIncome(String month, long income) {}
+
+    private static final Pattern MONTH_PATTERN = Pattern.compile("\\d{4}-(0[1-9]|1[0-2])");
 
     private final AssetLedger ledger;
     private final ExpenseSnapshotLedger snapshotLedger;
@@ -79,5 +85,35 @@ public class DashboardService {
         }
         List<CashflowMonth> all = MockDashboardSource.cashflow();
         return all.subList(0, Math.min(months, all.size()));
+    }
+
+    /**
+     * §57.8: from~to(YYYY-MM, 양끝 포함) 월별 확정 수입.
+     *
+     * <p>스냅샷이 있는 달만 돌려준다 — 미확정 달을 0 으로 채우면 "수입이 없었다"는
+     * 잘못된 인상을 준다(§34.6). 범위 규칙은 지출 추이와 같다: from<=to, 36개월 이하.
+     */
+    public List<MonthlyIncome> monthlyIncome(String from, String to) {
+        if (!MONTH_PATTERN.matcher(from).matches() || !MONTH_PATTERN.matcher(to).matches()) {
+            throw new IllegalArgumentException("from/to must be YYYY-MM");
+        }
+        if (from.compareTo(to) > 0) {
+            throw new IllegalArgumentException("from must be earlier than or equal to to");
+        }
+        if (monthCountInclusive(from, to) > 36) {
+            throw new IllegalArgumentException("range must be 36 months or fewer");
+        }
+        return snapshotLedger.between(from, to).stream()
+                .map(s -> new MonthlyIncome(s.month(), s.income()))
+                .toList();
+    }
+
+    /** 양끝 월을 포함한 개월 수 — 추이 범위 상한(36)을 지출 집계와 같은 규칙으로 센다. */
+    private static int monthCountInclusive(String from, String to) {
+        int fromYear = Integer.parseInt(from.substring(0, 4));
+        int fromMonth = Integer.parseInt(from.substring(5, 7));
+        int toYear = Integer.parseInt(to.substring(0, 4));
+        int toMonth = Integer.parseInt(to.substring(5, 7));
+        return (toYear - fromYear) * 12 + (toMonth - fromMonth) + 1;
     }
 }

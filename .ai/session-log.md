@@ -14,7 +14,48 @@
 
 ---
 
+## 2026-10-27 — 삼성 업종 기반 자동 분류 (§55.8.9)
+
+삼성 명세서의 `업종`(한식·주유소·약국 등)을 가맹점명 키워드 다음의 **3순위 fallback** 으로
+연결했다. 사용자 규칙·가맹점명 키워드를 덮지 않는다. (결정 근거: project.md §55.8.9)
+
+- 백엔드
+  - `BusinessCategoryHints` — 업종 → 대분류/세부 표. 긴 키워드 우선, PG/온라인거래/통신판매/면세 등 제외
+  - `CategoryClassifier.classify(merchant, businessCategory)` 기본 메서드 — 규칙 > 키워드 > 업종
+  - `CardImportController` — 미리보기 제안(`businessCategories`), 저장, `reclassify` 에 업종 전달
+  - 테스트: `BusinessCategoryHintsTest` + `CardImportApiTest` 6건
+- 프론트엔드
+  - `getMerchantRules(merchants, businessCategories)` — 가맹점별 업종을 함께 전송
+  - `CardImportPanel` — 가맹점의 첫 비어 있지 않은 업종을 모아 전달
+  - 테스트: API 본문 + 삼성 샘플 미리보기 업종 전달
+- 계약: `samples/card/card-columns.json` 의 `businessCategory` 설명을 3순위 fallback 으로 수정
+- 버그 수정: 파서 기본값 `expenseKind="unclassified"` 가 자동 분류를 덮어쓰던 문제 — `submit()` 에서 빈 값으로 정규화
+- 검증: `./gradlew test`, `pnpm typecheck`·`lint`·`test`(166)·`build` 통과
+- 주의: 기존 행에 소급하려면 지출 화면의 **카테고리 자동 분류** 버튼(reclassify)을 한 번 실행한다
+
+---
+
 ## 2026-10-27 — 대시보드 지출 추이 (월별 대분류 스택 막대)
+
+### 2026-10-27 (추가) — 수입 | 지출 두 막대 (§57.8)
+
+지출 스택 막대 옆에 확정 월의 **수입 막대**를 붙였다. 미확정 달은 수입 막대를 0 원으로
+채우지 않고 비운다. (결정 근거: project.md §57.8 — §57.7 보류를 대체)
+
+- 백엔드
+  - `ExpenseSnapshotLedger.between(from, to)` — 기간 내 스냅샷(오래된 월부터. InMemory/Postgres)
+  - `DashboardService.monthlyIncome(from, to)` — `from<=to`·36개월 검증, 확정 달만 반환
+  - `GET /api/v1/dashboard/monthly-income?from&to`
+  - 테스트: `monthlyIncomeReturnsOnlyConfirmedMonthsOldestFirst`,
+    `monthlyIncomeKeepsZeroIncomeAsConfirmedMonth`, `monthlyIncomeRejectsBadRange`
+- 프론트엔드
+  - `dashboardApi.fetchMonthlyIncome(from, to)`
+  - `buildExpenseTrend(..., incomeRows)` — `point.income`(미확정 `null`), `incomeMonths`, `incomeTotal`
+  - `ExpenseTrendChart` — 수입 `Bar` + 지출 스택 `Bar` 그룹, 수입 범례/미확정 개월 안내
+  - `DashboardPage` — 지출 집계와 같은 범위로 1회 조회. 수입 조회 실패는 지출 차트를 막지 않는다
+  - 테스트: `buildExpenseTrend` 수입 매핑 + `DashboardPage` 수입 범례/폴다운
+- 검증: `pnpm typecheck`·`lint`·`test`(164) 통과, `./gradlew test` 통과
+- 주의: 새 API 가 있으므로 **BE 를 먼저 재배포**해야 FE 수입 막대가 나타난다
 
 ### 2026-10-27 (추가) — 고정/정기 지출도 추이에 포함 (2번 형식)
 

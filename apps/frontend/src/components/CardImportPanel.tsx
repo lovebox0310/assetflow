@@ -85,11 +85,20 @@ export function CardImportPanel() {
       const list = [...map.entries()].map(([merchant, v]) => ({ merchant, ...v }));
       setGroups(list);
       const merchants = list.map((g) => g.merchant);
+      // §55.8.9: 가맹점 대표 업종(첫 비어 있지 않은 값)을 자동 분류 3순위 힌트로 보낸다.
+      const businessCategories = Object.fromEntries(
+        list
+          .map((g) => [
+            g.merchant,
+            g.rows.find((r) => r.businessCategory?.trim())?.businessCategory?.trim() ?? "",
+          ] as const)
+          .filter(([, businessCategory]) => businessCategory !== ""),
+      );
       const initialRules: Record<string, MerchantRule> = Object.fromEntries(
         merchants.map((m) => [m, { category: "", subCategory: "" }]),
       );
       try {
-        const fetched = await getMerchantRules(merchants);
+        const fetched = await getMerchantRules(merchants, businessCategories);
         for (const m of merchants) {
           if (fetched[m]) {
             initialRules[m] = fetched[m];

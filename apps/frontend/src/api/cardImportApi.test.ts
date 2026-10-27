@@ -60,6 +60,19 @@ describe("cardImportApi (§55.10)", () => {
     expect(result["스타벅스"]).toEqual(rule);
   });
 
+  it("가맹점 업종을 함께 보내 업종 기반 자동 분류 제안을 받는다 (§55.8.9)", async () => {
+    saveToken("tok", Date.now() + 60_000);
+    const fetchMock = stubFetch({ 알수없는가맹점: { category: "식비", subCategory: "외식" } });
+
+    await getMerchantRules(["알수없는가맹점"], { 알수없는가맹점: "한식" });
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({
+      merchants: ["알수없는가맹점"],
+      businessCategories: { 알수없는가맹점: "한식" },
+    });
+  });
+
   it("반영 요청에는 행과 merchantRules(대분류+세부)를 실어 본다", async () => {
     saveToken("tok", Date.now() + 60_000);
     const fetchMock = stubFetch({ stored: 1 });
