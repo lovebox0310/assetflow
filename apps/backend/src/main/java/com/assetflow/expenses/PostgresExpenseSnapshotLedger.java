@@ -31,6 +31,7 @@ public class PostgresExpenseSnapshotLedger implements ExpenseSnapshotLedger {
                 rs.getLong("total_assets"),
                 rs.getLong("total_debts"),
                 rs.getLong("income"),
+                rs.getLong("vat_set_aside"),
                 rs.getLong("expenses"),
                 rs.getObject("essential_expenses") == null ? 0 : rs.getLong("essential_expenses"),
                 rs.getBoolean("essential_complete"));
@@ -38,7 +39,7 @@ public class PostgresExpenseSnapshotLedger implements ExpenseSnapshotLedger {
 
     public Snapshot get(String month) {
         List<Snapshot> rows = jdbc.query("""
-                SELECT snapshot_month, total_assets, total_debts, income, expenses,
+                SELECT snapshot_month, total_assets, total_debts, income, vat_set_aside, expenses,
                        essential_expenses, essential_complete
                 FROM monthly_snapshots WHERE user_id = ? AND snapshot_month = ?
                 """, PostgresExpenseSnapshotLedger::map, userId, month);
@@ -47,7 +48,7 @@ public class PostgresExpenseSnapshotLedger implements ExpenseSnapshotLedger {
 
     public List<Snapshot> recent(String asOf, int months) {
         return jdbc.query("""
-                SELECT snapshot_month, total_assets, total_debts, income, expenses,
+                SELECT snapshot_month, total_assets, total_debts, income, vat_set_aside, expenses,
                        essential_expenses, essential_complete
                 FROM monthly_snapshots
                 WHERE user_id = ? AND snapshot_month <= ?
@@ -58,7 +59,7 @@ public class PostgresExpenseSnapshotLedger implements ExpenseSnapshotLedger {
 
     public List<Snapshot> between(String from, String to) {
         return jdbc.query("""
-                SELECT snapshot_month, total_assets, total_debts, income, expenses,
+                SELECT snapshot_month, total_assets, total_debts, income, vat_set_aside, expenses,
                        essential_expenses, essential_complete
                 FROM monthly_snapshots
                 WHERE user_id = ? AND snapshot_month BETWEEN ? AND ?
@@ -69,17 +70,18 @@ public class PostgresExpenseSnapshotLedger implements ExpenseSnapshotLedger {
     public void upsert(Snapshot s) {
         jdbc.update("""
                 INSERT INTO monthly_snapshots (user_id, snapshot_month, total_assets, total_debts,
-                                              income, expenses, essential_expenses, essential_complete)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                              income, vat_set_aside, expenses, essential_expenses, essential_complete)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (user_id, snapshot_month) DO UPDATE SET
                     total_assets = EXCLUDED.total_assets,
                     total_debts = EXCLUDED.total_debts,
                     income = EXCLUDED.income,
+                    vat_set_aside = EXCLUDED.vat_set_aside,
                     expenses = EXCLUDED.expenses,
                     essential_expenses = EXCLUDED.essential_expenses,
                     essential_complete = EXCLUDED.essential_complete,
                     updated_at = now()
                 """, userId, s.month(), s.totalAssets(), s.totalDebts(),
-                s.income(), s.expenses(), s.essentialExpenses(), s.essentialComplete());
+                s.income(), s.vatSetAside(), s.expenses(), s.essentialExpenses(), s.essentialComplete());
     }
 }

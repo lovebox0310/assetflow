@@ -76,13 +76,15 @@ describe("expenseTrend — 월별 지출 추이 계산", () => {
   it("buildExpenseTrend: 행이 없으면 빈 포인트·범례", () => {
     const series = buildExpenseTrend([], "2026-01", "2026-03");
     expect(series.points).toEqual([
-      { month: "2026-01", income: null },
-      { month: "2026-02", income: null },
-      { month: "2026-03", income: null },
+      { month: "2026-01", income: null, vatSetAside: null },
+      { month: "2026-02", income: null, vatSetAside: null },
+      { month: "2026-03", income: null, vatSetAside: null },
     ]);
     expect(series.categories).toEqual([]);
     expect(series.incomeMonths).toBe(0);
     expect(series.incomeTotal).toBe(0);
+    expect(series.disposableIncomeTotal).toBe(0);
+    expect(series.vatSetAsideTotal).toBe(0);
   });
 
   it("buildExpenseTrend: 확정 월 수입은 숫자, 미확정 월은 null 로 남긴다 (§57.8)", () => {
@@ -91,19 +93,24 @@ describe("expenseTrend — 월별 지출 추이 계산", () => {
       "2026-01",
       "2026-03",
       [
-        { month: "2026-01", income: 8_000_000 },
-        { month: "2026-02", income: 0 },
+        { month: "2026-01", income: 8_000_000, vatSetAside: 800_000, disposableIncome: 7_200_000 },
+        { month: "2026-02", income: 0, vatSetAside: 0, disposableIncome: 0 },
         // 2026-03 은 미확정 — 행이 없다
         // 범위 밖(2025-12)은 무시한다
-        { month: "2025-12", income: 1_000_000 },
+        { month: "2025-12", income: 1_000_000, vatSetAside: 100_000, disposableIncome: 900_000 },
       ],
     );
-    expect(series.points[0]?.["income"]).toBe(8_000_000);
+    expect(series.points[0]?.["income"]).toBe(7_200_000);
+    expect(series.points[0]?.["vatSetAside"]).toBe(800_000);
     // 확정된 0 원은 null 과 구분한다 — "수입이 없었다"와 "모른다"는 다르다.
     expect(series.points[1]?.["income"]).toBe(0);
+    expect(series.points[1]?.["vatSetAside"]).toBe(0);
     expect(series.points[2]?.["income"]).toBeNull();
+    expect(series.points[2]?.["vatSetAside"]).toBeNull();
     expect(series.incomeMonths).toBe(2);
     expect(series.incomeTotal).toBe(8_000_000);
+    expect(series.disposableIncomeTotal).toBe(7_200_000);
+    expect(series.vatSetAsideTotal).toBe(800_000);
   });
 
   it("formatMonthTick: YYYY-MM → YY.MM", () => {

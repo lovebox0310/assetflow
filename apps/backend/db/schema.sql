@@ -73,13 +73,14 @@ CREATE TABLE monthly_snapshots (
     total_assets       BIGINT NOT NULL DEFAULT 0,  -- Σ asset_accounts.balance WHERE is_debt = FALSE
     total_debts        BIGINT NOT NULL DEFAULT 0,  -- Σ asset_accounts.balance WHERE is_debt = TRUE
     income             BIGINT NOT NULL DEFAULT 0,  -- 공급가액 기준 월 총수입
+    vat_set_aside      BIGINT NOT NULL DEFAULT 0,  -- 부가세통장 적립 이체(지출 아님)
     expenses           BIGINT NOT NULL DEFAULT 0,  -- 월 총지출(필수+선택 전부)
     essential_expenses BIGINT,                     -- 월 필수지출 — 미확정이면 NULL
     essential_complete BOOLEAN NOT NULL DEFAULT TRUE,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT ck_monthly_snapshots_negatives
-        CHECK (total_assets >= 0 AND total_debts >= 0 AND expenses >= 0),
+        CHECK (total_assets >= 0 AND total_debts >= 0 AND expenses >= 0 AND vat_set_aside >= 0),
     CONSTRAINT uq_monthly_snapshots_user_month UNIQUE (user_id, snapshot_month)  -- user+월 1행: 중복 스냅샷은 UPDATE
 );
 

@@ -117,6 +117,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
   const [cardError, setCardError] = useState("");
   const [snapshot, setSnapshot] = useState<MonthSnapshot | null>(null);
   const [income, setIncome] = useState<number | null>(null);
+  const [vatSetAside, setVatSetAside] = useState<number | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [notice, setNotice] = useState("");
   const [cardLimit, setCardLimit] = useState(20);
@@ -286,7 +287,10 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
     getSnapshot(month)
       .then((data) => {
         setSnapshot(data);
-        if (data) setIncome(data.income);
+        if (data) {
+          setIncome(data.income);
+          setVatSetAside(data.vatSetAside ?? 0);
+        }
       })
       .catch(() => setSnapshot(null));
   }, [month]);
@@ -456,7 +460,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
     setConfirming(true);
     setNotice("");
     try {
-      const snap = await confirmMonth(month, income ?? 0);
+      const snap = await confirmMonth(month, income ?? 0, vatSetAside ?? 0);
       setSnapshot(snap);
     } catch (e: unknown) {
       setNotice(e instanceof Error ? e.message : "월 확정에 실패했습니다.");
@@ -941,13 +945,22 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
                 onChange={(v) => setIncome(v)}
                 style={{ width: 160 }}
               />
+              <InputNumber
+                aria-label="부가세통장 이체"
+                min={0}
+                value={vatSetAside}
+                onChange={(v) => setVatSetAside(v)}
+                style={{ width: 160 }}
+              />
               <Button type="primary" loading={confirming} onClick={() => void handleConfirm()}>
                 월 확정
               </Button>
             </Space>
             {snapshot ? (
               <Typography.Text type="secondary">
-                확정됨 {snapshot.month} — 지출 {formatKrwExact(snapshot.expenses)} ·
+                확정됨 {snapshot.month} — 부가세통장 {formatKrwExact(snapshot.vatSetAside)} ·
+                지출 {formatKrwExact(snapshot.expenses)} ·
+                수지 {formatKrwExact(snapshot.balance)} ·
                 필수 {formatKrwExact(snapshot.essentialExpenses)} ·
                 자산 {formatKrwExact(snapshot.totalAssets)} · 부채 {formatKrwExact(snapshot.totalDebts)}
               </Typography.Text>

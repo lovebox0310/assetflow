@@ -186,7 +186,7 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
             title="월 수지"
             status={summaryStatus}
             onRetry={load}
-            hint={dataReady ? `수입 ${formatKrwAbbr(summary.monthly.income)} · 지출 ${formatKrwAbbr(summary.monthly.expenses)}` : undefined}
+            hint={dataReady ? `수입 ${formatKrwAbbr(summary.monthly.income)} · 부가세 ${formatKrwAbbr(summary.monthly.vatSetAside)} · 지출 ${formatKrwAbbr(summary.monthly.expenses)}` : undefined}
           >
             {dataReady ? formatSignedKrw(monthlyBalance(summary)) : "—"}
           </MetricCard>
@@ -263,7 +263,7 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
                   type="secondary"
                   style={{ marginTop: 0, marginBottom: 12 }}
                 >
-                  수지 = 그 달 수입 − 그 달 지출입니다. 이전 달 수지를 더하지 않습니다.
+                  수지 = 그 달 수입 − 부가세통장 이체 − 그 달 지출입니다. 이전 달 수지를 더하지 않습니다.
                 </Typography.Paragraph>
                 {wide ? (
                   <table aria-labelledby="h-cashflow" style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -271,16 +271,18 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
                       <tr>
                         <th scope="col" style={{ textAlign: "left", paddingBottom: 8 }}>월</th>
                         <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>수입</th>
+                        <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>부가세통장</th>
                         <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>지출</th>
                         <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>수지</th>
                       </tr>
                     </thead>
                     <tbody>
                       {cashflowRows.map((row) =>
-                        row.confirmed && row.income !== null && row.expenses !== null && row.balance !== null ? (
+                        row.confirmed && row.income !== null && row.vatSetAside !== null && row.expenses !== null && row.balance !== null ? (
                           <tr key={row.month}>
                             <td style={{ paddingBottom: 6 }}>{row.month}</td>
                             <td style={{ textAlign: "right" }}>{formatKrwAbbr(row.income)}</td>
+                            <td style={{ textAlign: "right" }}>{formatKrwAbbr(row.vatSetAside)}</td>
                             <td style={{ textAlign: "right" }}>{formatKrwAbbr(row.expenses)}</td>
                             <td style={{ textAlign: "right" }}>{formatSignedKrw(row.balance)}</td>
                           </tr>
@@ -288,7 +290,7 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
                           <tr key={row.month}>
                             <td style={{ paddingBottom: 6 }}>{row.month}</td>
                             <td
-                              colSpan={3}
+                              colSpan={4}
                               style={{ textAlign: "right", color: "var(--af-muted-foreground)" }}
                             >
                               미확정
@@ -302,7 +304,7 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
                   <div>
                     {cashflowRows.map((row) => (
                       <MobileListCardItem key={row.month}>
-                        {row.confirmed && row.income !== null && row.expenses !== null && row.balance !== null ? (
+                        {row.confirmed && row.income !== null && row.vatSetAside !== null && row.expenses !== null && row.balance !== null ? (
                           <>
                             <MobileListCardHeader
                               title={row.month}
@@ -315,6 +317,7 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
                               }}
                             >
                               <span>수입 {formatKrwAbbr(row.income)}</span>
+                              <span>부가세 {formatKrwAbbr(row.vatSetAside)}</span>
                               <span>지출 {formatKrwAbbr(row.expenses)}</span>
                             </MobileListCardMeta>
                           </>
