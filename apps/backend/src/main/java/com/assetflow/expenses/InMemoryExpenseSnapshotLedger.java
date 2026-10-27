@@ -30,6 +30,15 @@ public class InMemoryExpenseSnapshotLedger implements ExpenseSnapshotLedger {
         }
     }
 
+    public List<Snapshot> between(String from, String to) {
+        synchronized (rows) {
+            return rows.values().stream()
+                    .filter(s -> s.month().compareTo(from) >= 0 && s.month().compareTo(to) <= 0)
+                    .sorted((a, b) -> a.month().compareTo(b.month()))
+                    .toList();
+        }
+    }
+
     public void upsert(Snapshot snapshot) {
         synchronized (rows) {
             rows.put(snapshot.month(), snapshot);

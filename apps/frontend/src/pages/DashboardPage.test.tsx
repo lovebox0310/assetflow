@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { DashboardPage } from "./DashboardPage";
 import { clearInflight } from "../api/client";
 import { clearToken, isAuthenticated, saveToken } from "../auth/authStore";
@@ -52,6 +52,10 @@ function route(path: string): Response | Promise<Response> {
       { month: monthKey(1), category: "식비", gross: 900_000 },
       { month: monthKey(1), category: "미분류", gross: 10_000 },
     ]);
+  }
+  // §57.8: 수입 막대 — 최근 달은 확정, 그 이전 달은 미확정(행 없음)
+  if (path.includes("/dashboard/monthly-income")) {
+    return apiResponse([{ month: monthKey(0), income: 8_200_000 }]);
   }
   return apiResponse({}, false, 500);
 }
@@ -240,5 +244,32 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     expect(screen.getByRole("heading", { name: "지출 추이" })).toBeDefined();
     await waitFor(() => expect(screen.getByLabelText("지출 추이 범례")).toBeDefined());
     expect(screen.getByText("미분류")).toBeDefined();
+
+    // §57.8: 같은 범위로 확정 수입을 1회 더 조회한다 (막대 2개: 수입 | 지출 스택)
+    const incomeCalls = fetchMock.mock.calls.filter((c) =>
+      String(c[0]).includes("/dashboard/monthly-income"),
+    );
+    expect(incomeCalls.length).toBe(1);
+    const incomeUrl = String(incomeCalls[0]?.[0] ?? "");
+    expect(incomeUrl).toContain(`to=${monthKey(0)}`);
+    expect(incomeUrl).toContain(`from=${monthKey(11)}`);
+
+    const legend = screen.getByLabelText("지출 추이 범례");
+    expect(within(legend).getByText("수입")).toBeDefined();
+    expect(within(legend).getByText("식비")).toBeDefined();
+    // 미확정 달은 수입 막대를 0 으로 채우지 않는다고 화면에 적는다
+    expect(screen.getByText(/수입 막대는 확정된 1개월만 표시합니다/)).toBeDefined();
+  });
+
+  it("수입 조회가 실패해도 지출 추이는 그려진다 (§57.8 폴다운)", async () => {
+    stubFetch((path) =>
+      path.includes("/dashboard/monthly-income") ? apiResponse(null, false, 500) : route(path),
+    );
+    render(<DashboardPage onLogout={() => {}} />);
+
+    const legend = await screen.findByLabelText("지출 추이 범례");
+    expect(within(legend).getByText("식비")).toBeDefined();
+    // 수입 데이터가 없으면 수입 범례/막대를 만들지 않는다 — 0 원 막대를 지어내지 않는다.
+    expect(within(legend).queryByText("수입")).toBeNull();
   });
 });

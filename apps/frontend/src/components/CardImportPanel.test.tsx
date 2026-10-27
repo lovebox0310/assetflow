@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 // fs 는 쓰지 않는다 — vitest 의 cwd 가 실행 환경마다 달라진다. Vite 변환 파이프라인으로 읽는다.
 import contractJson from "../../../../samples/card/card-columns.json";
 import hyundaiCsv from "../../../../samples/card/anonymized/hyundaicard-personal-anon.csv?raw";
+import samsungCsv from "../../../../samples/card/anonymized/samsungcard-personal-anon.csv?raw";
 import { CardImportPanel } from "./CardImportPanel";
 import { clearInflight } from "../api/client";
 import { detectCardCompany, inspectContainer } from "../lib/card/detect-card.mjs";
@@ -16,6 +17,7 @@ import { clearToken, saveToken } from "../auth/authStore";
 
 // 실제 익명화 샘플/계약 — Vite ?raw 로 문자열/JSON 주입
 const HYUNDAI_TEXT = hyundaiCsv as unknown as string;
+const SAMSUNG_TEXT = samsungCsv as unknown as string;
 const CONTRACT = contractJson as unknown as Parameters<typeof detectCardCompany>[1];
 
 function apiResponse(data: unknown, ok = true, status = 200): Response {
@@ -136,6 +138,22 @@ describe("CardImportPanel (§29.7 흐름 이관)", () => {
 
     // 샘플에 존재하는 가맹점에 대해 모킹된 규칙 값이 화면에 노출된다
     await screen.findByText("사업비용");
+  });
+
+  it("삼성카드 업종을 가맹점 자동 분류 힌트로 함께 보낸다 (§55.8.9)", async () => {
+    render(<CardImportPanel />);
+    chooseFile(SAMSUNG_TEXT);
+
+    await screen.findByText("합성한식당");
+
+    const rulesCall = fetchMock.mock.calls.find(
+      (c) => String(c[0]).includes("/card-imports/merchant-rules") && c[1]?.method === "POST",
+    );
+    if (!rulesCall) throw new Error("merchant-rules POST 없음");
+    const sent = JSON.parse(String(rulesCall[1].body));
+    expect(sent.businessCategories["합성한식당"]).toBe("한식");
+    // PG/온라인거래 업종도 그대로 보낸다 — 분류 여부는 서버가 판단한다.
+    expect(sent.businessCategories["합성쇼핑몰"]).toBe("PG_일반인증");
   });
 
   it("저장된 규칙이 없는 가맹점도 키워드 자동 분류 결과가 미리보기에 채워진다 (§55.8)", async () => {
