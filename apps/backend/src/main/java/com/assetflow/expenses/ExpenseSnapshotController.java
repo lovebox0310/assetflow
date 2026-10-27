@@ -43,7 +43,12 @@ public class ExpenseSnapshotController {
         this.portfolioService = portfolioService;
     }
 
-    public record IncomeBody(Long income) {}
+    /**
+     * 월 확정 요청 본문(§57.9).
+     * @param income 세전 월 총수입
+     * @param vatSetAside 부가세통장 적립 이체(지출 아님)
+     */
+    public record IncomeBody(Long income, Long vatSetAside) {}
 
     private String requireMonth(String month) {
         if (month == null || !MONTH.matcher(month).matches()) {
@@ -64,6 +69,10 @@ public class ExpenseSnapshotController {
         if (body.income() == null || body.income() < 0) {
             throw new IllegalArgumentException("income must be a non-negative integer");
         }
+        long vatSetAside = body.vatSetAside() == null ? 0 : body.vatSetAside();
+        if (vatSetAside < 0 || vatSetAside > body.income()) {
+            throw new IllegalArgumentException("vatSetAside must be between 0 and income");
+        }
         long cardSpend = 0;
         for (CardImportLedger.ImportedRow r : cardLedger.inMonth(m)) cardSpend += r.grossAmount();
         long itemSpend = 0, essential = 0;
@@ -83,7 +92,7 @@ public class ExpenseSnapshotController {
             }
         }
         ExpenseSnapshotLedger.Snapshot snap = new ExpenseSnapshotLedger.Snapshot(
-                m, totalAssets, totalDebts, body.income(), cardSpend + itemSpend, essential, true);
+                m, totalAssets, totalDebts, body.income(), vatSetAside, cardSpend + itemSpend, essential, true);
         snapshots.upsert(snap);
         return new ApiResponse<>("OK", "Snapshot confirmed", snap);
     }

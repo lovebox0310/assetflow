@@ -69,7 +69,7 @@ export function lastMonthsRange(months: number, today = new Date()): { from: str
 }
 
 export interface TrendSeries {
-  /** 빈 달까지 채운 월별 행. 값은 카테고리 이름 키 + `income`. */
+  /** 빈 달까지 채운 월별 행. 값은 카테고리 이름 키 + `income` + `vatSetAside`. */
   points: Array<Record<string, string | number | null>>;
   /** 범례/막대 순서 — 기준 분류 9개 먼저, 그다음 미분류·기타. */
   categories: string[];
@@ -77,8 +77,12 @@ export interface TrendSeries {
   totals: Record<string, number>;
   /** 수입이 확정된 달 수 — points.length 보다 작으면 미확정 달이 섞여 있다. */
   incomeMonths: number;
-  /** 범위 전체 수입 합계(확정 달만). */
+  /** 범위 전체 세전 수입 합계(확정 달만). */
   incomeTotal: number;
+  /** 범위 전체 실수입(disposableIncome) 합계(확정 달만). */
+  disposableIncomeTotal: number;
+  /** 범위 전체 부가세통장 이체 합계(확정 달만). */
+  vatSetAsideTotal: number;
 }
 
 /**
@@ -107,9 +111,15 @@ export function buildExpenseTrend(
   }
 
   const incomeByMonth = new Map<string, number>();
+  const vatSetAsideByMonth = new Map<string, number>();
+  const disposableIncomeByMonth = new Map<string, number>();
   for (const row of incomeRows) {
     if (!months.includes(row.month)) continue;
-    incomeByMonth.set(row.month, Number(row.income) || 0);
+    const gross = Number(row.income) || 0;
+    const vat = Number(row.vatSetAside) || 0;
+    incomeByMonth.set(row.month, gross);
+    vatSetAsideByMonth.set(row.month, vat);
+    disposableIncomeByMonth.set(row.month, gross - vat);
   }
 
   const seen = new Set<string>();
@@ -131,10 +141,13 @@ export function buildExpenseTrend(
   for (const category of categories) totals[category] = 0;
 
   const points = months.map((month) => {
+    const confirmed = incomeByMonth.has(month);
     const point: Record<string, string | number | null> = {
       month,
+      // §57.9: `income` 은 실수입(disposableIncome), 부가세통장은 별도 세그먼트.
       // 확정된 달만 숫자, 미확정 달은 null — 차트가 수입 막대를 그리지 않는다.
-      income: incomeByMonth.get(month) ?? null,
+      income: confirmed ? (disposableIncomeByMonth.get(month) ?? null) : null,
+      vatSetAside: confirmed ? (vatSetAsideByMonth.get(month) ?? null) : null,
     };
     const perMonth = sums.get(month);
     for (const category of categories) {
@@ -146,6 +159,8 @@ export function buildExpenseTrend(
   });
 
   const incomeTotal = [...incomeByMonth.values()].reduce((acc, v) => acc + v, 0);
+  const vatSetAsideTotal = [...vatSetAsideByMonth.values()].reduce((acc, v) => acc + v, 0);
+  const disposableIncomeTotal = incomeTotal - vatSetAsideTotal;
 
   return {
     points,
@@ -153,6 +168,8 @@ export function buildExpenseTrend(
     totals,
     incomeMonths: incomeByMonth.size,
     incomeTotal,
+    disposableIncomeTotal,
+    vatSetAsideTotal,
   };
 }
 

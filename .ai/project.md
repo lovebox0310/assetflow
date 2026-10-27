@@ -3706,3 +3706,25 @@ bizno.net 은 `X-Frame-Options` 가 없지만 광고가 많아 iframe 품질이 
   - 수입 `Bar` (`stackId="income"`, `--af-grove`) + 지출 대분류 `Bar` (`stackId="expense"`)
   - `income` 이 `null` 인 달은 막대가 그려지지 않는다. 범례에도 확정 개월 수를 적는다
   - 참고: 홈서버에서는 FE 번들만 최신이어도 동작하지 않는다 — 새 API 가 필요하므로 **BE 재배포가 선행**이다
+
+#### 57.9 부가세통장 적립 이체 반영 (2026-10-28)
+
+**결정**: 수입 중 부가세통장으로 적립하는 이체를 별도 항목으로 추적한다. 이는 **지출이 아니며**,
+수지는 `income − vatSetAside − expenses`(방식 B)로 계산한다.
+
+- DB: `monthly_snapshots.vat_set_aside BIGINT NOT NULL DEFAULT 0`
+  - 마이그레이션: `db/migrations/2026-10-28-vat-set-aside.sql` (기존 행은 0으로 백필)
+  - `CHECK` 제약에 `vat_set_aside >= 0` 추가
+- 백엔드
+  - `ExpenseSnapshotLedger.Snapshot` 에 `vatSetAside` 추가
+  - `ExpenseSnapshotController.confirmMonth()` 요청 본문에 `vatSetAside` 추가, 검증: `0 <= vatSetAside <= income`
+  - `DashboardService` 의 `MonthlySummary`/`CashflowMonth`/`MonthlyIncome` 에 `vatSetAside`·`balance`/`disposableIncome` 추가
+  - 수지 계산은 서버에서 단일 출처로: `balance = income - vatSetAside - expenses`
+- 프론트엔드
+  - `dashboardApi.CashflowRow`·`MonthlyIncome`, `expensesApi.MonthSnapshot` 에 `vatSetAside`/`balance`/`disposableIncome` 추가
+  - `metrics.cashflowWindow()` 는 서버가 내린 `balance` 를 그대로 쓴다(§34.6)
+  - `DashboardPage` 현금흐름 표/모바일 카드/힌트에 "부가세통장" 행 추가
+  - `ExpensesPage` 월 확정 폼에 "부가세통장 이체" 입력 추가
+  - `expenseTrend.ts` 의 수입 스택을 `income`(실수입=disposableIncome) + `vatSetAside` 두 세그먼트로 분리
+  - `ExpenseTrendChart` 에 `실수입`(`--af-grove`) + `부가세통장`(`--af-slate`) 두 `Bar` 추가
+  - 미확정 월의 수입/부가세는 `null` 로 처리 — 0원 막대 금지(§34.6 유지)

@@ -30,9 +30,9 @@ export function netWorth(data: DashboardData): number {
   return sum(data.assets.map((a) => a.value)) - sum(data.liabilities.map((l) => l.balance));
 }
 
-/** 월 수지 = 월 총수입 - 월 총지출 */
+/** 월 수지 = 월 총수입 - 부가세통장 이체 - 월 총지출 (§57.9) */
 export function monthlyBalance(data: DashboardData): number {
-  return data.monthly.income - data.monthly.expenses;
+  return data.monthly.income - data.monthly.vatSetAside - data.monthly.expenses;
 }
 
 /**
@@ -78,9 +78,10 @@ export interface CashflowMonth {
   /** YYYY-MM */
   month: string;
   income: number | null;
+  vatSetAside: number | null;
   expenses: number | null;
   /**
-   * 수지 = **그 달** 수입 − **그 달** 지출.
+   * 수지 = **그 달** 수입 − **그 달** 부가세통장 이체 − **그 달** 지출.
    * 이전 달 수지를 더하지 않는다(누적 아님). 미확정 월은 null.
    * 화면은 이 값만 포맷한다 — 계산을 다시 하지 않는다 (§34.6 단일 출처).
    */
@@ -111,12 +112,13 @@ export function cashflowWindow(
         ? {
             month: key,
             income: row.income,
+            vatSetAside: row.vatSetAside,
             expenses: row.expenses,
-            // 그 달 두 값만 뺀다. 앞 달 수지를 들고 오지 않는다.
-            balance: row.income - row.expenses,
+            // 서버가 계산한 그 달 수지를 그대로 쓴다(§34.6).
+            balance: row.balance,
             confirmed: true,
           }
-        : { month: key, income: null, expenses: null, balance: null, confirmed: false },
+        : { month: key, income: null, vatSetAside: null, expenses: null, balance: null, confirmed: false },
     );
   }
   return window;

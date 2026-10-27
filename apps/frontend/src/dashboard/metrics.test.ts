@@ -10,7 +10,7 @@ const base: DashboardData = {
     { id: "i1", type: "invest", name: "투자", value: 30_000_000 },
   ],
   liabilities: [{ id: "l1", name: "대출", balance: 5_000_000 }],
-  monthly: { income: 8_200_000, expenses: 4_960_000, essentialExpenses: 2_000_000, essentialComplete: true },
+  monthly: { income: 8_200_000, vatSetAside: 0, expenses: 4_960_000, essentialExpenses: 2_000_000, essentialComplete: true, balance: 3_240_000 },
 };
 
 describe("metrics (§23 표시 규칙)", () => {
@@ -18,7 +18,7 @@ describe("metrics (§23 표시 규칙)", () => {
     expect(netWorth(base)).toBe(55_000_000);
   });
 
-  it("월 수지 = 총수입 - 총지출 (필수+선택 모두)", () => {
+  it("월 수지 = 총수입 - 부가세통장 이체 - 총지출 (필수+선택 모두) (§57.9)", () => {
     expect(monthlyBalance(base)).toBe(3_240_000);
   });
 
@@ -76,8 +76,8 @@ describe("cashflowWindow — 최근 6개월 창 (#73, §35.1)", () => {
   it("스냅샷이 없는 월은 0원으로 메우지 않고 미확정(null)으로 남긴다", () => {
     const window = cashflowWindow(
       [
-        { month: "2026-10", income: 8_200_000, expenses: 4_960_000 },
-        { month: "2026-08", income: 8_200_000, expenses: 4_720_000 },
+        { month: "2026-10", income: 8_200_000, vatSetAside: 0, expenses: 4_960_000, balance: 3_240_000 },
+        { month: "2026-08", income: 8_200_000, vatSetAside: 0, expenses: 4_720_000, balance: 3_480_000 },
       ],
       6,
       today,
@@ -85,6 +85,7 @@ describe("cashflowWindow — 최근 6개월 창 (#73, §35.1)", () => {
     expect(window[0]).toEqual({
       month: "2026-10",
       income: 8_200_000,
+      vatSetAside: 0,
       expenses: 4_960_000,
       balance: 3_240_000,
       confirmed: true,
@@ -92,6 +93,7 @@ describe("cashflowWindow — 최근 6개월 창 (#73, §35.1)", () => {
     expect(window[1]).toEqual({
       month: "2026-09",
       income: null,
+      vatSetAside: null,
       expenses: null,
       balance: null,
       confirmed: false,
@@ -99,6 +101,7 @@ describe("cashflowWindow — 최근 6개월 창 (#73, §35.1)", () => {
     expect(window[2]).toEqual({
       month: "2026-08",
       income: 8_200_000,
+      vatSetAside: 0,
       expenses: 4_720_000,
       balance: 3_480_000,
       confirmed: true,
@@ -106,18 +109,18 @@ describe("cashflowWindow — 최근 6개월 창 (#73, §35.1)", () => {
     expect(window.filter((m) => !m.confirmed)).toHaveLength(4);
   });
 
-  it("수지는 그 달 수입 − 그 달 지출이다 — 이전 달 값을 더하지 않는다", () => {
+  it("수지는 그 달 수입 − 부가세통장 이체 − 그 달 지출이다 — 이전 달 값을 더하지 않는다 (§57.9)", () => {
     const window = cashflowWindow(
       [
-        { month: "2026-10", income: 8_949_960, expenses: 4_413_363 },
-        { month: "2026-09", income: 8_949_960, expenses: 5_565_670 },
-        { month: "2026-08", income: 8_949_960, expenses: 6_441_193 },
+        { month: "2026-10", income: 8_949_960, vatSetAside: 0, expenses: 4_413_363, balance: 4_536_597 },
+        { month: "2026-09", income: 8_949_960, vatSetAside: 0, expenses: 5_565_670, balance: 3_384_290 },
+        { month: "2026-08", income: 8_949_960, vatSetAside: 0, expenses: 6_441_193, balance: 2_508_767 },
       ],
       3,
       today,
     );
 
-    // 운영 데이터와 같은 모양: 각 달 수지가 그 달 두 값의 차이다.
+    // 운영 데이터와 같은 모양: 각 달 수지가 서버가 계산한 그 달 balance 그대로다.
     expect(window.map((m) => m.balance)).toEqual([4_536_597, 3_384_290, 2_508_767]);
     // 누적이면 4,536,597 / 7,920,887 / 10,429,654 가 된다 — 그 값이 나오면 실패다.
     expect(window[1]?.balance).not.toBe(7_920_887);

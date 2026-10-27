@@ -5,17 +5,24 @@ import type { DashboardData } from "../data/dashboardMock";
 export interface CashflowRow {
   month: string;
   income: number;
+  vatSetAside: number;
   expenses: number;
+  balance: number;
 }
 
 /** §26 작업표의 months=3 기본값. 1..12 밖은 서버가 400 으로 막는다. */
 export const DEFAULT_CASHFLOW_MONTHS = 3;
 
-/** §57.8: 지출 추이 차트의 수입 막대 — 확정된 달만 서버가 돌려준다. */
+/**
+ * §57.8, §57.9: 지출 추이 차트의 수입 스택 막대 — 확정된 달만 서버가 돌려준다.
+ * income 은 세전 총수입, vatSetAside 는 부가세통장 이체, disposableIncome = income - vatSetAside.
+ */
 export interface MonthlyIncome {
   /** YYYY-MM */
   month: string;
   income: number;
+  vatSetAside: number;
+  disposableIncome: number;
 }
 
 /** 중복 호출 방지(dedupe)는 클라이언트가 맡는다 — 이 함수의 키 고정. */

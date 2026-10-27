@@ -34,9 +34,11 @@ export interface MonthSnapshot {
   totalAssets: number;
   totalDebts: number;
   income: number;
+  vatSetAside: number;
   expenses: number;
   essentialExpenses: number;
   essentialComplete: boolean;
+  balance: number;
 }
 
 export interface ItemPayload {
@@ -80,12 +82,12 @@ export function getSnapshot(month: string): Promise<MonthSnapshot | null> {
   return apiFetch<MonthSnapshot | null>(`/api/v1/expenses/snapshots?month=${month}`);
 }
 
-/** 월 확정: 수입만 받고 지출·필수 합계는 서버가 원장에서 재계산한다(§44). */
-export function confirmMonth(month: string, income: number): Promise<MonthSnapshot> {
+/** 월 확정: 수입과 부가세통장 이체를 받고 지출·필수 합계는 서버가 원장에서 재계산한다(§44, §57.9). */
+export function confirmMonth(month: string, income: number, vatSetAside?: number): Promise<MonthSnapshot> {
   return apiFetch<MonthSnapshot>(`/api/v1/expenses/snapshots?month=${month}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ income }),
+    body: JSON.stringify({ income, vatSetAside: vatSetAside ?? 0 }),
   });
 }
 

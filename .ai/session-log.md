@@ -14,6 +14,36 @@
 
 ---
 
+## 2026-10-28 — 부가세통장 적립 이체 추적 (§57.9)
+
+수입에서 부가세통장으로 이체하는 금액을 지출과 분리해 추적하고, 수지 계산에 반영했다.
+
+- DB
+  - `monthly_snapshots.vat_set_aside BIGINT NOT NULL DEFAULT 0`
+  - `apps/backend/db/migrations/2026-10-28-vat-set-aside.sql` — 기존 행 0으로 백필
+  - `apps/backend/db/schema.sql` CHECK 제약에 `vat_set_aside >= 0` 추가
+- 백엔드
+  - `ExpenseSnapshotLedger.Snapshot`·`PostgresExpenseSnapshotLedger`·`InMemoryExpenseSnapshotLedger` 에 `vatSetAside` 반영
+  - `ExpenseSnapshotController.confirmMonth()` 에 `vatSetAside` 입력·검증·저장 추가
+  - `DashboardService` 의 `CashflowMonth`·`MonthlyIncome`·`summary()` 에 `vatSetAside`·`balance`/`disposableIncome` 추가
+  - `MockDashboardSource` 목업 데이터 갱신
+  - 테스트: `DashboardApiTest` 에 새 필드 assertions 추가
+- 프론트엔드
+  - `dashboardApi.ts` `CashflowRow`/`MonthlyIncome`, `expensesApi.ts` `MonthSnapshot`/`confirmMonth()` 확장
+  - `dashboard/metrics.ts` `CashflowMonth`·`cashflowWindow()`·`monthlyBalance()` 에 부가세 반영
+  - `data/dashboardMock.ts` `MonthlySummary` 모델 확장
+  - `DashboardPage.tsx` 현금흐름 표/모바일 카드/힌트에 부가세통장 행 추가
+  - `ExpensesPage.tsx` 월 확정 폼에 "부가세통장 이체" 입력 추가, 확정 결과 표시에 부가세·수지 추가
+  - `expenseTrend.ts`/`ExpenseTrendChart.tsx` 수입 스택을 `실수입`/`부가세통장` 두 세그먼트로 분리
+  - 테스트: `expenseTrend.test.ts`, `metrics.test.ts`, `DashboardPage.test.tsx` 갱신
+- 남은 일
+  - `./gradlew test bootJar` 및 `pnpm typecheck/lint/test/build` 최종 통과 확인
+  - 운영 DB `2026-10-28-vat-set-aside.sql` 마이그레이션 적용
+  - 배포 스크립트 실행 및 헬스 체크
+  - 변경 파일 커밋·푸시, CI 확인
+
+---
+
 ## 2026-10-27 — 삼성 업종 기반 자동 분류 (§55.8.9)
 
 삼성 명세서의 `업종`(한식·주유소·약국 등)을 가맹점명 키워드 다음의 **3순위 fallback** 으로

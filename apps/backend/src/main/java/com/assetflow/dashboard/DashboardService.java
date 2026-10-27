@@ -28,8 +28,11 @@ public class DashboardService {
 
     public record Me(Long id, String email, String displayName) {}
 
-    /** §57.8: 월별 확정 수입 — 지출 추이 차트의 수입 막대용. */
-    public record MonthlyIncome(String month, long income) {}
+/**
+     * §57.8, §57.9: 월별 확정 수입 분해 — 지출 추이 차트의 수입 스택 막대용.
+     * income 은 세전 총수입, vatSetAside 는 부가세통장 이체, disposableIncome = income - vatSetAside.
+     */
+    public record MonthlyIncome(String month, long income, long vatSetAside, long disposableIncome) {}
 
     private static final Pattern MONTH_PATTERN = Pattern.compile("\\d{4}-(0[1-9]|1[0-2])");
 
@@ -59,8 +62,9 @@ public class DashboardService {
         // §34.6 단일 출처: AS_OF 월의 스냅샷이 확정돼 있으면 실데이터, 없으면 모크.
         ExpenseSnapshotLedger.Snapshot snap = snapshotLedger.get(MockDashboardSource.AS_OF);
         MonthlySummary monthly = snap == null ? MockDashboardSource.monthly()
-                : new MonthlySummary(snap.income(), snap.expenses(),
-                        snap.essentialExpenses(), snap.essentialComplete());
+                : new MonthlySummary(snap.income(), snap.vatSetAside(), snap.expenses(),
+                        snap.essentialExpenses(), snap.essentialComplete(),
+                        snap.income() - snap.vatSetAside() - snap.expenses());
         return new DashboardSummary(MockDashboardSource.AS_OF, assets, liabilities, monthly);
     }
 
@@ -80,7 +84,8 @@ public class DashboardService {
         List<ExpenseSnapshotLedger.Snapshot> snaps = snapshotLedger.recent(MockDashboardSource.AS_OF, months);
         if (!snaps.isEmpty()) {
             return snaps.stream()
-                    .map(s -> new CashflowMonth(s.month(), s.income(), s.expenses()))
+                    .map(s -> new CashflowMonth(s.month(), s.income(), s.vatSetAside(), s.expenses(),
+                            s.income() - s.vatSetAside() - s.expenses()))
                     .toList();
         }
         List<CashflowMonth> all = MockDashboardSource.cashflow();
@@ -104,7 +109,8 @@ public class DashboardService {
             throw new IllegalArgumentException("range must be 36 months or fewer");
         }
         return snapshotLedger.between(from, to).stream()
-                .map(s -> new MonthlyIncome(s.month(), s.income()))
+                .map(s -> new MonthlyIncome(s.month(), s.income(), s.vatSetAside(),
+                        s.income() - s.vatSetAside()))
                 .toList();
     }
 

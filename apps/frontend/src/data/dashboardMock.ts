@@ -20,12 +20,16 @@ export interface LiabilityRow {
 export interface MonthlySummary {
   /** 공급가액 기준 월 총수입 (§28.7: 부가세는 현금 아님) */
   income: number;
+  /** 부가세통장 적립 이체 — 지출이 아님 (§57.9) */
+  vatSetAside: number;
   /** 월 총지출 (필수+선택 전부) */
   expenses: number;
   /** 월 필수지출 — 지출 화면이 단일 출처 (§28.7/§28.10) */
   essentialExpenses: number;
   /** 필수지출에 미반영 항목이 있으면 false. 0원 투입으로 메우지 않는다 (§28.7) */
   essentialComplete: boolean;
+  /** 수지 = income - vatSetAside - expenses */
+  balance: number;
 }
 
 export interface DashboardData {
@@ -49,9 +53,11 @@ export const dashboardMock: DashboardData = {
   liabilities: [{ id: "l1", name: "주택담보대출", balance: 69_355_560 }],
   monthly: {
     income: 8_200_000,
+    vatSetAside: 0,
     expenses: 4_960_000,
     essentialExpenses: 2_317_180,
     essentialComplete: true,
+    balance: 3_240_000,
   },
 };
 
