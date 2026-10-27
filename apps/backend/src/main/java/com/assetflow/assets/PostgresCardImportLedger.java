@@ -143,4 +143,28 @@ public class PostgresCardImportLedger implements CardImportLedger {
                 WHERE user_id = ? AND merchant_name = ?
                 """, userId, merchantName);
     }
+
+    public List<MonthlyCategoryTotal> monthlyCategoryTotals(String fromMonth, String toMonth) {
+        // fromMonth 1일 ~ toMonth 말일 (다음 달 1일 미만)
+        Date from = Date.valueOf(fromMonth + "-01");
+        Date until = Date.valueOf(toMonth + "-01");
+        return jdbc.query("""
+                SELECT to_char(approved_at, 'YYYY-MM') AS ym,
+                       CASE WHEN expense_kind IS NULL OR expense_kind = '' OR expense_kind = 'unclassified'
+                            THEN '미분류' ELSE expense_kind END AS category,
+                       SUM(gross_amount) AS gross
+                FROM card_imports
+                WHERE user_id = ?
+                  AND approved_at >= ?
+                  AND approved_at < (CAST(? AS DATE) + INTERVAL '1 month')
+                  AND (sub_category IS NULL OR sub_category <> '저축/투자')
+                GROUP BY ym, category
+                ORDER BY ym, category
+                """,
+                (rs, n) -> new MonthlyCategoryTotal(
+                        rs.getString("ym"),
+                        rs.getString("category"),
+                        rs.getLong("gross")),
+                userId, from, until);
+    }
 }

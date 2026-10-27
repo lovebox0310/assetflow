@@ -159,6 +159,18 @@ export const AF_COLORS = {
   chart4: { light: "#4f4d48", dark: "#c6c4be" },
   chart5: { light: "#1e1d1a", dark: "#f1efea" },
 
+  /* ── 지출 대분류 차트 (9색 + 미분류) ────────────────── */
+  catFood: { light: "#d98200", dark: "#f5b325" },
+  catHousing: { light: "#3f5e96", dark: "#7c9bda" },
+  catTransport: { light: "#487241", dark: "#8abf84" },
+  catShopping: { light: "#a9613a", dark: "#d99a68" },
+  catHealth: { light: "#9d4a5c", dark: "#d98a9a" },
+  catLeisure: { light: "#6b5b95", dark: "#a99bd0" },
+  catFinance: { light: "#4f4d48", dark: "#c6c4be" },
+  catEtc: { light: "#8c8577", dark: "#b3ac9e" },
+  catEducation: { light: "#2f7f7a", dark: "#6fc0b9" },
+  catUnclassified: { light: "#c9c4b8", dark: "#6f6b63" },
+
   /* ── 그림자 ─────────────────────────────────────────── */
   boxShadow: { light: "0 1px 2px rgba(30, 29, 26, 0.06)", dark: "0 1px 2px rgba(0, 0, 0, 0.45)" },
   boxShadowSecondary: {
@@ -218,6 +230,16 @@ export const AF_CSS_VAR_MAP = {
   "--af-chart-3": "chart3",
   "--af-chart-4": "chart4",
   "--af-chart-5": "chart5",
+  "--af-cat-food": "catFood",
+  "--af-cat-housing": "catHousing",
+  "--af-cat-transport": "catTransport",
+  "--af-cat-shopping": "catShopping",
+  "--af-cat-health": "catHealth",
+  "--af-cat-leisure": "catLeisure",
+  "--af-cat-finance": "catFinance",
+  "--af-cat-etc": "catEtc",
+  "--af-cat-education": "catEducation",
+  "--af-cat-unclassified": "catUnclassified",
   "--af-badge-signal-bg": "badgeSignalBg",
   "--af-badge-signal-fg": "badgeSignalFg",
   "--af-badge-grove-bg": "badgeGroveBg",

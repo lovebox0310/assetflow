@@ -14,6 +14,44 @@
 
 ---
 
+## 2026-10-27 — 대시보드 지출 추이 (월별 대분류 스택 막대)
+
+대시보드에 최근 1년 대분류 지출 추이를 스택 막대로 넣고, 년월~년월 범위 선택을 붙였다.
+(결정 근거: project.md §57)
+
+- 백엔드
+  - `CardImportLedger.MonthlyCategoryTotal(month, category, gross)` 계약 추가
+  - `PostgresCardImportLedger.monthlyCategoryTotals`: `GROUP BY` 1회, `저축/투자` 제외,
+    빈/`unclassified` → `미분류`
+  - `InMemoryCardImportLedger.monthlyCategoryTotals` + `nextMonth` 헬퍼
+  - `GET /api/v1/assets/card-imports/monthly-categories?from&to` — `from<=to`, 36개월 상한 400
+  - 테스트: `monthlyCategoriesAggregateByMonthAndExcludeAssetTransfers`,
+    `monthlyCategoriesRejectBadRange`
+- 프론트엔드
+  - `dashboard/expenseTrend.ts`: `monthsBetween` · `buildExpenseTrend` · `lastMonthsRange` ·
+    `formatMonthTick` · 카테고리 색 매핑
+  - `components/ExpenseTrendChart.tsx`: recharts 스택 막대, 범례에 범위 합계
+  - `DashboardPage`: `DatePicker.RangePicker picker="month"`, 기본 최근 12개월,
+    별도 상태·재시도, 차트는 lazy 로딩
+  - `theme/tokens.ts`: `--af-cat-*` 10색(라이트/다크)
+  - `dayjs` 를 직접 의존성으로 추가(antd 전이 의존만 있던 상태)
+  - 테스트: `expenseTrend.test.ts` 10건(연 경계·0 채움·합계·미분류 정렬·색 매핑)
+- 검증: `./gradlew test bootJar`, `pnpm typecheck/lint/test/build` 통과(161 tests),
+  운영 배포·헬스 OK
+  - 운영 API 실호출 `from=2026-09&to=2026-10` → 9개 대분류 × 2개월, `저축/투자` 미포함 확인
+- 고친 결함
+  - 36개월 상한이 백엔드에서 **한 달 느슨했다**. 두 월의 차이만 세어 37개월(2023-10~2026-10)이
+    통과했다. 양끝 포함 개월 수(`monthCountInclusive`)로 바꿔 36개월 허용 / 37개월 400 을
+    테스트로 고정했다(`monthlyCategoriesAllowUpTo36MonthsInclusive`)
+- 메모
+  - antd v6 에서는 `rangePicker` prop 이 아니라 `DatePicker.RangePicker` 컴포넌트다
+  - `tsconfig` 의 `noUncheckedIndexedAccess` 로 배열 접근 결과가 `undefined` 일 수 있다 —
+    집계 헬퍼와 테스트 모두 `?? 0` 로 처리했다
+  - 요약/현금흐름 재시도(`load`)가 추이 범위를 되돌리지 않도록, 추이 조회는 마운트 이펙트에서
+    따로 1회만 부른다
+
+---
+
 ## 2026-10-26 — 사업자 정보 모달 (bizno.net 수집·캐시)
 
 사업자번호를 누르면 화면 이동 없이 사업자 정보를 보여준다. 백엔드가 bizno.net 을 읽어

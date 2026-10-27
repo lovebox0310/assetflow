@@ -3498,6 +3498,7 @@ GET /api/v1/expenses/categories?month=2026-02
 - `expenseCategories.ts`: 9그룹 + 세부 + 고정비/자산이동 헬퍼
 - `CardImportPanel`: 가맹점 미리보기에서 대분류·세부 각각 선택
 - `ExpensesPage`: 카드 표에 대분류/세부 컬럼, 카테고리별 합계(고정비/변동비/자산이동), CSV 다운로드
+- 대시보드 지출 추이: `dashboard/expenseTrend.ts` + `components/ExpenseTrendChart.tsx` (§57)
 
 #### 55.10.5 출력 규칙
 
@@ -3547,3 +3548,46 @@ bizno.net 은 `X-Frame-Options` 가 없지만 광고가 많아 iframe 품질이 
 - 리더 폴백은 공개 사업자 정보만 중계한다. 끄려면 `app.business-info.fallback-reader` 를 빈 값으로 둔다.
 - 요청은 사용자가 링크를 누를 때만 발생한다(주기적 크롤링 금지). 페이지 구조가 바뀌면 파서가 깨질 수 있다.
 - bizno.net 약관은 무단 DB 수집을 금지한다. 개인용도 범위에서만 사용한다.
+
+---
+
+## 57) 대시보드 지출 추이 — 월별 대분류 스택 막대 (2026-10-27 확정)
+
+**결정**: 대시보드에 **최근 1년 대분류 지출 추이**를 스택 막대로 넣고,
+`DatePicker.RangePicker picker="month"`(년월~년월)로 조회 범위를 바꿀 수 있게 한다.
+
+**왜 지출 화면이 아니라 대시보드인가**: 지출 화면은 "이 달 카드내역"이라는 표 중심이고,
+추이는 여러 달을 가로로 비교하는 뷰라 성격이 다르다(사용자 선택).
+
+#### 57.1 집계 계약
+
+- `GET /api/v1/assets/card-imports/monthly-categories?from=YYYY-MM&to=YYYY-MM`
+- 응답: `[{ month, category, gross }]` — 월·대분류 단위 합계
+- 서버가 `sub_category = '저축/투자'`(자산 이동)를 **제외**한다 — 지출이 아니므로
+- `expense_kind` 가 비었거나 `unclassified` 면 `category = "미분류"` 로 묶는다
+- 범위 검증: `from <= to`, **최대 36개월**(초과 시 400). 서버가 최종 판정한다
+
+**왜 월 12회 호출이 아니라 집계 1회인가**: 12개월 × 카테고리별 조회는 월 수에 비례해
+왕복이 늘어난다. 집계는 `GROUP BY` 한 번이라 범위를 늘려도 요청은 1건이다.
+
+#### 57.2 계산 위치
+
+- `dashboard/expenseTrend.ts` — 단일 계산처(§34.6)
+  - `monthsBetween(from, to)`: 연 경계를 넘는 월 배열
+  - `buildExpenseTrend(rows, from, to)`: 행이 없는 달을 **0 으로 채워** X축이 끊기지 않게 한다
+  - 범례 순서: `CATEGORY_GROUPS` 9개 먼저 → 그 외 알파벳 → **미분류 마지막**
+  - `lastMonthsRange(n)`: 오늘 기준 최근 n개월(이번 달 포함)
+- `components/ExpenseTrendChart.tsx` — recharts `BarChart` + `stackId`, 값은 헬퍼 산출물 그대로
+- 색: `theme/tokens.ts` 의 `--af-cat-*` CSS 변수(라이트/다크 자동). 새 hex 를 컴포넌트에 쓰지 않는다
+
+#### 57.3 화면
+
+- 대시보드 `지출 추이` 섹션 — 기본 범위 최근 12개월
+- 범위 변경 시에만 재조회(`loadTrend`) — 요약/현금흐름 요청과 분리된 상태·재시도
+- recharts 는 `CompositionDonut` 과 같이 lazy 로딩해 본체 번들에서 분리한다
+
+#### 57.4 제약
+
+- 조회 범위 상한 36개월은 서버와 `DatePicker` 양쪽에서 지켜야 한다(서버가 최종 거절).
+- 미확정/미분류 행도 0 이 아니라 실제 금액으로 그린다 — 추이는 "이체 제외 지출"의 합이다.
+- VAT 계산은 건드리지 않는다(§29.5). 차트는 `gross_amount` 만 읽는다.

@@ -149,6 +149,40 @@ public class InMemoryCardImportLedger implements CardImportLedger {
         return updateClassificationByMerchant(merchantName, "", "");
     }
 
+    public List<MonthlyCategoryTotal> monthlyCategoryTotals(String fromMonth, String toMonth) {
+        String from = fromMonth + "-01";
+        String untilExclusive = nextMonth(toMonth) + "-01";
+        Map<String, Long> totals = new java.util.TreeMap<>();
+        synchronized (rows) {
+            for (ImportedRow r : rows) {
+                if (r.approvedAt() == null
+                        || r.approvedAt().compareTo(from) < 0
+                        || r.approvedAt().compareTo(untilExclusive) >= 0) {
+                    continue;
+                }
+                if ("저축/투자".equals(r.subCategory())) {
+                    continue;
+                }
+                String category = isUnclassified(r.expenseKind()) ? "미분류" : r.expenseKind();
+                String key = r.approvedAt().substring(0, 7) + "|" + category;
+                totals.merge(key, r.grossAmount(), Long::sum);
+            }
+        }
+        List<MonthlyCategoryTotal> out = new ArrayList<>();
+        for (Map.Entry<String, Long> e : totals.entrySet()) {
+            String[] parts = e.getKey().split("\\|", 2);
+            out.add(new MonthlyCategoryTotal(parts[0], parts[1], e.getValue()));
+        }
+        return out;
+    }
+
+    /** "2026-12" → "2027-01" */
+    private static String nextMonth(String month) {
+        int year = Integer.parseInt(month.substring(0, 4));
+        int m = Integer.parseInt(month.substring(5, 7));
+        return m == 12 ? (year + 1) + "-01" : year + "-" + String.format("%02d", m + 1);
+    }
+
     private static boolean isUnclassified(String kind) {
         return kind == null || kind.isBlank() || "unclassified".equals(kind);
     }

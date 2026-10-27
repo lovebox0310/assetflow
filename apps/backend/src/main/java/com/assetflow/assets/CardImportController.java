@@ -111,6 +111,39 @@ public class CardImportController {
         return new ApiResponse<>("OK", "Card imports loaded", ledger.inMonth(month));
     }
 
+    /**
+     * 월별 대분류 지출 합계 — 대시보드 지출 추이(스택 막대)용.
+     * 양끝 월 포함, 자산 이동(저축/투자)은 제외한다. 조회 범위는 36개월까지.
+     */
+    @GetMapping("/card-imports/monthly-categories")
+    public ApiResponse<List<CardImportLedger.MonthlyCategoryTotal>> monthlyCategories(
+            @RequestParam("from") String from,
+            @RequestParam("to") String to) {
+        if (!MONTH_PATTERN.matcher(from).matches() || !MONTH_PATTERN.matcher(to).matches()) {
+            throw new IllegalArgumentException("from/to must be YYYY-MM");
+        }
+        if (from.compareTo(to) > 0) {
+            throw new IllegalArgumentException("from must be earlier than or equal to to");
+        }
+        if (monthCountInclusive(from, to) > 36) {
+            throw new IllegalArgumentException("range must be 36 months or fewer");
+        }
+        return new ApiResponse<>("OK", "Monthly category totals loaded",
+                ledger.monthlyCategoryTotals(from, to));
+    }
+
+    /**
+     * 양끝 월을 포함한 개월 수 — "2023-11"~"2026-10" 은 36.
+     * 두 월의 차이(monthsBetween)만 세면 36개월 요청이 35 로 보여 상한이 한 달 느슨해진다.
+     */
+    private static int monthCountInclusive(String from, String to) {
+        int fromYear = Integer.parseInt(from.substring(0, 4));
+        int fromMonth = Integer.parseInt(from.substring(5, 7));
+        int toYear = Integer.parseInt(to.substring(0, 4));
+        int toMonth = Integer.parseInt(to.substring(5, 7));
+        return (toYear - fromYear) * 12 + (toMonth - fromMonth) + 1;
+    }
+
     @PostMapping("/card-imports")
     public ApiResponse<Map<String, Object>> submit(@RequestBody ImportRequest request) {
         if (request.rows() == null || request.rows().isEmpty()) {
