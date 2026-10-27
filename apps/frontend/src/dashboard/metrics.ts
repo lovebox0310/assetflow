@@ -79,6 +79,12 @@ export interface CashflowMonth {
   month: string;
   income: number | null;
   expenses: number | null;
+  /**
+   * 수지 = **그 달** 수입 − **그 달** 지출.
+   * 이전 달 수지를 더하지 않는다(누적 아님). 미확정 월은 null.
+   * 화면은 이 값만 포맷한다 — 계산을 다시 하지 않는다 (§34.6 단일 출처).
+   */
+  balance: number | null;
   /** 확정 스냅샷이 있는 월인가. false 면 금액을 0 으로 메우지 않고 "미확정"으로 보여 준다. */
   confirmed: boolean;
 }
@@ -102,8 +108,15 @@ export function cashflowWindow(
     const row = byMonth.get(key);
     window.push(
       row
-        ? { month: key, income: row.income, expenses: row.expenses, confirmed: true }
-        : { month: key, income: null, expenses: null, confirmed: false },
+        ? {
+            month: key,
+            income: row.income,
+            expenses: row.expenses,
+            // 그 달 두 값만 뺀다. 앞 달 수지를 들고 오지 않는다.
+            balance: row.income - row.expenses,
+            confirmed: true,
+          }
+        : { month: key, income: null, expenses: null, balance: null, confirmed: false },
     );
   }
   return window;

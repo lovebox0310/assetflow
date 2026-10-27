@@ -247,6 +247,12 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
                     스냅샷이 확정되지 않아 금액을 표시하지 않습니다 (§34.6).
                   </Typography.Paragraph>
                 ) : null}
+                <Typography.Paragraph
+                  type="secondary"
+                  style={{ marginTop: 0, marginBottom: 12 }}
+                >
+                  수지 = 그 달 수입 − 그 달 지출입니다. 이전 달 수지를 더하지 않습니다.
+                </Typography.Paragraph>
                 {wide ? (
                   <table aria-labelledby="h-cashflow" style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead>
@@ -259,12 +265,12 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
                     </thead>
                     <tbody>
                       {cashflowRows.map((row) =>
-                        row.confirmed && row.income !== null && row.expenses !== null ? (
+                        row.confirmed && row.income !== null && row.expenses !== null && row.balance !== null ? (
                           <tr key={row.month}>
                             <td style={{ paddingBottom: 6 }}>{row.month}</td>
                             <td style={{ textAlign: "right" }}>{formatKrwAbbr(row.income)}</td>
                             <td style={{ textAlign: "right" }}>{formatKrwAbbr(row.expenses)}</td>
-                            <td style={{ textAlign: "right" }}>{formatSignedKrw(row.income - row.expenses)}</td>
+                            <td style={{ textAlign: "right" }}>{formatSignedKrw(row.balance)}</td>
                           </tr>
                         ) : (
                           <tr key={row.month}>
@@ -284,11 +290,11 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
                   <div>
                     {cashflowRows.map((row) => (
                       <MobileListCardItem key={row.month}>
-                        {row.confirmed && row.income !== null && row.expenses !== null ? (
+                        {row.confirmed && row.income !== null && row.expenses !== null && row.balance !== null ? (
                           <>
                             <MobileListCardHeader
                               title={row.month}
-                              value={formatSignedKrw(row.income - row.expenses)}
+                              value={formatSignedKrw(row.balance)}
                             />
                             <MobileListCardMeta
                               style={{

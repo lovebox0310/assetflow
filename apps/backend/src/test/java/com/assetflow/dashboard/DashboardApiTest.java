@@ -91,7 +91,9 @@ class DashboardApiTest {
                 .andExpect(jsonPath("$.data[0].income").value(9_000_000))
                 .andExpect(jsonPath("$.data[0].expenses").value(5_000_000))
                 .andExpect(jsonPath("$.data[1].month").value("2026-09"))
-                .andExpect(jsonPath("$.data[1].income").value(8_500_000));
+                .andExpect(jsonPath("$.data[1].income").value(8_500_000))
+                // 9월 지출은 9월 스냅샷 값 그대로다 — 10월 지출을 더한 누적이 아니다.
+                .andExpect(jsonPath("$.data[1].expenses").value(4_800_000));
     }
 
     @Test
