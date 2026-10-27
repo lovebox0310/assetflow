@@ -1,5 +1,7 @@
 package com.assetflow.expenses;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.List;
 
 /** 월 스냅샷 원장 계약 (§44 — 수입 입력·월 확정의 저장처, §37 monthly_snapshots). */
@@ -9,7 +11,13 @@ public interface ExpenseSnapshotLedger {
      * @param vatSetAside 부가세통장 적립 이체 — 지출이 아닌 수입 차감 항목(§57.9).
      */
     record Snapshot(String month, long totalAssets, long totalDebts,
-                    long income, long vatSetAside, long expenses, long essentialExpenses, boolean essentialComplete) {}
+                    long income, long vatSetAside, long expenses, long essentialExpenses, boolean essentialComplete) {
+        /** 수지 = income - vatSetAside - expenses (§57.9). */
+        @JsonProperty("balance")
+        public long balance() {
+            return income - vatSetAside - expenses;
+        }
+    }
 
     /** 없으면 null — 월 미확정 상태(§37: 스냅샷은 시점값, 중복 스냅샷은 UPDATE). */
     Snapshot get(String month);
