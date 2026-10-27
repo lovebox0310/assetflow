@@ -155,6 +155,14 @@ class CardImportApiTest {
                 + ",\"cardMasked\":\"1234\",\"expenseKind\":\"" + category + "\",\"subCategory\":\"" + subCategory + "\"}";
     }
 
+    private String rowWithExpenseKind(String rowKey, String date, String merchant, long gross,
+                                      String expenseKind, String businessCategory) {
+        return "{\"rowKey\":\"" + rowKey + "\",\"approvedAt\":\"" + date + "\",\"merchantName\":\"" + merchant
+                + "\",\"supplyExVat\":" + gross + ",\"vat\":0,\"grossAmount\":" + gross
+                + ",\"cardMasked\":\"1234\",\"expenseKind\":\"" + expenseKind + "\",\"subCategory\":\"\","
+                + "\"businessNo\":\"9999999901\",\"businessCategory\":\"" + businessCategory + "\"}";
+    }
+
     @Test
     void storesRowsAndRecalculatesTotalsFromRows() throws Exception {
         String body = "{\"rows\":[" + row("k1", "2026-10-01", "가맹점A", 9000, 1000, 10000)
@@ -459,5 +467,134 @@ class CardImportApiTest {
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].merchantName").value("가맹점A"))
                 .andExpect(jsonPath("$.data[0].count").value(2));
+    }
+
+    @Test
+    void businessCategoryIsUsedWhenMerchantRuleAndKeywordMiss() throws Exception {
+        // §55.8.9: 가맹점명이 낯설어도 명세서 업종이 분명하면 대분류/세부를 채운다.
+        String body = "{\"rows\":["
+                + row("k1", "2026-10-01", "알수없는가맹점", 9000, 1000, 10000, "9999999901", "한식")
+                + "],\"merchantRules\":{}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/assets/card-imports?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].expenseKind").value("식비"))
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].subCategory").value("외식"));
+    }
+
+    @Test
+    void ambiguousBusinessCategoryLeavesRowUnclassified() throws Exception {
+        // PG/온라인거래 업종은 실제 구매처를 알 수 없다 — 업종만으로 분류하지 않는다.
+        String body = "{\"rows\":["
+                + row("k1", "2026-10-01", "알수없는가맹점", 9000, 1000, 10000, "9999999901", "PG_일반인증")
+                + "],\"merchantRules\":{}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/assets/card-imports?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].expenseKind").value(""))
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].subCategory").value(""));
+    }
+
+    @Test
+    void merchantKeywordWinsOverBusinessCategory() throws Exception {
+        classifier.addKeyword("스타벅스", "식비", "카페/간식", 0);
+
+        String body = "{\"rows\":["
+                + row("k1", "2026-10-01", "스타벅스 강남점", 9000, 1000, 10000, "9999999901", "주유소")
+                + "],\"merchantRules\":{}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/assets/card-imports?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].expenseKind").value("식비"))
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].subCategory").value("카페/간식"));
+    }
+
+    @Test
+    void storedRuleWinsOverBusinessCategory() throws Exception {
+        ruleLedger.saveAll(Map.of("알수없는가맹점", "사업비용"));
+
+        String body = "{\"rows\":["
+                + row("k1", "2026-10-01", "알수없는가맹점", 9000, 1000, 10000, "9999999901", "한식")
+                + "],\"merchantRules\":{}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/assets/card-imports?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].expenseKind").value("사업비용"))
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].subCategory").value(""));
+    }
+
+    @Test
+    void merchantRulesEndpointUsesBusinessCategorySuggestion() throws Exception {
+        mvc.perform(post("/api/v1/assets/card-imports/merchant-rules").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"merchants\":[\"알수없는가맹점\"],"
+                                + "\"businessCategories\":{\"알수없는가맹점\":\"한식\"}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data['알수없는가맹점'].category").value("식비"))
+                .andExpect(jsonPath("$.data['알수없는가맹점'].subCategory").value("외식"));
+    }
+
+    @Test
+    void reclassifyUsesBusinessCategoryOfAlreadyStoredRows() throws Exception {
+        ledger.addAll(List.of(new CardImportLedger.ImportedRow(
+                "k1", "2026-10-01", "알수없는가맹점", 9000, 1000, 10000,
+                "", "", "", "9999999901", "주유소")));
+
+        mvc.perform(post("/api/v1/assets/card-imports/reclassify").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.updated").value(1));
+
+        mvc.perform(get("/api/v1/assets/card-imports?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].expenseKind").value("교통/차량"))
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].subCategory").value("차량유지비"));
+    }
+
+    @Test
+    void parserDefaultUnclassifiedDoesNotOverrideKeywordSuggestion() throws Exception {
+        // 파서는 모든 행에 expenseKind="unclassified" 를 넣는다. 이 값을 실제 카테고리로
+        // 취급하면 자동 분류 결과를 덮어써 저장 행이 미분류로 남는다.
+        classifier.addKeyword("스타벅스", "식비", "카페/간식", 0);
+
+        String body = "{\"rows\":["
+                + rowWithExpenseKind("k1", "2026-10-01", "스타벅스 강남점", 10000, "unclassified", "주유소")
+                + "],\"merchantRules\":{}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/assets/card-imports?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].expenseKind").value("식비"))
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].subCategory").value("카페/간식"));
+        // "unclassified" 라는 규칙이 저장돼 다음 임포트를 막아서도 안 된다.
+        org.junit.jupiter.api.Assertions.assertEquals("식비", ruleLedger.allRules().get("스타벅스 강남점"));
+    }
+
+    @Test
+    void parserDefaultUnclassifiedDoesNotOverrideSubmittedRule() throws Exception {
+        String body = "{\"rows\":["
+                + rowWithExpenseKind("k1", "2026-10-01", "알수없는가맹점", 10000, "unclassified", "한식")
+                + "],\"merchantRules\":{\"알수없는가맹점\":{\"category\":\"교육\",\"subCategory\":\"학원/교육\"}}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/assets/card-imports?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].expenseKind").value("교육"))
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].subCategory").value("학원/교육"));
     }
 }
