@@ -35,24 +35,26 @@ public class PostgresExpenseItemLedger implements ExpenseItemLedger {
                 rs.getLong("amount"),
                 rs.getBoolean("is_essential"),
                 rs.getLong("purchase_vat"),
-                rs.getObject("recurring_id") == null ? null : rs.getLong("recurring_id"));
+                rs.getObject("recurring_id") == null ? null : rs.getLong("recurring_id"),
+                rs.getString("category"));
     }
 
     public List<ExpenseItem> all(String month) {
         return jdbc.query("""
-                SELECT id, month, label, amount, is_essential, purchase_vat, recurring_id
+                SELECT id, month, label, amount, is_essential, purchase_vat, recurring_id, category
                 FROM monthly_expense_items WHERE user_id = ? AND month = ? ORDER BY id
                 """, PostgresExpenseItemLedger::map, userId, month);
     }
 
-    public ExpenseItem create(String month, String label, long amount, boolean isEssential, long purchaseVat) {
+    public ExpenseItem create(String month, String label, long amount, boolean isEssential, long purchaseVat,
+                              String category) {
         try {
             Long id = jdbc.queryForObject("""
-                    INSERT INTO monthly_expense_items (user_id, month, label, amount, is_essential, purchase_vat)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO monthly_expense_items (user_id, month, label, amount, is_essential, purchase_vat, category)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     RETURNING id
-                    """, Long.class, userId, month, label, amount, isEssential, purchaseVat);
-            return new ExpenseItem(id, month, label, amount, isEssential, purchaseVat, null);
+                    """, Long.class, userId, month, label, amount, isEssential, purchaseVat, category);
+            return new ExpenseItem(id, month, label, amount, isEssential, purchaseVat, null, category);
         } catch (DataIntegrityViolationException e) {
             throw new IllegalArgumentException("duplicate label: " + label);
         }
@@ -63,15 +65,15 @@ public class PostgresExpenseItemLedger implements ExpenseItemLedger {
             // §45.2 개정: 같은 recurring_id 가 이미 물리행으로 있으면 중복 삽입하지 않는다.
             // 수동 행이 같은 이름이면 그 행을 우선해 정의 행을 생성하지 않는다.
             jdbc.update("""
-                    INSERT INTO monthly_expense_items (user_id, month, label, amount, is_essential, purchase_vat, recurring_id)
-                    SELECT ?, ?, ?, ?, ?, ?, ?
+                    INSERT INTO monthly_expense_items (user_id, month, label, amount, is_essential, purchase_vat, recurring_id, category)
+                    SELECT ?, ?, ?, ?, ?, ?, ?, ?
                     WHERE NOT EXISTS (
                         SELECT 1 FROM monthly_expense_items
                         WHERE user_id = ? AND month = ?
                           AND (recurring_id = ? OR label = ?)
                     )
                     """, userId, month, def.label(), def.amount(), def.isEssential(), def.purchaseVat(), def.id(),
-                    userId, month, def.id(), def.label());
+                    def.category(), userId, month, def.id(), def.label());
         }
     }
 
@@ -103,6 +105,30 @@ public class PostgresExpenseItemLedger implements ExpenseItemLedger {
                 oldAmount, oldEssential, oldPurchaseVat);
     }
 
+    public void updateRecurringCategory(long recurringId, String oldCategory, String newCategory) {
+        jdbc.update("""
+                UPDATE monthly_expense_items
+                SET category = ?, updated_at = now()
+                WHERE user_id = ? AND recurring_id = ? AND category IS NOT DISTINCT FROM ?
+                """, newCategory, userId, recurringId, oldCategory);
+    }
+
+    public List<MonthlyItemTotal> monthlyCategoryTotals(String from, String to) {
+        return jdbc.query("""
+                SELECT month AS ym, category, SUM(amount) AS gross
+                FROM monthly_expense_items
+                WHERE user_id = ? AND month >= ? AND month <= ?
+                  AND category IS NOT NULL AND category <> ''
+                GROUP BY month, category
+                ORDER BY ym, category
+                """,
+                (rs, n) -> new MonthlyItemTotal(
+                        rs.getString("ym"),
+                        rs.getString("category"),
+                        rs.getLong("gross")),
+                userId, from, to);
+    }
+
     public void linkRecurring(long id, Long recurringId) {
         int updated = jdbc.update(
                 "UPDATE monthly_expense_items SET recurring_id = ?, updated_at = now() WHERE id = ? AND user_id = ?",
@@ -114,8 +140,8 @@ public class PostgresExpenseItemLedger implements ExpenseItemLedger {
 
     public int copyMonth(String from, String to) {
         return jdbc.update("""
-                INSERT INTO monthly_expense_items (user_id, month, label, amount, is_essential, purchase_vat, recurring_id)
-                SELECT user_id, ?, label, amount, is_essential, purchase_vat, recurring_id
+                INSERT INTO monthly_expense_items (user_id, month, label, amount, is_essential, purchase_vat, recurring_id, category)
+                SELECT user_id, ?, label, amount, is_essential, purchase_vat, recurring_id, category
                 FROM monthly_expense_items src
                 WHERE user_id = ? AND month = ?
                   AND NOT EXISTS (
@@ -131,26 +157,28 @@ public class PostgresExpenseItemLedger implements ExpenseItemLedger {
 
     public ExpenseItem byId(long id) {
         List<ExpenseItem> rows = jdbc.query("""
-                SELECT id, month, label, amount, is_essential, purchase_vat, recurring_id
+                SELECT id, month, label, amount, is_essential, purchase_vat, recurring_id, category
                 FROM monthly_expense_items WHERE id = ? AND user_id = ?
                 """, PostgresExpenseItemLedger::map, id, userId);
         return rows.isEmpty() ? null : rows.get(0);
     }
 
-    public ExpenseItem update(long id, String month, String label, long amount, boolean isEssential, long purchaseVat) {
+    public ExpenseItem update(long id, String month, String label, long amount, boolean isEssential, long purchaseVat,
+                              String category) {
         try {
             int updated = jdbc.update("""
                     UPDATE monthly_expense_items
-                    SET month = ?, label = ?, amount = ?, is_essential = ?, purchase_vat = ?, updated_at = now()
+                    SET month = ?, label = ?, amount = ?, is_essential = ?, purchase_vat = ?, category = ?,
+                        updated_at = now()
                     WHERE id = ? AND user_id = ?
-                    """, month, label, amount, isEssential, purchaseVat, id, userId);
+                    """, month, label, amount, isEssential, purchaseVat, category, id, userId);
             if (updated == 0) {
                 throw new com.assetflow.common.api.NotFoundException("expense item id " + id);
             }
             ExpenseItem existing = byId(id);
             return existing != null
-                    ? new ExpenseItem(id, month, label, amount, isEssential, purchaseVat, existing.recurringId())
-                    : new ExpenseItem(id, month, label, amount, isEssential, purchaseVat, null);
+                    ? new ExpenseItem(id, month, label, amount, isEssential, purchaseVat, existing.recurringId(), category)
+                    : new ExpenseItem(id, month, label, amount, isEssential, purchaseVat, null, category);
         } catch (DataIntegrityViolationException e) {
             throw new IllegalArgumentException("duplicate label: " + label);
         }

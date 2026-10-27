@@ -33,19 +33,19 @@ public class InMemoryRecurringExpenseLedger implements RecurringExpenseLedger {
         }
     }
 
-    public Recurring create(String label, long amount, boolean isEssential, long purchaseVat, String startMonth, String endMonth) {
-        Recurring row = new Recurring(nextId++, label, amount, isEssential, purchaseVat, startMonth, endMonth);
+    public Recurring create(String label, long amount, boolean isEssential, long purchaseVat, String startMonth, String endMonth, String category) {
+        Recurring row = new Recurring(nextId++, label, amount, isEssential, purchaseVat, startMonth, endMonth, category);
         synchronized (rows) {
             rows.add(row);
         }
         return row;
     }
 
-    public Recurring update(long id, String label, long amount, boolean isEssential, long purchaseVat, String startMonth, String endMonth) {
+    public Recurring update(long id, String label, long amount, boolean isEssential, long purchaseVat, String startMonth, String endMonth, String category) {
         synchronized (rows) {
             for (int i = 0; i < rows.size(); i++) {
                 if (rows.get(i).id() == id) {
-                    Recurring row = new Recurring(id, label, amount, isEssential, purchaseVat, startMonth, endMonth);
+                    Recurring row = new Recurring(id, label, amount, isEssential, purchaseVat, startMonth, endMonth, category);
                     rows.set(i, row);
                     return row;
                 }

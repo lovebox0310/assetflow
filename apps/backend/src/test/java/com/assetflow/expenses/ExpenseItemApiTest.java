@@ -99,6 +99,31 @@ class ExpenseItemApiTest {
     }
 
     @Test
+    void categoryIsStoredAndValidated() throws Exception {
+        mvc.perform(post("/api/v1/expenses/items?month=2026-10").header("Authorization", TOKEN)
+                        .contentType("application/json")
+                        .content("{\"label\":\"교육비\",\"amount\":1000000,\"category\":\"교육\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.category").value("교육"));
+
+        mvc.perform(get("/api/v1/expenses/items?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data[0].category").value("교육"));
+
+        // 9개 대분류 밖의 값은 400 — 지출 추이 범례가 깨지지 않게 서버가 막는다.
+        mvc.perform(post("/api/v1/expenses/items?month=2026-10").header("Authorization", TOKEN)
+                        .contentType("application/json")
+                        .content("{\"label\":\"기타\",\"amount\":1,\"category\":\"없는분류\"}"))
+                .andExpect(status().isBadRequest());
+
+        // 빈 값은 "추이 제외"(null)로 저장된다.
+        mvc.perform(post("/api/v1/expenses/items?month=2026-10").header("Authorization", TOKEN)
+                        .contentType("application/json")
+                        .content("{\"label\":\"카드대금\",\"amount\":500000,\"category\":\"\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.category").doesNotExist());
+    }
+
+    @Test
     void deleteRemovesAnd404OnUnknown() throws Exception {
         mvc.perform(post("/api/v1/expenses/items?month=2026-10").header("Authorization", TOKEN)
                         .contentType("application/json")
@@ -119,8 +144,8 @@ class ExpenseItemApiTest {
 
     @Test
     void recurringItemsMaterializeIntoMonthAndStopAfterEndMonth() throws Exception {
-        recurring.create("임대료", 1_200_000, true, 0, "2026-10", null);
-        recurring.create("구독료", 14_900, false, 0, "2026-01", "2026-12");
+        recurring.create("임대료", 1_200_000, true, 0, "2026-10", null, null);
+        recurring.create("구독료", 14_900, false, 0, "2026-01", "2026-12", null);
 
         // 2026-10 조회 → 정기 항목이 물리행으로 등장 + recurringId 배지
         mvc.perform(get("/api/v1/expenses/items?month=2026-10").header("Authorization", TOKEN))
@@ -215,7 +240,7 @@ class ExpenseItemApiTest {
                         .contentType("application/json")
                         .content("{\"label\":\"교육비\",\"amount\":30000}"))
                 .andExpect(status().isOk());
-        recurring.create("교육비", 30000, false, 0, "2026-10", null);
+        recurring.create("교육비", 30000, false, 0, "2026-10", null, null);
 
         // 변환 → 새로 만들지 않고 기존 정의(id 1)에 연결 — 200
         mvc.perform(post("/api/v1/expenses/items/1/convert-to-recurring").header("Authorization", TOKEN)

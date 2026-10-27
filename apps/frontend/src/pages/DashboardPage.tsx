@@ -325,6 +325,9 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
         <Typography.Title level={2} id="h-trend" style={{ fontSize: 16 }}>
           지출 추이
         </Typography.Title>
+        <Typography.Text type="secondary" style={{ display: "block", marginTop: -8, marginBottom: 16, fontSize: 13 }}>
+          카드내역 + 고정/정기 항목 · 자산 이동(저축/투자) 제외
+        </Typography.Text>
         <Card>
           <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <Typography.Text style={{ fontWeight: 600, whiteSpace: "nowrap" }}>조회 범위</Typography.Text>

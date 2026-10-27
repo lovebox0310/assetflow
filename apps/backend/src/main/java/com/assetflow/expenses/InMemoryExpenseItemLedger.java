@@ -46,7 +46,7 @@ public class InMemoryExpenseItemLedger implements ExpenseItemLedger {
                     }
                 }
                 if (!exists) {
-                    rows.add(new ExpenseItem(nextId++, month, def.label(), def.amount(), def.isEssential(), def.purchaseVat(), def.id()));
+                    rows.add(new ExpenseItem(nextId++, month, def.label(), def.amount(), def.isEssential(), def.purchaseVat(), def.id(), def.category()));
                 }
             }
         }
@@ -66,7 +66,7 @@ public class InMemoryExpenseItemLedger implements ExpenseItemLedger {
             for (int i = 0; i < rows.size(); i++) {
                 ExpenseItem r = rows.get(i);
                 if (r.recurringId() != null && r.recurringId() == recurringId && r.label().equals(oldLabel)) {
-                    rows.set(i, new ExpenseItem(r.id(), r.month(), newLabel, r.amount(), r.isEssential(), r.purchaseVat(), r.recurringId()));
+                    rows.set(i, new ExpenseItem(r.id(), r.month(), newLabel, r.amount(), r.isEssential(), r.purchaseVat(), r.recurringId(), r.category()));
                 }
             }
         }
@@ -82,10 +82,40 @@ public class InMemoryExpenseItemLedger implements ExpenseItemLedger {
                         && r.amount() == oldAmount
                         && r.isEssential() == oldEssential
                         && r.purchaseVat() == oldPurchaseVat) {
-                    rows.set(i, new ExpenseItem(r.id(), r.month(), r.label(), newAmount, newEssential, newPurchaseVat, r.recurringId()));
+                    rows.set(i, new ExpenseItem(r.id(), r.month(), r.label(), newAmount, newEssential, newPurchaseVat, r.recurringId(), r.category()));
                 }
             }
         }
+    }
+
+    public void updateRecurringCategory(long recurringId, String oldCategory, String newCategory) {
+        synchronized (rows) {
+            for (int i = 0; i < rows.size(); i++) {
+                ExpenseItem r = rows.get(i);
+                if (r.recurringId() != null && r.recurringId() == recurringId
+                        && java.util.Objects.equals(r.category(), oldCategory)) {
+                    rows.set(i, new ExpenseItem(r.id(), r.month(), r.label(), r.amount(),
+                            r.isEssential(), r.purchaseVat(), r.recurringId(), newCategory));
+                }
+            }
+        }
+    }
+
+    public List<MonthlyItemTotal> monthlyCategoryTotals(String from, String to) {
+        java.util.Map<String, Long> totals = new java.util.TreeMap<>();
+        synchronized (rows) {
+            for (ExpenseItem r : rows) {
+                if (r.month().compareTo(from) < 0 || r.month().compareTo(to) > 0) continue;
+                if (r.category() == null || r.category().isBlank()) continue;
+                totals.merge(r.month() + "|" + r.category(), r.amount(), Long::sum);
+            }
+        }
+        List<MonthlyItemTotal> out = new ArrayList<>();
+        for (java.util.Map.Entry<String, Long> e : totals.entrySet()) {
+            String[] parts = e.getKey().split("\\|", 2);
+            out.add(new MonthlyItemTotal(parts[0], parts[1], e.getValue()));
+        }
+        return out;
     }
 
     public void linkRecurring(long id, Long recurringId) {
@@ -93,7 +123,8 @@ public class InMemoryExpenseItemLedger implements ExpenseItemLedger {
             for (int i = 0; i < rows.size(); i++) {
                 if (rows.get(i).id() == id) {
                     rows.set(i, new ExpenseItem(id, rows.get(i).month(), rows.get(i).label(),
-                            rows.get(i).amount(), rows.get(i).isEssential(), rows.get(i).purchaseVat(), recurringId));
+                            rows.get(i).amount(), rows.get(i).isEssential(), rows.get(i).purchaseVat(), recurringId,
+                            rows.get(i).category()));
                     return;
                 }
             }
@@ -118,7 +149,7 @@ public class InMemoryExpenseItemLedger implements ExpenseItemLedger {
                     }
                 }
                 if (!exists) {
-                    copies.add(new ExpenseItem(nextId++, to, r.label(), r.amount(), r.isEssential(), r.purchaseVat(), r.recurringId()));
+                    copies.add(new ExpenseItem(nextId++, to, r.label(), r.amount(), r.isEssential(), r.purchaseVat(), r.recurringId(), r.category()));
                     copied++;
                 }
             }
@@ -127,20 +158,20 @@ public class InMemoryExpenseItemLedger implements ExpenseItemLedger {
         }
     }
 
-    public ExpenseItem create(String month, String label, long amount, boolean isEssential, long purchaseVat) {
+    public ExpenseItem create(String month, String label, long amount, boolean isEssential, long purchaseVat, String category) {
         synchronized (rows) {
             for (ExpenseItem r : rows) {
                 if (r.month().equals(month) && r.label().equals(label)) {
                     throw new IllegalArgumentException("duplicate label: " + label);
                 }
             }
-            ExpenseItem row = new ExpenseItem(nextId++, month, label, amount, isEssential, purchaseVat, null);
+            ExpenseItem row = new ExpenseItem(nextId++, month, label, amount, isEssential, purchaseVat, null, category);
             rows.add(row);
             return row;
         }
     }
 
-    public ExpenseItem update(long id, String month, String label, long amount, boolean isEssential, long purchaseVat) {
+    public ExpenseItem update(long id, String month, String label, long amount, boolean isEssential, long purchaseVat, String category) {
         synchronized (rows) {
             for (int i = 0; i < rows.size(); i++) {
                 if (rows.get(i).id() == id) {
@@ -149,7 +180,7 @@ public class InMemoryExpenseItemLedger implements ExpenseItemLedger {
                             throw new IllegalArgumentException("duplicate label: " + label);
                         }
                     }
-                    ExpenseItem row = new ExpenseItem(id, month, label, amount, isEssential, purchaseVat, rows.get(i).recurringId());
+                    ExpenseItem row = new ExpenseItem(id, month, label, amount, isEssential, purchaseVat, rows.get(i).recurringId(), category);
                     rows.set(i, row);
                     return row;
                 }

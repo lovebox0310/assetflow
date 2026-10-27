@@ -9,7 +9,7 @@ import java.util.List;
 public interface RecurringExpenseLedger {
 
     record Recurring(long id, String label, long amount, boolean isEssential, long purchaseVat,
-                     String startMonth, String endMonth) {}
+                     String startMonth, String endMonth, String category) {}
 
     /** 전체 정의 (관리 화면용). */
     List<Recurring> all();
@@ -17,9 +17,11 @@ public interface RecurringExpenseLedger {
     /** 해당 월에 활성인 정의 (start <= month <= end 또는 무기한). */
     List<Recurring> activeIn(String month);
 
-    Recurring create(String label, long amount, boolean isEssential, long purchaseVat, String startMonth, String endMonth);
+    Recurring create(String label, long amount, boolean isEssential, long purchaseVat,
+                     String startMonth, String endMonth, String category);
 
-    Recurring update(long id, String label, long amount, boolean isEssential, long purchaseVat, String startMonth, String endMonth);
+    Recurring update(long id, String label, long amount, boolean isEssential, long purchaseVat,
+                     String startMonth, String endMonth, String category);
 
     void delete(long id);
 }

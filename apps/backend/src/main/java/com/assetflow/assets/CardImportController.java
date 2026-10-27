@@ -3,6 +3,7 @@ package com.assetflow.assets;
 import com.assetflow.assets.CardImportLedger.ImportedRow;
 import com.assetflow.assets.MerchantRuleLedger.MerchantRule;
 import com.assetflow.common.api.ApiResponse;
+import com.assetflow.expenses.ExpenseItemLedger;
 import com.assetflow.expenses.categories.CategoryClassifier;
 import com.assetflow.expenses.categories.CategoryClassifier.Classification;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -37,13 +38,16 @@ public class CardImportController {
     private final CardImportLedger ledger;
     private final MerchantRuleLedger ruleLedger;
     private final CategoryClassifier categoryClassifier;
+    private final ExpenseItemLedger expenseItemLedger;
 
     public CardImportController(CardImportLedger ledger,
                                 MerchantRuleLedger ruleLedger,
-                                CategoryClassifier categoryClassifier) {
+                                CategoryClassifier categoryClassifier,
+                                ExpenseItemLedger expenseItemLedger) {
         this.ledger = ledger;
         this.ruleLedger = ruleLedger;
         this.categoryClassifier = categoryClassifier;
+        this.expenseItemLedger = expenseItemLedger;
     }
 
     public record ImportRow(String rowKey, String approvedAt, String merchantName,
@@ -113,7 +117,8 @@ public class CardImportController {
 
     /**
      * 월별 대분류 지출 합계 — 대시보드 지출 추이(스택 막대)용.
-     * 양끝 월 포함, 자산 이동(저축/투자)은 제외한다. 조회 범위는 36개월까지.
+     * 카드내역 + 고정/정기 지출 항목(§57.6)을 합친다. 자산 이동(저축/투자)과
+     * 대분류가 없는 월 항목(카드대금 등)은 제외한다. 양끝 월 포함, 조회 범위는 36개월까지.
      */
     @GetMapping("/card-imports/monthly-categories")
     public ApiResponse<List<CardImportLedger.MonthlyCategoryTotal>> monthlyCategories(
@@ -128,8 +133,31 @@ public class CardImportController {
         if (monthCountInclusive(from, to) > 36) {
             throw new IllegalArgumentException("range must be 36 months or fewer");
         }
-        return new ApiResponse<>("OK", "Monthly category totals loaded",
-                ledger.monthlyCategoryTotals(from, to));
+        return new ApiResponse<>("OK", "Monthly category totals loaded", mergeTotals(from, to));
+    }
+
+    /**
+     * 카드 집계와 월 지출 항목 집계를 month+category 로 합친다.
+     * 정렬 키가 "YYYY-MM|대분류"라 월 → 대분류 순서가 유지된다.
+     */
+    private List<CardImportLedger.MonthlyCategoryTotal> mergeTotals(String from, String to) {
+        Map<String, Long> merged = new java.util.TreeMap<>();
+        for (CardImportLedger.MonthlyCategoryTotal t : ledger.monthlyCategoryTotals(from, to)) {
+            merged.merge(key(t.month(), t.category()), t.gross(), Long::sum);
+        }
+        for (ExpenseItemLedger.MonthlyItemTotal t : expenseItemLedger.monthlyCategoryTotals(from, to)) {
+            merged.merge(key(t.month(), t.category()), t.gross(), Long::sum);
+        }
+        List<CardImportLedger.MonthlyCategoryTotal> out = new ArrayList<>();
+        for (Map.Entry<String, Long> e : merged.entrySet()) {
+            String[] parts = e.getKey().split("\\|", 2);
+            out.add(new CardImportLedger.MonthlyCategoryTotal(parts[0], parts[1], e.getValue()));
+        }
+        return out;
+    }
+
+    private static String key(String month, String category) {
+        return month + "|" + category;
     }
 
     /**

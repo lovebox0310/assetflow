@@ -16,6 +16,37 @@
 
 ## 2026-10-27 — 대시보드 지출 추이 (월별 대분류 스택 막대)
 
+### 2026-10-27 (추가) — 고정/정기 지출도 추이에 포함 (2번 형식)
+
+지출 추이를 "카드내역만"에서 **카드 + 고정/정기 항목**으로 바꿨다. 항목마다 9개 대분류를
+고르고, 분류가 없는 항목(카드대금)은 이중계상을 막기 위해 뺀다. (결정 근거: project.md §57.6)
+
+- DB
+  - `monthly_expense_items.category`, `recurring_expenses.category` (`VARCHAR(20)`, NULL=제외)
+  - `schema.sql` 에 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` — 부팅 시 자동 적용
+  - `db/migrations/2026-10-27-expense-item-category.sql` — 라벨 키워드 백필
+    (교육 22 · 주거/통신 23 · 금융/세금 66 · 기타/경조사 66, 여리카드대금 1건 제외)
+- 백엔드
+  - `ExpenseItemLedger.ExpenseItem`·`Recurring` 에 `category` 추가, `MonthlyItemTotal` 계약 추가
+  - Postgres/InMemory: `monthlyCategoryTotals`, `updateRecurringCategory` 구현,
+    `ensureRecurringRows`·`copyMonth` 가 분류를 함께 복사
+  - `ExpenseItemController.normalizeCategory` — 빈 값→null, 9개 밖→400
+  - `RecurringExpenseController` — 정의 변경 시 연결 행에 소급(수동 변경 행은 유지)
+  - `CardImportController.mergeTotals` — 카드 집계 + 항목 집계를 month+category 로 합산
+  - 테스트: `categoryIsStoredAndValidated`, `categoryIsStoredAndPropagatesToLinkedRows`,
+    `monthlyCategoriesIncludeFixedItemsAndSkipUncategorized`
+- 프론트엔드
+  - `expensesApi.ts`: 행/페이로드에 `category`
+  - 지출 화면: 월 항목 폼·정기 항목 폼에 대분류 Select(지우면 "추이 제외"), 표에 대분류 컬럼,
+    모바일 카드·정기 칩에 분류 표시
+  - 대시보드: `지출 추이` 제목 아래 `카드내역 + 고정/정기 항목 · 자산 이동(저축/투자) 제외`
+- 검증: `./gradlew test bootJar`, `pnpm typecheck/lint/test/build` 통과(162 tests), 운영 배포·헬스 OK
+  - 운영 API 6개월 합계: 05 6,984,581 / 06 6,893,471 / 07 5,333,223 / 08 6,440,193 /
+    09 5,565,670 / 10 4,323,023 — 2026-09 는 현금흐름 지출(5,565,670)과 일치
+  - 항목 API: 9개 중 8개 분류, `여리카드대금` 만 `null` / 잘못된 분류는 400
+
+### 2026-10-27 — 대시보드 지출 추이 (월별 대분류 스택 막대)
+
 대시보드에 최근 1년 대분류 지출 추이를 스택 막대로 넣고, 년월~년월 범위 선택을 붙였다.
 (결정 근거: project.md §57)
 

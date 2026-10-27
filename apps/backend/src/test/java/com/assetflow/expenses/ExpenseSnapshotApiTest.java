@@ -47,8 +47,8 @@ class ExpenseSnapshotApiTest {
         cardLedger.addAll(java.util.List.of(
                 new CardImportLedger.ImportedRow("r1", "2026-10-01", "가맹점A", 1000, 100, 1100, "", "", "", "", ""),
                 new CardImportLedger.ImportedRow("r2", "2026-10-02", "가맹점B", 2000, 200, 2200, "", "", "", "", "")));
-        items.create("2026-10", "임대료", 1_000_000, true, 0);
-        items.create("2026-10", "기타", 300_000, false, 0);
+        items.create("2026-10", "임대료", 1_000_000, true, 0, "교육");
+        items.create("2026-10", "기타", 300_000, false, 0, "교육");
 
         mvc.perform(put("/api/v1/expenses/snapshots?month=2026-10").header("Authorization", TOKEN)
                         .contentType("application/json")

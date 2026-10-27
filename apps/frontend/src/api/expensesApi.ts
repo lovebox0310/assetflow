@@ -9,6 +9,8 @@ export interface ExpenseItemRow {
   isEssential: boolean;
   purchaseVat: number;
   recurringId: number | null;
+  /** §57.6 9개 대분류. null = 지출 추이에서 제외(카드대금 등). */
+  category: string | null;
 }
 
 /** §41 — 카드 원장 반영 행(월별 조회). */
@@ -42,6 +44,8 @@ export interface ItemPayload {
   amount: number;
   isEssential?: boolean;
   purchaseVat?: number;
+  /** 빈 값/null = 추이 제외. 서버가 9개 대분류만 허용한다. */
+  category?: string | null;
 }
 
 export function listExpenseItems(month: string): Promise<ExpenseItemRow[]> {
@@ -94,6 +98,8 @@ export interface RecurringRow {
   purchaseVat: number;
   startMonth: string;
   endMonth: string | null;
+  /** §57.6 9개 대분류. null = 지출 추이에서 제외. */
+  category: string | null;
 }
 
 export interface RecurringPayload {
@@ -103,6 +109,7 @@ export interface RecurringPayload {
   purchaseVat?: number;
   startMonth: string;
   endMonth?: string | null;
+  category?: string | null;
 }
 
 export function listRecurring(): Promise<RecurringRow[]> {

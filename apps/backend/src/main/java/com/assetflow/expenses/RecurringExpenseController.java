@@ -33,7 +33,7 @@ public class RecurringExpenseController {
     }
 
     public record RecurringBody(String label, Long amount, Boolean isEssential, Long purchaseVat,
-                                String startMonth, String endMonth) {}
+                                String startMonth, String endMonth, String category) {}
 
     /** 변환용 기간 본문 (§45.5) — 둘 다 선택, null 이면 기존 행의 월/무기한. */
     public record PeriodBody(String startMonth, String endMonth) {}
@@ -73,7 +73,8 @@ public class RecurringExpenseController {
                     ledger.create(body.label().trim(), body.amount(),
                             body.isEssential() == null ? false : body.isEssential(),
                             body.purchaseVat() == null ? 0 : body.purchaseVat(),
-                            body.startMonth(), body.endMonth()));
+                            body.startMonth(), body.endMonth(),
+                            ExpenseItemController.normalizeCategory(body.category())));
         } catch (org.springframework.dao.DuplicateKeyException e) {
             throw new IllegalArgumentException("duplicate recurring: " + body.label());
         }
@@ -90,6 +91,7 @@ public class RecurringExpenseController {
         String label = body.label().trim();
         boolean isEssential = body.isEssential() == null ? false : body.isEssential();
         long purchaseVat = body.purchaseVat() == null ? 0 : body.purchaseVat();
+        String category = ExpenseItemController.normalizeCategory(body.category());
 
         if (!before.label().equals(label)) {
             itemLedger.renameRecurringRows(id, before.label(), label);
@@ -101,9 +103,12 @@ public class RecurringExpenseController {
                     before.amount(), before.isEssential(), before.purchaseVat(),
                     body.amount(), isEssential, purchaseVat);
         }
+        if (!java.util.Objects.equals(before.category(), category)) {
+            itemLedger.updateRecurringCategory(id, before.category(), category);
+        }
         return new ApiResponse<>("OK", "Recurring updated",
                 ledger.update(id, label, body.amount(), isEssential, purchaseVat,
-                        body.startMonth(), body.endMonth()));
+                        body.startMonth(), body.endMonth(), category));
     }
 
     @DeleteMapping("/recurring/{id}")
