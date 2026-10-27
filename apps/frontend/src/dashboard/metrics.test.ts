@@ -82,10 +82,46 @@ describe("cashflowWindow — 최근 6개월 창 (#73, §35.1)", () => {
       6,
       today,
     );
-    expect(window[0]).toEqual({ month: "2026-10", income: 8_200_000, expenses: 4_960_000, confirmed: true });
-    expect(window[1]).toEqual({ month: "2026-09", income: null, expenses: null, confirmed: false });
-    expect(window[2]).toEqual({ month: "2026-08", income: 8_200_000, expenses: 4_720_000, confirmed: true });
+    expect(window[0]).toEqual({
+      month: "2026-10",
+      income: 8_200_000,
+      expenses: 4_960_000,
+      balance: 3_240_000,
+      confirmed: true,
+    });
+    expect(window[1]).toEqual({
+      month: "2026-09",
+      income: null,
+      expenses: null,
+      balance: null,
+      confirmed: false,
+    });
+    expect(window[2]).toEqual({
+      month: "2026-08",
+      income: 8_200_000,
+      expenses: 4_720_000,
+      balance: 3_480_000,
+      confirmed: true,
+    });
     expect(window.filter((m) => !m.confirmed)).toHaveLength(4);
+  });
+
+  it("수지는 그 달 수입 − 그 달 지출이다 — 이전 달 값을 더하지 않는다", () => {
+    const window = cashflowWindow(
+      [
+        { month: "2026-10", income: 8_949_960, expenses: 4_413_363 },
+        { month: "2026-09", income: 8_949_960, expenses: 5_565_670 },
+        { month: "2026-08", income: 8_949_960, expenses: 6_441_193 },
+      ],
+      3,
+      today,
+    );
+
+    // 운영 데이터와 같은 모양: 각 달 수지가 그 달 두 값의 차이다.
+    expect(window.map((m) => m.balance)).toEqual([4_536_597, 3_384_290, 2_508_767]);
+    // 누적이면 4,536,597 / 7,920,887 / 10,429,654 가 된다 — 그 값이 나오면 실패다.
+    expect(window[1]?.balance).not.toBe(7_920_887);
+    expect(window[2]?.balance).not.toBe(10_429_654);
   });
 
   it("연 경계를 넘어가도 월 키가 정확하다", () => {

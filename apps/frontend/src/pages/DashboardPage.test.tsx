@@ -126,6 +126,10 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     expect(screen.getByText(monthKey(0))).toBeDefined();
     expect(screen.getByText(monthKey(1))).toBeDefined();
     expect(screen.getByText(monthKey(2))).toBeDefined();
+    // 수지는 그 달 수입 − 그 달 지출만 보여 준다(이전 달 누적 아님).
+    // 2026-10: 8,200,000 − 4,960,000 = +3,240,000 / 2026-09: +2,640,000
+    expect(screen.getByText("+2,640,000원")).toBeDefined();
+    expect(screen.queryByText("+5,880,000원")).toBeNull();
   });
 
   it("요청 중에는 로딩(스켈레톤)이 보인다 (§26 AC)", () => {
