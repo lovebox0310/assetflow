@@ -56,6 +56,16 @@ public class PostgresExpenseSnapshotLedger implements ExpenseSnapshotLedger {
                 """, PostgresExpenseSnapshotLedger::map, userId, asOf, months);
     }
 
+    public List<Snapshot> between(String from, String to) {
+        return jdbc.query("""
+                SELECT snapshot_month, total_assets, total_debts, income, expenses,
+                       essential_expenses, essential_complete
+                FROM monthly_snapshots
+                WHERE user_id = ? AND snapshot_month BETWEEN ? AND ?
+                ORDER BY snapshot_month ASC
+                """, PostgresExpenseSnapshotLedger::map, userId, from, to);
+    }
+
     public void upsert(Snapshot s) {
         jdbc.update("""
                 INSERT INTO monthly_snapshots (user_id, snapshot_month, total_assets, total_debts,

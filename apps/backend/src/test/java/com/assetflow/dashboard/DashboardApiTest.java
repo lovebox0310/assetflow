@@ -97,6 +97,56 @@ class DashboardApiTest {
     }
 
     @Test
+    void monthlyIncomeReturnsOnlyConfirmedMonthsOldestFirst() throws Exception {
+        String token = new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com");
+        snapshotLedger.upsert(new ExpenseSnapshotLedger.Snapshot("2026-08", 0, 0, 7_000_000L, 5_000_000L, 0, true));
+        snapshotLedger.upsert(new ExpenseSnapshotLedger.Snapshot("2026-10", 0, 0, 9_000_000L, 5_000_000L, 0, true));
+        // 범위 밖(2026-07)은 응답에 없어야 한다.
+        snapshotLedger.upsert(new ExpenseSnapshotLedger.Snapshot("2026-07", 0, 0, 6_000_000L, 5_000_000L, 0, true));
+
+        mvc.perform(get("/api/v1/dashboard/monthly-income?from=2026-08&to=2026-10")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].month").value("2026-08"))
+                .andExpect(jsonPath("$.data[0].income").value(7_000_000))
+                // 스냅샷이 없는 2026-09 는 0 이 아니라 아예 행이 없다 — 화면이 "미확정"으로 그린다.
+                .andExpect(jsonPath("$.data[1].month").value("2026-10"))
+                .andExpect(jsonPath("$.data[1].income").value(9_000_000));
+    }
+
+    @Test
+    void monthlyIncomeKeepsZeroIncomeAsConfirmedMonth() throws Exception {
+        String token = new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com");
+        snapshotLedger.upsert(new ExpenseSnapshotLedger.Snapshot("2025-02", 0, 0, 0L, 3_100_000L, 0, true));
+
+        mvc.perform(get("/api/v1/dashboard/monthly-income?from=2025-01&to=2025-03")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].month").value("2025-02"))
+                .andExpect(jsonPath("$.data[0].income").value(0));
+    }
+
+    @Test
+    void monthlyIncomeRejectsBadRange() throws Exception {
+        String token = new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com");
+
+        mvc.perform(get("/api/v1/dashboard/monthly-income?from=2026-10&to=2026-08")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+
+        mvc.perform(get("/api/v1/dashboard/monthly-income?from=2023-10&to=2026-10")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadRequest());
+
+        mvc.perform(get("/api/v1/dashboard/monthly-income?from=2026-13&to=2026-10")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void missingTokenIsBlockedWithStandardError() throws Exception {
         mvc.perform(get("/api/v1/dashboard/summary"))
                 .andExpect(status().isUnauthorized())

@@ -14,6 +14,7 @@ import java.util.List;
  * 스프린트 1 대시보드 API (§25).
  * - GET /api/v1/dashboard/summary                     → 대시보드 카드 원장
  * - GET /api/v1/dashboard/cashflow?months=3          → 최근 N개월 수지
+ * - GET /api/v1/dashboard/monthly-income?from&to     → 범위 내 확정 월 수입 (§57.8)
  * 성공 응답은 ApiResponse(code, message, data) 로 고정한다.
  */
 @RestController
@@ -35,5 +36,13 @@ public class DashboardController {
     public ApiResponse<List<CashflowMonth>> cashflow(
             @RequestParam(name = "months", defaultValue = "3") int months) {
         return new ApiResponse<>("OK", "Cashflow loaded", service.cashflow(months));
+    }
+
+    /** §57.8: 지출 추이 차트의 수입 막대 — 확정된 달만 내려준다. */
+    @GetMapping("/monthly-income")
+    public ApiResponse<List<DashboardService.MonthlyIncome>> monthlyIncome(
+            @RequestParam("from") String from,
+            @RequestParam("to") String to) {
+        return new ApiResponse<>("OK", "Monthly income loaded", service.monthlyIncome(from, to));
     }
 }

@@ -17,5 +17,11 @@ public interface ExpenseSnapshotLedger {
      */
     List<Snapshot> recent(String asOf, int months);
 
+    /**
+     * from~to(YYYY-MM, 양끝 포함) 구간의 스냅샷을 오래된 월부터 반환.
+     * 스냅샷이 없는 달은 결과에 없다 — 호출 측이 "미확정"으로 드러낸다(§34.6).
+     */
+    List<Snapshot> between(String from, String to);
+
     void upsert(Snapshot snapshot);
 }

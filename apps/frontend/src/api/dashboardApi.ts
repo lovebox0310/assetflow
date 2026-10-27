@@ -11,6 +11,13 @@ export interface CashflowRow {
 /** §26 작업표의 months=3 기본값. 1..12 밖은 서버가 400 으로 막는다. */
 export const DEFAULT_CASHFLOW_MONTHS = 3;
 
+/** §57.8: 지출 추이 차트의 수입 막대 — 확정된 달만 서버가 돌려준다. */
+export interface MonthlyIncome {
+  /** YYYY-MM */
+  month: string;
+  income: number;
+}
+
 /** 중복 호출 방지(dedupe)는 클라이언트가 맡는다 — 이 함수의 키 고정. */
 export function fetchDashboardSummary(): Promise<DashboardData> {
   return dedupe("dashboard.summary", () => apiFetch<DashboardData>("/api/v1/dashboard/summary"));
@@ -19,5 +26,16 @@ export function fetchDashboardSummary(): Promise<DashboardData> {
 export function fetchCashflow(months: number = DEFAULT_CASHFLOW_MONTHS): Promise<CashflowRow[]> {
   return dedupe(`dashboard.cashflow.${months}`, () =>
     apiFetch<CashflowRow[]>(`/api/v1/dashboard/cashflow?months=${months}`),
+  );
+}
+
+/**
+ * §57.8: 범위(from~to) 안에서 확정된 달의 수입만 온다.
+ * 미확정 달은 행이 없다 — 0 으로 채우지 않고 화면이 수입 막대를 비운다.
+ */
+export function fetchMonthlyIncome(from: string, to: string): Promise<MonthlyIncome[]> {
+  const query = new URLSearchParams({ from, to }).toString();
+  return dedupe(`dashboard.income.${from}.${to}`, () =>
+    apiFetch<MonthlyIncome[]>(`/api/v1/dashboard/monthly-income?${query}`),
   );
 }
