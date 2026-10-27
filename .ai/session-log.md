@@ -36,11 +36,12 @@
   - `ExpensesPage.tsx` 월 확정 폼에 "부가세통장 이체" 입력 추가, 확정 결과 표시에 부가세·수지 추가
   - `expenseTrend.ts`/`ExpenseTrendChart.tsx` 수입 스택을 `실수입`/`부가세통장` 두 세그먼트로 분리
   - 테스트: `expenseTrend.test.ts`, `metrics.test.ts`, `DashboardPage.test.tsx` 갱신
-- 남은 일
-  - `./gradlew test bootJar` 및 `pnpm typecheck/lint/test/build` 최종 통과 확인
-  - 운영 DB `2026-10-28-vat-set-aside.sql` 마이그레이션 적용
-  - 배포 스크립트 실행 및 헬스 체크
-  - 변경 파일 커밋·푸시, CI 확인
+- 검증
+  - `./gradlew test bootJar` ✅
+  - `pnpm typecheck`·`lint`·`test`(166)·`build` ✅
+  - 운영 DB `2026-10-28-vat-set-aside.sql` 마이그레이션 적용 ✅
+  - 배포 스크립트 실행 및 헬스 체크 ✅
+  - 변경 파일 커밋·푸시 ✅ (`557d4f1`)
 
 ---
 
