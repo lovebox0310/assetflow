@@ -43,6 +43,15 @@
   - 배포 스크립트 실행 및 헬스 체크 ✅
   - 변경 파일 커밋·푸시 ✅ (`557d4f1`)
 
+## 2026-10-28 — 월 스냅샷 응답에 balance 누락 수정 (§57.9)
+
+`ExpensesPage` 확정 결과에 "수지 NaN원"이 뜨던 문제를 수정했다.
+
+- 원인: `ExpenseSnapshotLedger.Snapshot` 에 `balance` 필드가 없어 `GET/PUT /api/v1/expenses/snapshots` 응답에 수지가 빠짐
+- 해결: `Snapshot` record 에 `balance()` 메서드 추가, `@JsonProperty("balance")` 로 직렬화
+- 검증: `./gradlew test bootJar` ✅, 배포 및 헬스 체크 ✅
+- 커밋: `78f2e5c`
+
 ---
 
 ## 2026-10-27 — 삼성 업종 기반 자동 분류 (§55.8.9)
