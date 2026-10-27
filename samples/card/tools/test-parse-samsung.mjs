@@ -189,7 +189,7 @@ if (REAL && existsSync(REAL)) try {
   check("실제 파일에서 PII 가 안 새나온다",
     !JSON.stringify(r5.rows).includes("김*학") && !JSON.stringify(r5.rows).includes("760211"));
   realNote = "18행, 총액 " + (okGross ? "일치" : "불일치") + ", 부가세 " + (okVat ? "일치" : "불일치") +
-    ", 취소 " + neg5 + "건, rowKey " + keys5.size + "/18, 미매핑 " + unmapped + "열(상품/매출/성명/카드구분/사업자번호)";
+    ", 취소 " + neg5 + "건, rowKey " + keys5.size + "/18, 미매핑 " + unmapped + "열(상품/매출/성명/카드구분)";
 } catch (e) {
   check("실제 파일 파싱이 예외 없이 끝난다", false, e.message);
   realNote = "예외: " + e.message.slice(0, 200);

@@ -66,8 +66,11 @@ check("vat 는 '부가세' 열에 묶인다", r.header.mapped.vat === 5, "실제
 check("관계가 memberRelation 로 매핑된다", r.header.mapped.memberRelation === 6, "실제 " + r.header.mapped.memberRelation);
 check("할부가 installmentCount 로 매핑된다", r.header.mapped.installmentCount === 7, "실제 " + r.header.mapped.installmentCount);
 check("상태가 reversal 로 매핑된다", r.header.mapped.reversal === 8, "실제 " + r.header.mapped.reversal);
-check("가맹점번호/사업자번호는 매핑하지 않는다(저장 금지)",
-  r.header.mapped.merchantNo === undefined && !Object.values(r.header.mapped).includes(9) && !Object.values(r.header.mapped).includes(10));
+check("가맹점번호(index 9)는 매핑하지 않는다",
+  r.header.mapped.merchantNo === undefined && !Object.values(r.header.mapped).includes(9));
+// §56: 사업자번호는 가맹점 식별·업종 조회용으로 남긴다(하이픈 제거).
+check("사업자번호(index 10)는 businessNo 로 매핑된다 (§56)", r.header.mapped.businessNo === 10,
+  "실제 " + r.header.mapped.businessNo);
 
 // 날짜 정규화: 점 구분을 ISO 로.
 const d25 = r.rows.find((x) => x.merchantName === "합성서점" && x.approvedAmount === 12800 && x.grossAmount === 0);
@@ -84,8 +87,9 @@ check("모든 cardMasked 에 * 이 있다", r.rows.every((x) => !x.cardMasked ||
 // PII 는 반환하지 않는다
 check("회원명이 결과에 없다", !flat.includes("홍*길"));
 check("주민등록번호가 결과에 없다", !flat.includes("000000-0"));
-check("가맹점번호/사업자번호가 결과에 없다",
-  !flat.includes("211-511111") && !flat.includes("131-81-67"));
+// §56: 사업자번호는 저장 대상이지만 하이픈 없는 10자리로만 남긴다.
+check("사업자번호는 하이픈 없이 정규화된다",
+  r.rows.filter((x) => x.businessNo).every((x) => /^\d{10}$/.test(x.businessNo)));
 
 // 취소: 상태 컬럼이 1차 신호다.
 const cancels = r.rows.filter((x) => x.reversal === "매입취소");
