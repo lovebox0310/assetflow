@@ -45,6 +45,14 @@ function route(path: string): Response | Promise<Response> {
       { month: monthKey(2), income: 8_200_000, expenses: 4_720_000 },
     ]);
   }
+  // §57: 지출 추이 — 현재 월과 한 달 전의 대분류 합계
+  if (path.includes("/card-imports/monthly-categories")) {
+    return apiResponse([
+      { month: monthKey(0), category: "식비", gross: 1_200_000 },
+      { month: monthKey(1), category: "식비", gross: 900_000 },
+      { month: monthKey(1), category: "미분류", gross: 10_000 },
+    ]);
+  }
   return apiResponse({}, false, 500);
 }
 
@@ -208,5 +216,25 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     // mount 1회 로딩에서 summary 1회 + cashflow 1회
     const summaryCalls = fetchMock.mock.calls.filter((c) => String(c[0]).includes("/dashboard/summary")).length;
     expect(summaryCalls).toBe(1);
+  });
+
+  it("지출 추이는 기본 최근 12개월 범위로 1회 조회한다 (§57)", async () => {
+    const fetchMock = stubFetch(route);
+    render(<DashboardPage onLogout={() => {}} />);
+    await screen.findByText("6.9억");
+
+    const trendCalls = fetchMock.mock.calls.filter((c) =>
+      String(c[0]).includes("/card-imports/monthly-categories"),
+    );
+    expect(trendCalls.length).toBe(1);
+    // 기본 범위 = 이번 달 포함 최근 12개월
+    const url = String(trendCalls[0]?.[0] ?? "");
+    expect(url).toContain(`to=${monthKey(0)}`);
+    expect(url).toContain(`from=${monthKey(11)}`);
+
+    // 섹션 제목과 범례(카테고리 + 미분류)가 렌더된다
+    expect(screen.getByRole("heading", { name: "지출 추이" })).toBeDefined();
+    await waitFor(() => expect(screen.getByLabelText("지출 추이 범례")).toBeDefined());
+    expect(screen.getByText("미분류")).toBeDefined();
   });
 });

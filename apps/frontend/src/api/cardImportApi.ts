@@ -133,3 +133,24 @@ export function updateCardImportCategory(
     body: JSON.stringify({ rowKey, category, subCategory }),
   });
 }
+
+/** 월별 대분류 지출 합계 — 대시보드 지출 추이 차트용. */
+export interface MonthlyCategoryTotal {
+  /** YYYY-MM */
+  month: string;
+  /** 대분류 또는 "미분류" */
+  category: string;
+  gross: number;
+}
+
+/**
+ * from~to(YYYY-MM, 양끝 포함)의 월별 대분류 합계를 조회한다.
+ * 서버가 자산 이동(저축/투자)을 제외하고, 36개월을 넘는 범위는 400 으로 거절한다.
+ */
+export function listMonthlyCategoryTotals(
+  from: string,
+  to: string,
+): Promise<MonthlyCategoryTotal[]> {
+  const query = new URLSearchParams({ from, to }).toString();
+  return apiFetch<MonthlyCategoryTotal[]>(`/api/v1/assets/card-imports/monthly-categories?${query}`);
+}

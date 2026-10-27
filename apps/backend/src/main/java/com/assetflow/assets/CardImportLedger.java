@@ -22,6 +22,13 @@ public interface CardImportLedger {
                              String firstApprovedAt, String lastApprovedAt,
                              String businessCategory, String businessNo) {}
 
+    /**
+     * 월별 대분류 지출 합계 — 대시보드 추이 차트용.
+     * 자산 이동(저축/투자)은 지출이 아니므로 제외한다(§55.10.3).
+     * 미분류는 category = "미분류" 로 묶는다.
+     */
+    record MonthlyCategoryTotal(String month, String category, long gross) {}
+
     List<ImportedRow> all();
 
     /** 승인일이 해당 월(YYYY-MM)인 행 — 지출 화면의 "가져온 카드내역" 표용 (§42). */
@@ -46,4 +53,10 @@ public interface CardImportLedger {
 
     /** 같은 가맹점의 모든 행을 미분류로 되돌린다 (§55.8 되돌리기). 변경 건수를 돌려준다. */
     int clearClassificationByMerchant(String merchantName);
+
+    /**
+     * fromMonth~toMonth(YYYY-MM, 양끝 포함)의 월별 대분류 지출 합계.
+     * 자산 이동(저축/투자) 행은 뺀다 — 지출 추이 차트가 소비만 보여주도록.
+     */
+    List<MonthlyCategoryTotal> monthlyCategoryTotals(String fromMonth, String toMonth);
 }

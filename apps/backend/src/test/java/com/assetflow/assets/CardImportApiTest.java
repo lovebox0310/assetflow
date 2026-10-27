@@ -56,6 +56,69 @@ class CardImportApiTest {
     }
 
     @Test
+    void monthlyCategoriesAggregateByMonthAndExcludeAssetTransfers() throws Exception {
+        String body = "{\"rows\":["
+                + rowWithCategory("k1", "2026-08-10", "식당", 10000, "식비", "외식") + ","
+                + rowWithCategory("k2", "2026-09-05", "통신사", 20000, "주거/통신", "통신비") + ","
+                + rowWithCategory("k3", "2026-09-06", "증권사", 30000, "금융/세금", "저축/투자") + ","
+                + rowWithCategory("k4", "2026-10-01", "알수없는가맹점", 5000, "", "")
+                + "],\"merchantRules\":{}}";
+
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/assets/card-imports/monthly-categories")
+                        .header("Authorization", TOKEN)
+                        .param("from", "2026-08").param("to", "2026-10"))
+                .andExpect(status().isOk())
+                // 자산 이동(저축/투자)은 지출이 아니다 — 빠진다
+                .andExpect(jsonPath("$.data.length()").value(3))
+                .andExpect(jsonPath("$.data[0].month").value("2026-08"))
+                .andExpect(jsonPath("$.data[0].category").value("식비"))
+                .andExpect(jsonPath("$.data[0].gross").value(10000))
+                .andExpect(jsonPath("$.data[1].category").value("주거/통신"))
+                .andExpect(jsonPath("$.data[1].gross").value(20000))
+                .andExpect(jsonPath("$.data[2].category").value("미분류"))
+                .andExpect(jsonPath("$.data[2].gross").value(5000));
+    }
+
+    @Test
+    void monthlyCategoriesRejectBadRange() throws Exception {
+        mvc.perform(get("/api/v1/assets/card-imports/monthly-categories")
+                        .header("Authorization", TOKEN)
+                        .param("from", "2026-10").param("to", "2026-08"))
+                .andExpect(status().isBadRequest());
+
+        mvc.perform(get("/api/v1/assets/card-imports/monthly-categories")
+                        .header("Authorization", TOKEN)
+                        .param("from", "2020-01").param("to", "2026-10"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void monthlyCategoriesAllowUpTo36MonthsInclusive() throws Exception {
+        // 36개월(양끝 포함)까지 허용 — 2023-11 ~ 2026-10 은 36개월
+        mvc.perform(get("/api/v1/assets/card-imports/monthly-categories")
+                        .header("Authorization", TOKEN)
+                        .param("from", "2023-11").param("to", "2026-10"))
+                .andExpect(status().isOk());
+
+        // 37개월은 거절 — 2023-10 ~ 2026-10
+        mvc.perform(get("/api/v1/assets/card-imports/monthly-categories")
+                        .header("Authorization", TOKEN)
+                        .param("from", "2023-10").param("to", "2026-10"))
+                .andExpect(status().isBadRequest());
+    }
+
+    private String rowWithCategory(String rowKey, String date, String merchant, long gross,
+                                   String category, String subCategory) {
+        return "{\"rowKey\":\"" + rowKey + "\",\"approvedAt\":\"" + date + "\",\"merchantName\":\"" + merchant
+                + "\",\"supplyExVat\":" + gross + ",\"vat\":0,\"grossAmount\":" + gross
+                + ",\"cardMasked\":\"1234\",\"expenseKind\":\"" + category + "\",\"subCategory\":\"" + subCategory + "\"}";
+    }
+
+    @Test
     void storesRowsAndRecalculatesTotalsFromRows() throws Exception {
         String body = "{\"rows\":[" + row("k1", "2026-10-01", "가맹점A", 9000, 1000, 10000)
                 + "," + row("k2", "2026-10-02", "가맹점B", 18000, 2000, 20000) + "],\"merchantRules\":{}}";

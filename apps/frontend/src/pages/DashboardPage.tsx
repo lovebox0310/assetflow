@@ -1,5 +1,6 @@
 import { useCallback, Suspense, lazy, useEffect, useRef, useState } from "react";
-import { Card, Grid, Skeleton, Typography } from "antd";
+import dayjs from "dayjs";
+import { Alert, Card, DatePicker, Grid, Skeleton, Typography } from "antd";
 import {
   MobileListCardHeader,
   MobileListCardItem,
@@ -21,6 +22,8 @@ import {
   netWorth,
 } from "../dashboard/metrics";
 import { AssetCompositionList } from "../dashboard/AssetCompositionList";
+import { buildExpenseTrend, lastMonthsRange, monthsBetween } from "../dashboard/expenseTrend";
+import { listMonthlyCategoryTotals, type MonthlyCategoryTotal } from "../api/cardImportApi";
 import {
   formatKrwAbbr,
   formatKrwExact,
@@ -30,6 +33,10 @@ import {
 import { clearToken } from "../auth/authStore";
 
 const CompositionDonut = lazy(() => import("../components/CompositionDonut").then(m => ({ default: m.CompositionDonut })));
+const ExpenseTrendChart = lazy(() => import("../components/ExpenseTrendChart").then(m => ({ default: m.ExpenseTrendChart })));
+
+/** §57: 지출 추이 기본 조회 범위 — 최근 12개월. 모듈 로드 시 한 번만 계산한다. */
+const DEFAULT_TREND_RANGE = lastMonthsRange(12);
 
 /** §35.1: 월별 현금흐름은 최근 6개월. 서버는 months 1..12 만 받는다. */
 const CASHFLOW_MONTHS = 6;
@@ -65,9 +72,30 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
   const [cashflow, setCashflow] = useState<CashflowRow[] | null>(null);
   const [cashflowStatus, setCashflowStatus] = useState<SurfaceStatus>("loading");
 
+  // §57: 지출 추이 — 년월 범위로 조회. 기본은 최근 12개월.
+  const [trendRange, setTrendRange] = useState<{ from: string; to: string }>(DEFAULT_TREND_RANGE);
+  const [trend, setTrend] = useState<MonthlyCategoryTotal[] | null>(null);
+  const [trendStatus, setTrendStatus] = useState<SurfaceStatus>("loading");
+  const [trendError, setTrendError] = useState("");
+  const [trendRangeNotice, setTrendRangeNotice] = useState("");
+
   // React 18 StrictMode 더블 마운트 + 리마운트에서도 중복 호출이 없어야 한다.
   // dedupe 가 네트워크 중복을 막지만, 마운트마다 재요청 자체도 마운트 플래그로 막는다.
   const mountedRef = useRef(false);
+
+  const loadTrend = useCallback((from: string, to: string) => {
+    setTrendStatus("loading");
+    setTrendError("");
+    listMonthlyCategoryTotals(from, to)
+      .then((rows) => {
+        setTrend(rows);
+        setTrendStatus(rows.length === 0 ? "empty" : "ready");
+      })
+      .catch((e: Error) => {
+        setTrendStatus("error");
+        setTrendError(e.message);
+      });
+  }, []);
 
   const load = useCallback(() => {
     setSummaryStatus("loading");
@@ -99,7 +127,10 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
     if (mountedRef.current) return;
     mountedRef.current = true;
     void load();
-  }, [load]);
+    loadTrend(DEFAULT_TREND_RANGE.from, DEFAULT_TREND_RANGE.to);
+  }, [load, loadTrend]);
+
+  const trendSeries = trend ? buildExpenseTrend(trend, trendRange.from, trendRange.to) : null;
 
   const handleLogout = () => {
     clearToken();
@@ -280,6 +311,57 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
             ) : (
               <Typography.Text type="secondary">표시할 월 데이터가 없습니다</Typography.Text>
             )}
+          </StateBlock>
+        </Card>
+      </section>
+
+      <section aria-labelledby="h-trend" style={{ marginBottom: 32 }}>
+        <Typography.Title level={2} id="h-trend" style={{ fontSize: 16 }}>
+          지출 추이
+        </Typography.Title>
+        <Card>
+          <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <Typography.Text style={{ fontWeight: 600, whiteSpace: "nowrap" }}>조회 범위</Typography.Text>
+            <DatePicker.RangePicker
+              picker="month"
+              format="YYYY-MM"
+              value={[dayjs(trendRange.from), dayjs(trendRange.to)]}
+              onChange={(dates, _dateStrings) => {
+                if (!dates) return;
+                const [start, end] = dates;
+                if (!start || !end) return;
+                const from = start.format("YYYY-MM");
+                const to = end.format("YYYY-MM");
+                const span = monthsBetween(from, to).length;
+                // §57.4: 서버 상한(36개월)과 같은 규칙을 화면에서도 먼저 막는다.
+                if (span === 0 || span > 36) {
+                  setTrendRangeNotice("조회 범위는 최대 36개월입니다. 범위를 줄여 주세요.");
+                  return;
+                }
+                setTrendRangeNotice("");
+                setTrendRange({ from, to });
+                void loadTrend(from, to);
+              }}
+              placeholder={["시작", "종료"]}
+              style={{ minWidth: 320 }}
+            />
+          </div>
+          {trendRangeNotice ? (
+            <Alert
+              type="warning"
+              showIcon
+              title={trendRangeNotice}
+              role="status"
+              aria-live="polite"
+              style={{ marginBottom: 16 }}
+            />
+          ) : null}
+          <StateBlock status={trendStatus} onRetry={() => void loadTrend(trendRange.from, trendRange.to)} errorText={trendError}>
+            {trendSeries ? (
+              <Suspense fallback={<Skeleton active paragraph={{ rows: 3 }} />}>
+                <ExpenseTrendChart series={trendSeries} from={trendRange.from} to={trendRange.to} />
+              </Suspense>
+            ) : null}
           </StateBlock>
         </Card>
       </section>
