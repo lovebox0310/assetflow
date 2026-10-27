@@ -61,19 +61,27 @@ public class CardImportController {
 
     public record MerchantCategoryUpdate(String merchantName, String category, String subCategory) {}
 
-    public record MerchantRulesRequest(List<String> merchants) {}
+    /**
+     * merchants 와 함께 가맹점별 업종을 보낼 수 있다. 업종은 3순위 자동 분류 힌트로만
+     * 쓰인다(§55.8.9). 업종을 모르는 클라이언트는 merchants 만 보내도 된다.
+     */
+    public record MerchantRulesRequest(List<String> merchants, Map<String, String> businessCategories) {}
 
     /**
      * 가맹점별 카테고리 제안 (§55.8, §55.10).
-     * 저장된 사용자 규칙이 1순위, 없으면 키워드 기반 자동 분류 결과를 함께 돌려준다.
+     * 저장된 사용자 규칙이 1순위, 없으면 키워드 기반 자동 분류 결과를, 그것도 없으면
+     * 명세서 업종(businessCategories)을 3순위로 함께 돌려준다(§55.8.9).
      * 요청 본문에 merchants 가 없으면 저장된 규칙 전천리만 반환한다(키워드 제안은 대상 가맹점이 필요).
      * GET 쿼리스트링으로 긴 가맹점 목록을 본낼 때 URL 길이/특수문자 제한 때문에 400 이 발생할 수 있어 POST 를 쓴다.
      */
     @PostMapping("/card-imports/merchant-rules")
     public ApiResponse<Map<String, MerchantRule>> merchantRules(
             @RequestBody(required = false) MerchantRulesRequest request) {
-        List<String> merchants = request == null ? List.of() : request.merchants();
-        if (merchants == null || merchants.isEmpty()) {
+        List<String> merchants = request == null || request.merchants() == null
+                ? List.of() : request.merchants();
+        Map<String, String> businessCategories = request == null || request.businessCategories() == null
+                ? Map.of() : request.businessCategories();
+        if (merchants.isEmpty()) {
             return new ApiResponse<>("OK", "Merchant rules loaded", Map.copyOf(ruleLedger.allRuleDetails()));
         }
         Map<String, MerchantRule> rules = new HashMap<>(ruleLedger.ruleDetailsFor(Set.copyOf(merchants)));
@@ -85,14 +93,14 @@ public class CardImportController {
             if (stored != null && !isBlank(stored.subCategory())) {
                 continue;
             }
-            Classification classified = categoryClassifier.classify(merchant);
+            Classification classified = categoryClassifier.classify(merchant, businessCategories.get(merchant));
             if (classified == null) {
                 continue;
             }
             if (stored == null) {
                 rules.put(merchant, new MerchantRule(classified.category(), safe(classified.subCategory())));
             } else if (isBlank(stored.subCategory())) {
-                // 대분류만 저장된 규칙에는 같은 대분류의 키워드 세부를 붙인다.
+                // 대분류만 저장된 규칙에는 같은 대분류의 키워드/업종 세부를 붙인다.
                 String sub = classified.category().equals(stored.category())
                         ? safe(classified.subCategory()) : "";
                 rules.put(merchant, new MerchantRule(stored.category(), sub));
@@ -190,6 +198,10 @@ public class CardImportController {
         List<ImportedRow> incoming = new ArrayList<>();
         int supplyInconsistent = 0;
         for (ImportRow row : request.rows()) {
+            String businessCategory = row.businessCategory() == null ? "" : row.businessCategory().trim();
+            // 파서가 넣는 기본값 "unclassified" 는 카테고리가 아니라 "아직 안 정함" 이다.
+            // 이 값을 그대로 두면 규칙/키워드/업종 자동 분류를 덮어써 저장 행이 미분류로 남는다.
+            String submittedKind = normalizeSubmittedKind(row.expenseKind());
             MerchantRule rule = submittedRules.get(row.merchantName());
             if (rule == null || isBlank(rule.category())) {
                 rule = storedRules.get(row.merchantName());
@@ -197,15 +209,16 @@ public class CardImportController {
             String category = rule == null ? "" : safe(rule.category());
             String subCategory = rule == null ? "" : safe(rule.subCategory());
             // §55.8: 제출/저장 규칙이 없으면 키워드 기반 자동 분류를 제안한다.
+            // §55.8.9: 키워드도 없으면 명세서 업종을 3순위로 쓴다.
             if (isBlank(category)) {
-                Classification classified = categoryClassifier.classify(row.merchantName());
+                Classification classified = categoryClassifier.classify(row.merchantName(), businessCategory);
                 if (classified != null) {
                     category = safe(classified.category());
                     subCategory = safe(classified.subCategory());
                 }
             } else if (isBlank(subCategory)) {
-                // 규칙에 세부가 없으면 같은 대분류의 키워드 세부를 빌려 온다.
-                Classification classified = categoryClassifier.classify(row.merchantName());
+                // 규칙에 세부가 없으면 같은 대분류의 키워드/업종 세부를 빌려 온다.
+                Classification classified = categoryClassifier.classify(row.merchantName(), businessCategory);
                 if (classified != null && category.equals(classified.category())) {
                     subCategory = safe(classified.subCategory());
                 }
@@ -214,14 +227,13 @@ public class CardImportController {
             if (!isBlank(row.subCategory())) {
                 subCategory = row.subCategory().trim();
             }
-            if (!isBlank(row.expenseKind())) {
-                category = row.expenseKind().trim();
+            if (!submittedKind.isEmpty()) {
+                category = submittedKind;
             }
             if (isBlank(category)) {
                 subCategory = "";
             }
             String businessNo = row.businessNo() == null ? "" : row.businessNo().replaceAll("-", "").trim();
-            String businessCategory = row.businessCategory() == null ? "" : row.businessCategory().trim();
             ImportedRow r = new ImportedRow(
                     requiredText(row.rowKey(), "rowKey"),
                     requiredIsoDate(row.approvedAt()),
@@ -274,7 +286,7 @@ public class CardImportController {
                 "supplyInconsistentRows", supplyInconsistent));
     }
 
-    /** 기존 카드 내역을 키워드/규칙 기반으로 일괄 재분류한다 (§55.8, §55.10). */
+    /** 기존 카드 내역을 키워드/규칙/업종 기반으로 일괄 재분류한다 (§55.8, §55.10, §55.8.9). */
     @PostMapping("/card-imports/reclassify")
     public ApiResponse<Map<String, Object>> reclassify() {
         List<ImportedRow> rows = ledger.all();
@@ -283,7 +295,7 @@ public class CardImportController {
             if (row.merchantName() == null || row.merchantName().isBlank()) {
                 continue;
             }
-            Classification classified = categoryClassifier.classify(row.merchantName());
+            Classification classified = categoryClassifier.classify(row.merchantName(), row.businessCategory());
             if (classified == null || isBlank(classified.category())) {
                 continue;
             }
@@ -371,6 +383,15 @@ public class CardImportController {
 
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /** 카드 명세서 파서의 기본값 "unclassified" 는 미분류 표시가 아니라 "값 없음" 이다. */
+    private static String normalizeSubmittedKind(String value) {
+        if (isBlank(value)) {
+            return "";
+        }
+        String trimmed = value.trim();
+        return "unclassified".equalsIgnoreCase(trimmed) ? "" : trimmed;
     }
 
     private static String safe(String value) {
