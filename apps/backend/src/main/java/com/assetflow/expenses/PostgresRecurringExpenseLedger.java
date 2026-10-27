@@ -33,45 +33,48 @@ public class PostgresRecurringExpenseLedger implements RecurringExpenseLedger {
                 rs.getBoolean("is_essential"),
                 rs.getLong("purchase_vat"),
                 rs.getString("start_month"),
-                rs.getString("end_month"));
+                rs.getString("end_month"),
+                rs.getString("category"));
     }
 
     public List<RecurringExpenseLedger.Recurring> all() {
         return jdbc.query("""
-                SELECT id, label, amount, is_essential, purchase_vat, start_month, end_month
+                SELECT id, label, amount, is_essential, purchase_vat, start_month, end_month, category
                 FROM recurring_expenses WHERE user_id = ? ORDER BY id
                 """, PostgresRecurringExpenseLedger::map, userId);
     }
 
     public List<RecurringExpenseLedger.Recurring> activeIn(String month) {
         return jdbc.query("""
-                SELECT id, label, amount, is_essential, purchase_vat, start_month, end_month
+                SELECT id, label, amount, is_essential, purchase_vat, start_month, end_month, category
                 FROM recurring_expenses
                 WHERE user_id = ? AND start_month <= ? AND (end_month IS NULL OR end_month >= ?)
                 ORDER BY id
                 """, PostgresRecurringExpenseLedger::map, userId, month, month);
     }
 
-    public RecurringExpenseLedger.Recurring create(String label, long amount, boolean isEssential, long purchaseVat, String startMonth, String endMonth) {
+    public RecurringExpenseLedger.Recurring create(String label, long amount, boolean isEssential, long purchaseVat,
+                                                   String startMonth, String endMonth, String category) {
         Long id = jdbc.queryForObject("""
-                INSERT INTO recurring_expenses (user_id, label, amount, is_essential, purchase_vat, start_month, end_month)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO recurring_expenses (user_id, label, amount, is_essential, purchase_vat, start_month, end_month, category)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 RETURNING id
-                """, Long.class, userId, label, amount, isEssential, purchaseVat, startMonth, endMonth);
-        return new RecurringExpenseLedger.Recurring(id, label, amount, isEssential, purchaseVat, startMonth, endMonth);
+                """, Long.class, userId, label, amount, isEssential, purchaseVat, startMonth, endMonth, category);
+        return new RecurringExpenseLedger.Recurring(id, label, amount, isEssential, purchaseVat, startMonth, endMonth, category);
     }
 
-    public RecurringExpenseLedger.Recurring update(long id, String label, long amount, boolean isEssential, long purchaseVat, String startMonth, String endMonth) {
+    public RecurringExpenseLedger.Recurring update(long id, String label, long amount, boolean isEssential, long purchaseVat,
+                                                   String startMonth, String endMonth, String category) {
         int updated = jdbc.update("""
                 UPDATE recurring_expenses
                 SET label = ?, amount = ?, is_essential = ?, purchase_vat = ?,
-                    start_month = ?, end_month = ?, updated_at = now()
+                    start_month = ?, end_month = ?, category = ?, updated_at = now()
                 WHERE id = ? AND user_id = ?
-                """, label, amount, isEssential, purchaseVat, startMonth, endMonth, id, userId);
+                """, label, amount, isEssential, purchaseVat, startMonth, endMonth, category, id, userId);
         if (updated == 0) {
             throw new com.assetflow.common.api.NotFoundException("recurring id " + id);
         }
-        return new RecurringExpenseLedger.Recurring(id, label, amount, isEssential, purchaseVat, startMonth, endMonth);
+        return new RecurringExpenseLedger.Recurring(id, label, amount, isEssential, purchaseVat, startMonth, endMonth, category);
     }
 
     public void delete(long id) {

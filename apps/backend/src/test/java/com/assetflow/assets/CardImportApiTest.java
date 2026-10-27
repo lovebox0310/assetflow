@@ -5,6 +5,7 @@ import com.assetflow.assets.CardImportController.ImportRow;
 import com.assetflow.common.api.ApiExceptionHandler;
 import com.assetflow.auth.TokenService;
 import com.assetflow.common.web.BearerTokenInterceptor;
+import com.assetflow.expenses.InMemoryExpenseItemLedger;
 import com.assetflow.expenses.categories.InMemoryCategoryClassifier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,11 +32,12 @@ class CardImportApiTest {
     private final InMemoryCardImportLedger ledger = new InMemoryCardImportLedger();
     private final InMemoryMerchantRuleLedger ruleLedger = new InMemoryMerchantRuleLedger();
     private final InMemoryCategoryClassifier classifier = new InMemoryCategoryClassifier();
+    private final InMemoryExpenseItemLedger expenseItems = new InMemoryExpenseItemLedger();
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
-        mvc = MockMvcBuilders.standaloneSetup(new CardImportController(ledger, ruleLedger, classifier))
+        mvc = MockMvcBuilders.standaloneSetup(new CardImportController(ledger, ruleLedger, classifier, expenseItems))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .addInterceptors(new BearerTokenInterceptor(new TokenService("test-secret-0123456789-0123456789-0123456789")))
                 .build();
@@ -81,6 +83,41 @@ class CardImportApiTest {
                 .andExpect(jsonPath("$.data[1].gross").value(20000))
                 .andExpect(jsonPath("$.data[2].category").value("미분류"))
                 .andExpect(jsonPath("$.data[2].gross").value(5000));
+    }
+
+    @Test
+    void monthlyCategoriesIncludeFixedItemsAndSkipUncategorized() throws Exception {
+        // §57.6: 고정/정기 항목도 지출 추이에 들어간다. 대분류가 없는 항목(카드대금)은 이중계상을 막기 위해 뺀다.
+        expenseItems.create("2026-09", "교육비", 1_000_000, true, 0, "교육");
+        expenseItems.create("2026-09", "여리카드대금", 500_000, false, 0, null);
+        expenseItems.create("2026-10", "교육비", 1_000_000, true, 0, "교육");
+        expenseItems.create("2026-10", "식비 항목", 5_000, false, 0, "식비");
+
+        String body = "{\"rows\":["
+                + rowWithCategory("k1", "2026-09-05", "식당", 10000, "식비", "외식") + ","
+                + rowWithCategory("k2", "2026-10-02", "식당", 7000, "식비", "외식")
+                + "],\"merchantRules\":{}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/assets/card-imports/monthly-categories")
+                        .header("Authorization", TOKEN)
+                        .param("from", "2026-09").param("to", "2026-10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(4))
+                // 2026-09: 식비(카드 10,000) + 교육(항목 1,000,000) — 카드대금 500,000 은 빠진다
+                .andExpect(jsonPath("$.data[0].month").value("2026-09"))
+                .andExpect(jsonPath("$.data[0].category").value("교육"))
+                .andExpect(jsonPath("$.data[0].gross").value(1_000_000))
+                .andExpect(jsonPath("$.data[1].category").value("식비"))
+                .andExpect(jsonPath("$.data[1].gross").value(10_000))
+                // 2026-10: 같은 달·같은 대분류이면 카드와 항목을 합산한다
+                .andExpect(jsonPath("$.data[2].month").value("2026-10"))
+                .andExpect(jsonPath("$.data[2].category").value("교육"))
+                .andExpect(jsonPath("$.data[2].gross").value(1_000_000))
+                .andExpect(jsonPath("$.data[3].category").value("식비"))
+                .andExpect(jsonPath("$.data[3].gross").value(12_000));
     }
 
     @Test

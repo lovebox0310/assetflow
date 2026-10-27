@@ -185,6 +185,11 @@ CREATE TABLE recurring_expenses (
 -- 월 지출 항목이 어떤 정기 항목에서 생성됐는지 — FE 의 정기/수동 배지와 "정기 항목 수정" 링크용
 ALTER TABLE monthly_expense_items ADD COLUMN recurring_id BIGINT REFERENCES recurring_expenses (id);
 
+-- §57.6 대분류 — 고정/정기 항목을 지출 추이(9개 대분류)에 포함할 때 쓴다.
+-- NULL = 추이에서 제외(카드대금처럼 카드내역과 이중계상되는 항목).
+ALTER TABLE monthly_expense_items ADD COLUMN IF NOT EXISTS category VARCHAR(20);
+ALTER TABLE recurring_expenses ADD COLUMN IF NOT EXISTS category VARCHAR(20);
+
 -- ---------------------------------------------------------------------------
 -- investment_holdings: 투자 계좌의 보유종목 (§54.2 — 2026-10-24 확정, Sprint 5 E1).
 -- 계좌(asset_accounts, account_type='invest')의 balance 는 예수금이다(§54.3).

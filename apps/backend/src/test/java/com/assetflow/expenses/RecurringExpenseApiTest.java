@@ -121,6 +121,44 @@ class RecurringExpenseApiTest {
     }
 
     @Test
+    void categoryIsStoredAndPropagatesToLinkedRows() throws Exception {
+        mvc.perform(post("/api/v1/expenses/recurring").header("Authorization", TOKEN)
+                        .contentType("application/json")
+                        .content("{\"label\":\"임대료\",\"amount\":200000,\"isEssential\":true,\"startMonth\":\"2025-01\",\"category\":\"주거/통신\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.category").value("주거/통신"));
+
+        mvc.perform(get("/api/v1/expenses/items?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data[0].category").value("주거/통신"));
+
+        // 정의의 대분류를 바꾸면 연결된 월 행도 따라온다.
+        mvc.perform(put("/api/v1/expenses/recurring/1").header("Authorization", TOKEN)
+                        .contentType("application/json")
+                        .content("{\"label\":\"임대료\",\"amount\":200000,\"isEssential\":true,\"startMonth\":\"2025-01\",\"category\":\"교육\"}"))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/v1/expenses/items?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data[0].category").value("교육"));
+
+        // 그 달만 수동으로 바꾼 분류는 정의 변경에 덮이지 않는다.
+        mvc.perform(put("/api/v1/expenses/items/1").header("Authorization", TOKEN)
+                        .contentType("application/json")
+                        .content("{\"label\":\"임대료\",\"amount\":200000,\"isEssential\":true,\"category\":\"금융/세금\"}"))
+                .andExpect(status().isOk());
+        mvc.perform(put("/api/v1/expenses/recurring/1").header("Authorization", TOKEN)
+                        .contentType("application/json")
+                        .content("{\"label\":\"임대료\",\"amount\":200000,\"isEssential\":true,\"startMonth\":\"2025-01\",\"category\":\"문화/여가\"}"))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/v1/expenses/items?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data[0].category").value("금융/세금"));
+
+        // 잘못된 대분류는 400
+        mvc.perform(post("/api/v1/expenses/recurring").header("Authorization", TOKEN)
+                        .contentType("application/json")
+                        .content("{\"label\":\"x\",\"amount\":1,\"startMonth\":\"2026-10\",\"category\":\"없는분류\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void labelConflictBlocksRename() throws Exception {
         mvc.perform(post("/api/v1/expenses/recurring").header("Authorization", TOKEN)
                         .contentType("application/json")

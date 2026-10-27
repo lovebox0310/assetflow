@@ -308,9 +308,9 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
 
   useEffect(() => {
     if (recForm && recForm !== "new") {
-      recFormInstance.setFieldsValue({ label: recForm.label, amount: recForm.amount, purchaseVat: recForm.purchaseVat, isEssential: recForm.isEssential, startMonth: recForm.startMonth, endMonth: recForm.endMonth });
+      recFormInstance.setFieldsValue({ label: recForm.label, amount: recForm.amount, purchaseVat: recForm.purchaseVat, isEssential: recForm.isEssential, startMonth: recForm.startMonth, endMonth: recForm.endMonth, category: recForm.category ?? undefined });
     } else if (recForm === "new") {
-      const values = prefill ?? { label: "", amount: null, purchaseVat: null, isEssential: false, startMonth: month, endMonth: null };
+      const values = prefill ?? { label: "", amount: null, purchaseVat: null, isEssential: false, startMonth: month, endMonth: null, category: undefined };
       recFormInstance.setFieldsValue(values);
     }
   }, [recForm, recFormInstance, month]);
@@ -344,6 +344,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
       amount: values.amount ?? 0,
       isEssential: values.isEssential ?? false,
       purchaseVat: values.purchaseVat ?? 0,
+      category: values.category ?? null,
     };
     try {
       if (editing) {
@@ -378,6 +379,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
       amount: row.amount,
       isEssential: row.isEssential,
       purchaseVat: row.purchaseVat,
+      category: row.category ?? undefined,
     });
   };
 
@@ -390,6 +392,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
       purchaseVat: values.purchaseVat ?? 0,
       startMonth: values.startMonth,
       endMonth: values.endMonth ?? null,
+      category: values.category ?? null,
     };
     try {
       if (recForm === "new") {
@@ -565,6 +568,14 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
           </div>
         );
       },
+    },
+    {
+      title: "대분류",
+      dataIndex: "category",
+      width: 120,
+      render: (v: string | null) => (v
+        ? <span>{v}</span>
+        : <Typography.Text type="secondary" style={{ fontSize: 12 }}>추이 제외</Typography.Text>),
     },
     { title: "필수", dataIndex: "isEssential", width: 70, render: (v: boolean) => (v ? "필수" : "—") },
     { title: "매입세액", dataIndex: "purchaseVat", align: "right" as const, width: 120, className: "af-num", render: (v: number) => (v > 0 ? formatKrwExact(v) : "—") },
@@ -745,15 +756,15 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
                 summary={() => (
                   <Table.Summary fixed>
                     <Table.Summary.Row style={{ fontWeight: 600 }}>
-                      <Table.Summary.Cell index={0} colSpan={2}>합계 ({itemCount}항목)</Table.Summary.Cell>
-                      <Table.Summary.Cell index={2} align="right">
+                      <Table.Summary.Cell index={0} colSpan={3}>합계 ({itemCount}항목)</Table.Summary.Cell>
+                      <Table.Summary.Cell index={3} align="right">
                         <div style={{ whiteSpace: "nowrap", fontWeight: 600 }}>{formatKrwExact(totalAmount)}</div>
                       </Table.Summary.Cell>
-                      <Table.Summary.Cell index={3} align="center">
+                      <Table.Summary.Cell index={4} align="center">
                         <div style={{ whiteSpace: "nowrap", fontWeight: 600 }}>{formatKrwExact(essentialTotal)}</div>
                       </Table.Summary.Cell>
-                      <Table.Summary.Cell index={4} align="right">{totalVat > 0 ? formatKrwExact(totalVat) : "—"}</Table.Summary.Cell>
-                      <Table.Summary.Cell index={5} />
+                      <Table.Summary.Cell index={5} align="right">{totalVat > 0 ? formatKrwExact(totalVat) : "—"}</Table.Summary.Cell>
+                      <Table.Summary.Cell index={6} />
                     </Table.Summary.Row>
                   </Table.Summary>
                 )}
@@ -775,7 +786,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
                         value={formatKrwExact(it.amount)}
                       />
                       <MobileListCardMeta>
-                        매입세액 {it.purchaseVat > 0 ? formatKrwExact(it.purchaseVat) : "—"}
+                        {it.category ?? "추이 제외"} · 매입세액 {it.purchaseVat > 0 ? formatKrwExact(it.purchaseVat) : "—"}
                         {it.recurringId && recurring
                           ? (() => {
                               const def = recurring.find((d) => d.id === it.recurringId);
@@ -814,6 +825,15 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
                 style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}
               >
                 <InputNumber placeholder="월 금액" min={0} style={{ width: wide ? 140 : "100%" }} aria-label="월 금액" />
+              </Form.Item>
+              <Form.Item name="category" style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}>
+                <Select
+                  placeholder="대분류(추이 제외)"
+                  allowClear
+                  options={CATEGORY_GROUP_OPTIONS}
+                  style={{ width: wide ? 150 : "100%" }}
+                  aria-label="대분류"
+                />
               </Form.Item>
               <Form.Item name="purchaseVat" style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}>
                 <InputNumber placeholder="매입세액" min={0} style={{ width: wide ? 120 : "100%" }} aria-label="매입세액" />
@@ -854,7 +874,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
                       aria-label={`${r.label} 정기 항목 편집`}
                       style={{ background: "none", border: "none", padding: 0, margin: 0, font: "inherit", display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer", color: "inherit", textAlign: "left" }}
                     >
-                      <span><b>{r.label}</b> {formatKrwExact(r.amount)}{r.isEssential ? " · 필수" : ""} · {r.endMonth ? <span className="af-mono">~{r.endMonth}</span> : "무기한"}</span>
+                      <span><b>{r.label}</b> {formatKrwExact(r.amount)}{r.category ? ` · ${r.category}` : " · 추이 제외"}{r.isEssential ? " · 필수" : ""} · {r.endMonth ? <span className="af-mono">~{r.endMonth}</span> : "무기한"}</span>
                     </button>
                     <Popconfirm title="정기 항목을 중지할까요? (이미 만들어진 월 표 행은 유지됩니다)" onConfirm={() => void removeRecurring(r.id)}>
                       <Button type="text" size="small" aria-label={`${r.label} 정기 중지`}>✕</Button>
@@ -876,6 +896,15 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
                     </Form.Item>
                     <Form.Item name="amount" rules={[{ required: true, message: "월 금액을 입력하세요" }]} style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}>
                       <InputNumber placeholder="월 금액" min={0} style={{ width: wide ? 120 : "100%" }} aria-label="정기 월 금액" />
+                    </Form.Item>
+                    <Form.Item name="category" style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}>
+                      <Select
+                        placeholder="대분류(추이 제외)"
+                        allowClear
+                        options={CATEGORY_GROUP_OPTIONS}
+                        style={{ width: wide ? 150 : "100%" }}
+                        aria-label="정기 대분류"
+                      />
                     </Form.Item>
                     <Form.Item name="purchaseVat" style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}>
                       <InputNumber placeholder="매입세액" min={0} style={{ width: wide ? 110 : "100%" }} aria-label="정기 매입세액" />
