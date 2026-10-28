@@ -15,7 +15,8 @@ public interface CardImportLedger {
     record ImportedRow(String rowKey, String approvedAt, String merchantName,
                        long supplyExVat, long vat, long grossAmount,
                        String cardMasked, String expenseKind, String subCategory,
-                       String businessNo, String businessCategory) {}
+                       String businessNo, String businessCategory,
+                       String memberRelation) {}
 
     /** 미분류 작업함의 가맹점 묶음 (§55.8). */
     record UnclassifiedGroup(String merchantName, int count, long grossTotal,

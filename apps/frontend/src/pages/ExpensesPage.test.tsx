@@ -411,6 +411,7 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
       grossAmount: 10_000,
       cardMasked: "1234",
       expenseKind: "",
+      memberRelation: i % 2 === 0 ? "본인" : "가족",
     }));
     const fetchMock = stubFetch((path, init) => {
       if (path.includes("/card-imports/category") && init?.method === "PATCH") {
@@ -428,6 +429,9 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
     render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
 
     await screen.findByText("가맹점1");
+    // 본인/가족 구분 배지가 노출된다
+    expect(screen.getAllByText("본인").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("가족").length).toBeGreaterThan(0);
 
     // 첫 번째 가맹점을 분류하면 PATCH 만 날아가고 카드 내역 GET 은 다시 일어나지 않는다
     const combo = await screen.findByRole("combobox", { name: "가맹점1 카테고리" });

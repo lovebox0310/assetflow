@@ -112,6 +112,8 @@ export function parseSamsungCardStatement(input, contract) {
       cardMasked: cardMasked || null,
       businessNo: businessNo || null,
       businessCategory: at(r, "businessCategory") || null,
+      // 삼성 개인사업자용 명세에는 카드구분이 전부 본인이므로 기본값을 본인으로 둔다.
+      memberRelation: "본인",
       // 별도 취소 컬럼이 없으므로 음수 금액이 취소다.
       reversal: gross < 0 ? "매입취소" : "매입",
       _sourceRow: i + 1,

@@ -123,6 +123,8 @@ describe("CardImportPanel (§29.7 흐름 이관)", () => {
     const sent = JSON.parse(String(postCall[1].body));
     expect(sent.rows.length).toBe(75);
     expect(sent.totals).toBeUndefined(); // §29.7 — 합계를 싣지 않는다
+    // 현대카드 "관계" 컬럼은 본인/가족으로 파싱돼 서버에 전송된다.
+    expect(sent.rows.some((r: { memberRelation?: string }) => r.memberRelation === "본인")).toBe(true);
   });
 
   it("저장된 가맹점 규칙은 미리보기에서 자동으로 선택된다 (§49)", async () => {
@@ -182,5 +184,39 @@ describe("CardImportPanel (§29.7 흐름 이관)", () => {
     );
     // 자동 분류 결과가 카테고리 선택값으로 노출된다
     expect(await screen.findByText("식비")).toBeDefined();
+  });
+
+  it("현대카드 본인/가족 구분이 확정 POST 에 포함된다", async () => {
+    render(<CardImportPanel />);
+    chooseFile(HYUNDAI_TEXT);
+
+    await screen.findByText("가맹점");
+    fireEvent.click(screen.getByRole("button", { name: "서버에 반영" }));
+    await screen.findByText(/반영 완료/);
+
+    const postCall = fetchMock.mock.calls.find(
+      (c) => String(c[0]) === "/api/v1/assets/card-imports" && c[1]?.method === "POST",
+    );
+    if (!postCall) throw new Error("POST 없음");
+    const sent = JSON.parse(String(postCall[1].body));
+    const relations = new Set(sent.rows.map((r: { memberRelation?: string }) => r.memberRelation));
+    expect(relations.has("본인")).toBe(true);
+    expect(relations.has("가족")).toBe(true);
+  });
+
+  it("삼성카드는 memberRelation 이 기본값 본인으로 전송된다", async () => {
+    render(<CardImportPanel />);
+    chooseFile(SAMSUNG_TEXT);
+
+    await screen.findByText("합성한식당");
+    fireEvent.click(screen.getByRole("button", { name: "서버에 반영" }));
+    await screen.findByText(/반영 완료/);
+
+    const postCall = fetchMock.mock.calls.find(
+      (c) => String(c[0]) === "/api/v1/assets/card-imports" && c[1]?.method === "POST",
+    );
+    if (!postCall) throw new Error("POST 없음");
+    const sent = JSON.parse(String(postCall[1].body));
+    expect(sent.rows.every((r: { memberRelation?: string }) => r.memberRelation === "본인")).toBe(true);
   });
 });
