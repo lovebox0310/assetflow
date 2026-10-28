@@ -30,8 +30,10 @@ import {
   type AssetClass,
   type HoldingPayload,
   type HoldingRow,
+  type InvestmentAccountValue,
   type Portfolio,
 } from "../api/investmentsApi";
+import { deleteAccount, updateAccount, type UpsertPayload } from "../api/assetsApi";
 import { clearInflight } from "../api/client";
 import { clearToken } from "../auth/authStore";
 import { formatKrwExact, formatPercent, formatSignedKrw } from "../utils/formatters";
@@ -62,6 +64,16 @@ const CLASS_COLORS: Record<AssetClass, string> = {
 };
 
 const won = (v: number) => Math.round(v);
+
+/**
+ * §54.3: 투자 계좌의 `balance` 는 총액이 아니라 **예수금**이다. 그래서 계좌 편집
+ * 폼의 잔액 칸도 "예수금"이다 — 총액은 서버가 예수금 + Σ평가액으로 계산한다.
+ */
+interface AccountFormValues {
+  name: string;
+  institutionName: string;
+  cashBalance: number;
+}
 
 /** §54.4: 원금 = 수량 × 평단가 × 환율. 반올림은 합계에서 1회. */
 function costOf(h: HoldingRow): number {
@@ -110,6 +122,10 @@ export function InvestmentsPage({
   const [priceDrafts, setPriceDrafts] = useState<Record<number, number>>({});
   const [savingPrices, setSavingPrices] = useState(false);
   const [form] = Form.useForm<HoldingPayload>();
+  /** §54.3: 계좌(예수금·이름·기관) 편집 상태. 종목 편집과 동시에 열지 않는다. */
+  const [accountEditId, setAccountEditId] = useState<number | null>(null);
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [accountForm] = Form.useForm<AccountFormValues>();
   const mountedRef = useRef(false);
 
   const load = useCallback(() => {
@@ -165,6 +181,7 @@ export function InvestmentsPage({
 
   const beginCreate = () => {
     setActionError("");
+    setAccountEditId(null);
     setEditingId("new");
     const first = accounts[0];
     form.setFieldsValue({
@@ -183,6 +200,7 @@ export function InvestmentsPage({
 
   const beginEdit = (row: HoldingRow) => {
     setActionError("");
+    setAccountEditId(null);
     setEditingId(row.id);
     form.setFieldsValue({
       accountId: row.accountId,
@@ -210,6 +228,7 @@ export function InvestmentsPage({
    */
   const beginPriceMode = () => {
     setActionError("");
+    setAccountEditId(null);
     setPriceDrafts(Object.fromEntries(holdings.map((h) => [h.id, h.marketPrice])));
     setPriceMode(true);
   };
@@ -290,6 +309,75 @@ export function InvestmentsPage({
       load();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "삭제하지 못했습니다");
+    }
+  };
+
+  /**
+   * §54.3: 투자 계좌(balance = 예수금)는 자산 화면에서 편집이 막혀 있다 — 총액 칸에
+   * 총액을 입력하면 예수금 자리에 저장돼 이중 계상되기 때문이다. 그 대체 경로가
+   * 이 화면의 계좌 편집이다. 계좌 이름·기관·예수금만 다룬다.
+   */
+  const beginAccountEdit = (account: InvestmentAccountValue) => {
+    setActionError("");
+    setEditingId(null);
+    form.resetFields();
+    if (priceMode) cancelPriceMode();
+    setAccountEditId(account.accountId);
+    accountForm.setFieldsValue({
+      name: account.accountName,
+      institutionName: account.institutionName,
+      cashBalance: account.cashBalance,
+    });
+  };
+
+  const cancelAccountEdit = () => {
+    setAccountEditId(null);
+    accountForm.resetFields();
+  };
+
+  const saveAccount = async (account: InvestmentAccountValue) => {
+    let values: AccountFormValues;
+    try {
+      values = await accountForm.validateFields();
+    } catch {
+      return; // 폼 검증 실패 — 필드 오류가 화면에 남는다
+    }
+    setAccountBusy(true);
+    setActionError("");
+    try {
+      // 계좌 유형은 invest 로 고정한다 — 이 화면은 투자 계좌만 다룬다(§54.2).
+      const payload: UpsertPayload = {
+        accountType: "invest",
+        name: values.name,
+        institutionName: values.institutionName ?? "",
+        balance: values.cashBalance,
+        isDebt: false,
+      };
+      await updateAccount(account.accountId, payload);
+      setAccountEditId(null);
+      load();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "계좌를 저장하지 못했습니다");
+    } finally {
+      setAccountBusy(false);
+    }
+  };
+
+  /** 계좌 삭제는 보유종목까지 함께 지운다 — 서버가 cascade 한다(§54.2). */
+  const removeAccount = async (account: InvestmentAccountValue) => {
+    setAccountBusy(true);
+    setActionError("");
+    try {
+      await deleteAccount(account.accountId);
+      setAccountEditId(null);
+      setEditingId(null);
+      form.resetFields();
+      if (priceMode) cancelPriceMode();
+      load();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "계좌를 삭제하지 못했습니다");
+    } finally {
+      setAccountBusy(false);
     }
   };
 
@@ -442,18 +530,82 @@ export function InvestmentsPage({
               <div>
                 {accounts.map((account) => {
                   const rows = visible.filter((h) => h.accountId === account.accountId);
+                  const accountHoldings = holdings.filter((h) => h.accountId === account.accountId);
                   if (visible.length > 0 && rows.length === 0) return null;
                   return (
                     <div key={account.accountId} style={{ marginBottom: 20 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8, alignItems: "baseline" }}>
                         <Typography.Text strong>
                           {account.accountName}
                           {account.institutionName ? ` · ${account.institutionName}` : ""}
                         </Typography.Text>
-                        <Typography.Text type="secondary">
-                          예수금 {formatKrwExact(account.cashBalance)} · 총액 {formatKrwExact(account.totalValue)}
-                        </Typography.Text>
+                        {accountEditId === account.accountId ? null : (
+                          <Space size={4} wrap>
+                            <Typography.Text type="secondary">
+                              예수금 {formatKrwExact(account.cashBalance)} · 총액 {formatKrwExact(account.totalValue)}
+                            </Typography.Text>
+                            <Button
+                              size="small"
+                              type="text"
+                              aria-label={`${account.accountName} 계좌 편집`}
+                              onClick={() => beginAccountEdit(account)}
+                              disabled={editingId !== null || priceMode || accountBusy}
+                            >
+                              계좌 편집
+                            </Button>
+                            <Popconfirm
+                              title="이 투자 계좌를 삭제할까요?"
+                              description={
+                                accountHoldings.length > 0
+                                  ? `보유종목 ${accountHoldings.length}건도 함께 삭제됩니다`
+                                  : undefined
+                              }
+                              onConfirm={() => void removeAccount(account)}
+                            >
+                              <Button
+                                size="small"
+                                type="text"
+                                danger
+                                aria-label={`${account.accountName} 계좌 삭제`}
+                                disabled={accountBusy}
+                              >
+                                계좌 삭제
+                              </Button>
+                            </Popconfirm>
+                          </Space>
+                        )}
                       </div>
+                      {accountEditId === account.accountId ? (
+                        <div style={{ marginBottom: 12 }}>
+                          <Form form={accountForm} layout={wide ? "inline" : "vertical"} style={{ rowGap: 8 }}>
+                            <Form.Item
+                              name="name"
+                              label="계좌 이름"
+                              rules={[{ required: true, message: "계좌 이름을 입력하세요" }]}
+                            >
+                              <Input style={{ width: 160 }} />
+                            </Form.Item>
+                            <Form.Item name="institutionName" label="기관">
+                              <Input style={{ width: 160 }} />
+                            </Form.Item>
+                            <Form.Item
+                              name="cashBalance"
+                              label="예수금"
+                              rules={[{ required: true, message: "예수금을 입력하세요" }]}
+                            >
+                              <InputNumber min={0} style={{ width: 160 }} />
+                            </Form.Item>
+                          </Form>
+                          <Space style={{ marginTop: 8 }}>
+                            <Button type="primary" onClick={() => void saveAccount(account)} loading={accountBusy}>
+                              저장
+                            </Button>
+                            <Button onClick={cancelAccountEdit} disabled={accountBusy}>
+                              취소
+                            </Button>
+                          </Space>
+                        </div>
+                      ) : null}
                       {rows.length === 0 ? (
                         <Typography.Text type="secondary">이 계좌에 해당 자산군 종목이 없습니다.</Typography.Text>
                       ) : wide ? (
