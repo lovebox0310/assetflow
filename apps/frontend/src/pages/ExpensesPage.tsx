@@ -499,6 +499,10 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
     () => (cardRows ?? []).filter((r) => !isUnclassified(r.expenseKind) && !isAssetTransferSubCategory(r.subCategory)).reduce((acc, r) => acc + r.grossAmount, 0),
     [cardRows],
   );
+  const cardSpendingCount = useMemo(
+    () => (cardRows ?? []).filter((r) => !isUnclassified(r.expenseKind) && !isAssetTransferSubCategory(r.subCategory)).length,
+    [cardRows],
+  );
   const cardFixedTotal = useMemo(
     () => (cardRows ?? []).filter((r) => isFixedSubCategory(r.subCategory)).reduce((acc, r) => acc + r.grossAmount, 0),
     [cardRows],
@@ -1051,63 +1055,52 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
           {cardStatus === "ready" && cardSubTotals.length > 0 ? (
             <div style={{ marginBottom: 20 }} aria-label="이 달 카드 카테고리별 합계">
               <Typography.Text strong style={{ display: "block", marginBottom: 8 }}>카테고리별 합계</Typography.Text>
-              <Table
-                size="small"
-                rowKey={(r: { category: string; subCategory: string }) => `${r.category}|${r.subCategory}`}
-                pagination={false}
-                dataSource={cardSubTotals}
-                columns={[
-                  { title: "대분류", dataIndex: "category" },
-                  {
-                    title: "세부 분류",
-                    dataIndex: "subCategory",
-                    // 헤더 글자 폭만 차지하게 한다 — width:1 + nowrap 이면 표가 남는 폭을
-                    // 이 열에 나눠 주지 않고, 줄바꿈도 일어나지 않는다.
-                    width: 1,
-                    onHeaderCell: () => ({ style: { whiteSpace: "nowrap" } }),
-                    onCell: () => ({ style: { whiteSpace: "nowrap" } }),
-                  },
-                  { title: "건수", dataIndex: "count", width: 70, align: "right" as const },
-                  { title: "이용금액", dataIndex: "gross", width: 130, align: "right" as const, render: (v: number) => formatKrwExact(v) },
-                ]}
-                summary={() => (
-                  <Table.Summary>
-                    <Table.Summary.Row style={{ fontWeight: 600 }}>
-                      <Table.Summary.Cell index={0} colSpan={2}>지출 합계 (자산 이동 제외)</Table.Summary.Cell>
-                      <Table.Summary.Cell index={2} align="right">{(cardRows ?? []).filter((r) => !isUnclassified(r.expenseKind) && !isAssetTransferSubCategory(r.subCategory)).length}건</Table.Summary.Cell>
-                      <Table.Summary.Cell index={3} align="right">{formatKrwExact(cardSpendingTotal)}</Table.Summary.Cell>
-                    </Table.Summary.Row>
-                    {cardFixedTotal > 0 ? (
-                      <Table.Summary.Row>
-                        <Table.Summary.Cell index={0} colSpan={2}>└ 고정비</Table.Summary.Cell>
-                        <Table.Summary.Cell index={2} align="right" />
-                        <Table.Summary.Cell index={3} align="right">{formatKrwExact(cardFixedTotal)}</Table.Summary.Cell>
-                      </Table.Summary.Row>
-                    ) : null}
-                    {cardVariableTotal > 0 ? (
-                      <Table.Summary.Row>
-                        <Table.Summary.Cell index={0} colSpan={2}>└ 변동비</Table.Summary.Cell>
-                        <Table.Summary.Cell index={2} align="right" />
-                        <Table.Summary.Cell index={3} align="right">{formatKrwExact(cardVariableTotal)}</Table.Summary.Cell>
-                      </Table.Summary.Row>
-                    ) : null}
-                    {cardAssetTransferTotal > 0 ? (
-                      <Table.Summary.Row>
-                        <Table.Summary.Cell index={0} colSpan={2}>자산 이동 (지출 총합 제외)</Table.Summary.Cell>
-                        <Table.Summary.Cell index={2} align="right" />
-                        <Table.Summary.Cell index={3} align="right">{formatKrwExact(cardAssetTransferTotal)}</Table.Summary.Cell>
-                      </Table.Summary.Row>
-                    ) : null}
-                    {cardUnclassifiedTotal > 0 ? (
-                      <Table.Summary.Row>
-                        <Table.Summary.Cell index={0} colSpan={2}>미분류</Table.Summary.Cell>
-                        <Table.Summary.Cell index={2} align="right" />
-                        <Table.Summary.Cell index={3} align="right">{formatKrwExact(cardUnclassifiedTotal)}</Table.Summary.Cell>
-                      </Table.Summary.Row>
-                    ) : null}
-                  </Table.Summary>
-                )}
-              />
+              {/*
+               * 표 대신 카드로 통일한다 — 좁은 화면에서 열 4개가 뭉개지고, 다른 목록과
+               * 표현 방식이 달라 같은 데이터를 두 번 읽는 느낌을 준다.
+               */}
+              <div role="list">
+                {cardSubTotals.map((r) => (
+                  <div role="listitem" key={`${r.category}|${r.subCategory}`}>
+                    <MobileListCardItem>
+                      <MobileListCardHeader title={r.category} value={formatKrwExact(r.gross)} />
+                      <MobileListCardMeta>
+                        {r.subCategory ? `${r.subCategory} · ` : ""}{r.count}건
+                      </MobileListCardMeta>
+                    </MobileListCardItem>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 4, padding: "8px 12px", borderTop: "1px solid var(--af-border)", fontSize: 13 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontWeight: 600 }}>
+                  <span>지출 합계 (자산 이동 제외) · {cardSpendingCount}건</span>
+                  <span>{formatKrwExact(cardSpendingTotal)}</span>
+                </div>
+                {cardFixedTotal > 0 ? (
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, paddingLeft: 12, color: "var(--af-muted-foreground)" }}>
+                    <span>└ 고정비</span>
+                    <span>{formatKrwExact(cardFixedTotal)}</span>
+                  </div>
+                ) : null}
+                {cardVariableTotal > 0 ? (
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, paddingLeft: 12, color: "var(--af-muted-foreground)" }}>
+                    <span>└ 변동비</span>
+                    <span>{formatKrwExact(cardVariableTotal)}</span>
+                  </div>
+                ) : null}
+                {cardAssetTransferTotal > 0 ? (
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, color: "var(--af-muted-foreground)" }}>
+                    <span>자산 이동 (지출 총합 제외)</span>
+                    <span>{formatKrwExact(cardAssetTransferTotal)}</span>
+                  </div>
+                ) : null}
+                {cardUnclassifiedTotal > 0 ? (
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, color: "var(--af-muted-foreground)" }}>
+                    <span>미분류</span>
+                    <span>{formatKrwExact(cardUnclassifiedTotal)}</span>
+                  </div>
+                ) : null}
+              </div>
             </div>
           ) : null}
           <StateBlock status={cardStatus} onRetry={loadCard} errorText={cardError} emptyText="이 월에 반영된 카드 내역이 없습니다">
