@@ -30,6 +30,17 @@
   - 스위치 클릭 후 `23.5개월` + "투자금 유지 개월" 제목 검증
 - 검증: `pnpm typecheck`·`lint`·`test`(174)·`build` ✅, FE dist 배포 ✅
 
+## 2026-10-28 — 유지 개월 카드 스위치를 제목 영역 오른쪽으로 이동
+
+사용자 피드백: 스위치는 제목 영역 오른쪽 끝에 붙는 것이 일반적이다.
+
+- `MetricCard.tsx`
+  - `extra?: ReactNode` prop 추가 → antd `Card.extra` 로 전달
+- `DashboardPage.tsx`
+  - 유지 개월 카드의 `Switch`를 본문에서 `extra` prop으로 이동
+  - 카드 본문은 다시 큰 숫자 값만 렌더링
+- 검증: `pnpm typecheck`·`lint`·`test`(174)·`build` ✅, FE dist 배포 ✅
+
 ---
 
 ## 2026-10-28 — 카드내역 상세 목록에 제목 추가

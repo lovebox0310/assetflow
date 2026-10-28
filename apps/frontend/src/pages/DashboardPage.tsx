@@ -199,6 +199,16 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
             title={showInvestMonths ? "투자금 유지 개월" : "비상금 유지 개월"}
             status={summaryStatus}
             onRetry={load}
+            extra={
+              <Switch
+                size="small"
+                checkedChildren="투자금"
+                unCheckedChildren="비상금"
+                checked={showInvestMonths}
+                onChange={setShowInvestMonths}
+                aria-label="유지 개월 모드 전환"
+              />
+            }
             hint={
               dataReady
                 ? showInvestMonths
@@ -209,23 +219,7 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
                 : undefined
             }
           >
-            {dataReady ? (
-              <div>
-                <div style={{ fontSize: 14, marginBottom: 8, lineHeight: 1.5 }}>
-                  <Switch
-                    size="small"
-                    checkedChildren="투자금"
-                    unCheckedChildren="비상금"
-                    checked={showInvestMonths}
-                    onChange={setShowInvestMonths}
-                    aria-label="유지 개월 모드 전환"
-                  />
-                </div>
-                <div>{formatMonths(showInvestMonths ? investMonths(summary) : emergencyMonths(summary))}</div>
-              </div>
-            ) : (
-              "—"
-            )}
+            {dataReady ? formatMonths(showInvestMonths ? investMonths(summary) : emergencyMonths(summary)) : "—"}
           </MetricCard>
           <MetricCard title="자산 구성비" status={summaryStatus} onRetry={load}>
             <AssetCompositionList slices={composition} />
