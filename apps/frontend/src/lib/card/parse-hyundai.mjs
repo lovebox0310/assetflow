@@ -55,6 +55,20 @@ function extractDeclaredTotals(rowsAfterHeader, col, grandTotalPatterns) {
 }
 
 /**
+ * 현대카드 "관계" 컬럼 값을 정규화한다. 명시되지 않으면 본인으로 본다.
+ * @param {string} raw
+ * @returns {string}
+ */
+function normalizeMemberRelation(raw) {
+  const v = (raw || "").trim();
+  if (!v) return "본인";
+  // "본인 732건" 같은 값이 들어올 수 있으면 앞 단어만 취한다.
+  const first = v.split(/\s+/)[0];
+  if (first === "본인" || first === "가족") return first;
+  return v;
+}
+
+/**
  * 현대카드 이용내역 CSV 를 정규화 행으로 바꾼다.
  * @param {Uint8Array|string} input  UTF-8 바이트(권장) 또는 문자열
  * @param {object} contract        card-columns.json 내용
@@ -159,7 +173,7 @@ export function parseHyundaiCardStatement(input, contract) {
       businessCategory: at(r, "businessCategory") || null,
       approvedAmount: parseAmount(at(r, "approvedAmount")),
       installmentCount: parseAmount(at(r, "installmentCount")),
-      memberRelation: at(r, "memberRelation") || null,
+      memberRelation: normalizeMemberRelation(at(r, "memberRelation")),
       reversal,
       _sourceRow: i + 1,
     };

@@ -53,7 +53,8 @@ public class CardImportController {
     public record ImportRow(String rowKey, String approvedAt, String merchantName,
                             Long supplyExVat, Long vat, Long grossAmount,
                             String cardMasked, String expenseKind, String subCategory,
-                            String businessNo, String businessCategory) {}
+                            String businessNo, String businessCategory,
+                            String memberRelation) {}
 
     public record ImportRequest(List<ImportRow> rows, Map<String, MerchantRule> merchantRules) {}
 
@@ -234,6 +235,8 @@ public class CardImportController {
                 subCategory = "";
             }
             String businessNo = row.businessNo() == null ? "" : row.businessNo().replaceAll("-", "").trim();
+            String memberRelation = row.memberRelation() == null || row.memberRelation().isBlank()
+                    ? "본인" : row.memberRelation().trim();
             ImportedRow r = new ImportedRow(
                     requiredText(row.rowKey(), "rowKey"),
                     requiredIsoDate(row.approvedAt()),
@@ -245,7 +248,8 @@ public class CardImportController {
                     category,
                     subCategory,
                     businessNo,
-                    businessCategory);
+                    businessCategory,
+                    memberRelation);
             // §29.3 공급가액+세액=공급대가 를 행마다 검사한다 — 어긋나면 저장은 하되
             // 경고를 돌려준다(현대카드의 가맹점 신고 부가세 변형이 정상 범위라 잘라내지 않는다).
             if (r.supplyExVat() + r.vat() != r.grossAmount()) {

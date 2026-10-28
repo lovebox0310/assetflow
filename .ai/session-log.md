@@ -14,36 +14,36 @@
 
 ---
 
-## 2026-10-28 — 대시보드 핵심 지표 4가지: 유지 개월 카드에 비상금/투자금 토글 추가
+## 2026-10-29 — 카드 소유 구분(본인/가족) 저장 및 지출 화면 표시
 
-사용자 피드백: 5번째 카드가 4열 그리드에서 다음 행으로 날려 4개만 보이는 것처럼 보였다.
-해결책: 카드는 4개로 유지하고, "유지 개월" 카드에 스위치를 넣어 비상금/투자금 값을 전환한다.
+사용자 요청: 현대카드의 본인/가족 구분을 저장하고, 다른 카드도 동일하게 본인 기본값으로 저장. 지출 통계에서 카드(소유자)별 지출을 볼 수 있게 하기 위함.
 
-- `DashboardPage.tsx`
-  - `showInvestMonths` 상태 추가
-  - "비상금 유지 개월" 카드 제목을 토글에 따라 `"투자금 유지 개월"`로 변경
-  - 카드 본문에 `Switch` 추가 (`checkedChildren="투자금"` / `unCheckedChildren="비상금"`)
-  - 힌트와 값이 토글 상태에 따라 `(현금성+예적금)÷필수지출` / `투자금÷필수지출` 로 바뀜
-  - 4열 `ResponsiveGrid` 유지 → 4개 카드가 한 화면에 들어감
-- `DashboardPage.test.tsx`
-  - 기본 상태에서 `28.8개월` + "비상금 유지 개월" 제목 검증
-  - 스위치 클릭 후 `23.5개월` + "투자금 유지 개월" 제목 검증
-- 검증: `pnpm typecheck`·`lint`·`test`(174)·`build` ✅, FE dist 배포 ✅
-
-## 2026-10-28 — 유지 개월 카드 스위치를 제목 영역 오른쪽으로 이동
-
-사용자 피드백: 스위치는 제목 영역 오른쪽 끝에 붙는 것이 일반적이다.
-
-- `MetricCard.tsx`
-  - `extra?: ReactNode` prop 추가 → antd `Card.extra` 로 전달
-- `DashboardPage.tsx`
-  - 유지 개월 카드의 `Switch`를 본문에서 `extra` prop으로 이동
-  - 카드 본문은 다시 큰 숫자 값만 렌더링
-- 검증: `pnpm typecheck`·`lint`·`test`(174)·`build` ✅, FE dist 배포 ✅
+- 컬럼 계약
+  - `samples/card/card-columns.json`: 삼성 `카드구분` → `memberRelation` 매핑, 현대 `관계` 저장备注 보강
+- 프론트
+  - `CardImportRow`, `CardImportRowFull`에 `memberRelation?: string` 추가
+  - `parse-samsung.mjs`: `memberRelation: "본인"` 기본값 추가
+  - `parse-hyundai.mjs`: "관계" 값 정규화(공백→본인, 본인/가족 외 보존) 함수 추가
+  - `ExpensesPage.tsx`: 카드내역 카드 메타에 본인/가족 `Tag` 표시
+- 백엔드
+  - `CardImportLedger.ImportedRow`에 `memberRelation` 추가
+  - `PostgresCardImportLedger`: SELECT/INSERT/ON CONFLICT UPDATE에 `member_relation` 반영
+  - `InMemoryCardImportLedger`: 복사·분류 변경 시 `memberRelation` 유지
+  - `CardImportController.ImportRow`에 `memberRelation` 추가, 공백 시 "본인" 기본값
+  - `apps/backend/db/schema.sql`: `card_imports.member_relation` 컬럼 추가 + 마이그레이션 `ALTER TABLE`
+- 테스트
+  - `CardImportApiTest`, `ExpenseSnapshotApiTest`: 레코드 생성자 12인자로 수정
+  - `CardImportPanel.test.tsx`: 현대/삼성 모두 `memberRelation`이 POST 본문에 포함되는지 검증 추가
+  - `ExpensesPage.test.tsx`: 본인/가족 배지 노출 검증 추가
+- 검증
+  - FE: `pnpm typecheck`·`lint`·`test`(176)·`build` ✅
+  - BE: `./gradlew test` ✅
+  - DB 마이그레이션: `ALTER TABLE card_imports ADD COLUMN member_relation ...` ✅
+  - 배포: BE jar + FE dist 동시 배포, `/health` OK, 번들 HTTP 200 ✅
 
 ---
 
-## 2026-10-28 — 카드내역 상세 목록에 제목 추가
+## 2026-10-28 — 대시보드 핵심 지표 4가지: 유지 개월 카드에 비상금/투자금 토글 추가
 
 "가져온 카드내역" 섹션에서 카테고리별 합계 다음에 오는 상세 카드 목록에
 "상세 내역" 제목을 붙였다.

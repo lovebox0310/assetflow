@@ -263,8 +263,8 @@ class CardImportApiTest {
     @Test
     void monthRowsReturnsOnlyThatMonth() throws Exception {
         ledger.addAll(List.of(
-                new CardImportLedger.ImportedRow("m1", "2025-01-03", "가맹점A", 1000, 100, 1100, "", "", "", "", ""),
-                new CardImportLedger.ImportedRow("m2", "2025-02-05", "가맹점B", 2000, 200, 2200, "", "", "", "", "")));
+                new CardImportLedger.ImportedRow("m1", "2025-01-03", "가맹점A", 1000, 100, 1100, "", "", "", "", "", ""),
+                new CardImportLedger.ImportedRow("m2", "2025-02-05", "가맹점B", 2000, 200, 2200, "", "", "", "", "", "")));
         mvc.perform(get("/api/v1/assets/card-imports?month=2025-01").header("Authorization", TOKEN))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))
@@ -550,7 +550,7 @@ class CardImportApiTest {
     void reclassifyUsesBusinessCategoryOfAlreadyStoredRows() throws Exception {
         ledger.addAll(List.of(new CardImportLedger.ImportedRow(
                 "k1", "2026-10-01", "알수없는가맹점", 9000, 1000, 10000,
-                "", "", "", "9999999901", "주유소")));
+                "", "", "", "9999999901", "주유소", "")));
 
         mvc.perform(post("/api/v1/assets/card-imports/reclassify").header("Authorization", TOKEN))
                 .andExpect(status().isOk())

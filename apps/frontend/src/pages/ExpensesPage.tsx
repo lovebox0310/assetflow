@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Card, Checkbox, Form, Grid, Input, InputNumber, Popconfirm, Progress, Select, Space, Typography } from "antd";
+import { Button, Card, Checkbox, Form, Grid, Input, InputNumber, Popconfirm, Progress, Select, Space, Tag, Typography } from "antd";
 import { AppLayout } from "../layout/AppLayout";
 import { StandardNav } from "../layout/StandardNav";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
@@ -997,6 +997,11 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
                       <span className="af-mono">{r.approvedAt}</span>
                       {r.businessCategory?.trim() ? ` · ${r.businessCategory.trim()}` : ""}
                       {r.cardMasked ? ` · ${r.cardMasked}` : ""}
+                      {r.memberRelation ? (
+                        <Tag color={r.memberRelation === "본인" ? "blue" : "purple"} style={{ marginLeft: 4, fontSize: 12 }}>
+                          {r.memberRelation}
+                        </Tag>
+                      ) : null}
                     </MobileListCardMeta>
                     <MobileListCardActions>
                       <Space wrap>

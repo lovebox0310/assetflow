@@ -122,6 +122,7 @@ CREATE TABLE card_imports (
     sub_category      VARCHAR(30),                 -- §55.10 세부 분류
     business_no       VARCHAR(20),                 -- 가맹점 사업자등록번호(하이픈 제거)
     business_category VARCHAR(50),                 -- 카드사가 붙인 업종
+    member_relation   VARCHAR(20) NOT NULL DEFAULT '본인', -- 카드 소유 구분: 본인/가족 등
     category_id       BIGINT REFERENCES expense_categories (id), -- §55.8 표준 카테고리
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -256,3 +257,6 @@ CREATE TABLE merchant_business_info (
 
 CREATE INDEX idx_merchant_business_info_user_business
     ON merchant_business_info (user_id, business_no);
+
+-- 2026-10-29: 기존 DB 에 card_imports.member_relation 추가 마이그레이션
+ALTER TABLE card_imports ADD COLUMN IF NOT EXISTS member_relation VARCHAR(20) NOT NULL DEFAULT '본인';

@@ -13,6 +13,8 @@ export interface CardImportRow {
   subCategory?: string;
   businessNo?: string;
   businessCategory?: string;
+  /** 카드 소유 구분. 명시되지 않으면 백엔드가 "본인"으로 저장한다. */
+  memberRelation?: string;
 }
 
 export interface MerchantRule {

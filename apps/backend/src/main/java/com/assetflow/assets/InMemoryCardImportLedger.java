@@ -75,7 +75,8 @@ public class InMemoryCardImportLedger implements CardImportLedger {
                 r.rowKey(), r.approvedAt(), r.merchantName(),
                 r.supplyExVat(), r.vat(), r.grossAmount(),
                 r.cardMasked(), r.expenseKind(), r.subCategory(),
-                businessNo, businessCategory);
+                businessNo, businessCategory,
+                r.memberRelation());
     }
 
     public Optional<ImportedRow> find(String rowKey) {
@@ -192,6 +193,7 @@ public class InMemoryCardImportLedger implements CardImportLedger {
                 r.rowKey(), r.approvedAt(), r.merchantName(),
                 r.supplyExVat(), r.vat(), r.grossAmount(),
                 r.cardMasked(), category, subCategory == null ? "" : subCategory,
-                r.businessNo(), r.businessCategory());
+                r.businessNo(), r.businessCategory(),
+                r.memberRelation());
     }
 }
