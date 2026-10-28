@@ -987,6 +987,9 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
           <StateBlock status={cardStatus} onRetry={loadCard} errorText={cardError} emptyText="이 월에 반영된 카드 내역이 없습니다">
             {cardRows ? (
               <div>
+                {visibleCardRows.length > 0 ? (
+                  <Typography.Text strong style={{ display: "block", marginBottom: 8 }}>상세 내역</Typography.Text>
+                ) : null}
                 {visibleCardRows.slice(0, cardLimit).map((r) => (
                   <MobileListCardItem key={r.rowKey}>
                     <MobileListCardHeader title={r.merchantName} value={formatKrwExact(r.grossAmount)} />
