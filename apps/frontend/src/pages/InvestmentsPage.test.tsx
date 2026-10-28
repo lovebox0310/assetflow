@@ -95,6 +95,13 @@ describe("InvestmentsPage (§54 E2)", () => {
       if (path.includes("/investments/holdings")) {
         return Promise.resolve(apiResponse(portfolioFixture()));
       }
+      // §54.3: 투자 계좌(예수금) 편집·삭제는 자산 계정 API 를 쓴다.
+      if (path.includes("/assets/accounts") && method === "PUT") {
+        return Promise.resolve(apiResponse({ id: 4 }));
+      }
+      if (path.includes("/assets/accounts") && method === "DELETE") {
+        return Promise.resolve(apiResponse(4));
+      }
       return Promise.resolve(apiResponse({}, false, 400));
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -183,6 +190,49 @@ describe("InvestmentsPage (§54 E2)", () => {
       );
       expect(del).toBeDefined();
       expect(String(del?.[0])).toContain("/api/v1/investments/holdings/1");
+    });
+  });
+
+  it("계좌 헤더에서 예수금을 편집한다 — balance 는 총액이 아니라 예수금이다 (§54.3)", async () => {
+    render(<InvestmentsPage />);
+    await screen.findByText("키움 투자금 · 키움증권");
+
+    fireEvent.click(screen.getByRole("button", { name: "키움 투자금 계좌 편집" }));
+    fireEvent.change(await screen.findByLabelText("예수금"), { target: { value: "2000000" } });
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(
+        ([url, init]) =>
+          String(url).includes("/assets/accounts/4") &&
+          (init as RequestInit | undefined)?.method === "PUT",
+      );
+      expect(put).toBeDefined();
+      expect(JSON.parse(String((put?.[1] as RequestInit).body))).toMatchObject({
+        accountType: "invest",
+        name: "키움 투자금",
+        balance: 2_000_000,
+        isDebt: false,
+      });
+    });
+  });
+
+  it("계좌 삭제는 보유종목 건수를 함께 경고하고 DELETE 로 반영된다", async () => {
+    render(<InvestmentsPage />);
+    await screen.findByText("키움 투자금 · 키움증권");
+
+    fireEvent.click(screen.getByRole("button", { name: "키움 투자금 계좌 삭제" }));
+    expect(await screen.findByText("보유종목 3건도 함께 삭제됩니다")).toBeDefined();
+
+    fireEvent.click(await screen.findByRole("button", { name: "OK" }));
+
+    await waitFor(() => {
+      const del = fetchMock.mock.calls.find(
+        ([url, init]) =>
+          String(url).includes("/assets/accounts/4") &&
+          (init as RequestInit | undefined)?.method === "DELETE",
+      );
+      expect(del).toBeDefined();
     });
   });
 
