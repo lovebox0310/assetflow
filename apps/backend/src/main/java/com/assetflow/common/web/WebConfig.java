@@ -18,7 +18,7 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(new BearerTokenInterceptor(tokenService))
-                .addPathPatterns("/api/v1/me", "/api/v1/dashboard/**", "/api/v1/assets/**", "/api/v1/expenses/**", "/api/v1/settings/**", "/api/v1/auth/password")
+                .addPathPatterns("/api/v1/me", "/api/v1/dashboard/**", "/api/v1/assets/**", "/api/v1/expenses/**", "/api/v1/settings/**", "/api/v1/investments/**", "/api/v1/auth/password")
                 .excludePathPatterns("/api/v1/auth/login");
     }
 }

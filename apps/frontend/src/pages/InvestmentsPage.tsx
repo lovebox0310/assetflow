@@ -25,7 +25,10 @@ import {
 import {
   createHolding,
   deleteHolding,
+  fetchFxRate,
+  fetchQuote,
   getPortfolio,
+  refreshHoldingPrices,
   updateHolding,
   type AssetClass,
   type HoldingPayload,
@@ -55,6 +58,16 @@ const CLASS_LABELS: Record<AssetClass, string> = {
 };
 
 const CLASS_ORDER: AssetClass[] = ["stock", "etf", "bond", "fund", "crypto"];
+
+/**
+ * §54.4 통화 선택지 — 지금은 원화·미국달러 2가지만. 환율 입력란은 USD 일 때만
+ * 노출한다(원화 종목의 환율은 항상 1이라 사용자가 채울 이유가 없다).
+ */
+const CURRENCIES = [
+  { value: "KRW", label: "원화 (KRW)" },
+  { value: "USD", label: "미국달러 (USD)" },
+] as const;
+
 const CLASS_COLORS: Record<AssetClass, string> = {
   stock: "var(--af-signal)",
   etf: "var(--af-grove)",
@@ -121,6 +134,9 @@ export function InvestmentsPage({
   const [priceMode, setPriceMode] = useState(false);
   const [priceDrafts, setPriceDrafts] = useState<Record<number, number>>({});
   const [savingPrices, setSavingPrices] = useState(false);
+  /** §54.4 시세: 자동 갱신은 조용히, 수동 새로고침·시세 가져오기는 실패를 화면에 알린다. */
+  const [refreshingQuotes, setRefreshingQuotes] = useState(false);
+  const [quoteBusy, setQuoteBusy] = useState(false);
   const [form] = Form.useForm<HoldingPayload>();
   /** §54.3: 계좌(예수금·이름·기관) 편집 상태. 종목 편집과 동시에 열지 않는다. */
   const [accountEditId, setAccountEditId] = useState<number | null>(null);
@@ -128,26 +144,46 @@ export function InvestmentsPage({
   const [accountForm] = Form.useForm<AccountFormValues>();
   const mountedRef = useRef(false);
 
-  const load = useCallback(() => {
+  const load = useCallback(async () => {
     clearInflight();
     setStatus("loading");
     setErrorText("");
-    getPortfolio()
-      .then((data) => {
-        setPortfolio(data);
-        setStatus(data.holdings.length === 0 ? "empty" : "ready");
-      })
-      .catch((e: Error) => {
-        setStatus("error");
-        setErrorText(e.message);
-      });
+    try {
+      const data = await getPortfolio();
+      setPortfolio(data);
+      setStatus(data.holdings.length === 0 ? "empty" : "ready");
+    } catch (e) {
+      setStatus("error");
+      setErrorText(e instanceof Error ? e.message : "불러오지 못했습니다");
+    }
+  }, []);
+
+  /**
+   * §54.4: 로그인·화면 진입 시 네이버 시세로 현재가를 갱신한다. 시세가 없는
+   * 종목은 서버가 건너뛰므로 저장된 현재가가 유지된다. 자동 갱신은 조용히
+   * 실패하고(입력값을 방해하지 않는다), 수동 새로고침만 오류를 보여 준다.
+   */
+  const refreshPrices = useCallback(async (silent = false) => {
+    if (!silent) {
+      setRefreshingQuotes(true);
+      setActionError("");
+    }
+    try {
+      const data = await refreshHoldingPrices();
+      setPortfolio(data);
+      setStatus(data.holdings.length === 0 ? "empty" : "ready");
+    } catch (e) {
+      if (!silent) setActionError(e instanceof Error ? e.message : "시세를 가져오지 못했습니다");
+    } finally {
+      if (!silent) setRefreshingQuotes(false);
+    }
   }, []);
 
   useEffect(() => {
     if (mountedRef.current) return;
     mountedRef.current = true;
-    void load();
-  }, [load]);
+    void load().then(() => refreshPrices(true));
+  }, [load, refreshPrices]);
 
   const holdings = portfolio?.holdings ?? [];
   const accounts = portfolio?.accounts ?? [];
@@ -182,18 +218,17 @@ export function InvestmentsPage({
   const beginCreate = () => {
     setActionError("");
     setAccountEditId(null);
+    form.resetFields();
     setEditingId("new");
     const first = accounts[0];
+    // §54.4: 수량·평단가·현재가·환율은 비워 둔다. 0 을 미리 채우면 붙여넣기가
+    // 기존 값 뒤에 이어 붙어(예: "0" + "100") 사용자가 먼저 지워야 한다.
     form.setFieldsValue({
       ...(first ? { accountId: first.accountId } : {}),
       assetClass: "stock",
       symbol: "",
       name: "",
       currency: "KRW",
-      quantity: 0,
-      avgPrice: 0,
-      marketPrice: 0,
-      fxRate: 1,
       priceAsOf: new Date().toISOString().slice(0, 10),
     });
   };
@@ -284,11 +319,14 @@ export function InvestmentsPage({
     }
     setBusy(true);
     setActionError("");
+    const currency = (values.currency || "KRW").toUpperCase();
     const payload: HoldingPayload = {
       ...values,
       symbol: values.symbol?.trim() ? values.symbol.trim() : null,
       priceAsOf: values.priceAsOf?.trim() ? values.priceAsOf.trim() : null,
-      currency: (values.currency || "KRW").toUpperCase(),
+      currency,
+      // §54.4: 원화 종목의 환율은 항상 1이다 — 숨긴 입력란의 잔여값을 쓰지 않는다.
+      fxRate: currency === "USD" ? values.fxRate : 1,
     };
     try {
       if (editingId === "new") await createHolding(payload);
@@ -309,6 +347,42 @@ export function InvestmentsPage({
       load();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "삭제하지 못했습니다");
+    }
+  };
+
+  /**
+   * §54.4: 심볼만 넣으면 네이버 시세로 현재가·통화를 채운다. 종목명이 비어 있으면
+   * 함께 채워 오타를 줄인다. 실패해도 저장을 막지 않는다 — 직접 입력 경로가 남는다.
+   */
+  const fetchQuoteForForm = async () => {
+    const symbol = String(form.getFieldValue("symbol") ?? "").trim();
+    if (!symbol) {
+      setActionError("심볼을 입력하면 현재가를 가져올 수 있습니다");
+      return;
+    }
+    setQuoteBusy(true);
+    setActionError("");
+    try {
+      const quote = await fetchQuote(symbol);
+      const currency = quote.currency?.toUpperCase() === "USD" ? "USD" : "KRW";
+      const patch: Partial<HoldingPayload> = {
+        currency,
+        marketPrice: quote.price,
+        priceAsOf: quote.priceAsOf ?? new Date().toISOString().slice(0, 10),
+      };
+      if (!String(form.getFieldValue("name") ?? "").trim() && quote.name) {
+        patch.name = quote.name;
+      }
+      if (currency === "USD" && !(Number(form.getFieldValue("fxRate")) > 0)) {
+        // 환율을 아직 넣지 않았다면 네이버 기준 환율로 한 번만 채운다.
+        const fx = await fetchFxRate("USD").catch(() => null);
+        if (fx) patch.fxRate = fx.rate;
+      }
+      form.setFieldsValue(patch);
+    } catch {
+      setActionError("시세를 찾지 못했습니다 — 심볼을 확인하거나 현재가를 직접 입력하세요");
+    } finally {
+      setQuoteBusy(false);
     }
   };
 
@@ -477,6 +551,13 @@ export function InvestmentsPage({
               </>
             ) : (
               <>
+                <Button
+                  onClick={() => void refreshPrices()}
+                  loading={refreshingQuotes}
+                  disabled={editingId !== null || priceMode || accountEditId !== null}
+                >
+                  시세 새로고침
+                </Button>
                 <Button onClick={beginPriceMode} disabled={editingId !== null || holdings.length === 0}>
                   가격 갱신
                 </Button>
@@ -502,7 +583,13 @@ export function InvestmentsPage({
           >
             {editingId !== null ? (
               <div style={{ marginBottom: 16 }}>
-                <HoldingForm form={form} accounts={accounts} wide={wide} />
+                <HoldingForm
+                  form={form}
+                  accounts={accounts}
+                  wide={wide}
+                  onFetchQuote={() => void fetchQuoteForForm()}
+                  fetchingQuote={quoteBusy}
+                />
                 <Space style={{ marginTop: 8 }}>
                   <Button type="primary" onClick={() => void save()} loading={busy}>
                     저장
@@ -782,17 +869,41 @@ function HoldingForm({
   form,
   accounts,
   wide,
+  onFetchQuote,
+  fetchingQuote,
 }: {
   form: FormInstance<HoldingPayload>;
   accounts: Portfolio["accounts"];
   wide: boolean;
+  onFetchQuote: () => void;
+  fetchingQuote: boolean;
 }) {
+  const currency = (Form.useWatch("currency", form) as string | undefined) ?? "KRW";
+
+  /**
+   * §54.4: 달러 종목을 고르면 환율 입력란을 채워 준다. 실패하면 빈 칸으로 두고
+   * 사용자가 직접 입력한다 — 환율을 모른다고 저장이 막히면 안 된다.
+   */
+  const fillUsdKrw = async () => {
+    if (Number(form.getFieldValue("fxRate")) > 0) return;
+    try {
+      const fx = await fetchFxRate("USD");
+      form.setFieldsValue({ fxRate: fx.rate });
+    } catch {
+      // 직접 입력 경로를 남긴다.
+    }
+  };
+
   return (
     <Form form={form} layout={wide ? "inline" : "vertical"} style={{ rowGap: 8 }}>
       <Form.Item name="accountId" label="계좌" rules={[{ required: true, message: "계좌를 선택하세요" }]}>
+        {/* §54.2: 계좌가 둘 이상이면 이름만으로 구분되지 않는다 — 기관을 함께 보여 준다. */}
         <Select
-          style={{ minWidth: 150 }}
-          options={accounts.map((a) => ({ value: a.accountId, label: a.accountName }))}
+          style={{ minWidth: 190 }}
+          options={accounts.map((a) => ({
+            value: a.accountId,
+            label: a.institutionName ? `${a.accountName} · ${a.institutionName}` : a.accountName,
+          }))}
         />
       </Form.Item>
       <Form.Item name="assetClass" label="자산군" rules={[{ required: true }]}>
@@ -805,23 +916,37 @@ function HoldingForm({
         <Input style={{ width: 150 }} />
       </Form.Item>
       <Form.Item name="symbol" label="심볼">
-        <Input style={{ width: 100 }} placeholder="005930" />
+        <Input style={{ width: 110 }} placeholder="005930" />
       </Form.Item>
-      <Form.Item name="currency" label="통화">
-        <Input style={{ width: 80 }} maxLength={3} />
+      <Form.Item label=" " colon={false}>
+        <Button size="small" onClick={onFetchQuote} loading={fetchingQuote}>
+          현재가 가져오기
+        </Button>
       </Form.Item>
-      <Form.Item name="quantity" label="수량" rules={[{ required: true }]}>
-        <InputNumber min={0} precision={8} style={{ width: 120 }} />
+      <Form.Item name="currency" label="통화" rules={[{ required: true }]}>
+        <Select
+          style={{ minWidth: 140 }}
+          options={[...CURRENCIES]}
+          onChange={(value: string) => {
+            if (value === "USD") void fillUsdKrw();
+          }}
+        />
       </Form.Item>
-      <Form.Item name="avgPrice" label="평단가" rules={[{ required: true }]}>
-        <InputNumber min={0} precision={4} style={{ width: 120 }} />
+      <Form.Item name="quantity" label="수량" rules={[{ required: true, message: "수량을 입력하세요" }]}>
+        <InputNumber min={0} precision={8} style={{ width: 120 }} placeholder="예: 200" />
       </Form.Item>
-      <Form.Item name="marketPrice" label="현재가" rules={[{ required: true }]}>
-        <InputNumber min={0} precision={4} style={{ width: 120 }} />
+      <Form.Item name="avgPrice" label="평단가" rules={[{ required: true, message: "평단가를 입력하세요" }]}>
+        <InputNumber min={0} precision={4} style={{ width: 120 }} placeholder="예: 70000" />
       </Form.Item>
-      <Form.Item name="fxRate" label="환율" rules={[{ required: true }]}>
-        <InputNumber min={0.000001} precision={6} style={{ width: 100 }} />
+      <Form.Item name="marketPrice" label="현재가" rules={[{ required: true, message: "현재가를 입력하세요" }]}>
+        <InputNumber min={0} precision={4} style={{ width: 120 }} placeholder="직접 입력 또는 시세" />
       </Form.Item>
+      {/* §54.4: 원화는 환율이 항상 1이라 입력란을 숨긴다. 달러일 때만 노출. */}
+      {currency === "USD" ? (
+        <Form.Item name="fxRate" label="환율" rules={[{ required: true, message: "환율을 입력하세요" }]}>
+          <InputNumber min={0.000001} precision={6} style={{ width: 110 }} placeholder="예: 1339" />
+        </Form.Item>
+      ) : null}
       <Form.Item name="priceAsOf" label="기준일">
         <Input style={{ width: 140 }} placeholder="YYYY-MM-DD" />
       </Form.Item>
