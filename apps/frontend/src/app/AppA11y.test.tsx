@@ -262,9 +262,11 @@ describe("이슈 #70 접근성 AA 정합성", () => {
 
   /* ── 표: 접근 가능한 이름 ────────────────────────────────────── */
 
-  it("지출 항목 표에 접근 가능한 이름이 있다", async () => {
+  it("지출 항목 목록은 표 대신 카드로 보여 주고 섹션 제목이 있다", async () => {
     renderExpenses();
-    expect(await screen.findByRole("table", { name: "월 지출 항목" })).toBeDefined();
+    expect(await screen.findByRole("heading", { name: "월 지출 항목" })).toBeDefined();
+    // 카드형 목록으로 통일했다 — 같은 내용의 표가 같이 있으면 안 된다
+    expect(screen.queryByRole("table", { name: "월 지출 항목" })).toBeNull();
   });
 
   it("설정 계정 요약 표에 접근 가능한 이름이 있다", async () => {
