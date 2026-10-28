@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Card, Checkbox, Form, Grid, Input, InputNumber, Popconfirm, Progress, Select, Space, Table, Typography } from "antd";
+import { Button, Card, Checkbox, Form, Grid, Input, InputNumber, Popconfirm, Progress, Select, Space, Typography } from "antd";
 import { AppLayout } from "../layout/AppLayout";
 import { StandardNav } from "../layout/StandardNav";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
@@ -125,10 +125,9 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
   const [unclassified, setUnclassified] = useState<UnclassifiedGroup[] | null>(null);
   const [unclassifiedError, setUnclassifiedError] = useState("");
   const [unclassifiedSearch, setUnclassifiedSearch] = useState("");
-  const [unclassifiedPage, setUnclassifiedPage] = useState(1);
+  const [unclassifiedLimit, setUnclassifiedLimit] = useState(10);
   const [unclassifiedInitialCount, setUnclassifiedInitialCount] = useState(0);
   const [undo, setUndo] = useState<{ group: UnclassifiedGroup; category: string } | null>(null);
-  const [cardPage, setCardPage] = useState(1);
   const [unclassifiedOnly, setUnclassifiedOnly] = useState(false);
   /** 사업자번호 클릭 → 사업자 정보 모달 (화면 이동 없음). */
   const [businessInfoTarget, setBusinessInfoTarget] = useState<{ businessNo: string; merchantName: string } | null>(null);
@@ -543,98 +542,6 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
     [cardRows, unclassifiedOnly],
   );
 
-  const cardPageSize = 10;
-  const cardPageCount = Math.max(1, Math.ceil(visibleCardRows.length / cardPageSize));
-  const cardCurrentPage = Math.min(cardPage, cardPageCount);
-
-  const unclassifiedPageCount = Math.max(1, Math.ceil(visibleUnclassifiedGroups.length / 10));
-  const unclassifiedCurrentPage = Math.min(unclassifiedPage, unclassifiedPageCount);
-
-  const cardColumns = [
-    {
-      title: "승인일",
-      dataIndex: "approvedAt",
-      width: 110,
-      sorter: (a: CardImportRowFull, b: CardImportRowFull) => a.approvedAt.localeCompare(b.approvedAt),
-    },
-    {
-      title: "가맹점",
-      dataIndex: "merchantName",
-      sorter: (a: CardImportRowFull, b: CardImportRowFull) => a.merchantName.localeCompare(b.merchantName),
-    },
-    {
-      title: "업종",
-      dataIndex: "businessCategory",
-      width: 110,
-      render: (v: string | undefined) => (
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>{v || "—"}</Typography.Text>
-      ),
-    },
-    {
-      title: "이용금액",
-      dataIndex: "grossAmount",
-      align: "right" as const,
-      width: 110,
-      className: "af-num",
-      sorter: (a: CardImportRowFull, b: CardImportRowFull) => a.grossAmount - b.grossAmount,
-      render: (v: number) => formatKrwExact(v),
-    },
-    {
-      title: "대분류",
-      dataIndex: "expenseKind",
-      width: 140,
-      render: (v: string | undefined, row: CardImportRowFull) => (
-        <Select
-          size="small"
-          style={{ width: 130 }}
-          placeholder="미분류"
-          value={v || null}
-          options={CATEGORY_GROUP_OPTIONS}
-          onChange={(category: string) => void handleCardCategory(row, category)}
-          aria-label={`${row.merchantName} 카테고리`}
-        />
-      ),
-    },
-    {
-      title: "세부 분류",
-      dataIndex: "subCategory",
-      width: 130,
-      render: (v: string | undefined, row: CardImportRowFull) => (
-        <Select
-          size="small"
-          style={{ width: 120 }}
-          placeholder="-"
-          value={v || null}
-          options={subCategoryOptions(row.expenseKind)}
-          onChange={(subCategory: string) => void handleCardSubCategory(row, subCategory)}
-          disabled={isUnclassified(row.expenseKind)}
-          aria-label={`${row.merchantName} 세부 분류`}
-        />
-      ),
-    },
-    {
-      title: "사업자번호",
-      dataIndex: "businessNo",
-      width: 130,
-      className: "af-mono",
-      render: (v: string | undefined, row: CardImportRowFull) => {
-        const businessNo = (v ?? "").trim();
-        if (!businessNo) return "—";
-        return (
-          <Button
-            type="link"
-            size="small"
-            style={{ padding: 0, height: "auto" }}
-            onClick={() => setBusinessInfoTarget({ businessNo, merchantName: row.merchantName })}
-            aria-label={`${row.merchantName} 사업자 정보 보기`}
-          >
-            {formatBusinessNo(businessNo)}
-          </Button>
-        );
-      },
-    },
-  ];
-
   /** §55.10: CSV 낼출 [날짜 | 사용처(가맹점) | 금액 | 카테고리 | 세부 분류]. */
   const downloadCsv = useCallback(() => {
     const rows = visibleCardRows;
@@ -666,7 +573,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
           aria-label="조회 월"
           value={month}
           options={months.map((m) => ({ value: m, label: m }))}
-          onChange={(v: string) => { setMonth(v); setCardLimit(20); setCardPage(1); }}
+          onChange={(v: string) => { setMonth(v); setCardLimit(20); setUnclassifiedLimit(10); }}
           style={{ width: 130 }}
         />
       </div>
@@ -939,87 +846,61 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
                 placeholder="가맹점 이름으로 찾기"
                 aria-label="미분류 가맹점 검색"
                 value={unclassifiedSearch}
-                onChange={(e) => { setUnclassifiedSearch(e.target.value); setUnclassifiedPage(1); }}
+                onChange={(e) => { setUnclassifiedSearch(e.target.value); setUnclassifiedLimit(10); }}
                 style={{ maxWidth: 320 }}
               />
-              <Table
-                aria-label="미분류 가맹점"
-                size="small"
-                rowKey="merchantName"
-                dataSource={visibleUnclassifiedGroups}
-                pagination={{
-                  pageSize: 10,
-                  current: unclassifiedCurrentPage,
-                  onChange: (p) => setUnclassifiedPage(p),
-                  showSizeChanger: false,
-                  showTotal: (total) => `${total}개 가맹점`,
-                }}
-                columns={[
-                  { title: "가맹점", dataIndex: "merchantName" },
-                  {
-                    title: "업종",
-                    dataIndex: "businessCategory",
-                    width: 130,
-                    render: (v: string | undefined) => (
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>{v || "—"}</Typography.Text>
-                    ),
-                  },
-                  {
-                    title: "사업자번호",
-                    dataIndex: "businessNo",
-                    width: 130,
-                    className: "af-mono",
-                    render: (v: string | undefined, g: UnclassifiedGroup) => {
-                      const numbers = (v ?? "")
-                        .split(",")
-                        .map((n) => n.trim())
-                        .filter((n) => n.length > 0);
-                      if (numbers.length === 0) return "—";
-                      return (
-                        <Space size={4} wrap>
-                          {numbers.map((businessNo) => (
-                            <Button
-                              key={businessNo}
-                              type="link"
+              <div role="list">
+                {visibleUnclassifiedGroups.slice(0, unclassifiedLimit).map((g) => {
+                  const numbers = (g.businessNo ?? "")
+                    .split(",")
+                    .map((n) => n.trim())
+                    .filter((n) => n.length > 0);
+                  return (
+                    <div role="listitem" key={g.merchantName}>
+                      <MobileListCardItem>
+                        <MobileListCardHeader title={g.merchantName} value={formatKrwExact(g.grossTotal)} />
+                        <MobileListCardMeta>
+                          {g.businessCategory?.trim() || "업종 미확인"} · {g.count}건 · 최근 {g.lastApprovedAt}
+                        </MobileListCardMeta>
+                        <MobileListCardActions>
+                          <Space wrap>
+                            {numbers.length === 0 ? (
+                              <Typography.Text type="secondary" style={{ fontSize: 12 }}>사업자번호 없음</Typography.Text>
+                            ) : (
+                              numbers.map((businessNo) => (
+                                <Button
+                                  key={businessNo}
+                                  type="link"
+                                  size="small"
+                                  style={{ padding: 0, height: "auto" }}
+                                  onClick={() => setBusinessInfoTarget({ businessNo, merchantName: g.merchantName })}
+                                  aria-label={`${g.merchantName} ${businessNo} 사업자 정보 보기`}
+                                >
+                                  {formatBusinessNo(businessNo)}
+                                </Button>
+                              ))
+                            )}
+                            <Select
                               size="small"
-                              style={{ padding: 0, height: "auto" }}
-                              onClick={() => setBusinessInfoTarget({ businessNo, merchantName: g.merchantName })}
-                              aria-label={`${g.merchantName} ${businessNo} 사업자 정보 보기`}
-                            >
-                              {formatBusinessNo(businessNo)}
-                            </Button>
-                          ))}
-                        </Space>
-                      );
-                    },
-                  },
-                  { title: "건수", dataIndex: "count", width: 70, align: "right" as const, render: (v: number) => `${v}건` },
-                  {
-                    title: "합계",
-                    dataIndex: "grossTotal",
-                    width: 130,
-                    align: "right" as const,
-                    className: "af-num",
-                    render: (v: number) => formatKrwExact(v),
-                  },
-                  { title: "최근 승인", dataIndex: "lastApprovedAt", width: 100, className: "af-mono" },
-                  {
-                    title: "대분류 지정",
-                    width: 150,
-                    render: (_: unknown, g: UnclassifiedGroup) => (
-                      <Select
-                        size="small"
-                        style={{ width: 140 }}
-                        placeholder="선택"
-                        value={null}
-                        options={CATEGORY_GROUP_OPTIONS}
-                        onChange={(category: string) => void handleAssignMerchant(g, category)}
-                        aria-label={`${g.merchantName} 카테고리 지정`}
-                      />
-                    ),
-                  },
-                ]}
-              />
+                              style={{ width: 140 }}
+                              placeholder="대분류 지정"
+                              value={null}
+                              options={CATEGORY_GROUP_OPTIONS}
+                              onChange={(category: string) => void handleAssignMerchant(g, category)}
+                              aria-label={`${g.merchantName} 카테고리 지정`}
+                            />
+                          </Space>
+                        </MobileListCardActions>
+                      </MobileListCardItem>
+                    </div>
+                  );
+                })}
+              </div>
+              {visibleUnclassifiedGroups.length > unclassifiedLimit ? (
+                <Button block type="text" onClick={() => setUnclassifiedLimit((n) => n + 10)}>
+                  나머지 {visibleUnclassifiedGroups.length - unclassifiedLimit}개 가맹점 더 보기
+                </Button>
+              ) : null}
             </Space>
           )}
         </Card>
@@ -1044,7 +925,7 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
             <Checkbox
               checked={unclassifiedOnly}
-              onChange={(e) => { setUnclassifiedOnly(e.target.checked); setCardPage(1); }}
+              onChange={(e) => { setUnclassifiedOnly(e.target.checked); setUnclassifiedLimit(10); }}
             >
               미분류만 보기{unclassifiedInMonth > 0 ? ` (${unclassifiedInMonth}건)` : ""}
             </Checkbox>
@@ -1105,56 +986,64 @@ export function ExpensesPage({ onOpenDashboard, onOpenAssets, onOpenSettings }: 
           ) : null}
           <StateBlock status={cardStatus} onRetry={loadCard} errorText={cardError} emptyText="이 월에 반영된 카드 내역이 없습니다">
             {cardRows ? (
-              wide ? (
-              <Table
-                aria-label="가져온 카드내역"
-                size="small"
-                rowKey="rowKey"
-                dataSource={visibleCardRows}
-                pagination={{
-                  pageSize: cardPageSize,
-                  current: cardCurrentPage,
-                  onChange: (p) => setCardPage(p),
-                  showSizeChanger: false,
-                }}
-                columns={cardColumns}
-                locale={{ emptyText: unclassifiedOnly ? "이 달 미분류 내역이 없습니다" : "내역이 없습니다" }}
-                summary={() => (
-                  <Table.Summary fixed>
-                    <Table.Summary.Row style={{ fontWeight: 600 }}>
-                      <Table.Summary.Cell index={0} colSpan={2}>합계 ({visibleCardRows.length}건)</Table.Summary.Cell>
-                      <Table.Summary.Cell index={2} align="right" />
-                      <Table.Summary.Cell index={3} align="right">
-                        {formatKrwExact(visibleCardRows.reduce((acc, r) => acc + r.grossAmount, 0))}
-                      </Table.Summary.Cell>
-                      <Table.Summary.Cell index={4} />
-                      <Table.Summary.Cell index={5} />
-                      <Table.Summary.Cell index={6} />
-                    </Table.Summary.Row>
-                  </Table.Summary>
-                )}
-              />
-              ) : (
-                <div>
-                  {visibleCardRows.slice(0, cardLimit).map((r) => (
-                    <MobileListCardItem key={r.rowKey}>
-                      <MobileListCardHeader title={r.merchantName} value={formatKrwExact(r.grossAmount)} />
-                      <MobileListCardMeta>
-                        <span className="af-mono">{r.approvedAt}</span>{r.businessCategory?.trim() ? ` · ${r.businessCategory.trim()}` : ""} · {(r.expenseKind?.trim() || "미분류")}{r.subCategory?.trim() ? `/${r.subCategory.trim()}` : ""}
-                      </MobileListCardMeta>
-                    </MobileListCardItem>
-                  ))}
-                  {visibleCardRows.length > cardLimit ? (
-                    <Button block type="text" onClick={() => setCardLimit((n) => n + 30)}>
-                      나머지 {visibleCardRows.length - cardLimit}건 더 보기
-                    </Button>
-                  ) : null}
-                  <div style={{ fontWeight: 600, padding: "4px 2px" }}>
-                    <span>합계 ({visibleCardRows.length}건)</span>
-                    <span> {formatKrwExact(visibleCardRows.reduce((acc, r) => acc + r.grossAmount, 0))}</span>
-                  </div>
+              <div>
+                {visibleCardRows.slice(0, cardLimit).map((r) => (
+                  <MobileListCardItem key={r.rowKey}>
+                    <MobileListCardHeader title={r.merchantName} value={formatKrwExact(r.grossAmount)} />
+                    <MobileListCardMeta>
+                      <span className="af-mono">{r.approvedAt}</span>
+                      {r.businessCategory?.trim() ? ` · ${r.businessCategory.trim()}` : ""}
+                      {r.cardMasked ? ` · ${r.cardMasked}` : ""}
+                    </MobileListCardMeta>
+                    <MobileListCardActions>
+                      <Space wrap>
+                        <Select
+                          size="small"
+                          style={{ width: 130 }}
+                          placeholder="대분류"
+                          value={r.expenseKind?.trim() || null}
+                          options={CATEGORY_GROUP_OPTIONS}
+                          onChange={(category: string) => void handleCardCategory(r, category)}
+                          aria-label={`${r.merchantName} 카테고리`}
+                        />
+                        <Select
+                          size="small"
+                          style={{ width: 120 }}
+                          placeholder="세부 분류"
+                          value={r.subCategory?.trim() || null}
+                          options={subCategoryOptions(r.expenseKind)}
+                          onChange={(subCategory: string) => void handleCardSubCategory(r, subCategory)}
+                          disabled={isUnclassified(r.expenseKind)}
+                          aria-label={`${r.merchantName} 세부 분류`}
+                        />
+                        {(() => {
+                          const businessNo = (r.businessNo ?? "").trim();
+                          return businessNo ? (
+                            <Button
+                              type="link"
+                              size="small"
+                              style={{ padding: 0, height: "auto" }}
+                              onClick={() => setBusinessInfoTarget({ businessNo, merchantName: r.merchantName })}
+                              aria-label={`${r.merchantName} ${businessNo} 사업자 정보 보기`}
+                            >
+                              {formatBusinessNo(businessNo)}
+                            </Button>
+                          ) : null;
+                        })()}
+                      </Space>
+                    </MobileListCardActions>
+                  </MobileListCardItem>
+                ))}
+                {visibleCardRows.length > cardLimit ? (
+                  <Button block type="text" onClick={() => setCardLimit((n) => n + 30)}>
+                    나머지 {visibleCardRows.length - cardLimit}건 더 보기
+                  </Button>
+                ) : null}
+                <div style={{ fontWeight: 600, padding: "4px 2px" }}>
+                  <span>합계 ({visibleCardRows.length}건)</span>
+                  <span> {formatKrwExact(visibleCardRows.reduce((acc, r) => acc + r.grossAmount, 0))}</span>
                 </div>
-              )
+              </div>
             ) : null}
           </StateBlock>
         </Card>

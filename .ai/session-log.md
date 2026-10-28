@@ -14,6 +14,24 @@
 
 ---
 
+## 2026-10-28 — 지출 화면 남은 표도 카드로 전환 (§55.8·§55.10)
+
+지출 화면에 남아 있던 표 2개(미분류 가맹점, 가져온 카드내역)를 모두 카드로 바꿨다.
+
+- `ExpensesPage.tsx`
+  - `미분류 가맹점`: 카드 + 사업자번호 버튼 + 대분류 지정 Select + "더 보기"
+  - `가져온 카드내역`: 카드 + 대분류 Select + 세부 분류 Select + 사업자번호 버튼 + "더 보기"
+  - 표 전용이었던 `cardColumns`, `cardPage`/`cardPageSize`/`cardCurrentPage`,
+    `unclassifiedPage`/`unclassifiedCurrentPage` 제거
+  - `Table` import 제거
+- 테스트
+  - 페이지네이션 테스트 → "카테고리를 바꿔도 목록을 다시 읽지 않는다"로 변경
+- 검증
+  - `pnpm typecheck`·`lint`·`test`(173)·`build` ✅
+  - FE dist 배포 및 `index-*.js` HTTP 200 ✅
+
+---
+
 ## 2026-10-28 — 카테고리별 합계도 카드로 전환 (§55.10)
 
 지출 화면의 마지막 표였던 "카테고리별 합계"를 카드 목록으로 바꿨다.
