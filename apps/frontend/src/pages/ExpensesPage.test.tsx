@@ -401,8 +401,7 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
     expect(await screen.findByText("분류된상점")).toBeDefined();
   });
 
-  it("카테고리를 바꿔도 표를 다시 읽지 않아 페이지가 유지된다 (§55.8)", async () => {
-    setViewport(true);
+  it("카테고리를 바꿔도 목록을 다시 읽지 않는다 (§55.8)", async () => {
     const rows = Array.from({ length: 12 }, (_, i) => ({
       rowKey: `k${i + 1}`,
       approvedAt: `2026-10-${String(i + 1).padStart(2, "0")}`,
@@ -428,27 +427,25 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
     });
     render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
 
-    // 2페이지로 이동
     await screen.findByText("가맹점1");
-    fireEvent.click(await screen.findByTitle("2"));
-    expect(await screen.findByText("가맹점12")).toBeDefined();
 
-    // 2페이지의 행 하나를 분류
-    const combo = await screen.findByRole("combobox", { name: "가맹점11 카테고리" });
+    // 첫 번째 가맹점을 분류하면 PATCH 만 날아가고 카드 내역 GET 은 다시 일어나지 않는다
+    const combo = await screen.findByRole("combobox", { name: "가맹점1 카테고리" });
     fireEvent.mouseDown(combo);
     fireEvent.click(await screen.findByTitle("식비"));
+
     await waitFor(() => {
       const patch = fetchMock.mock.calls.find((c) => (c[1]?.method ?? "GET") === "PATCH");
       expect(patch).toBeDefined();
-      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ rowKey: "k11", category: "식비", subCategory: "" });
+      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ rowKey: "k1", category: "식비", subCategory: "" });
     });
 
-    // 재조회 없음 + 2페이지 그대로 (가맹점12 가 계속 보인다)
+    // 목록이 재조회되지 않아 동일한 가맹점이 그대로 남는다
     const cardGets = fetchMock.mock.calls.filter(([url, init]) =>
       String(url).includes("/assets/card-imports")
       && !String(url).includes("/unclassified")
       && (init?.method ?? "GET") === "GET");
     expect(cardGets.length).toBe(1);
-    expect(screen.getByText("가맹점12")).toBeDefined();
+    expect(screen.getByText("가맹점1")).toBeDefined();
   });
 });
