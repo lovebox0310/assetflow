@@ -315,6 +315,10 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
     // 재분류 후 카드 내역을 다시 읽어 카테고리 열과 카테고리별 합계가 갱신된다
     expect((await screen.findAllByText(/식비/)).length).toBeGreaterThan(0);
     expect(await screen.findByText("카테고리별 합계")).toBeDefined();
+    // 표가 아니라 카드로 보여 준다 — 합계 블록 안에 table 이 없다
+    const categoryTotals = screen.getByLabelText("이 달 카드 카테고리별 합계");
+    expect(categoryTotals.querySelector("table")).toBeNull();
+    expect(categoryTotals.textContent).toContain("지출 합계");
   });
 
   it("미분류 작업함에서 가맹점을 지정하면 그 자리에서 사라지고 되돌릴 수 있다 (§55.8)", async () => {
