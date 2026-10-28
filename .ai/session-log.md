@@ -14,6 +14,32 @@
 
 ---
 
+## 2026-10-28 — 투자 시세 자동 조회 + 입력 UX 정리 (§54.4·§54.9)
+
+로그인 직후 네이버 시세로 보유종목 현재가를 갱신하고, 종목 추가 폼의 입력 마찰을 줄였다.
+
+- 백엔드
+  - `QuoteService`/`NaverQuoteService` — 네이버 금융 공개 JSON 프록시(캐시 성공 10분·실패 2분)
+  - `InvestmentQuoteController` — `GET /quotes`·`GET /fx`·`POST /quotes/refresh`
+  - 갱신은 통화가 일치하는 종목만, 코인·시세 없음은 저장값 유지
+  - `WebConfig` 보호 경로에 `/api/v1/investments/**` 추가
+  - 테스트: `InvestmentQuoteApiTest` 5건
+- 프론트엔드
+  - `investmentsApi.ts` — `refreshHoldingPrices()`·`fetchQuote()`·`fetchFxRate()`
+  - `App.tsx` — 로그인 성공 시 시세 1회 갱신(실패 무시)
+  - `InvestmentsPage.tsx`
+    - 진입 시 자동 갱신 + `시세 새로고침` 버튼, `현재가 가져오기`(심볼→현재가·통화·종목명)
+    - 계좌 선택지 `계좌명 · 기관`
+    - 통화 KRW/USD 선택, USD 일 때만 환율 란
+    - 수량·평단가·현재가·환율 초기값 제거(붙여넣기 방해 제거)
+  - 테스트: `InvestmentsPage.test.tsx` 5건 추가(14건)
+- 검증
+  - `./gradlew test bootJar` ✅
+  - `pnpm typecheck`·`lint`·`test`(173)·`build` ✅
+  - 배포 후 실측: `005930` 244,500원 · `AAPL` 347.10 USD · USD/KRW 1,339.00 모두 OK ✅
+
+---
+
 ## 2026-10-28 — 투자 계좌(예수금) 편집·삭제 경로 추가 (§54.3)
 
 자산 화면에서 `invest` 행의 편집/삭제를 막아 둔 대체 경로가 없어, 투자 계좌의

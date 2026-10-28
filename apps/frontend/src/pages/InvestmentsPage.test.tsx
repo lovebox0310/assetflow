@@ -95,6 +95,25 @@ describe("InvestmentsPage (§54 E2)", () => {
       if (path.includes("/investments/holdings")) {
         return Promise.resolve(apiResponse(portfolioFixture()));
       }
+      // §54.4 시세 — 서버가 네이버 금융을 대신 호출한다.
+      if (path.includes("/investments/quotes/refresh") && method === "POST") {
+        return Promise.resolve(apiResponse(portfolioFixture()));
+      }
+      if (path.includes("/investments/quotes") && method === "GET") {
+        const isUsd = path.includes("AAPL");
+        return Promise.resolve(apiResponse(isUsd
+          ? {
+              symbol: "AAPL", quoteSymbol: "AAPL.O", name: "애플", currency: "USD",
+              price: 347.1, priceAsOf: "2026-10-27",
+            }
+          : {
+              symbol: "005930", quoteSymbol: "005930", name: "삼성전자", currency: "KRW",
+              price: 244_000, priceAsOf: "2026-10-28",
+            }));
+      }
+      if (path.includes("/investments/fx")) {
+        return Promise.resolve(apiResponse({ currency: "USD", rate: 1339, priceAsOf: "2026-10-28" }));
+      }
       // §54.3: 투자 계좌(예수금) 편집·삭제는 자산 계정 API 를 쓴다.
       if (path.includes("/assets/accounts") && method === "PUT") {
         return Promise.resolve(apiResponse({ id: 4 }));
@@ -161,15 +180,94 @@ describe("InvestmentsPage (§54 E2)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "+ 종목 추가" }));
     fireEvent.change(await screen.findByLabelText("종목명"), { target: { value: "테스트주" } });
+    fireEvent.change(screen.getByLabelText("수량"), { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText("평단가"), { target: { value: "1000" } });
+    fireEvent.change(screen.getByLabelText("현재가"), { target: { value: "1200" } });
     fireEvent.click(screen.getByRole("button", { name: "저장" }));
 
     await waitFor(() => {
       const post = fetchMock.mock.calls.find(
-        ([, init]) => (init as RequestInit | undefined)?.method === "POST",
+        ([, init]) => (init as RequestInit | undefined)?.method === "POST"
+          && String((init as RequestInit).body).includes("테스트주"),
       );
       expect(post).toBeDefined();
       expect(String(post?.[0])).toContain("/api/v1/investments/holdings");
-      expect(String((post?.[1] as RequestInit).body)).toContain("테스트주");
+      // §54.4: 원화 종목은 환율을 묻지 않고 1 로 저장한다
+      expect(JSON.parse(String((post?.[1] as RequestInit).body))).toMatchObject({
+        currency: "KRW",
+        fxRate: 1,
+      });
+    });
+  });
+
+  it("종목 추가 폼은 수량·평단가·현재가를 비워 두고, 원화면 환율 란을 숨긴다 (§54.4)", async () => {
+    render(<InvestmentsPage />);
+    await screen.findByText("삼성전자");
+
+    fireEvent.click(screen.getByRole("button", { name: "+ 종목 추가" }));
+
+    // 붙여넣기를 방해하던 초기값 0/1 이 없다
+    expect((screen.getByLabelText("수량") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("평단가") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("현재가") as HTMLInputElement).value).toBe("");
+    expect(screen.queryByLabelText("환율")).toBeNull();
+  });
+
+  it("계좌 선택지는 이름과 기관을 함께 보여 준다 (§54.2)", async () => {
+    render(<InvestmentsPage />);
+    await screen.findByText("삼성전자");
+
+    fireEvent.click(screen.getByRole("button", { name: "+ 종목 추가" }));
+    fireEvent.mouseDown(screen.getByLabelText("계좌"));
+
+    await waitFor(() => {
+      const options = Array.from(document.querySelectorAll(".ant-select-item-option"))
+        .map((el) => el.getAttribute("title"));
+      expect(options).toContain("키움 투자금 · 키움증권");
+      expect(options).toContain("미국주식");
+    });
+  });
+
+  it("미국달러를 고르면 환율 란이 나타나고 네이버 환율로 채워진다 (§54.4)", async () => {
+    render(<InvestmentsPage />);
+    await screen.findByText("삼성전자");
+
+    fireEvent.click(screen.getByRole("button", { name: "+ 종목 추가" }));
+    fireEvent.mouseDown(screen.getByLabelText("통화"));
+    fireEvent.click(await screen.findByTitle("미국달러 (USD)"));
+
+    const fx = await screen.findByLabelText("환율");
+    await waitFor(() => expect(Number((fx as HTMLInputElement).value)).toBe(1339));
+  });
+
+  it("'현재가 가져오기'는 심볼 시세로 현재가·통화·종목명을 채운다 (§54.4)", async () => {
+    render(<InvestmentsPage />);
+    await screen.findByText("삼성전자");
+
+    fireEvent.click(screen.getByRole("button", { name: "+ 종목 추가" }));
+    fireEvent.change(screen.getByLabelText("심볼"), { target: { value: "AAPL" } });
+    fireEvent.click(screen.getByRole("button", { name: "현재가 가져오기" }));
+
+    await waitFor(() => {
+      expect(Number((screen.getByLabelText("현재가") as HTMLInputElement).value)).toBe(347.1);
+    });
+    expect((screen.getByLabelText("종목명") as HTMLInputElement).value).toBe("애플");
+    expect(await screen.findByLabelText("환율")).toBeDefined();
+    const fx = screen.getByLabelText("환율") as HTMLInputElement;
+    await waitFor(() => expect(Number(fx.value)).toBe(1339));
+  });
+
+  it("화면 진입 시 현재가를 자동으로 갱신한다 (§54.4)", async () => {
+    render(<InvestmentsPage />);
+    await screen.findByText("삼성전자");
+
+    await waitFor(() => {
+      const refresh = fetchMock.mock.calls.find(
+        ([url, init]) =>
+          String(url).includes("/investments/quotes/refresh") &&
+          (init as RequestInit | undefined)?.method === "POST",
+      );
+      expect(refresh).toBeDefined();
     });
   });
 

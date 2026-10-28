@@ -6,6 +6,7 @@ import { ExpensesPage } from "../pages/ExpensesPage";
 import { SettingsPage } from "../pages/SettingsPage";
 import { LoginPage } from "../pages/LoginPage";
 import { isAuthenticated } from "../auth/authStore";
+import { refreshHoldingPrices } from "../api/investmentsApi";
 import {
   LOGIN_TITLE,
   PAGE_TITLES,
@@ -113,5 +114,14 @@ export function App() {
     );
   }
   // 로그인 성공 시 화면을 새로 고르지 않는다 — 딥링크로 들어왔다면 그 화면으로 복귀한다.
-  return <LoginPage onSuccess={() => setAuthed(true)} />;
+  return (
+    <LoginPage
+      onSuccess={() => {
+        setAuthed(true);
+        // §54.4: 로그인 직후 네이버 시세로 투자 현재가를 한 번 갱신한다.
+        // 실패해도 로그인 흐름은 그대로다(저장된 현재가 사용).
+        void refreshHoldingPrices().catch(() => undefined);
+      }}
+    />
+  );
 }
