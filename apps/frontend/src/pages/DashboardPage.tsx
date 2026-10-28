@@ -1,6 +1,6 @@
 import { useCallback, Suspense, lazy, useEffect, useRef, useState } from "react";
 import dayjs from "dayjs";
-import { Alert, Card, DatePicker, Grid, Skeleton, Typography } from "antd";
+import { Alert, Card, DatePicker, Grid, Skeleton, Switch, Typography } from "antd";
 import {
   MobileListCardHeader,
   MobileListCardItem,
@@ -25,6 +25,8 @@ import {
   cashflowWindow,
   emergencyFundTotal,
   emergencyMonths,
+  investMonths,
+  investTotal,
   monthlyBalance,
   netWorth,
 } from "../dashboard/metrics";
@@ -75,6 +77,8 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
   const [summary, setSummary] = useState<DashboardData | null>(null);
   const [summaryStatus, setSummaryStatus] = useState<SurfaceStatus>("loading");
   const [summaryError, setSummaryError] = useState("");
+  // §28.7: 비상금/투자금 유지 개월을 한 카드에서 토글로 전환해서 본다.
+  const [showInvestMonths, setShowInvestMonths] = useState(false);
 
   const [cashflow, setCashflow] = useState<CashflowRow[] | null>(null);
   const [cashflowStatus, setCashflowStatus] = useState<SurfaceStatus>("loading");
@@ -192,18 +196,36 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
             {dataReady ? formatSignedKrw(monthlyBalance(summary)) : "—"}
           </MetricCard>
           <MetricCard
-            title="비상금 유지 개월"
+            title={showInvestMonths ? "투자금 유지 개월" : "비상금 유지 개월"}
             status={summaryStatus}
             onRetry={load}
             hint={
               dataReady
-                ? `${formatKrwExact(emergencyFundTotal(summary))} ÷ ${formatKrwExact(summary.monthly.essentialExpenses)}${
-                    summary.monthly.essentialComplete ? "" : " · 필수지출 미확정"
-                  }`
+                ? showInvestMonths
+                  ? `${formatKrwExact(investTotal(summary))} ÷ ${formatKrwExact(summary.monthly.essentialExpenses)}`
+                  : `${formatKrwExact(emergencyFundTotal(summary))} ÷ ${formatKrwExact(summary.monthly.essentialExpenses)}${
+                      summary.monthly.essentialComplete ? "" : " · 필수지출 미확정"
+                    }`
                 : undefined
             }
           >
-            {dataReady ? formatMonths(emergencyMonths(summary)) : "—"}
+            {dataReady ? (
+              <div>
+                <div style={{ fontSize: 14, marginBottom: 8, lineHeight: 1.5 }}>
+                  <Switch
+                    size="small"
+                    checkedChildren="투자금"
+                    unCheckedChildren="비상금"
+                    checked={showInvestMonths}
+                    onChange={setShowInvestMonths}
+                    aria-label="유지 개월 모드 전환"
+                  />
+                </div>
+                <div>{formatMonths(showInvestMonths ? investMonths(summary) : emergencyMonths(summary))}</div>
+              </div>
+            ) : (
+              "—"
+            )}
           </MetricCard>
           <MetricCard title="자산 구성비" status={summaryStatus} onRetry={load}>
             <AssetCompositionList slices={composition} />
