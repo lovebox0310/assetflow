@@ -121,6 +121,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     // 카드와 현금흐름 표가 같은 금액을 보일 수 있어 getAll 로 존재를 검사한다.
     expect((await screen.findAllByText("+3,240,000원")).length).toBeGreaterThan(0);
     expect(screen.getByText("28.8개월")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "비상금 유지 개월" })).toBeDefined();
     // 구성비 카드와 도넛 범례가 같은 유형명을 보일 수 있어 getAll 로 존재를 검사한다.
     expect(screen.getAllByText("부동산·기타").length).toBeGreaterThan(0);
     expect(screen.getByText("84.1% · 6.4억")).toBeDefined();
@@ -134,6 +135,13 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     // 2026-10: 8,200,000 − 0 − 4,960,000 = +3,240,000 / 2026-09: +2,640,000
     expect(screen.getByText("+2,640,000원")).toBeDefined();
     expect(screen.queryByText("+5,880,000원")).toBeNull();
+
+    // 스위치를 켜면 투자금 유지 개월(23.5개월)로 전환된다.
+    const toggle = screen.getByRole("switch", { name: "유지 개월 모드 전환" });
+    fireEvent.click(toggle);
+    expect(await screen.findByText("23.5개월")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "투자금 유지 개월" })).toBeDefined();
+    expect(screen.queryByText("28.8개월")).toBeNull();
   });
 
   it("요청 중에는 로딩(스켈레톤)이 보인다 (§26 AC)", () => {
