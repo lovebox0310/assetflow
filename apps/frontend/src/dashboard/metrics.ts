@@ -36,17 +36,41 @@ export function monthlyBalance(data: DashboardData): number {
 }
 
 /**
- * 비상금 유지 개월 = 투자금 잔액 / 월 필수지출 (§28.7)
- *  - 분자: type=invest 합계만. 총 현금·자동이체·부가세 잔액 금지
- *  - 분모: 지출 화면 단일 출처 값. 미확정(essentialComplete=false)이면 값과
- *    별개로 화면이 경고를 띄운다 — 0원 투입으로 메우지 않는다
- *  - 분모 0 이하 → 계산 불가(null)
+ * 비상금 유지 개월 = 비상금 통장 잔액 / 월 필수지출
+ *
+ * - 분자: 현금성(cash) + 예적금(deposit) 합계 — 즉시 인출 가능한 비상금 통장 기준.
+ *   투자금은 변동성이 크고 즉시 현금화가 어려우므로 제외한다.
+ * - 분모: 지출 화면 단일 출처의 월 필수지출.
+ * - 분모 0 이하 → 계산 불가(null)
  */
 export function emergencyMonths(data: DashboardData): number | null {
-  const investTotal = sum(data.assets.filter((a) => a.type === "invest").map((a) => a.value));
+  const emergencyFund = emergencyFundTotal(data);
   const essential = data.monthly.essentialExpenses;
   if (essential <= 0) return null;
-  return investTotal / essential;
+  return emergencyFund / essential;
+}
+
+/** 비상금 통장 = cash + deposit 합계. */
+export function emergencyFundTotal(data: DashboardData): number {
+  return sum(data.assets.filter((a) => a.type === "cash" || a.type === "deposit").map((a) => a.value));
+}
+
+/**
+ * 투자금 유지 개월 = 투자금 총액 / 월 필수지출 (§28.7)
+ *
+ * - 분자: 투자(invest) 계좌 총액(예수금 + 보유종목 평가액).
+ * - 분모: 월 필수지출.
+ */
+export function investMonths(data: DashboardData): number | null {
+  const total = investTotal(data);
+  const essential = data.monthly.essentialExpenses;
+  if (essential <= 0) return null;
+  return total / essential;
+}
+
+/** 투자금 총액. */
+export function investTotal(data: DashboardData): number {
+  return sum(data.assets.filter((a) => a.type === "invest").map((a) => a.value));
 }
 
 /** 자산 구성비 = 유형별 비율, 합계 100.0 (§23) */

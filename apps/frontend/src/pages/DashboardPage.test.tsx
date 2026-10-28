@@ -116,11 +116,11 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     stubFetch(route);
     render(<DashboardPage onLogout={() => {}} />);
 
-    // 순자산 691,844,440 → 6.9억 / 월 수지 +3,240,000원 / 비상금 23.5개월
+    // 순자산 691,844,440 → 6.9억 / 월 수지 +3,240,000원 / 비상금 28.8개월
     expect(await screen.findByText("6.9억")).toBeDefined();
     // 카드와 현금흐름 표가 같은 금액을 보일 수 있어 getAll 로 존재를 검사한다.
     expect((await screen.findAllByText("+3,240,000원")).length).toBeGreaterThan(0);
-    expect(screen.getByText("23.5개월")).toBeDefined();
+    expect(screen.getByText("28.8개월")).toBeDefined();
     // 구성비 카드와 도넛 범례가 같은 유형명을 보일 수 있어 getAll 로 존재를 검사한다.
     expect(screen.getAllByText("부동산·기타").length).toBeGreaterThan(0);
     expect(screen.getByText("84.1% · 6.4억")).toBeDefined();

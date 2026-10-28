@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { assetComposition, cashAccountCount, cashflowWindow, emergencyMonths, monthlyBalance, netWorth } from "./metrics";
+import {
+  assetComposition,
+  cashAccountCount,
+  cashflowWindow,
+  emergencyFundTotal,
+  emergencyMonths,
+  investMonths,
+  investTotal,
+  monthlyBalance,
+  netWorth,
+} from "./metrics";
 import type { DashboardData } from "../data/dashboardMock";
 
 const base: DashboardData = {
@@ -22,18 +32,31 @@ describe("metrics (§23 표시 규칙)", () => {
     expect(monthlyBalance(base)).toBe(3_240_000);
   });
 
-  it("비상금 개월은 투자금만 분자 (§28.7: 현금·예적금 섞이면 오답)", () => {
+  it("비상금 개월은 현금성+예적금 합계를 분자 (§28.7: 투자금 섞이면 오답)", () => {
     expect(emergencyMonths(base)).toBe(15);
-    // 자동이체성 현금(1천만)이 분자에 들어가면 20개월이 된다 — 그것이 금지선이다.
-    const withCash = emergencyMonths({
+    expect(emergencyFundTotal(base)).toBe(30_000_000);
+    // cash(1천만)을 invest 로 바꾸면 비상금이 줄어든다
+    const withCashAsInvest = emergencyMonths({
       ...base,
       assets: base.assets.map((a) => (a.type === "cash" ? { ...a, type: "invest" as const } : a)),
     });
-    expect(withCash).toBe(20);
+    expect(withCashAsInvest).toBe(10);
+  });
+
+  it("투자금 유지 개월은 투자금 총액을 분자", () => {
+    expect(investMonths(base)).toBe(15);
+    expect(investTotal(base)).toBe(30_000_000);
+    // cash(1천만)을 invest 로 바꾸면 투자금이 늘어난다
+    const withCashAsInvest = investMonths({
+      ...base,
+      assets: base.assets.map((a) => (a.type === "cash" ? { ...a, type: "invest" as const } : a)),
+    });
+    expect(withCashAsInvest).toBe(20);
   });
 
   it("필수지출 0 이하이면 계산 불가(null) — 0원으로 부풀리지 않는다", () => {
     expect(emergencyMonths({ ...base, monthly: { ...base.monthly, essentialExpenses: 0 } })).toBeNull();
+    expect(investMonths({ ...base, monthly: { ...base.monthly, essentialExpenses: 0 } })).toBeNull();
   });
 
   it("구성비는 합계 100.0 반올림 잔차 보정", () => {
@@ -55,8 +78,10 @@ describe("metrics (§23 표시 규칙)", () => {
     const { dashboardMock } = await import("../data/dashboardMock");
     expect(netWorth(dashboardMock)).toBe(691_844_440);
     expect(monthlyBalance(dashboardMock)).toBe(3_240_000);
-    // 투자금 54,500,000 / 필수 2,317,180 = 23.519... → 화면 표기 23.5개월
-    expect(emergencyMonths(dashboardMock)).toBeCloseTo(23.52, 2);
+    // 비상금 통장(현금성+예적금) 66,700,000 / 필수 2,317,180 = 28.78...개월
+    expect(emergencyMonths(dashboardMock)).toBeCloseTo(28.78, 2);
+    // 투자금 54,500,000 / 필수 2,317,180 = 23.52...개월
+    expect(investMonths(dashboardMock)).toBeCloseTo(23.52, 2);
     const comp = assetComposition(dashboardMock);
     expect(comp.map((c) => c.percent)).toEqual([3.2, 5.5, 7.2, 84.1]);
     expect(Math.round(comp.reduce((a, c) => a + c.percent, 0) * 10)).toBe(1000);
