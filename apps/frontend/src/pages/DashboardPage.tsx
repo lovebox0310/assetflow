@@ -23,6 +23,7 @@ import {
   assetComposition,
   cashAccountCount,
   cashflowWindow,
+  emergencyFundTotal,
   emergencyMonths,
   monthlyBalance,
   netWorth,
@@ -194,7 +195,13 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
             title="비상금 유지 개월"
             status={summaryStatus}
             onRetry={load}
-            hint={dataReady && !summary.monthly.essentialComplete ? "필수지출에 미확정 항목이 있습니다" : undefined}
+            hint={
+              dataReady
+                ? `${formatKrwExact(emergencyFundTotal(summary))} ÷ ${formatKrwExact(summary.monthly.essentialExpenses)}${
+                    summary.monthly.essentialComplete ? "" : " · 필수지출 미확정"
+                  }`
+                : undefined
+            }
           >
             {dataReady ? formatMonths(emergencyMonths(summary)) : "—"}
           </MetricCard>
