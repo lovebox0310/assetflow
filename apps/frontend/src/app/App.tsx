@@ -3,10 +3,12 @@ import { DashboardPage } from "../pages/DashboardPage";
 import { AssetsPage } from "../pages/AssetsPage";
 import { InvestmentsPage } from "../pages/InvestmentsPage";
 import { ExpensesPage } from "../pages/ExpensesPage";
+import { CardExpensesPage } from "../pages/CardExpensesPage";
 import { SettingsPage } from "../pages/SettingsPage";
 import { LoginPage } from "../pages/LoginPage";
 import { isAuthenticated } from "../auth/authStore";
 import { refreshHoldingPrices } from "../api/investmentsApi";
+import { currentMonth } from "../utils/months";
 import {
   LOGIN_TITLE,
   PAGE_TITLES,
@@ -24,6 +26,8 @@ export type { AppPage } from "./routes";
  */
 export function App() {
   const [authed, setAuthed] = useState(() => isAuthenticated());
+  // 지출 탭(지출·카드내역)이 같은 월을 보도록 월 상태를 여기서 소유한다.
+  const [expenseMonth, setExpenseMonth] = useState<string>(() => currentMonth());
   // 최초 렌더에서 현재 해시를 읽는다(새로고침·딥링크). 미지의 해시는 대시보드로
   // 떨어뜨리되, 주소창에는 표준 경로를 남겨 새로고침해도 같은 화면이 유지되게 한다.
   const [page, setPage] = useState<AppPage>(() => {
@@ -89,8 +93,23 @@ export function App() {
     if (page === "expenses") {
       return (
         <ExpensesPage
+          month={expenseMonth}
+          onMonthChange={setExpenseMonth}
           onOpenDashboard={() => navigate("dashboard")}
           onOpenAssets={() => navigate("assets")}
+          onOpenCards={() => navigate("expenseCards")}
+          onOpenSettings={() => navigate("settings")}
+        />
+      );
+    }
+    if (page === "expenseCards") {
+      return (
+        <CardExpensesPage
+          month={expenseMonth}
+          onMonthChange={setExpenseMonth}
+          onOpenDashboard={() => navigate("dashboard")}
+          onOpenAssets={() => navigate("assets")}
+          onOpenExpenses={() => navigate("expenses")}
           onOpenSettings={() => navigate("settings")}
         />
       );

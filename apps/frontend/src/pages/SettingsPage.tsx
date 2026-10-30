@@ -72,7 +72,7 @@ export function SettingsPage({ onOpenDashboard, onOpenAssets, onOpenExpenses }: 
     const values = await form.validateFields();
     setSaving(true);
     try {
-      const updated = await updateSettings(values.targetMonths);
+      const updated = await updateSettings({ targetMonths: values.targetMonths });
       setSettings(updated);
     } finally {
       setSaving(false);
@@ -146,6 +146,10 @@ export function SettingsPage({ onOpenDashboard, onOpenAssets, onOpenExpenses }: 
                     <Button type="primary" loading={saving} onClick={() => void save()}>저장</Button>
                   </Form>
                 ) : null}
+                <Typography.Paragraph type="secondary" style={{ margin: "12px 0 0", fontSize: 12 }}>
+                  비상금 통장·카드지출 평균 개월·카테고리는 대시보드의 '비상금 유지 개월' 카드에서
+                  '기준 설정'을 눌러 바꿉니다. 여기서는 목표 개월만 저장합니다.
+                </Typography.Paragraph>
               </StateBlock>
             </Card>
           </section>

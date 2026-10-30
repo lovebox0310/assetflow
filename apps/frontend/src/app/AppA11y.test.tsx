@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { DashboardPage } from "../pages/DashboardPage";
 import { AssetsPage } from "../pages/AssetsPage";
 import { ExpensesPage } from "../pages/ExpensesPage";
+import { CardExpensesPage } from "../pages/CardExpensesPage";
 import { SettingsPage } from "../pages/SettingsPage";
 import { clearInflight } from "../api/client";
 import { clearToken, saveToken } from "../auth/authStore";
@@ -93,7 +94,27 @@ function stubCommon() {
 const renderDashboard = () =>
   render(<DashboardPage onLogout={() => {}} onOpenAssets={() => {}} onOpenExpenses={() => {}} onOpenSettings={() => {}} />);
 const renderExpenses = () =>
-  render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
+  render(
+    <ExpensesPage
+      month="2026-10"
+      onMonthChange={() => {}}
+      onOpenDashboard={() => {}}
+      onOpenAssets={() => {}}
+      onOpenCards={() => {}}
+      onOpenSettings={() => {}}
+    />,
+  );
+const renderCardExpenses = () =>
+  render(
+    <CardExpensesPage
+      month="2026-10"
+      onMonthChange={() => {}}
+      onOpenDashboard={() => {}}
+      onOpenAssets={() => {}}
+      onOpenExpenses={() => {}}
+      onOpenSettings={() => {}}
+    />,
+  );
 const renderSettings = () =>
   render(<SettingsPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenExpenses={() => {}} />);
 
@@ -136,6 +157,14 @@ describe("이슈 #70 접근성 AA 정합성", () => {
     expect(document.querySelectorAll("h1")).toHaveLength(1);
     expect(screen.getByRole("heading", { level: 2, name: "월 지출 항목" })).toBeDefined();
     expect(screen.getByRole("heading", { level: 2, name: "정기 항목 (고정지출)" })).toBeDefined();
+  });
+
+  it("카드내역: h1 1개(카드내역), 섹션은 h2", async () => {
+    renderCardExpenses();
+    await screen.findByRole("heading", { level: 1, name: "카드내역" });
+    expect(document.querySelectorAll("h1")).toHaveLength(1);
+    expect(screen.getByRole("heading", { level: 2, name: "미분류 정리" })).toBeDefined();
+    expect(screen.getByRole("heading", { level: 2, name: "가져온 카드내역" })).toBeDefined();
   });
 
   it("설정: h1 1개(설정), 섹션은 h2", async () => {

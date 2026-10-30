@@ -35,10 +35,11 @@ export function formatSignedKrw(value: number): string {
   return `${nf0.format(value)}원`;
 }
 
-/** 비상금 유지 개월: 소수점 1자리 (7.2개월). 분모가 0 이하면 계산 불가 → null */
+/** 비상금 유지 개월: 소수점 2자리, 반올림 없이 버림 (§59). 분모가 0 이하면 계산 불가 → null */
 export function formatMonths(value: number | null): string {
   if (value === null || !Number.isFinite(value)) return "—";
-  return `${nf1.format(value)}개월`;
+  const truncated = Math.trunc(value * 100) / 100;
+  return `${truncated.toFixed(2)}개월`;
 }
 
 /** 구성비: 소수점 1자리 (32.0%) */

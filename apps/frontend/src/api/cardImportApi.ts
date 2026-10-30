@@ -15,6 +15,8 @@ export interface CardImportRow {
   businessCategory?: string;
   /** 카드 소유 구분. 명시되지 않으면 백엔드가 "본인"으로 저장한다. */
   memberRelation?: string;
+  /** 카드사(삼성카드/현대카드). 카드번호만으로는 판별이 불확실해 업로드 시 판별값을 저장한다. */
+  cardCompany?: string;
 }
 
 export interface MerchantRule {
@@ -153,14 +155,36 @@ export interface MonthlyCategoryTotal {
   gross: number;
 }
 
+/** 카드사·소유 구분별 월별 집계 — 대시보드 차트용. */
+export interface CardCompanyGroup {
+  /** YYYY-MM */
+  month: string;
+  cardCompany: string;
+  memberRelation: string;
+  count: number;
+  grossAmount: number;
+}
+
+export function listCardCompanyGroups(from: string, to: string): Promise<CardCompanyGroup[]> {
+  const query = new URLSearchParams({ from, to }).toString();
+  return apiFetch<CardCompanyGroup[]>(`/api/v1/assets/card-imports/by-card?${query}`);
+}
+
 /**
  * from~to(YYYY-MM, 양끝 포함)의 월별 대분류 합계를 조회한다.
  * 서버가 자산 이동(저축/투자)을 제외하고, 36개월을 넘는 범위는 400 으로 거절한다.
+ *
+ * source="card" 는 카드내역만 돌려준다 — §59 비상금 유지 개월의 변동지출 평균은
+ * 고정/정기 항목과 이중계상하지 않도록 카드 소비만 본다. 기본값 "all" 은 기존과
+ * 같이 카드 + 고정/정기 항목을 합친다.
  */
 export function listMonthlyCategoryTotals(
   from: string,
   to: string,
+  options?: { source?: "all" | "card" },
 ): Promise<MonthlyCategoryTotal[]> {
-  const query = new URLSearchParams({ from, to }).toString();
+  const params: Record<string, string> = { from, to };
+  if (options?.source) params.source = options.source;
+  const query = new URLSearchParams(params).toString();
   return apiFetch<MonthlyCategoryTotal[]>(`/api/v1/assets/card-imports/monthly-categories?${query}`);
 }

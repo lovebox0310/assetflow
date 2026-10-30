@@ -3,14 +3,16 @@ import {
   assetComposition,
   cashAccountCount,
   cashflowWindow,
-  emergencyFundTotal,
-  emergencyMonths,
+  emergencyRunway,
   investMonths,
   investTotal,
   monthlyBalance,
   netWorth,
 } from "./metrics";
+import { DEFAULT_EMERGENCY_CATEGORIES } from "../data/expenseCategories";
 import type { DashboardData } from "../data/dashboardMock";
+
+const today = new Date(2026, 9, 15); // 2026-10-15
 
 const base: DashboardData = {
   asOf: "2026년 10월",
@@ -32,30 +34,162 @@ describe("metrics (§23 표시 규칙)", () => {
     expect(monthlyBalance(base)).toBe(3_240_000);
   });
 
-  it("비상금 개월은 현금성+예적금 합계를 분자 (§28.7: 투자금 섞이면 오답)", () => {
-    expect(emergencyMonths(base)).toBe(15);
-    expect(emergencyFundTotal(base)).toBe(30_000_000);
-    // cash(1천만)을 invest 로 바꾸면 비상금이 줄어든다
-    const withCashAsInvest = emergencyMonths({
-      ...base,
-      assets: base.assets.map((a) => (a.type === "cash" ? { ...a, type: "invest" as const } : a)),
+  it("비상금 유지 개월 = 지정 통장 잔액 / (필수지출 + 선택 카테고리 카드지출 평균) (§59)", () => {
+    const runway = emergencyRunway({
+      assets: base.assets,
+      essentialExpenses: 2_000_000,
+      targetMonths: 6,
+      emergencyAccountIds: ["c1"],
+      selectedCategories: ["식비"],
+      avgMonths: 3,
+      cardTotals: [
+        { month: "2026-09", category: "식비", gross: 900_000 },
+        { month: "2026-08", category: "식비", gross: 600_000 },
+      ],
+      now: today,
     });
-    expect(withCashAsInvest).toBe(10);
+
+    // 이전 3개월 중 카드 데이터가 있는 2개월만 평균한다 — 없는 달을 0으로 메우지 않는다.
+    expect(runway.monthsWithCardData).toBe(2);
+    expect(runway.variableMonthly).toBe(750_000);
+    expect(runway.monthlySpend).toBe(2_750_000);
+    expect(runway.accountBalance).toBe(10_000_000);
+    expect(runway.runwayMonths).toBeCloseTo(3.64, 2);
+    expect(runway.predictedFund).toBe(16_500_000);
+    expect(runway.usedCurrentMonthFallback).toBe(false);
   });
 
-  it("투자금 유지 개월은 투자금 총액을 분자", () => {
-    expect(investMonths(base)).toBe(15);
+  it("목표 개월은 예측 비상금에만 쓰이고 실제 개월 수는 바꾸지 않는다", () => {
+    const input = {
+      assets: base.assets,
+      essentialExpenses: 2_000_000,
+      emergencyAccountIds: ["c1"],
+      selectedCategories: ["식비"],
+      avgMonths: 3,
+      cardTotals: [{ month: "2026-09", category: "식비", gross: 750_000 }],
+      now: today,
+    };
+    const one = emergencyRunway({ ...input, targetMonths: 1 });
+    const six = emergencyRunway({ ...input, targetMonths: 6 });
+
+    expect(one.predictedFund).toBe(2_750_000);
+    expect(six.predictedFund).toBe(16_500_000);
+    // 실제 버틸 수 있는 개월은 목표 개월이 아니라 잔액과 월 사용액으로만 정해진다.
+    expect(one.runwayMonths).toBeCloseTo(six.runwayMonths!, 10);
+  });
+
+  it("여러 현금성 통장 잔액을 합산하고 예적금은 분자에서 제외한다 (§59.6)", () => {
+    const assets = [
+      ...base.assets,
+      { id: "c2", type: "cash" as const, name: "비상금", value: 5_000_000 },
+    ];
+    const runway = emergencyRunway({
+      assets,
+      essentialExpenses: 1_000_000,
+      targetMonths: 6,
+      // 예적금(d1)을 섞어 보내도 현금성 계좌만 더한다.
+      emergencyAccountIds: ["c1", "c2", "d1"],
+      selectedCategories: ["식비"],
+      avgMonths: 3,
+      cardTotals: [],
+      now: today,
+    });
+
+    expect(runway.accountSelected).toBe(true);
+    expect(runway.accountCount).toBe(2);
+    expect(runway.accountBalance).toBe(15_000_000);
+    expect(runway.runwayMonths).toBe(15);
+  });
+
+  it("카드지출 평균은 당월을 빼고 이전 N개월만 본다", () => {
+    const runway = emergencyRunway({
+      assets: base.assets,
+      essentialExpenses: 1_000_000,
+      targetMonths: 6,
+      emergencyAccountIds: ["c1"],
+      selectedCategories: ["식비"],
+      avgMonths: 2,
+      cardTotals: [
+        { month: "2026-10", category: "식비", gross: 99_000_000 },
+        { month: "2026-09", category: "식비", gross: 500_000 },
+        { month: "2026-08", category: "식비", gross: 500_000 },
+      ],
+      now: today,
+    });
+    expect(runway.window).toEqual(["2026-08", "2026-09"]);
+    expect(runway.variableMonthly).toBe(500_000);
+    expect(runway.monthlySpend).toBe(1_500_000);
+  });
+
+  it("이전 카드 데이터가 전혀 없을 때만 당월(진행 중)로 폴백한다", () => {
+    const runway = emergencyRunway({
+      assets: base.assets,
+      essentialExpenses: 1_000_000,
+      targetMonths: 6,
+      emergencyAccountIds: ["c1"],
+      selectedCategories: ["식비"],
+      avgMonths: 3,
+      cardTotals: [{ month: "2026-10", category: "식비", gross: 300_000 }],
+      now: today,
+    });
+    expect(runway.usedCurrentMonthFallback).toBe(true);
+    expect(runway.window).toEqual(["2026-10"]);
+    expect(runway.variableMonthly).toBe(300_000);
+  });
+
+  it("선택하지 않은 카테고리와 미분류는 평균에서 뺀다", () => {
+    const runway = emergencyRunway({
+      assets: base.assets,
+      essentialExpenses: 1_000_000,
+      targetMonths: 6,
+      emergencyAccountIds: ["c1"],
+      selectedCategories: ["식비"],
+      avgMonths: 3,
+      cardTotals: [
+        { month: "2026-09", category: "식비", gross: 500_000 },
+        { month: "2026-09", category: "교통/차량", gross: 400_000 },
+        { month: "2026-09", category: "미분류", gross: 100_000 },
+      ],
+      now: today,
+    });
+    expect(runway.variableMonthly).toBe(500_000);
+    expect(runway.unclassifiedTotal).toBe(100_000);
+  });
+
+  it("비상금 통장이 없거나 월 사용액이 0이면 개월 수를 만들지 않는다", () => {
+    const noAccount = emergencyRunway({
+      assets: base.assets,
+      essentialExpenses: 1_000_000,
+      targetMonths: 6,
+      emergencyAccountIds: [],
+      selectedCategories: DEFAULT_EMERGENCY_CATEGORIES,
+      avgMonths: 3,
+      cardTotals: [],
+      now: today,
+    });
+    expect(noAccount.accountSelected).toBe(false);
+    expect(noAccount.runwayMonths).toBeNull();
+
+    const noSpend = emergencyRunway({
+      assets: base.assets,
+      essentialExpenses: 0,
+      targetMonths: 6,
+      emergencyAccountIds: ["c1"],
+      selectedCategories: ["식비"],
+      avgMonths: 3,
+      cardTotals: [],
+      now: today,
+    });
+    expect(noSpend.monthlySpend).toBe(0);
+    expect(noSpend.runwayMonths).toBeNull();
+  });
+
+  it("투자금 유지 개월도 같은 §59 월 사용액을 분모로 쓴다", () => {
+    expect(investMonths(base, 2_750_000)).toBeCloseTo(10.91, 2);
     expect(investTotal(base)).toBe(30_000_000);
-    // cash(1천만)을 invest 로 바꾸면 투자금이 늘어난다
-    const withCashAsInvest = investMonths({
-      ...base,
-      assets: base.assets.map((a) => (a.type === "cash" ? { ...a, type: "invest" as const } : a)),
-    });
-    expect(withCashAsInvest).toBe(20);
   });
 
-  it("필수지출 0 이하이면 계산 불가(null) — 0원으로 부풀리지 않는다", () => {
-    expect(emergencyMonths({ ...base, monthly: { ...base.monthly, essentialExpenses: 0 } })).toBeNull();
+  it("필수지출 0 이하이면 기존 investMonths 기본 분모는 계산 불가(null)", () => {
     expect(investMonths({ ...base, monthly: { ...base.monthly, essentialExpenses: 0 } })).toBeNull();
   });
 
@@ -78,8 +212,19 @@ describe("metrics (§23 표시 규칙)", () => {
     const { dashboardMock } = await import("../data/dashboardMock");
     expect(netWorth(dashboardMock)).toBe(691_844_440);
     expect(monthlyBalance(dashboardMock)).toBe(3_240_000);
-    // 비상금 통장(현금성+예적금) 66,700,000 / 필수 2,317,180 = 28.78...개월
-    expect(emergencyMonths(dashboardMock)).toBeCloseTo(28.78, 2);
+    // 비상금 통장(우리 파킹통장 18,500,000) / 필수 2,317,180 = 7.98...개월
+    expect(
+      emergencyRunway({
+        assets: dashboardMock.assets,
+        essentialExpenses: dashboardMock.monthly.essentialExpenses,
+        targetMonths: 6,
+        emergencyAccountIds: ["c1"],
+        selectedCategories: DEFAULT_EMERGENCY_CATEGORIES,
+        avgMonths: 3,
+        cardTotals: [],
+        now: today,
+      }).runwayMonths,
+    ).toBeCloseTo(7.98, 2);
     // 투자금 54,500,000 / 필수 2,317,180 = 23.52...개월
     expect(investMonths(dashboardMock)).toBeCloseTo(23.52, 2);
     const comp = assetComposition(dashboardMock);

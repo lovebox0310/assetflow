@@ -14,6 +14,122 @@
 
 ---
 
+## 2026-10-30 — 비상금 통장 복수 계좌(현금성 합산) (§59.6)
+
+사용자 요청: 비상금 통장은 **cash만**, **잔액 합산**, **용도가 다른 계좌는 대상에서 제외**.
+단일 계좌 모델을 복수 계좌로 전환.
+
+- DB
+  - `user_emergency_accounts(user_id, account_id)` 조인 테이블 추가 (PK 복합, 양쪽 FK CASCADE)
+  - `db/migrations/2026-10-30-emergency-accounts.sql` — 기존 `users.emergency_account_id`
+    값을 조인 테이블로 이관한 뒤 컬럼·FK 제거. 여러 번 실행해도 안전
+  - `db/schema.sql` — 단일 컬럼/FK 제거, 조인 테이블을 정본 DDL 에 반영
+  - 로컬 DB 적용 완료: 사용자 `lovebox0310@gmail.com` → 계좌 17 `비상금`(cash, 903,388원) 이관 확인
+- 백엔드
+  - `UserSettings.emergencyAccountIds`(List<String>)로 계약 교체
+  - `SettingsController`: `emergencyAccountIds` 배열 병합·검증 — 존재 + 비부채 + **cash만**,
+    중복은 순서 유지 축소, 빈 배열은 지정 해제
+  - `PostgresUserSettingsLedger`: 조회 시 조인 테이블, 갱신은 `@Transactional` 로 목록 교체
+  - `InMemoryUserSettingsLedger`: 시드 `["1"]`
+  - `SettingsApiTest`: 복수 계좌·중복 축소·빈 배열 해제·예적금/투자/부채/미존재 거부로 갱신
+- 프론트엔드
+  - `settingsApi.ts`: `emergencyAccountIds: string[]`
+  - `metrics.emergencyRunway()`: 지정 id 중 **cash만** 합산, `accountCount` 추가
+  - `EmergencyFundSettingsModal`: 다중 Select(cash만), 합계 미리보기, 용도 계좌 제외 안내
+  - `DashboardPage`: 통장 개수·잔액 합계 힌트
+  - 테스트: metrics(복수 합산·예적금 제외), 모달(복수 합계), Dashboard/Story 계약 갱신
+- 문서
+  - `.ai/project.md` §59.1~§59.6 갱신 — **비상금 통장 정의 확정**(cash·비부채·명시적 선택,
+    복수 허용, 잔액 합산, 용도 계좌는 미선택으로 제외, 삭제 시 지정만 소멸)
+- 검증
+  - BE `./gradlew test` ✅
+  - FE `pnpm typecheck`·`lint`·`test`(194)·`build` ✅
+  - 로컬 마이그레이션 적용 및 백필 확인 ✅
+- 배포 (2026-10-30 10:33)
+  - `/tmp/opencode/deploy-assetflow.sh` 사용자 실행 완료 — jar 해시 일치, 서비스 정상 기동
+  - `GET /api/v1/settings` → `emergencyAccountIds: ["17"]` 확인
+  - `summary` 현금 계좌 15 `자동이체`·16 `부가가치세`·17 `비상금` 중 17만 지정 확인
+  - `monthly-categories?source=card` 200, FE 번들 `index-BiVEs4Jf.js` 200 확인
+- UI 개선 (목표 개월 가시성 + 개월 표기)
+  - 대시보드 힌트: `예측 비상금 … · 목표 N개월` 추가
+  - 모달 미리보기: `목표 N개월 기준` + "목표 개월을 바꾸면 예측 비상금만 바뀝니다" 안내 추가
+  - `formatMonths`: 소수점 2자리, 반올림 없이 버림 (`7.24개월`)
+  - `formatters.test.ts`, `DashboardPage.test.tsx`, `EmergencyFundSettingsModal.test.tsx` 기대값 갱신
+  - FE `typecheck`·`lint`·`test`(195)·`build` ✅
+- 스테이징 (2026-10-30 12:02)
+  - `/tmp/opencode/deploy/app.jar` — BE 변경 없음
+  - `/tmp/opencode/deploy/dist/` — UI 수정 반영 (`index-CCpDKQkW.js`)
+- 배포
+  - [ ] BE 변경 없으므로 FE 파일만 교체 필요. `sudo bash /tmp/opencode/deploy-assetflow.sh` 또는
+    `sudo rsync -a --delete /tmp/opencode/deploy/dist/ /opt/assetflow/frontend/`
+
+---
+
+## 2026-10-30 — 비상금 유지 개월 카드 기준 재설계 (§59)
+
+사용자 요청: 비상금 유지 개월의 분자를 **사용자가 지정한 비상금 통장**으로, 분모를
+**필수지출 + 선택 카테고리 카드지출 평균**으로 바꾸고, 예측 비상금과 실제 개월 수를 함께
+보여 주는 설정 모달을 추가.
+
+- DB (`apps/backend/db/schema.sql`, `db/migrations/2026-10-30-emergency-basis.sql`)
+  - `users.emergency_account_id`(cash/deposit FK, 삭제 시 SET NULL)
+  - `users.emergency_avg_months`(1..12, 기본 3)
+  - `users.emergency_categories`(JSONB, 기본 5개 대분류)
+- 백엔드
+  - `UserSettings`/`InMemoryUserSettingsLedger`/`PostgresUserSettingsLedger` 확장
+  - `SettingsController` PUT: 선택 필드 병합, target 1..60·avg 1..12·카테고리·계좌 유형 검증
+  - `CardImportController.monthly-categories`: `source=card|all` 추가(기본 all 유지)
+  - `SettingsApiTest` 신규, `CardImportApiTest`에 source 카드/잘못된 값 케이스 추가
+- 프론트엔드
+  - `dashboard/metrics.ts`: `emergencyRunway()` — 당월 제외 이전 N개월, 이전 데이터 없을 때만
+    당월 폴백, 데이터 없는 달 0 미보정, 미분류 제외. 투자금 개월 수도 같은 월 사용액 사용
+  - `utils/months.ts`: `monthsEndingAt()` 추가
+  - `settingsApi.ts`: 새 설정 필드와 객체형 `updateSettings(input)`
+  - `cardImportApi.ts`: `source` 옵션
+  - `EmergencyFundSettingsModal.tsx` 신규 — 통장·평균 개월·카테고리·목표 개월·실시간 미리보기·저장
+  - `DashboardPage.tsx`: 기준 설정 버튼, 예측 비상금/월 사용액/집계 개월 힌트, 설정·카드지출 독립 로딩
+  - `SettingsPage.tsx`: 목표 개월은 기존처럼 저장, 나머지는 모달 안내
+- 검증
+  - BE `./gradlew test` ✅
+  - FE `pnpm typecheck`·`lint`·`test`(192)·`build` ✅
+- DB 적용
+  - 로컬 운영 DB(`localhost:5432/assetflow`)에 `2026-10-30-emergency-basis.sql` 적용 완료
+  - 기존 사용자 `emergency_account_id = 17`(비상금) 지정
+- 남은 것
+  - [ ] 백엔드/프론트 재배포 후 새 모달·`source=card` API 활성화 확인
+  - [x] 비상금 통장 정의(복수 계좌 허용 여부·포함 범위·잔액 합산 방식)를 §59에 추가
+    — 2026-10-30 후속 작업에서 §59.6 으로 확정
+  - [x] (검토) 단일 계좌 → 복수 계좌 모델 전환 — `user_emergency_accounts` 조인 테이블
+
+---
+
+## 2026-10-29 — 지출 화면을 지출 | 카드내역 2탭으로 분리 (§58)
+
+사용자 요청: 지출 페이지가 한 화면에 정보를 너무 많이 담고 있어 자산 화면처럼 분리.
+결정: **2탭**, 월 상태는 **App lifting**, 카드 업로드는 **카드내역 탭으로 이동**, 경로는 **`#/expenses/cards`**.
+
+- 라우팅
+  - `routes.ts`: `expenseCards` 추가 — `#/expenses/cards`, 제목 `카드내역 · AssetFlow`
+  - `App.tsx`: `expenseMonth` 상태를 소유하고 두 탭에 `month`/`onMonthChange` 전달
+- 프론트
+  - `components/ExpenseTabs.tsx` — 지출 | 카드내역 하위 탭 (`aria-current`, disabled 미사용)
+  - `components/MonthSelect.tsx` — 두 탭이 공유하는 월 선택기
+  - `utils/months.ts` — `currentMonth`·`recentMonths`·`previousMonth`
+  - `ExpensesPage.tsx` — 월 지출 항목·정기 항목·월 기준 입력/확정만 유지 (1,068 → 약 520줄)
+  - `CardExpensesPage.tsx` 신규 — 카드 업로드·미분류 정리·가져온 카드내역·카테고리별 합계·CSV·자동 분류
+  - `AssetsPage.tsx` — `CardImportPanel` 섹션 제거
+- 테스트
+  - `ExpensesPage.test.tsx` — 카드 관련 5건을 분리하고 탭 이동·월 변경 콜백 검증 추가
+  - `CardExpensesPage.test.tsx` 신규 — 카드 렌더·오류·재분류·미분류 작업함·필터·재조회 없음·업로드 패널
+  - `App.test.tsx` — 카드내역 탭 URL·제목·전역 nav 현재 항목 검증
+  - `AppA11y.test.tsx` — 카드내역 h1/h2 구조 검증
+  - `routes.test.ts` — 새 경로·제목 추가
+- 검증
+  - `pnpm typecheck`·`lint`·`test`(182)·`build` ✅
+  - BE/API/DB 변경 없음
+
+---
+
 ## 2026-10-29 — 카드 소유 구분(본인/가족) 저장 및 지출 화면 표시
 
 사용자 요청: 현대카드의 본인/가족 구분을 저장하고, 다른 카드도 동일하게 본인 기본값으로 저장. 지출 통계에서 카드(소유자)별 지출을 볼 수 있게 하기 위함.

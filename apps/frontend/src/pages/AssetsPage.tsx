@@ -21,7 +21,6 @@ import { getPortfolio, type Portfolio } from "../api/investmentsApi";
 import { clearInflight } from "../api/client";
 import { clearToken } from "../auth/authStore";
 import { formatKrwExact } from "../utils/formatters";
-import { CardImportPanel } from "../components/CardImportPanel";
 
 interface AssetsPageProps {
   /** 대시보드로 돌아간다. */
@@ -384,13 +383,6 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
             </Typography.Paragraph>
           </StateBlock>
         </Card>
-      </section>
-
-      <section aria-labelledby="h-readonly" style={{ marginBottom: 24 }}>
-        <Typography.Title level={2} id="h-readonly" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>
-          카드 내역 가져오기
-        </Typography.Title>
-        <CardImportPanel />
       </section>
 
       <section aria-labelledby="h-expense-owned" style={{ marginBottom: 24 }}>

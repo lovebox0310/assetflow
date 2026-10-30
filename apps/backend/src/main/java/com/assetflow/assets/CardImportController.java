@@ -54,13 +54,15 @@ public class CardImportController {
                             Long supplyExVat, Long vat, Long grossAmount,
                             String cardMasked, String expenseKind, String subCategory,
                             String businessNo, String businessCategory,
-                            String memberRelation) {}
+                            String memberRelation, String cardCompany) {}
 
     public record ImportRequest(List<ImportRow> rows, Map<String, MerchantRule> merchantRules) {}
 
     public record CategoryUpdate(String rowKey, String category, String subCategory) {}
 
     public record MerchantCategoryUpdate(String merchantName, String category, String subCategory) {}
+
+    public record CardCompanyGroup(String month, String cardCompany, String memberRelation, long count, long grossAmount) {}
 
     /**
      * merchants 와 함께 가맹점별 업종을 보낼 수 있다. 업종은 3순위 자동 분류 힌트로만
@@ -125,12 +127,23 @@ public class CardImportController {
     }
 
     /**
-     * 월별 대분류 지출 합계 — 대시보드 지출 추이(스택 막대)용.
-     * 카드내역 + 고정/정기 지출 항목(§57.6)을 합친다. 자산 이동(저축/투자)과
-     * 대분류가 없는 월 항목(카드대금 등)은 제외한다. 양끝 월 포함, 조회 범위는 36개월까지.
+     * card_company 가 비어 있는 행을, 같은 masked 카드번호를 가진 행의 값으로 채운다.
+     * 과거에 업로드돼 카드사 정보가 없는 행을 안전하게 추론해 복구한다.
      */
-    @GetMapping("/card-imports/monthly-categories")
-    public ApiResponse<List<CardImportLedger.MonthlyCategoryTotal>> monthlyCategories(
+    @PostMapping("/card-imports/backfill-card-company")
+    public ApiResponse<Map<String, Object>> backfillCardCompany() {
+        int updated = ledger.backfillCardCompany();
+        return new ApiResponse<>("OK", "Card company backfilled", Map.of("updated", updated));
+    }
+
+    /**
+     * 월별 카드사·소유 구분 집계 — 대시보드 "카드별/본인·가족별" 차트용.
+     * from~to(YYYY-MM, 양끝 포함) 범위의 각 월에 대해 카드사(cardCompany)와
+     * 관계(memberRelation) 조합별 건수와 이용금액 합계를 돌려준다.
+     * 조회 범위는 36개월까지.
+     */
+    @GetMapping("/card-imports/by-card")
+    public ApiResponse<List<CardCompanyGroup>> byCard(
             @RequestParam("from") String from,
             @RequestParam("to") String to) {
         if (!MONTH_PATTERN.matcher(from).matches() || !MONTH_PATTERN.matcher(to).matches()) {
@@ -142,7 +155,52 @@ public class CardImportController {
         if (monthCountInclusive(from, to) > 36) {
             throw new IllegalArgumentException("range must be 36 months or fewer");
         }
-        return new ApiResponse<>("OK", "Monthly category totals loaded", mergeTotals(from, to));
+        Map<String, CardCompanyGroup> groups = new java.util.LinkedHashMap<>();
+        for (String month : monthsBetween(from, to)) {
+            for (ImportedRow r : ledger.inMonth(month)) {
+                String company = r.cardCompany() == null || r.cardCompany().isBlank() ? "미확인" : r.cardCompany();
+                String relation = r.memberRelation() == null || r.memberRelation().isBlank() ? "본인" : r.memberRelation();
+                String key = month + "|" + company + "|" + relation;
+                CardCompanyGroup g = groups.get(key);
+                if (g == null) {
+                    g = new CardCompanyGroup(month, company, relation, 0, 0);
+                    groups.put(key, g);
+                }
+                groups.put(key, new CardCompanyGroup(month, company, relation, g.count() + 1, g.grossAmount() + r.grossAmount()));
+            }
+        }
+        return new ApiResponse<>("OK", "Card company groups loaded", List.copyOf(groups.values()));
+    }
+
+    /**
+     * 월별 대분류 지출 합계 — 대시보드 지출 추이(스택 막대)용.
+     * 기본(source=all)은 카드내역 + 고정/정기 지출 항목(§57.6)을 합친다.
+     * source=card 는 카드내역만 돌려준다 — §59 비상금 유지 개월의 변동지출 평균은
+     * 카드 소비만 대상으로 한다. 자산 이동(저축/투자)과 대분류가 없는 월 항목은 제외한다.
+     * 양끝 월 포함, 조회 범위는 36개월까지.
+     */
+    @GetMapping("/card-imports/monthly-categories")
+    public ApiResponse<List<CardImportLedger.MonthlyCategoryTotal>> monthlyCategories(
+            @RequestParam("from") String from,
+            @RequestParam("to") String to,
+            @RequestParam(value = "source", required = false) String source) {
+        if (!MONTH_PATTERN.matcher(from).matches() || !MONTH_PATTERN.matcher(to).matches()) {
+            throw new IllegalArgumentException("from/to must be YYYY-MM");
+        }
+        if (from.compareTo(to) > 0) {
+            throw new IllegalArgumentException("from must be earlier than or equal to to");
+        }
+        if (monthCountInclusive(from, to) > 36) {
+            throw new IllegalArgumentException("range must be 36 months or fewer");
+        }
+        String basis = source == null || source.isBlank() ? "all" : source;
+        if (!"all".equals(basis) && !"card".equals(basis)) {
+            throw new IllegalArgumentException("source must be all or card");
+        }
+        List<CardImportLedger.MonthlyCategoryTotal> totals = "card".equals(basis)
+                ? ledger.monthlyCategoryTotals(from, to)
+                : mergeTotals(from, to);
+        return new ApiResponse<>("OK", "Monthly category totals loaded", totals);
     }
 
     /**
@@ -179,6 +237,18 @@ public class CardImportController {
         int toYear = Integer.parseInt(to.substring(0, 4));
         int toMonth = Integer.parseInt(to.substring(5, 7));
         return (toYear - fromYear) * 12 + (toMonth - fromMonth) + 1;
+    }
+
+    /** 양끝 월을 포함한 "YYYY-MM" 목록. */
+    private static List<String> monthsBetween(String from, String to) {
+        List<String> months = new ArrayList<>();
+        java.time.YearMonth start = java.time.YearMonth.parse(from);
+        java.time.YearMonth end = java.time.YearMonth.parse(to);
+        while (!start.isAfter(end)) {
+            months.add(start.toString());
+            start = start.plusMonths(1);
+        }
+        return months;
     }
 
     @PostMapping("/card-imports")
@@ -249,7 +319,8 @@ public class CardImportController {
                     subCategory,
                     businessNo,
                     businessCategory,
-                    memberRelation);
+                    memberRelation,
+                    row.cardCompany() == null ? "" : row.cardCompany().trim());
             // §29.3 공급가액+세액=공급대가 를 행마다 검사한다 — 어긋나면 저장은 하되
             // 경고를 돌려준다(현대카드의 가맹점 신고 부가세 변형이 정상 범위라 잘라내지 않는다).
             if (r.supplyExVat() + r.vat() != r.grossAmount()) {

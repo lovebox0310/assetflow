@@ -204,6 +204,18 @@ describe("CardImportPanel (§29.7 흐름 이관)", () => {
     expect(relations.has("가족")).toBe(true);
   });
 
+  it("현대카드 미리보기에 본인/가족 구분 태그가 노출된다", async () => {
+    render(<CardImportPanel />);
+    chooseFile(HYUNDAI_TEXT);
+
+    await screen.findByText("가맹점");
+    // 미리보기 테이블에 본인/가족 태그가 함께 노출돼야 확정 전에 구분을 확인할 수 있다.
+    const 본인 = screen.getAllByText((content) => content.includes("본인"));
+    const 가족 = screen.getAllByText((content) => content.includes("가족"));
+    expect(본인.length).toBeGreaterThan(0);
+    expect(가족.length).toBeGreaterThan(0);
+  });
+
   it("삼성카드는 memberRelation 이 기본값 본인으로 전송된다", async () => {
     render(<CardImportPanel />);
     chooseFile(SAMSUNG_TEXT);

@@ -6,6 +6,7 @@ import { clearToken, saveToken } from "../auth/authStore";
 
 /**
  * #36 AC: 지출 화면 — 항목 로드·추가·삭제, 수입 입력·월 확정, 401, 빈 상태.
+ * 카드내역·미분류 정리는 §58 에서 CardExpensesPage 로 분리했다.
  * fetch 는 §38/§43/§44 포맷의 대역 — 타이밍 운 없이 resolve로 검증한다.
  */
 
@@ -43,6 +44,20 @@ function setViewport(desktop: boolean) {
   });
 }
 
+function renderPage(overrides: Partial<Parameters<typeof ExpensesPage>[0]> = {}) {
+  return render(
+    <ExpensesPage
+      month="2026-10"
+      onMonthChange={() => {}}
+      onOpenDashboard={() => {}}
+      onOpenAssets={() => {}}
+      onOpenCards={() => {}}
+      onOpenSettings={() => {}}
+      {...overrides}
+    />,
+  );
+}
+
 describe("ExpensesPage (스프린트 3 #36)", () => {
   afterEach(() => {
     cleanup();
@@ -63,12 +78,10 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
         { id: 1, month: "2026-10", label: "임대료", amount: 1_200_000, isEssential: true, purchaseVat: 0 },
         { id: 2, month: "2026-10", label: "주유비", amount: 150_000, isEssential: false, purchaseVat: 13_636 },
       ]);
-      if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
-      if (path.includes("/assets/card-imports")) return apiResponse([]);
       if (path.includes("/expenses/snapshots")) return apiResponse(null);
       return apiResponse({}, false, 500);
     });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
+    renderPage();
 
     expect(await screen.findByText("임대료")).toBeDefined();
     expect(await screen.findByText("주유비")).toBeDefined();
@@ -91,12 +104,10 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
           { id: 9, month: "2026-10", label: "통신비", amount: 60_000, isEssential: true, purchaseVat: 0 },
         ]);
       }
-      if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
-      if (path.includes("/assets/card-imports")) return apiResponse([]);
       if (path.includes("/expenses/snapshots")) return apiResponse(null);
       return apiResponse({}, false, 500);
     });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
+    renderPage();
 
     await screen.findByText("통신비");
     const name = screen.getByLabelText("항목 이름") as HTMLInputElement;
@@ -118,11 +129,9 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
       if (path.includes("/expenses/snapshots")) return apiResponse(null);
       if (path.includes("/expenses/recurring")) return apiResponse([]);
       if (path.includes("/expenses/items")) return apiResponse([]);
-      if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
-      if (path.includes("/assets/card-imports")) return apiResponse([]);
       return apiResponse({}, false, 500);
     });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
+    renderPage();
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const income = screen.getByLabelText("이번 달 수입") as HTMLInputElement;
@@ -133,36 +142,14 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
     expect(screen.getAllByText(/1,350,000원/).length).toBeGreaterThan(0);
   });
 
-  it("가져온 카드내역 표는 카드 원장에서 렌더한다 (§41)", async () => {
-    stubFetch((path) => {
-      if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
-      if (path.includes("/assets/card-imports")) return apiResponse([
-        { rowKey: "k1", approvedAt: "2026-10-01", merchantName: "우아한형제들", supplyExVat: 37_273, vat: 3_727, grossAmount: 41_000 },
-        { rowKey: "k2", approvedAt: "2026-10-02", merchantName: "GS25", supplyExVat: 2_909, vat: 291, grossAmount: 3_200 },
-      ]);
-      if (path.includes("/expenses/recurring")) return apiResponse([]);
-      if (path.includes("/expenses/items")) return apiResponse([]);
-      if (path.includes("/expenses/snapshots")) return apiResponse(null);
-      return apiResponse({}, false, 500);
-    });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
-
-    expect(await screen.findByText("우아한형제들")).toBeDefined();
-    expect(screen.getByText("GS25")).toBeDefined();
-    // 합계(행 재계산): 41,000 + 3,200 = 44,200원
-    expect(screen.getAllByText("44,200원").length).toBeGreaterThan(0);
-  });
-
   it("API 실패 시 카드 단위 오류와 재시도가 뜬다 (§26 재사용)", async () => {
     stubFetch((path) => {
       if (path.includes("/expenses/recurring")) return apiResponse([]);
       if (path.includes("/expenses/items")) return apiResponse({}, false, 500);
-      if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
-      if (path.includes("/assets/card-imports")) return apiResponse([], true, 200);
       if (path.includes("/expenses/snapshots")) return apiResponse(null);
       return apiResponse({}, false, 500);
     });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
+    renderPage();
 
     const alerts = await screen.findAllByText(/오류|실패|다시 시도|재시도|문제/i);
     expect(alerts.length).toBeGreaterThan(0);
@@ -174,12 +161,10 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
       if (path.includes("/expenses/items")) {
         return { ok: false, status: 401, json: async () => ({ code: "AUTH_REQUIRED", message: "Authentication required", details: "", timestamp: "" }) } as Response;
       }
-      if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
-      if (path.includes("/assets/card-imports")) return apiResponse([]);
       if (path.includes("/expenses/snapshots")) return apiResponse(null);
       return apiResponse({}, false, 500);
     });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
+    renderPage();
 
     await screen.findAllByText(/인증|로그인/i);
   });
@@ -192,12 +177,10 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
       if (path.includes("/expenses/items")) return apiResponse([
         { id: 7, month: "2026-10", label: "임대료", amount: 1_200_000, isEssential: true, purchaseVat: 0, recurringId: 3 },
       ]);
-      if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
-      if (path.includes("/assets/card-imports")) return apiResponse([]);
       if (path.includes("/expenses/snapshots")) return apiResponse(null);
       return apiResponse({}, false, 500);
     });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
+    renderPage();
 
     expect(await screen.findByText(/무기한/)).toBeDefined();
     expect(await screen.findByText("정기")).toBeDefined();
@@ -212,12 +195,10 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
       if (path.includes("/expenses/items")) return apiResponse([
         { id: 7, month: "2026-10", label: "임대료", amount: 1_200_000, isEssential: true, purchaseVat: 0, recurringId: 3 },
       ]);
-      if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
-      if (path.includes("/assets/card-imports")) return apiResponse([]);
       if (path.includes("/expenses/snapshots")) return apiResponse(null);
       return apiResponse({}, false, 500);
     });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
+    renderPage();
 
     expect(await screen.findByText("이 달만 수정")).toBeDefined();
   });
@@ -231,12 +212,10 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
         { id: 2, month: "2026-09", label: "통신비", amount: 60_000, isEssential: true, purchaseVat: 0 },
       ]);
       if (path.includes("/expenses/items")) return apiResponse([]);
-      if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
-      if (path.includes("/assets/card-imports")) return apiResponse([]);
       if (path.includes("/expenses/snapshots")) return apiResponse(null);
       return apiResponse({}, false, 500);
     });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
+    renderPage();
 
     await screen.findByText(/지난달\(2026-09\)/);
     fireEvent.click(screen.getByRole("button", { name: "지난달 항목 가져오기" }));
@@ -250,12 +229,10 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
       }
       if (path.includes("/expenses/recurring")) return apiResponse([]);
       if (path.includes("/expenses/items")) return apiResponse([]);
-      if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
-      if (path.includes("/assets/card-imports")) return apiResponse([]);
       if (path.includes("/expenses/snapshots")) return apiResponse(null);
       return apiResponse({}, false, 500);
     });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
+    renderPage();
 
     fireEvent.click(await screen.findByRole("button", { name: "+ 정기 항목 추가" }));
     const name = screen.getByLabelText("정기 항목 이름") as HTMLInputElement;
@@ -275,181 +252,44 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
       if (path.includes("/expenses/items")) return apiResponse([
         { id: 9, month: "2026-10", label: "DB손해보험", amount: 34160, isEssential: true, purchaseVat: 0, recurringId: null },
       ]);
-      if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
-      if (path.includes("/assets/card-imports")) return apiResponse([]);
       if (path.includes("/expenses/snapshots")) return apiResponse(null);
       return apiResponse({}, false, 500);
     });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
+    renderPage();
 
     // 이슈 #70: 행 액션 접근 이름에 항목명이 결합된다 ("편집" 중복 라벨 문제 해소)
     fireEvent.click(await screen.findByRole("button", { name: "DB손해보험 정기 항목으로 등록" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v1/expenses/items/9/convert-to-recurring", expect.objectContaining({ method: "POST" })));
   });
 
-  it("카테고리 자동 분류 버튼은 reclassify 를 호출하고 결과를 안내한다 (§55.8)", async () => {
-    const fetchMock = stubFetch((path, init) => {
-      if (path.includes("/card-imports/reclassify") && init?.method === "POST") {
-        return apiResponse({ total: 12, updated: 7 });
-      }
-      if (path.includes("/expenses/recurring")) return apiResponse([]);
-      if (path.includes("/expenses/items")) return apiResponse([]);
-      if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
-      if (path.includes("/assets/card-imports")) {
-        return apiResponse([
-          { rowKey: "k1", approvedAt: "2026-10-01", merchantName: "스타벅스 강남점", supplyExVat: 4500, vat: 500, grossAmount: 5000, cardMasked: "1234", expenseKind: "식비" },
-        ]);
-      }
-      if (path.includes("/expenses/snapshots")) return apiResponse(null);
-      return apiResponse({}, false, 500);
-    });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "카테고리 자동 분류" }));
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/assets/card-imports/reclassify",
-      expect.objectContaining({ method: "POST" }),
-    ));
-    expect(await screen.findByText(/12건 중 7건을 자동 분류했습니다/)).toBeDefined();
-    // 재분류 후 카드 내역을 다시 읽어 카테고리 열과 카테고리별 합계가 갱신된다
-    expect((await screen.findAllByText(/식비/)).length).toBeGreaterThan(0);
-    expect(await screen.findByText("카테고리별 합계")).toBeDefined();
-    // 표가 아니라 카드로 보여 준다 — 합계 블록 안에 table 이 없다
-    const categoryTotals = screen.getByLabelText("이 달 카드 카테고리별 합계");
-    expect(categoryTotals.querySelector("table")).toBeNull();
-    expect(categoryTotals.textContent).toContain("지출 합계");
-  });
-
-  it("미분류 작업함에서 가맹점을 지정하면 그 자리에서 사라지고 되돌릴 수 있다 (§55.8)", async () => {
-    const fetchMock = stubFetch((path, init) => {
-      if (path.includes("/card-imports/merchant-category") && init?.method === "PATCH") {
-        const body = JSON.parse(String(init.body));
-        return apiResponse({ merchantName: body.merchantName, category: body.category, subCategory: body.subCategory ?? "", updatedRows: 2 });
-      }
-      if (path.includes("/expenses/recurring")) return apiResponse([]);
-      if (path.includes("/expenses/items")) return apiResponse([]);
-      if (path.includes("/assets/card-imports/unclassified")) {
-        return apiResponse([
-          { merchantName: "네이버페이", count: 2, grossTotal: 30_000, firstApprovedAt: "2026-09-01", lastApprovedAt: "2026-10-01" },
-        ]);
-      }
-      if (path.includes("/assets/card-imports")) {
-        return apiResponse([
-          { rowKey: "k1", approvedAt: "2026-09-01", merchantName: "네이버페이", supplyExVat: 9_000, vat: 1_000, grossAmount: 10_000, cardMasked: "1234", expenseKind: "" },
-          { rowKey: "k2", approvedAt: "2026-10-01", merchantName: "네이버페이", supplyExVat: 18_000, vat: 2_000, grossAmount: 20_000, cardMasked: "1234", expenseKind: "unclassified" },
-        ]);
-      }
-      if (path.includes("/expenses/snapshots")) return apiResponse(null);
-      return apiResponse({}, false, 500);
-    });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
-
-    // 작업함: 금액 큰 순으로 가맹점 묶음이 뜨고 남은 건수가 보인다
-    expect(await screen.findByText("남은 가맹점 1개")).toBeDefined();
-    expect(screen.getAllByText("30,000원").length).toBeGreaterThan(0);
-
-    const combo = await screen.findByRole("combobox", { name: "네이버페이 카테고리 지정" });
-    fireEvent.mouseDown(combo);
-    fireEvent.click(await screen.findByTitle("쇼핑/생활"));
-
-    await waitFor(() => {
-      const patch = fetchMock.mock.calls.find((c) => (c[1]?.method ?? "GET") === "PATCH");
-      expect(patch).toBeDefined();
-      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ merchantName: "네이버페이", category: "쇼핑/생활", subCategory: "" });
-    });
-    // 묶음은 재조회 없이 사라지고, 되돌리기 버튼이 뜬다
-    expect(await screen.findByText("미분류 1개 가맹점을 모두 정리했습니다.")).toBeDefined();
-    const undoBtn = await screen.findByRole("button", { name: "되돌리기" });
-    expect(screen.queryByText("남은 가맹점 1개")).toBeNull();
-
-    fireEvent.click(undoBtn);
-    await waitFor(() => {
-      const patches = fetchMock.mock.calls.filter((c) => (c[1]?.method ?? "GET") === "PATCH");
-      expect(patches.length).toBe(2);
-      expect(JSON.parse(String(patches[1]?.[1]?.body))).toEqual({ merchantName: "네이버페이", category: "", subCategory: "" });
-    });
-    // 되돌리면 묶음이 작업함에 다시 나타난다
-    expect(await screen.findByText("남은 가맹점 1개")).toBeDefined();
-    expect(screen.queryByRole("button", { name: "되돌리기" })).toBeNull();
-  });
-
-  it("미분류만 보기 필터는 분류된 행을 숨긴다 (§55.8)", async () => {
+  it("카드내역 탭을 누르면 상위 화면 이동 콜백이 불린다 (§58)", async () => {
     stubFetch((path) => {
       if (path.includes("/expenses/recurring")) return apiResponse([]);
       if (path.includes("/expenses/items")) return apiResponse([]);
-      if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
-      if (path.includes("/assets/card-imports")) {
-        return apiResponse([
-          { rowKey: "k1", approvedAt: "2026-10-01", merchantName: "분류된상점", supplyExVat: 4_500, vat: 500, grossAmount: 5_000, expenseKind: "식비" },
-          { rowKey: "k2", approvedAt: "2026-10-02", merchantName: "미분류상점", supplyExVat: 9_000, vat: 1_000, grossAmount: 10_000, expenseKind: "" },
-        ]);
-      }
       if (path.includes("/expenses/snapshots")) return apiResponse(null);
       return apiResponse({}, false, 500);
     });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
+    const onOpenCards = vi.fn();
+    renderPage({ onOpenCards });
 
-    expect(await screen.findByText("분류된상점")).toBeDefined();
-    expect(screen.getByText("미분류상점")).toBeDefined();
-
-    fireEvent.click(screen.getByRole("checkbox", { name: /미분류만 보기/ }));
-    await waitFor(() => expect(screen.queryByText("분류된상점")).toBeNull());
-    expect(screen.getByText("미분류상점")).toBeDefined();
-
-    fireEvent.click(screen.getByRole("checkbox", { name: /미분류만 보기/ }));
-    expect(await screen.findByText("분류된상점")).toBeDefined();
+    fireEvent.click(await screen.findByRole("button", { name: "카드내역 탭" }));
+    expect(onOpenCards).toHaveBeenCalled();
   });
 
-  it("카테고리를 바꿔도 목록을 다시 읽지 않는다 (§55.8)", async () => {
-    const rows = Array.from({ length: 12 }, (_, i) => ({
-      rowKey: `k${i + 1}`,
-      approvedAt: `2026-10-${String(i + 1).padStart(2, "0")}`,
-      merchantName: `가맹점${i + 1}`,
-      supplyExVat: 9_000,
-      vat: 1_000,
-      grossAmount: 10_000,
-      cardMasked: "1234",
-      expenseKind: "",
-      memberRelation: i % 2 === 0 ? "본인" : "가족",
-    }));
-    const fetchMock = stubFetch((path, init) => {
-      if (path.includes("/card-imports/category") && init?.method === "PATCH") {
-        const body = JSON.parse(String(init.body));
-        const row = rows.find((r) => r.rowKey === body.rowKey);
-        return apiResponse({ rowKey: body.rowKey, merchantName: row?.merchantName, category: body.category, subCategory: body.subCategory ?? "", updatedRows: 1 });
-      }
+  it("월 선택을 바꾸면 상위(App)의 월 상태를 갱신한다", async () => {
+    stubFetch((path) => {
       if (path.includes("/expenses/recurring")) return apiResponse([]);
       if (path.includes("/expenses/items")) return apiResponse([]);
-      if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
-      if (path.includes("/assets/card-imports")) return apiResponse(rows);
       if (path.includes("/expenses/snapshots")) return apiResponse(null);
       return apiResponse({}, false, 500);
     });
-    render(<ExpensesPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenSettings={() => {}} />);
+    const onMonthChange = vi.fn();
+    renderPage({ onMonthChange });
 
-    await screen.findByText("가맹점1");
-    // 본인/가족 구분 배지가 노출된다
-    expect(screen.getAllByText("본인").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("가족").length).toBeGreaterThan(0);
-
-    // 첫 번째 가맹점을 분류하면 PATCH 만 날아가고 카드 내역 GET 은 다시 일어나지 않는다
-    const combo = await screen.findByRole("combobox", { name: "가맹점1 카테고리" });
+    const combo = await screen.findByRole("combobox", { name: "조회 월" });
     fireEvent.mouseDown(combo);
-    fireEvent.click(await screen.findByTitle("식비"));
-
-    await waitFor(() => {
-      const patch = fetchMock.mock.calls.find((c) => (c[1]?.method ?? "GET") === "PATCH");
-      expect(patch).toBeDefined();
-      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ rowKey: "k1", category: "식비", subCategory: "" });
-    });
-
-    // 목록이 재조회되지 않아 동일한 가맹점이 그대로 남는다
-    const cardGets = fetchMock.mock.calls.filter(([url, init]) =>
-      String(url).includes("/assets/card-imports")
-      && !String(url).includes("/unclassified")
-      && (init?.method ?? "GET") === "GET");
-    expect(cardGets.length).toBe(1);
-    expect(screen.getByText("가맹점1")).toBeDefined();
+    fireEvent.click(await screen.findByTitle("2026-09"));
+    // antd Select 는 (value, option) 두 인자로 onChange 를 부른다 — 첫 인자만 본다.
+    expect(onMonthChange.mock.calls[0]?.[0]).toBe("2026-09");
   });
 });

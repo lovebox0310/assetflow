@@ -174,6 +174,7 @@ export function parseHyundaiCardStatement(input, contract) {
       approvedAmount: parseAmount(at(r, "approvedAmount")),
       installmentCount: parseAmount(at(r, "installmentCount")),
       memberRelation: normalizeMemberRelation(at(r, "memberRelation")),
+      cardCompany: "현대카드",
       reversal,
       _sourceRow: i + 1,
     };

@@ -36,8 +36,8 @@ describe("formatters (§28.3)", () => {
     expect(formatSignedKrw(0)).toBe("0원");
   });
 
-  it("개월 표시는 소수점 1자리, 계산 불가와 빈 값", () => {
-    expect(formatMonths(7.24)).toBe("7.2개월");
+  it("개월 표시는 소수점 2자리, 반올림 없이 버림", () => {
+    expect(formatMonths(7.249)).toBe("7.24개월");
     expect(formatMonths(null)).toBe("—");
     expect(formatMonths(Infinity)).toBe("—");
   });

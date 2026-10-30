@@ -4,13 +4,20 @@
  *   필요하다. `#/assets` 는 rewrite 없이 동작하고, 새로고침·딥링크·뒤로가기가 모두 산다.
  * - 알 수 없는 해시는 대시보드로 떨어뜨린다(§21 보호 라우트의 기본 화면과 동일).
  */
-export type AppPage = "dashboard" | "assets" | "investments" | "expenses" | "settings";
+export type AppPage =
+  | "dashboard"
+  | "assets"
+  | "investments"
+  | "expenses"
+  | "expenseCards"
+  | "settings";
 
 export const PAGE_PATHS: Record<AppPage, string> = {
   dashboard: "#/",
   assets: "#/assets",
   investments: "#/investments",
   expenses: "#/expenses",
+  expenseCards: "#/expenses/cards",
   settings: "#/settings",
 };
 
@@ -20,6 +27,7 @@ export const PAGE_TITLES: Record<AppPage, string> = {
   assets: "자산 · AssetFlow",
   investments: "투자 · AssetFlow",
   expenses: "지출 · AssetFlow",
+  expenseCards: "카드내역 · AssetFlow",
   settings: "설정 · AssetFlow",
 };
 

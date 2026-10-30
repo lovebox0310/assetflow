@@ -2,7 +2,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { MetricCard } from "./MetricCard";
 import { AssetCompositionList } from "../dashboard/AssetCompositionList";
 import { dashboardMock } from "../data/dashboardMock";
-import { assetComposition, emergencyMonths, monthlyBalance, netWorth } from "../dashboard/metrics";
+import { assetComposition, emergencyRunway, monthlyBalance, netWorth } from "../dashboard/metrics";
+import { DEFAULT_EMERGENCY_CATEGORIES } from "../data/expenseCategories";
 import {
   formatKrwAbbr,
   formatKrwExact,
@@ -24,7 +25,15 @@ type Story = StoryObj<typeof meta>;
 
 const net = netWorth(dashboardMock);
 const bal = monthlyBalance(dashboardMock);
-const months = emergencyMonths(dashboardMock);
+const months = emergencyRunway({
+  assets: dashboardMock.assets,
+  essentialExpenses: dashboardMock.monthly.essentialExpenses,
+  targetMonths: 6,
+  emergencyAccountIds: ["c1"],
+  selectedCategories: DEFAULT_EMERGENCY_CATEGORIES,
+  avgMonths: 3,
+  cardTotals: [],
+}).runwayMonths;
 const slices = assetComposition(dashboardMock);
 
 export const 순자산: Story = {
