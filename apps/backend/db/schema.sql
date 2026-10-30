@@ -12,11 +12,18 @@ CREATE TABLE users (
     id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     email         VARCHAR(255) NOT NULL,           -- 인증 식별자 (§21)
     target_months INT NOT NULL DEFAULT 6,      -- 비상금 목표 개월 (§37.5 설정, 스프린트 3) 
+    emergency_avg_months INT NOT NULL DEFAULT 3,   -- 카드지출 평균 개월 수 (§59)
+    emergency_categories JSONB NOT NULL DEFAULT
+        '["식비","주거/통신","건강/의료","금융/세금","교육"]'::jsonb, -- §59 선택 카테고리(9개 대분류)
     password_hash VARCHAR(255) NOT NULL,           -- 평문 저장 금지, BCrypt 등
     display_name  VARCHAR(50),
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT uq_users_email UNIQUE (email)       -- AC: 인증 식별자 유니크 보장
+    CONSTRAINT uq_users_email UNIQUE (email),      -- AC: 인증 식별자 유니크 보장
+    CONSTRAINT ck_users_emergency_avg_months
+        CHECK (emergency_avg_months BETWEEN 1 AND 12),
+    CONSTRAINT ck_users_emergency_categories
+        CHECK (jsonb_typeof(emergency_categories) = 'array')
 );
 
 -- ---------------------------------------------------------------------------
@@ -41,6 +48,20 @@ CREATE TABLE asset_accounts (
 
 -- 대시보드 계산 접근: 사용자의 자산(혹은 부채) 목록 조회
 CREATE INDEX ix_asset_accounts_user_type ON asset_accounts (user_id, account_type);
+
+-- ---------------------------------------------------------------------------
+-- user_emergency_accounts: §59.6 비상금 통장(복수). 현금성(cash) 계좌만 지정한다.
+-- 자동이체·부가세처럼 용도가 정해진 계좌는 여기에 넣지 않는 방식으로 제외한다.
+-- 계좌가 삭제되면 그 지정만 함께 사라진다.
+-- ---------------------------------------------------------------------------
+CREATE TABLE user_emergency_accounts (
+    user_id    BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    account_id BIGINT NOT NULL REFERENCES asset_accounts (id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, account_id)             -- 같은 계좌 중복 지정 금지
+);
+
+CREATE INDEX ix_user_emergency_accounts_user ON user_emergency_accounts (user_id);
 
 -- ---------------------------------------------------------------------------
 -- expense_categories: 기본 카테고리는 user_id NULL. 사용자 커스텀은 user_id NOT NULL
@@ -123,6 +144,7 @@ CREATE TABLE card_imports (
     business_no       VARCHAR(20),                 -- 가맹점 사업자등록번호(하이픈 제거)
     business_category VARCHAR(50),                 -- 카드사가 붙인 업종
     member_relation   VARCHAR(20) NOT NULL DEFAULT '본인', -- 카드 소유 구분: 본인/가족 등
+    card_company      VARCHAR(20),                 -- 카드사(삼성카드/현대카드). 카드번호만으로는 판별이 불확실해 업로드 시 판별값을 저장한다
     category_id       BIGINT REFERENCES expense_categories (id), -- §55.8 표준 카테고리
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -260,3 +282,6 @@ CREATE INDEX idx_merchant_business_info_user_business
 
 -- 2026-10-29: 기존 DB 에 card_imports.member_relation 추가 마이그레이션
 ALTER TABLE card_imports ADD COLUMN IF NOT EXISTS member_relation VARCHAR(20) NOT NULL DEFAULT '본인';
+
+-- 2026-10-31: 기존 DB 에 card_imports.card_company 추가 마이그레이션
+ALTER TABLE card_imports ADD COLUMN IF NOT EXISTS card_company VARCHAR(20);

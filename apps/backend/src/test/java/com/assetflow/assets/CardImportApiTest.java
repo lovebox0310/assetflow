@@ -49,6 +49,14 @@ class CardImportApiTest {
                 + ",\"cardMasked\":\"1234\",\"expenseKind\":\"\",\"subCategory\":\"\"}";
     }
 
+    private String rowWithCardInfo(String rowKey, String date, String merchant, long supply, long vat, long gross,
+                                   String memberRelation, String cardCompany) {
+        return "{\"rowKey\":\"" + rowKey + "\",\"approvedAt\":\"" + date + "\",\"merchantName\":\"" + merchant
+                + "\",\"supplyExVat\":" + supply + ",\"vat\":" + vat + ",\"grossAmount\":" + gross
+                + ",\"cardMasked\":\"1234\",\"expenseKind\":\"\",\"subCategory\":\"\""
+                + ",\"memberRelation\":\"" + memberRelation + "\",\"cardCompany\":\"" + cardCompany + "\"}";
+    }
+
     private String row(String rowKey, String date, String merchant, long supply, long vat, long gross,
                        String businessNo, String businessCategory) {
         return "{\"rowKey\":\"" + rowKey + "\",\"approvedAt\":\"" + date + "\",\"merchantName\":\"" + merchant
@@ -118,6 +126,46 @@ class CardImportApiTest {
                 .andExpect(jsonPath("$.data[2].gross").value(1_000_000))
                 .andExpect(jsonPath("$.data[3].category").value("식비"))
                 .andExpect(jsonPath("$.data[3].gross").value(12_000));
+    }
+
+    @Test
+    void monthlyCategoriesSourceCardExcludesFixedItems() throws Exception {
+        // §59: 비상금 유지 개월의 변동지출 평균은 카드 소비만 본다.
+        expenseItems.create("2026-09", "교육비", 1_000_000, true, 0, "교육");
+        String body = "{\"rows\":["
+                + rowWithCategory("k1", "2026-09-05", "식당", 10000, "식비", "외식") + ","
+                + rowWithCategory("k2", "2026-09-06", "증권사", 30000, "금융/세금", "저축/투자")
+                + "],\"merchantRules\":{}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/assets/card-imports/monthly-categories")
+                        .header("Authorization", TOKEN)
+                        .param("from", "2026-09").param("to", "2026-09")
+                        .param("source", "card"))
+                .andExpect(status().isOk())
+                // 고정 항목(교육 1,000,000)과 자산 이동(저축/투자)은 빠진다
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].category").value("식비"))
+                .andExpect(jsonPath("$.data[0].gross").value(10_000));
+
+        // source=all(기본)은 그대로 카드 + 항목을 합친다
+        mvc.perform(get("/api/v1/assets/card-imports/monthly-categories")
+                        .header("Authorization", TOKEN)
+                        .param("from", "2026-09").param("to", "2026-09")
+                        .param("source", "all"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2));
+    }
+
+    @Test
+    void monthlyCategoriesRejectUnknownSource() throws Exception {
+        mvc.perform(get("/api/v1/assets/card-imports/monthly-categories")
+                        .header("Authorization", TOKEN)
+                        .param("from", "2026-09").param("to", "2026-09")
+                        .param("source", "manual"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -263,14 +311,56 @@ class CardImportApiTest {
     @Test
     void monthRowsReturnsOnlyThatMonth() throws Exception {
         ledger.addAll(List.of(
-                new CardImportLedger.ImportedRow("m1", "2025-01-03", "가맹점A", 1000, 100, 1100, "", "", "", "", "", ""),
-                new CardImportLedger.ImportedRow("m2", "2025-02-05", "가맹점B", 2000, 200, 2200, "", "", "", "", "", "")));
+                new CardImportLedger.ImportedRow("m1", "2025-01-03", "가맹점A", 1000, 100, 1100, "", "", "", "", "", "", ""),
+                new CardImportLedger.ImportedRow("m2", "2025-02-05", "가맹점B", 2000, 200, 2200, "", "", "", "", "", "", "")));
         mvc.perform(get("/api/v1/assets/card-imports?month=2025-01").header("Authorization", TOKEN))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].merchantName").value("가맹점A"));
         mvc.perform(get("/api/v1/assets/card-imports?month=2025/01").header("Authorization", TOKEN))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void byCardGroupsByCompanyAndMemberRelation() throws Exception {
+        String body = "{\"rows\":["
+                + rowWithCardInfo("h1", "2026-10-01", "가맹점A", 9091, 909, 10000, "본인", "현대카드") + ","
+                + rowWithCardInfo("h2", "2026-10-02", "가맹점B", 8182, 818, 9000, "가족", "현대카드") + ","
+                + rowWithCardInfo("s1", "2026-10-03", "가맹점C", 7273, 727, 8000, "본인", "삼성카드")
+                + "],\"merchantRules\":{}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/assets/card-imports/by-card?from=2026-10&to=2026-10").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(3))
+                .andExpect(jsonPath("$.data[0].month").value("2026-10"))
+                .andExpect(jsonPath("$.data[?(@.cardCompany=='현대카드' && @.memberRelation=='본인')].grossAmount").value(10000))
+                .andExpect(jsonPath("$.data[?(@.cardCompany=='현대카드' && @.memberRelation=='가족')].grossAmount").value(9000))
+                .andExpect(jsonPath("$.data[?(@.cardCompany=='삼성카드' && @.memberRelation=='본인')].grossAmount").value(8000));
+    }
+
+    @Test
+    void backfillCardCompanyInfersFromSameMaskedCard() throws Exception {
+        // 카드번호가 같은 행 중 일부는 카드사가 있고, 일부는 비어 있다.
+        String known = rowWithCardInfo("k1", "2026-10-01", "가맹점A", 9091, 909, 10000, "본인", "현대카드");
+        String unknown = "{\"rowKey\":\"u1\",\"approvedAt\":\"2026-10-02\",\"merchantName\":\"가맹점B\","
+                + "\"supplyExVat\":1818,\"vat\":182,\"grossAmount\":2000,\"cardMasked\":\"1234\","
+                + "\"expenseKind\":\"\",\"subCategory\":\"\",\"memberRelation\":\"가족\"}";
+        String body = "{\"rows\":[" + known + "," + unknown + "],\"merchantRules\":{}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        mvc.perform(post("/api/v1/assets/card-imports/backfill-card-company").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.updated").value(1));
+
+        mvc.perform(get("/api/v1/assets/card-imports/by-card?from=2026-10&to=2026-10").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[?(@.cardCompany=='현대카드' && @.memberRelation=='가족')].grossAmount").value(2000));
     }
 
     @Test
@@ -550,7 +640,7 @@ class CardImportApiTest {
     void reclassifyUsesBusinessCategoryOfAlreadyStoredRows() throws Exception {
         ledger.addAll(List.of(new CardImportLedger.ImportedRow(
                 "k1", "2026-10-01", "알수없는가맹점", 9000, 1000, 10000,
-                "", "", "", "9999999901", "주유소", "")));
+                "", "", "", "9999999901", "주유소", "", "")));
 
         mvc.perform(post("/api/v1/assets/card-imports/reclassify").header("Authorization", TOKEN))
                 .andExpect(status().isOk())
@@ -596,5 +686,60 @@ class CardImportApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].expenseKind").value("교육"))
                 .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].subCategory").value("학원/교육"));
+    }
+
+    @Test
+    void memberRelationIsStoredAndReturnedForFamilyCardRows() throws Exception {
+        // 현대카드 "관계" 컬럼의 본인/가족 값이 저장·조회까지 유지돼야 한다.
+        String familyRow = "{\"rowKey\":\"%s\",\"approvedAt\":\"2026-10-01\",\"merchantName\":\"%s\","
+                + "\"supplyExVat\":%d,\"vat\":%d,\"grossAmount\":%d,\"cardMasked\":\"4553-****-****-8518\","
+                + "\"expenseKind\":\"\",\"subCategory\":\"\",\"businessNo\":\"%s\",\"businessCategory\":\"\","
+                + "\"memberRelation\":\"가족\"}";
+        String r1 = String.format(familyRow, "f1", "다이소아성산업", 8181, 819, 9000, "2138152063");
+        String r2 = String.format(familyRow, "f2", "아트박스용인중앙점", 27183, 2717, 29900, "2148106825");
+        String body = "{\"rows\":[" + r1 + "," + r2 + "],\"merchantRules\":{}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.stored").value(2));
+
+        mvc.perform(get("/api/v1/assets/card-imports?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[?(@.rowKey=='f1')].memberRelation").value("가족"))
+                .andExpect(jsonPath("$.data[?(@.rowKey=='f2')].memberRelation").value("가족"));
+    }
+
+    @Test
+    void duplicateImportUpdatesMemberRelationEvenWhenBusinessNoExists() throws Exception {
+        // 같은 rowKey로 다시 업로드할 때, business_no가 이미 채워져 있어도
+        // member_relation(본인/가족)은 최신 명세서 값으로 갱신돼야 한다.
+        String selfRow = "{\"rowKey\":\"2026-10-01|다이소아성산업|9000|819|4553-****-****-8518|매입|#1\","
+                + "\"approvedAt\":\"2026-10-01\",\"merchantName\":\"다이소아성산업\","
+                + "\"supplyExVat\":8181,\"vat\":819,\"grossAmount\":9000,\"cardMasked\":\"4553-****-****-8518\","
+                + "\"expenseKind\":\"\",\"subCategory\":\"\",\"businessNo\":\"2138152063\",\"businessCategory\":\"\","
+                + "\"memberRelation\":\"본인\"}";
+        String familyRow = "{\"rowKey\":\"2026-10-01|다이소아성산업|9000|819|4553-****-****-8518|매입|#1\","
+                + "\"approvedAt\":\"2026-10-01\",\"merchantName\":\"다이소아성산업\","
+                + "\"supplyExVat\":8181,\"vat\":819,\"grossAmount\":9000,\"cardMasked\":\"4553-****-****-8518\","
+                + "\"expenseKind\":\"\",\"subCategory\":\"\",\"businessNo\":\"2138152063\",\"businessCategory\":\"\","
+                + "\"memberRelation\":\"가족\"}";
+
+        String first = "{\"rows\":[" + selfRow + "],\"merchantRules\":{}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(first))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.stored").value(1));
+
+        String second = "{\"rows\":[" + familyRow + "],\"merchantRules\":{}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(second))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.stored").value(1));
+
+        mvc.perform(get("/api/v1/assets/card-imports?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].memberRelation").value("가족"));
     }
 }

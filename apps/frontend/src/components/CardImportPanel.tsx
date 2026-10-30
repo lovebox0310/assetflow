@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Button, Card, Select, Space, Table, Typography } from "antd";
+import { Alert, Button, Card, Select, Space, Table, Tag, Typography } from "antd";
 import contractJson from "../../../../samples/card/card-columns.json";
 import { detectCardCompany, inspectContainer, parserFor } from "../lib/card/detect-card.mjs";
 import {
@@ -227,6 +227,30 @@ export function CardImportPanel() {
                   render: (_: unknown, g: { merchant: string; rows: CardImportRow[] }) => {
                     const bc = g.rows.find((r) => r.businessCategory)?.businessCategory;
                     return <Typography.Text type="secondary" style={{ fontSize: 12 }}>{bc || "—"}</Typography.Text>;
+                  },
+                },
+                {
+                  title: "구분",
+                  width: 110,
+                  render: (_: unknown, g: { merchant: string; rows: CardImportRow[] }) => {
+                    const counts = new Map<string, number>();
+                    for (const r of g.rows) {
+                      const rel = r.memberRelation?.trim() || "본인";
+                      counts.set(rel, (counts.get(rel) || 0) + 1);
+                    }
+                    return (
+                      <Space size={4}>
+                        {[...counts.entries()].map(([rel, c]) => (
+                          <Tag
+                            key={rel}
+                            color={rel === "본인" ? "blue" : "purple"}
+                            style={{ fontSize: 12, margin: 0 }}
+                          >
+                            {rel} {c}
+                          </Tag>
+                        ))}
+                      </Space>
+                    );
                   },
                 },
                 {

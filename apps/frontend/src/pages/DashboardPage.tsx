@@ -1,6 +1,6 @@
 import { useCallback, Suspense, lazy, useEffect, useRef, useState } from "react";
 import dayjs from "dayjs";
-import { Alert, Card, DatePicker, Grid, Skeleton, Switch, Typography } from "antd";
+import { Alert, Button, Card, DatePicker, Grid, Skeleton, Space, Switch, Typography } from "antd";
 import {
   MobileListCardHeader,
   MobileListCardItem,
@@ -11,6 +11,7 @@ import { ResponsiveGrid } from "../layout/ResponsiveGrid";
 import { StandardNav } from "../layout/StandardNav";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
 import { MetricCard } from "../components/MetricCard";
+import { EmergencyFundSettingsModal } from "../components/EmergencyFundSettingsModal";
 import type { DashboardData } from "../data/dashboardMock";
 import {
   fetchCashflow,
@@ -23,8 +24,7 @@ import {
   assetComposition,
   cashAccountCount,
   cashflowWindow,
-  emergencyFundTotal,
-  emergencyMonths,
+  emergencyRunway,
   investMonths,
   investTotal,
   monthlyBalance,
@@ -32,7 +32,10 @@ import {
 } from "../dashboard/metrics";
 import { AssetCompositionList } from "../dashboard/AssetCompositionList";
 import { buildExpenseTrend, lastMonthsRange, monthsBetween } from "../dashboard/expenseTrend";
-import { listMonthlyCategoryTotals, type MonthlyCategoryTotal } from "../api/cardImportApi";
+import { listCardCompanyGroups, listMonthlyCategoryTotals, type CardCompanyGroup, type MonthlyCategoryTotal } from "../api/cardImportApi";
+import { CardCompanyChart } from "../components/CardCompanyChart";
+import { getSettings, type UserSettings } from "../api/settingsApi";
+import { DEFAULT_EMERGENCY_CATEGORIES } from "../data/expenseCategories";
 import {
   formatKrwAbbr,
   formatKrwExact,
@@ -46,6 +49,15 @@ const ExpenseTrendChart = lazy(() => import("../components/ExpenseTrendChart").t
 
 /** §57: 지출 추이 기본 조회 범위 — 최근 12개월. 모듈 로드 시 한 번만 계산한다. */
 const DEFAULT_TREND_RANGE = lastMonthsRange(12);
+
+/** 카드별 본인·가족 사용 내역 기본 조회 범위 — 최근 6개월. */
+const DEFAULT_CARD_GROUPS_RANGE = lastMonthsRange(6);
+
+/**
+ * §59: 비상금 변동지출 평균은 당월 제외 이전 최대 12개월을 본다.
+ * 당월 폴백까지 한 번에 받기 위해 13개월(이전 12 + 당월)을 조회한다.
+ */
+const EMERGENCY_CARD_RANGE = lastMonthsRange(13);
 
 /** §35.1: 월별 현금흐름은 최근 6개월. 서버는 months 1..12 만 받는다. */
 const CASHFLOW_MONTHS = 6;
@@ -79,9 +91,19 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
   const [summaryError, setSummaryError] = useState("");
   // §28.7: 비상금/투자금 유지 개월을 한 카드에서 토글로 전환해서 본다.
   const [showInvestMonths, setShowInvestMonths] = useState(false);
+  // §59: 비상금 통장·카드지출 평균 기준. 설정 실패 시에도 카드는 기본값으로 동작한다.
+  const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [settingsStatus, setSettingsStatus] = useState<SurfaceStatus>("loading");
+  const [cardTotals, setCardTotals] = useState<MonthlyCategoryTotal[] | null>(null);
+  const [cardTotalsFailed, setCardTotalsFailed] = useState(false);
+  const [emergencyModalOpen, setEmergencyModalOpen] = useState(false);
 
   const [cashflow, setCashflow] = useState<CashflowRow[] | null>(null);
   const [cashflowStatus, setCashflowStatus] = useState<SurfaceStatus>("loading");
+  const [cardGroups, setCardGroups] = useState<CardCompanyGroup[] | null>(null);
+  const [cardGroupsStatus, setCardGroupsStatus] = useState<SurfaceStatus>("loading");
+  const [cardGroupsRange, setCardGroupsRange] = useState<{ from: string; to: string }>(DEFAULT_CARD_GROUPS_RANGE);
+  const [cardGroupsRangeNotice, setCardGroupsRangeNotice] = useState("");
 
   // §57: 지출 추이 — 년월 범위로 조회. 기본은 최근 12개월.
   const [trendRange, setTrendRange] = useState<{ from: string; to: string }>(DEFAULT_TREND_RANGE);
@@ -111,6 +133,49 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
       .catch((e: Error) => {
         setTrendStatus("error");
         setTrendError(e.message);
+      });
+  }, []);
+
+  /**
+   * §59: 비상금 카드의 기준(비상금 통장·평균 개월·카테고리)과 카드지출만의
+   * 월별 합계를 함께 읽는다. 설정/카드 조회가 실패해도 대시보드의 다른 카드는
+   * 그대로 동작해야 하므로 각각 독립적으로 폴백한다.
+   */
+  const loadEmergencyBasis = useCallback(() => {
+    setSettingsStatus("loading");
+    setCardTotalsFailed(false);
+    getSettings()
+      .then((data) => {
+        setSettings(data);
+        setSettingsStatus("ready");
+      })
+      .catch(() => {
+        setSettings(null);
+        // 설정 조회 실패는 카드 전체 오류가 아니다 — 기본값으로 계산하고 안내만 남긴다.
+        setSettingsStatus("error");
+      });
+    listMonthlyCategoryTotals(EMERGENCY_CARD_RANGE.from, EMERGENCY_CARD_RANGE.to, { source: "card" })
+      .then((rows) => {
+        setCardTotals(rows);
+        setCardTotalsFailed(false);
+      })
+      .catch(() => {
+        // 카드지출 없이 필수지출만으로 계산하면 개월 수가 실제보다 크게 보인다.
+        // 값을 보여 주지 않고 오류 + 재시도로 남긴다(§34.6).
+        setCardTotals([]);
+        setCardTotalsFailed(true);
+      });
+  }, []);
+
+  const loadCardGroups = useCallback((from: string, to: string) => {
+    setCardGroupsStatus("loading");
+    listCardCompanyGroups(from, to)
+      .then((rows) => {
+        setCardGroups(rows);
+        setCardGroupsStatus(rows.length === 0 ? "empty" : "ready");
+      })
+      .catch(() => {
+        setCardGroupsStatus("error");
       });
   }, []);
 
@@ -145,7 +210,9 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
     mountedRef.current = true;
     void load();
     loadTrend(DEFAULT_TREND_RANGE.from, DEFAULT_TREND_RANGE.to);
-  }, [load, loadTrend]);
+    loadEmergencyBasis();
+    loadCardGroups(DEFAULT_CARD_GROUPS_RANGE.from, DEFAULT_CARD_GROUPS_RANGE.to);
+  }, [load, loadTrend, loadEmergencyBasis, loadCardGroups]);
 
   const trendSeries = trend ? buildExpenseTrend(trend, trendRange.from, trendRange.to, income) : null;
 
@@ -155,6 +222,34 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
   };
 
   const dataReady = summaryStatus === "ready" && summary !== null;
+  const avgMonths = settings?.emergencyAvgMonths ?? 3;
+  const targetMonths = settings?.targetMonths ?? 6;
+  const emergencyCategories = settings?.emergencyCategories ?? DEFAULT_EMERGENCY_CATEGORIES;
+  // §59: 카드지출(평균)과 설정이 도착하기 전에는 개월 수를 확정하지 않는다 —
+  // 필수지출만으로 계산한 값을 잠깐 보여 주면 실제보다 크게 보인다.
+  const basisLoading = settingsStatus === "loading" || cardTotals === null;
+  const monthsStatus: SurfaceStatus =
+    summaryStatus === "ready" && basisLoading
+      ? "loading"
+      : summaryStatus === "ready" && cardTotalsFailed
+        ? "error"
+        : summaryStatus;
+  const runway = dataReady
+    ? emergencyRunway({
+        assets: summary.assets,
+        essentialExpenses: summary.monthly.essentialExpenses,
+        targetMonths,
+        emergencyAccountIds: settings?.emergencyAccountIds ?? [],
+        selectedCategories: emergencyCategories,
+        avgMonths,
+        cardTotals: cardTotals ?? [],
+      })
+    : null;
+  const retryMonths = () => {
+    load();
+    loadEmergencyBasis();
+  };
+  const monthlySpendLabel = runway ? formatKrwExact(Math.round(runway.monthlySpend)) : "—";
   const composition = dataReady ? assetComposition(summary) : [];
   const cashRows = dataReady ? summary.assets.filter((a) => a.type === "cash") : [];
   // #73: "현금 3계좌" 하드코딩 제거 — 실제 현금성 계좌 수를 센다.
@@ -197,29 +292,58 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
           </MetricCard>
           <MetricCard
             title={showInvestMonths ? "투자금 유지 개월" : "비상금 유지 개월"}
-            status={summaryStatus}
-            onRetry={load}
+            status={monthsStatus}
+            onRetry={retryMonths}
             extra={
-              <Switch
-                size="small"
-                checkedChildren="투자금"
-                unCheckedChildren="비상금"
-                checked={showInvestMonths}
-                onChange={setShowInvestMonths}
-                aria-label="유지 개월 모드 전환"
-              />
+              <Space size={4}>
+                <Switch
+                  size="small"
+                  checkedChildren="투자금"
+                  unCheckedChildren="비상금"
+                  checked={showInvestMonths}
+                  onChange={setShowInvestMonths}
+                  aria-label="유지 개월 모드 전환"
+                />
+                <Button size="small" onClick={() => setEmergencyModalOpen(true)}>
+                  기준 설정
+                </Button>
+              </Space>
             }
             hint={
-              dataReady
-                ? showInvestMonths
-                  ? `${formatKrwExact(investTotal(summary))} ÷ ${formatKrwExact(summary.monthly.essentialExpenses)}`
-                  : `${formatKrwExact(emergencyFundTotal(summary))} ÷ ${formatKrwExact(summary.monthly.essentialExpenses)}${
-                      summary.monthly.essentialComplete ? "" : " · 필수지출 미확정"
-                    }`
-                : undefined
+              dataReady && runway ? (
+                showInvestMonths ? (
+                  <>
+                    {formatKrwExact(investTotal(summary))} ÷ {monthlySpendLabel}
+                    <br />
+                    월 사용액 = 필수 {formatKrwExact(runway.fixedMonthly)} + 카드{" "}
+                    {formatKrwExact(Math.round(runway.variableMonthly))}
+                  </>
+                ) : (
+                  <>
+                    예측 비상금 {formatKrwExact(runway.predictedFund)} · 목표 {targetMonths}개월
+                    <br />
+                    월 사용액 {monthlySpendLabel} = 필수 {formatKrwExact(runway.fixedMonthly)} + 카드{" "}
+                    {formatKrwExact(Math.round(runway.variableMonthly))}
+                    <br />
+                    {!runway.accountSelected
+                      ? "비상금 통장을 지정해 주세요"
+                      : `비상금 통장 ${runway.accountCount}개 합계 ${formatKrwExact(runway.accountBalance)}`}
+                    <br />
+                    {runway.usedCurrentMonthFallback
+                      ? "이전 카드 데이터 없음 · 이번 달(진행 중) 기준"
+                      : `카드 데이터 ${runway.monthsWithCardData}/${avgMonths}개월 집계`}
+                    {summary.monthly.essentialComplete ? "" : " · 필수지출 미확정"}
+                    {runway.unclassifiedTotal > 0
+                      ? ` · 미분류 ${formatKrwExact(runway.unclassifiedTotal)} 제외`
+                      : ""}
+                  </>
+                )
+              ) : undefined
             }
           >
-            {dataReady ? formatMonths(showInvestMonths ? investMonths(summary) : emergencyMonths(summary)) : "—"}
+            {dataReady && runway
+              ? formatMonths(showInvestMonths ? investMonths(summary, runway.monthlySpend) : runway.runwayMonths)
+              : "—"}
           </MetricCard>
           <MetricCard title="자산 구성비" status={summaryStatus} onRetry={load}>
             <AssetCompositionList slices={composition} />
@@ -359,6 +483,56 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
         </Card>
       </section>
 
+      <section aria-labelledby="h-card-groups" style={{ marginBottom: 32 }}>
+        <Typography.Title level={2} id="h-card-groups" style={{ fontSize: 16 }}>
+          카드별 본인·가족 사용 내역
+        </Typography.Title>
+        <Card>
+          <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <Typography.Text style={{ fontWeight: 600, whiteSpace: "nowrap" }}>조회 범위</Typography.Text>
+            <DatePicker.RangePicker
+              picker="month"
+              format="YYYY-MM"
+              value={[dayjs(cardGroupsRange.from), dayjs(cardGroupsRange.to)]}
+              onChange={(dates, _dateStrings) => {
+                if (!dates) return;
+                const [start, end] = dates;
+                if (!start || !end) return;
+                const from = start.format("YYYY-MM");
+                const to = end.format("YYYY-MM");
+                const span = monthsBetween(from, to).length;
+                if (span === 0 || span > 36) {
+                  setCardGroupsRangeNotice("조회 범위는 최대 36개월입니다. 범위를 줄여 주세요.");
+                  return;
+                }
+                setCardGroupsRangeNotice("");
+                setCardGroupsRange({ from, to });
+                loadCardGroups(from, to);
+              }}
+              placeholder={["시작", "종료"]}
+              style={{ minWidth: 320 }}
+            />
+          </div>
+          {cardGroupsRangeNotice ? (
+            <Alert
+              type="warning"
+              showIcon
+              title={cardGroupsRangeNotice}
+              role="status"
+              aria-live="polite"
+              style={{ marginBottom: 16 }}
+            />
+          ) : null}
+          <StateBlock status={cardGroupsStatus} onRetry={() => loadCardGroups(cardGroupsRange.from, cardGroupsRange.to)}>
+            {cardGroups && cardGroups.length > 0 ? (
+              <CardCompanyChart groups={cardGroups} from={cardGroupsRange.from} to={cardGroupsRange.to} />
+            ) : (
+              <Typography.Text type="secondary">표시할 카드 내역이 없습니다</Typography.Text>
+            )}
+          </StateBlock>
+        </Card>
+      </section>
+
       <section aria-labelledby="h-trend" style={{ marginBottom: 32 }}>
         <Typography.Title level={2} id="h-trend" style={{ fontSize: 16 }}>
           지출 추이
@@ -412,6 +586,17 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
           </StateBlock>
         </Card>
       </section>
+
+      <EmergencyFundSettingsModal
+        open={emergencyModalOpen}
+        settings={settings}
+        assets={summary?.assets ?? []}
+        cardTotals={cardTotals}
+        cardTotalsError={cardTotalsFailed}
+        essentialExpenses={summary?.monthly.essentialExpenses ?? 0}
+        onClose={() => setEmergencyModalOpen(false)}
+        onSaved={(updated) => setSettings(updated)}
+      />
     </AppLayout>
   );
 }

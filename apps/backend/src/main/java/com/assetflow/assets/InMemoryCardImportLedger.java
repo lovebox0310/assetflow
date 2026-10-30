@@ -56,10 +56,21 @@ public class InMemoryCardImportLedger implements CardImportLedger {
                     rows.add(r);
                     indexByKey.put(r.rowKey(), rows.size() - 1);
                     stored++;
-                } else if (isBlank(rows.get(existing).businessNo()) && !isBlank(r.businessNo())) {
+                } else {
+                    ImportedRow current = rows.get(existing);
+                    ImportedRow updated = current;
                     // business_no/business_category 가 비어 있는 기존 행에 최신 값을 채운다
-                    rows.set(existing, withBusinessInfo(rows.get(existing), r.businessNo(), r.businessCategory()));
-                    stored++;
+                    if (isBlank(current.businessNo()) && !isBlank(r.businessNo())) {
+                        updated = withBusinessInfo(updated, r.businessNo(), r.businessCategory());
+                    }
+                    // 같은 거래라도 카드 소유 구분(본인/가족)은 명세서 최신 값을 따른다
+                    if (!java.util.Objects.equals(current.memberRelation(), r.memberRelation())) {
+                        updated = withMemberRelation(updated, r.memberRelation());
+                    }
+                    if (updated != current) {
+                        rows.set(existing, updated);
+                        stored++;
+                    }
                 }
             }
         }
@@ -76,7 +87,17 @@ public class InMemoryCardImportLedger implements CardImportLedger {
                 r.supplyExVat(), r.vat(), r.grossAmount(),
                 r.cardMasked(), r.expenseKind(), r.subCategory(),
                 businessNo, businessCategory,
-                r.memberRelation());
+                r.memberRelation(), r.cardCompany());
+    }
+
+    private static ImportedRow withMemberRelation(ImportedRow r, String memberRelation) {
+        return new ImportedRow(
+                r.rowKey(), r.approvedAt(), r.merchantName(),
+                r.supplyExVat(), r.vat(), r.grossAmount(),
+                r.cardMasked(), r.expenseKind(), r.subCategory(),
+                r.businessNo(), r.businessCategory(),
+                memberRelation == null || memberRelation.isBlank() ? "본인" : memberRelation,
+                r.cardCompany());
     }
 
     public Optional<ImportedRow> find(String rowKey) {
@@ -194,6 +215,32 @@ public class InMemoryCardImportLedger implements CardImportLedger {
                 r.supplyExVat(), r.vat(), r.grossAmount(),
                 r.cardMasked(), category, subCategory == null ? "" : subCategory,
                 r.businessNo(), r.businessCategory(),
-                r.memberRelation());
+                r.memberRelation(), r.cardCompany());
+    }
+
+    public int backfillCardCompany() {
+        int updated = 0;
+        synchronized (rows) {
+            Map<String, String> companyByMasked = new LinkedHashMap<>();
+            for (ImportedRow r : rows) {
+                if (isBlank(r.cardCompany()) || isBlank(r.cardMasked())) continue;
+                companyByMasked.putIfAbsent(r.cardMasked(), r.cardCompany());
+            }
+            for (int i = 0; i < rows.size(); i++) {
+                ImportedRow r = rows.get(i);
+                if (!isBlank(r.cardCompany()) || isBlank(r.cardMasked())) continue;
+                String company = companyByMasked.get(r.cardMasked());
+                if (company != null) {
+                    rows.set(i, new ImportedRow(
+                            r.rowKey(), r.approvedAt(), r.merchantName(),
+                            r.supplyExVat(), r.vat(), r.grossAmount(),
+                            r.cardMasked(), r.expenseKind(), r.subCategory(),
+                            r.businessNo(), r.businessCategory(),
+                            r.memberRelation(), company));
+                    updated++;
+                }
+            }
+        }
+        return updated;
     }
 }

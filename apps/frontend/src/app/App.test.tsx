@@ -129,6 +129,21 @@ describe("URL 상태 동기화 (이슈 #72)", () => {
     expect(screen.getByRole("button", { name: "투자 탭" }).getAttribute("aria-current")).toBe("page");
   });
 
+  it("지출 하위의 카드내역 화면으로 들어가도 URL·제목이 바뀌고 전역 nav 는 지출이 현재다", async () => {
+    render(<App />);
+    await screen.findByText("핵심 지표");
+
+    fireEvent.click(screen.getByRole("button", { name: "지출" }));
+    await screen.findByRole("heading", { name: "지출" });
+    fireEvent.click(screen.getByRole("button", { name: "카드내역 탭" }));
+
+    expect(await screen.findByRole("heading", { name: "카드내역" })).toBeDefined();
+    expect(window.location.hash).toBe("#/expenses/cards");
+    expect(document.title).toBe("카드내역 · AssetFlow");
+    expect(screen.getByRole("button", { name: "지출" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("button", { name: "카드내역 탭" }).getAttribute("aria-current")).toBe("page");
+  });
+
   it("뒤로가기(popstate) 면 이전 화면으로 돌아온다", async () => {
     render(<App />);
     await screen.findByText("핵심 지표");

@@ -38,6 +38,18 @@ function apiResponse(data: unknown, ok = true, status = 200): Response {
 
 function route(path: string): Response | Promise<Response> {
   if (path.includes("/dashboard/summary")) return apiResponse(dashboardMock);
+  // §59: 비상금 통장과 카드지출 카테고리 기준
+  if (path.includes("/settings")) {
+    return apiResponse({
+      id: 1,
+      email: "user@example.com",
+      displayName: "사용자",
+      targetMonths: 6,
+      emergencyAccountIds: ["c1"],
+      emergencyAvgMonths: 3,
+      emergencyCategories: ["식비"],
+    });
+  }
   if (path.includes("/dashboard/cashflow")) {
     return apiResponse([
       { month: monthKey(0), income: 8_200_000, vatSetAside: 0, expenses: 4_960_000, balance: 3_240_000 },
@@ -51,6 +63,14 @@ function route(path: string): Response | Promise<Response> {
       { month: monthKey(0), category: "식비", gross: 1_200_000 },
       { month: monthKey(1), category: "식비", gross: 900_000 },
       { month: monthKey(1), category: "미분류", gross: 10_000 },
+    ]);
+  }
+  // 카드사·소유 구분별 월별 집계
+  if (path.includes("/card-imports/by-card")) {
+    return apiResponse([
+      { month: monthKey(1), cardCompany: "현대카드", memberRelation: "본인", count: 3, grossAmount: 100_000 },
+      { month: monthKey(1), cardCompany: "현대카드", memberRelation: "가족", count: 2, grossAmount: 80_000 },
+      { month: monthKey(0), cardCompany: "삼성카드", memberRelation: "본인", count: 1, grossAmount: 50_000 },
     ]);
   }
   // §57.9: 수입 막대 — 최근 달은 확정(실수입+부가세통장), 그 이전 달은 미확정(행 없음)
@@ -116,11 +136,14 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     stubFetch(route);
     render(<DashboardPage onLogout={() => {}} />);
 
-    // 순자산 691,844,440 → 6.9억 / 월 수지 +3,240,000원 / 비상금 28.8개월
+    // 순자산 691,844,440 → 6.9억 / 월 수지 +3,240,000원
+    // 비상금: 통장 18,500,000 ÷ (필수 2,317,180 + 식비 평균 900,000) = 5.75 → 5.8개월
     expect(await screen.findByText("6.9억")).toBeDefined();
     // 카드와 현금흐름 표가 같은 금액을 보일 수 있어 getAll 로 존재를 검사한다.
     expect((await screen.findAllByText("+3,240,000원")).length).toBeGreaterThan(0);
-    expect(screen.getByText("28.8개월")).toBeDefined();
+    expect(await screen.findByText("5.75개월")).toBeDefined();
+    expect(screen.getByText(/예측 비상금 19,303,080원/)).toBeDefined();
+    expect(screen.getByText(/목표 6개월/)).toBeDefined();
     expect(screen.getByRole("heading", { name: "비상금 유지 개월" })).toBeDefined();
     // 구성비 카드와 도넛 범례가 같은 유형명을 보일 수 있어 getAll 로 존재를 검사한다.
     expect(screen.getAllByText("부동산·기타").length).toBeGreaterThan(0);
@@ -136,12 +159,23 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     expect(screen.getByText("+2,640,000원")).toBeDefined();
     expect(screen.queryByText("+5,880,000원")).toBeNull();
 
-    // 스위치를 켜면 투자금 유지 개월(23.5개월)로 전환된다.
+    // 스위치를 켜면 같은 월 사용액 기준의 투자금 유지 개월(16.9개월)로 전환된다.
     const toggle = screen.getByRole("switch", { name: "유지 개월 모드 전환" });
     fireEvent.click(toggle);
-    expect(await screen.findByText("23.5개월")).toBeDefined();
+    expect(await screen.findByText("16.94개월")).toBeDefined();
     expect(screen.getByRole("heading", { name: "투자금 유지 개월" })).toBeDefined();
-    expect(screen.queryByText("28.8개월")).toBeNull();
+    expect(screen.queryByText("5.8개월")).toBeNull();
+  });
+
+  it("기준 설정 버튼으로 비상금 설정 모달을 연다 (§59)", async () => {
+    stubFetch(route);
+    render(<DashboardPage onLogout={() => {}} />);
+
+    await screen.findByText("6.9억");
+    fireEvent.click(screen.getByRole("button", { name: "기준 설정" }));
+    expect(await screen.findByText("비상금 유지 개월 기준")).toBeDefined();
+    expect(screen.getByLabelText("비상금 통장")).toBeDefined();
+    expect(screen.getByText("카드 데이터 1/3개월 집계")).toBeDefined();
   });
 
   it("요청 중에는 로딩(스켈레톤)이 보인다 (§26 AC)", () => {
@@ -240,7 +274,8 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     await screen.findByText("6.9억");
 
     const trendCalls = fetchMock.mock.calls.filter((c) =>
-      String(c[0]).includes("/card-imports/monthly-categories"),
+      String(c[0]).includes("/card-imports/monthly-categories") &&
+      !String(c[0]).includes("source=card"),
     );
     expect(trendCalls.length).toBe(1);
     // 기본 범위 = 이번 달 포함 최근 12개월
@@ -282,4 +317,17 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     expect(within(legend).queryByText("실수입")).toBeNull();
     expect(within(legend).queryByText("부가세통장")).toBeNull();
   });
+  it("카드별 본인·가족 사용 내역 차트가 렌더된다", async () => {
+    stubFetch(route);
+    render(<DashboardPage onLogout={() => {}} />);
+
+    await screen.findByRole("heading", { name: "카드별 본인·가족 사용 내역" });
+    // 차트 영역의 aria-label에 총액/본인/가족이 포함된다
+    expect(screen.getByRole("img", { name: /카드별 본인·가족 사용 내역/ })).toBeDefined();
+    // 범례에 카드사·관계 조합이 노출된다(형식: "현대카드 · 본인")
+    expect(screen.getByText((content) => content.includes("현대카드") && content.includes("본인"))).toBeDefined();
+    expect(screen.getByText((content) => content.includes("현대카드") && content.includes("가족"))).toBeDefined();
+    expect(screen.getByText((content) => content.includes("삼성카드") && content.includes("본인"))).toBeDefined();
+  });
+
 });

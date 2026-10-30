@@ -39,6 +39,18 @@ export const FIXED_SUB_CATEGORIES = new Set([
   "학원/교육",
 ]);
 
+/**
+ * §59 비상금 유지 개월의 변동지출 기본 선택 — 5개 대분류.
+ * 서버(users.emergency_categories 기본값)와 같은 목록이다.
+ */
+export const DEFAULT_EMERGENCY_CATEGORIES: CategoryGroup[] = [
+  "식비",
+  "주거/통신",
+  "건강/의료",
+  "금융/세금",
+  "교육",
+];
+
 /** 지출이 아니라 자산 이동 — 지출 합계에서 제외한다. */
 export const ASSET_TRANSFER_SUB_CATEGORY = "저축/투자";
 

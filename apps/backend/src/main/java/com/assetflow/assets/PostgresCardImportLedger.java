@@ -42,13 +42,14 @@ public class PostgresCardImportLedger implements CardImportLedger {
                 rs.getString("sub_category") == null ? "" : rs.getString("sub_category"),
                 rs.getString("business_no") == null ? "" : rs.getString("business_no"),
                 rs.getString("business_category") == null ? "" : rs.getString("business_category"),
-                rs.getString("member_relation") == null ? "" : rs.getString("member_relation"));
+                rs.getString("member_relation") == null ? "" : rs.getString("member_relation"),
+                rs.getString("card_company") == null ? "" : rs.getString("card_company"));
     }
 
     public List<CardImportLedger.ImportedRow> all() {
         return jdbc.query("""
                 SELECT row_key, approved_at, merchant_name, supply_ex_vat, vat, gross_amount,
-                       card_masked, expense_kind, sub_category, business_no, business_category, member_relation
+                       card_masked, expense_kind, sub_category, business_no, business_category, member_relation, card_company
                 FROM card_imports WHERE user_id = ? ORDER BY id
                 """, PostgresCardImportLedger::map, userId);
     }
@@ -58,7 +59,7 @@ public class PostgresCardImportLedger implements CardImportLedger {
         java.sql.Date end = java.sql.Date.valueOf(java.time.YearMonth.parse(month).plusMonths(1).atDay(1));
         return jdbc.query("""
                 SELECT row_key, approved_at, merchant_name, supply_ex_vat, vat, gross_amount,
-                       card_masked, expense_kind, sub_category, business_no, business_category, member_relation
+                       card_masked, expense_kind, sub_category, business_no, business_category, member_relation, card_company
                 FROM card_imports
                 WHERE user_id = ? AND approved_at >= ? AND approved_at < ?
                 ORDER BY approved_at, id
@@ -77,18 +78,18 @@ public class PostgresCardImportLedger implements CardImportLedger {
                     INSERT INTO card_imports (user_id, row_key, approved_at, merchant_name,
                                               supply_ex_vat, vat, gross_amount, card_masked,
                                               expense_kind, sub_category, business_no, business_category,
-                                              member_relation)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                              member_relation, card_company)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (user_id, row_key) DO UPDATE SET
-                        business_no = EXCLUDED.business_no,
-                        business_category = EXCLUDED.business_category,
+                        business_no = COALESCE(NULLIF(EXCLUDED.business_no, ''), card_imports.business_no),
+                        business_category = COALESCE(NULLIF(EXCLUDED.business_category, ''), card_imports.business_category),
                         member_relation = EXCLUDED.member_relation,
+                        card_company = COALESCE(NULLIF(EXCLUDED.card_company, ''), card_imports.card_company),
                         updated_at = now()
-                    WHERE card_imports.business_no IS NULL OR card_imports.business_no = ''
                     """, userId, r.rowKey(), Date.valueOf(r.approvedAt()), r.merchantName(),
                     r.supplyExVat(), r.vat(), r.grossAmount(), r.cardMasked(),
                     r.expenseKind(), r.subCategory(), r.businessNo(), r.businessCategory(),
-                    r.memberRelation());
+                    r.memberRelation(), r.cardCompany());
         }
         return stored;
     }
@@ -96,7 +97,7 @@ public class PostgresCardImportLedger implements CardImportLedger {
     public Optional<CardImportLedger.ImportedRow> find(String rowKey) {
         return jdbc.query("""
                 SELECT row_key, approved_at, merchant_name, supply_ex_vat, vat, gross_amount,
-                       card_masked, expense_kind, sub_category, business_no, business_category, member_relation
+                       card_masked, expense_kind, sub_category, business_no, business_category, member_relation, card_company
                 FROM card_imports WHERE user_id = ? AND row_key = ?
                 """, PostgresCardImportLedger::map, userId, rowKey)
                 .stream().findFirst();
@@ -170,5 +171,23 @@ public class PostgresCardImportLedger implements CardImportLedger {
                         rs.getString("category"),
                         rs.getLong("gross")),
                 userId, from, until);
+    }
+
+    public int backfillCardCompany() {
+        return jdbc.update("""
+                UPDATE card_imports target
+                SET card_company = known.company,
+                    updated_at = now()
+                FROM (
+                    SELECT DISTINCT ON (user_id, card_masked) user_id, card_masked, card_company AS company
+                    FROM card_imports
+                    WHERE card_company IS NOT NULL AND card_company <> ''
+                      AND card_masked IS NOT NULL AND card_masked <> ''
+                ) known
+                WHERE target.user_id = ?
+                  AND target.user_id = known.user_id
+                  AND target.card_masked = known.card_masked
+                  AND (target.card_company IS NULL OR target.card_company = '');
+                """, userId);
     }
 }

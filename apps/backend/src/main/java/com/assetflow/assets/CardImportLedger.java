@@ -16,7 +16,7 @@ public interface CardImportLedger {
                        long supplyExVat, long vat, long grossAmount,
                        String cardMasked, String expenseKind, String subCategory,
                        String businessNo, String businessCategory,
-                       String memberRelation) {}
+                       String memberRelation, String cardCompany) {}
 
     /** 미분류 작업함의 가맹점 묶음 (§55.8). */
     record UnclassifiedGroup(String merchantName, int count, long grossTotal,
@@ -60,4 +60,10 @@ public interface CardImportLedger {
      * 자산 이동(저축/투자) 행은 뺀다 — 지출 추이 차트가 소비만 보여주도록.
      */
     List<MonthlyCategoryTotal> monthlyCategoryTotals(String fromMonth, String toMonth);
+
+    /**
+     * 동일한 masked 카드번호를 가진 행 중 card_company 가 이미 채워진 행을 참고해
+     * 비어 있는 card_company 를 채운다. 안전한 추론이 가능한 행만 갱신한다.
+     */
+    int backfillCardCompany();
 }
