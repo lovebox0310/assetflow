@@ -112,7 +112,27 @@ jobs:
         run: pnpm lint
       - name: 프로덕션 빌드
         run: pnpm build
-
+        
+  e2e-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: pnpm 활성화 (packageManager 필드 고정본)
+        run: corepack enable
+      - name: 의존성 설치 (lock 고정)
+        run: pnpm install --frozen-lockfile
+      - name: Playwright 브라우저 설치
+        run: pnpm exec playwright install chromium
+      - name: E2E 테스트
+        run: pnpm e2e
+        
   # BE 앱 게이트. 2026-10-18 부터 백엔드가 실제로 빌드·테스트 가능하다
   # (wrapper + 메인 클래스, §37.6). DB 전 부팅이므로 테스트는 Postgres 없이 돈다.
   backend-gate:
