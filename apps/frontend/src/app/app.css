@@ -168,8 +168,16 @@ body,
 
 .af-composition li {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  gap: 4px;
+}
+
+@media (min-width: 768px) {
+  .af-composition li {
+    flex-direction: row;
+    justify-content: space-between;
+    gap: 12px;
+  }
 }
 
 .field-error,
