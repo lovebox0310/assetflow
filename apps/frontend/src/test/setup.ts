@@ -41,16 +41,34 @@ globalThis.ResizeObserver = FakeResizeObserver as unknown as typeof ResizeObserv
 
 // jsdom 에서 recharts ResponsiveContainer 는 부모 크기를 0 으로 보기 때문에
 // 차트 전체가 렌더링되지 않는다. 테스트에서만 고정 크기 래퍼로 대체한다.
+interface MockResponsiveContainerProps {
+  children?: React.ReactNode;
+  width?: string | number;
+  height?: string | number;
+  aspect?: number;
+  minWidth?: number;
+  minHeight?: number;
+  maxHeight?: number;
+  className?: string;
+  style?: React.CSSProperties;
+  debounce?: number;
+}
+
 vi.mock("recharts", async () => {
   const actual = await vi.importActual<typeof import("recharts")>("recharts");
   return {
     ...actual,
-    ResponsiveContainer: ({ children, width = 800, height = 400 }: any) => {
+    ResponsiveContainer: ({
+      children,
+      width = 800,
+      height = 400,
+    }: MockResponsiveContainerProps) => {
       const child = React.Children.only(children);
+      if (!React.isValidElement(child)) return null;
       return React.createElement(
         "div",
         { style: { width, height } },
-        React.cloneElement(child as React.ReactElement, { width, height }),
+        React.cloneElement(child, { width, height }),
       );
     },
   };
