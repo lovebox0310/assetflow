@@ -351,44 +351,111 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
         </ResponsiveGrid>
       </section>
 
-      <section aria-labelledby="h-composition" style={{ marginBottom: 32 }}>
-        <Typography.Title level={2} id="h-composition" style={{ fontSize: 16 }}>
-          자산 구성비
+<section aria-labelledby="h-card-groups" style={{ marginBottom: 32 }}>
+        <Typography.Title level={2} id="h-card-groups" style={{ fontSize: 16 }}>
+          카드별 본인·가족 사용 내역
         </Typography.Title>
         <Card>
-          <StateBlock status={summaryStatus} onRetry={load} errorText={summaryError}>
-            {dataReady ? (
+          <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <Typography.Text style={{ fontWeight: 600, whiteSpace: "nowrap" }}>조회 범위</Typography.Text>
+            <DatePicker.RangePicker
+              picker="month"
+              format="YYYY-MM"
+              value={[dayjs(cardGroupsRange.from), dayjs(cardGroupsRange.to)]}
+              onChange={(dates, _dateStrings) => {
+                if (!dates) return;
+                const [start, end] = dates;
+                if (!start || !end) return;
+                const from = start.format("YYYY-MM");
+                const to = end.format("YYYY-MM");
+                const span = monthsBetween(from, to).length;
+                if (span === 0 || span > 36) {
+                  setCardGroupsRangeNotice("조회 범위는 최대 36개월입니다. 범위를 줄여 주세요.");
+                  return;
+                }
+                setCardGroupsRangeNotice("");
+                setCardGroupsRange({ from, to });
+                loadCardGroups(from, to);
+              }}
+              placeholder={["시작", "종료"]}
+              style={{ minWidth: 320 }}
+            />
+          </div>
+          {cardGroupsRangeNotice ? (
+            <Alert
+              type="warning"
+              showIcon
+              title={cardGroupsRangeNotice}
+              role="status"
+              aria-live="polite"
+              style={{ marginBottom: 16 }}
+            />
+          ) : null}
+          <StateBlock status={cardGroupsStatus} onRetry={() => loadCardGroups(cardGroupsRange.from, cardGroupsRange.to)}>
+            {cardGroups && cardGroups.length > 0 ? (
+              <CardCompanyChart groups={cardGroups} from={cardGroupsRange.from} to={cardGroupsRange.to} />
+            ) : (
+              <Typography.Text type="secondary">표시할 카드 내역이 없습니다</Typography.Text>
+            )}
+          </StateBlock>
+        </Card>
+      </section>
+
+<section aria-labelledby="h-trend" style={{ marginBottom: 32 }}>
+        <Typography.Title level={2} id="h-trend" style={{ fontSize: 16 }}>
+          지출 추이
+        </Typography.Title>
+        <Typography.Text type="secondary" style={{ display: "block", marginTop: -8, marginBottom: 16, fontSize: 13 }}>
+          카드내역 + 고정/정기 항목 · 자산 이동(저축/투자) 제외 · 수입은 확정된 달만
+        </Typography.Text>
+        <Card>
+          <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <Typography.Text style={{ fontWeight: 600, whiteSpace: "nowrap" }}>조회 범위</Typography.Text>
+            <DatePicker.RangePicker
+              picker="month"
+              format="YYYY-MM"
+              value={[dayjs(trendRange.from), dayjs(trendRange.to)]}
+              onChange={(dates, _dateStrings) => {
+                if (!dates) return;
+                const [start, end] = dates;
+                if (!start || !end) return;
+                const from = start.format("YYYY-MM");
+                const to = end.format("YYYY-MM");
+                const span = monthsBetween(from, to).length;
+                // §57.4: 서버 상한(36개월)과 같은 규칙을 화면에서도 먼저 막는다.
+                if (span === 0 || span > 36) {
+                  setTrendRangeNotice("조회 범위는 최대 36개월입니다. 범위를 줄여 주세요.");
+                  return;
+                }
+                setTrendRangeNotice("");
+                setTrendRange({ from, to });
+                void loadTrend(from, to);
+              }}
+              placeholder={["시작", "종료"]}
+              style={{ minWidth: 320 }}
+            />
+          </div>
+          {trendRangeNotice ? (
+            <Alert
+              type="warning"
+              showIcon
+              title={trendRangeNotice}
+              role="status"
+              aria-live="polite"
+              style={{ marginBottom: 16 }}
+            />
+          ) : null}
+          <StateBlock status={trendStatus} onRetry={() => void loadTrend(trendRange.from, trendRange.to)} errorText={trendError}>
+            {trendSeries ? (
               <Suspense fallback={<Skeleton active paragraph={{ rows: 3 }} />}>
-                {/* 번들 분리: recharts 를 대시보드 본체에서 떼어 lazy 로딩한다 (§39 리스크 3) */}
-                <CompositionDonut slices={composition} />
+                <ExpenseTrendChart series={trendSeries} from={trendRange.from} to={trendRange.to} />
               </Suspense>
             ) : null}
           </StateBlock>
         </Card>
       </section>
 
-      <section aria-labelledby="h-cash" style={{ marginBottom: 32 }}>
-        <Typography.Title level={2} id="h-cash" style={{ fontSize: 16 }}>
-          {cashHeading}
-        </Typography.Title>
-        <Card>
-          <StateBlock status={summaryStatus} onRetry={load} errorText={summaryError}>
-            {cashRows.length === 0 ? (
-              <Typography.Text type="secondary">현금성 계좌가 없습니다</Typography.Text>
-            ) : (
-              <ul style={{ margin: 0, paddingLeft: 20 }}>
-                {cashRows.map((row) => (
-                  <li key={row.id}>
-                    {row.name} — {formatKrwExact(row.value)}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </StateBlock>
-        </Card>
-      </section>
-
-      <section aria-labelledby="h-cashflow">
+<section aria-labelledby="h-cashflow">
         <Typography.Title level={2} id="h-cashflow" style={{ fontSize: 16 }}>
           월별 현금흐름
         </Typography.Title>
@@ -483,106 +550,39 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
         </Card>
       </section>
 
-      <section aria-labelledby="h-card-groups" style={{ marginBottom: 32 }}>
-        <Typography.Title level={2} id="h-card-groups" style={{ fontSize: 16 }}>
-          카드별 본인·가족 사용 내역
+<section aria-labelledby="h-composition" style={{ marginBottom: 32 }}>
+        <Typography.Title level={2} id="h-composition" style={{ fontSize: 16 }}>
+          자산 구성비
         </Typography.Title>
         <Card>
-          <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <Typography.Text style={{ fontWeight: 600, whiteSpace: "nowrap" }}>조회 범위</Typography.Text>
-            <DatePicker.RangePicker
-              picker="month"
-              format="YYYY-MM"
-              value={[dayjs(cardGroupsRange.from), dayjs(cardGroupsRange.to)]}
-              onChange={(dates, _dateStrings) => {
-                if (!dates) return;
-                const [start, end] = dates;
-                if (!start || !end) return;
-                const from = start.format("YYYY-MM");
-                const to = end.format("YYYY-MM");
-                const span = monthsBetween(from, to).length;
-                if (span === 0 || span > 36) {
-                  setCardGroupsRangeNotice("조회 범위는 최대 36개월입니다. 범위를 줄여 주세요.");
-                  return;
-                }
-                setCardGroupsRangeNotice("");
-                setCardGroupsRange({ from, to });
-                loadCardGroups(from, to);
-              }}
-              placeholder={["시작", "종료"]}
-              style={{ minWidth: 320 }}
-            />
-          </div>
-          {cardGroupsRangeNotice ? (
-            <Alert
-              type="warning"
-              showIcon
-              title={cardGroupsRangeNotice}
-              role="status"
-              aria-live="polite"
-              style={{ marginBottom: 16 }}
-            />
-          ) : null}
-          <StateBlock status={cardGroupsStatus} onRetry={() => loadCardGroups(cardGroupsRange.from, cardGroupsRange.to)}>
-            {cardGroups && cardGroups.length > 0 ? (
-              <CardCompanyChart groups={cardGroups} from={cardGroupsRange.from} to={cardGroupsRange.to} />
-            ) : (
-              <Typography.Text type="secondary">표시할 카드 내역이 없습니다</Typography.Text>
-            )}
+          <StateBlock status={summaryStatus} onRetry={load} errorText={summaryError}>
+            {dataReady ? (
+              <Suspense fallback={<Skeleton active paragraph={{ rows: 3 }} />}>
+                {/* 번들 분리: recharts 를 대시보드 본체에서 떼어 lazy 로딩한다 (§39 리스크 3) */}
+                <CompositionDonut slices={composition} />
+              </Suspense>
+            ) : null}
           </StateBlock>
         </Card>
       </section>
 
-      <section aria-labelledby="h-trend" style={{ marginBottom: 32 }}>
-        <Typography.Title level={2} id="h-trend" style={{ fontSize: 16 }}>
-          지출 추이
+<section aria-labelledby="h-cash" style={{ marginBottom: 32 }}>
+        <Typography.Title level={2} id="h-cash" style={{ fontSize: 16 }}>
+          {cashHeading}
         </Typography.Title>
-        <Typography.Text type="secondary" style={{ display: "block", marginTop: -8, marginBottom: 16, fontSize: 13 }}>
-          카드내역 + 고정/정기 항목 · 자산 이동(저축/투자) 제외 · 수입은 확정된 달만
-        </Typography.Text>
         <Card>
-          <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <Typography.Text style={{ fontWeight: 600, whiteSpace: "nowrap" }}>조회 범위</Typography.Text>
-            <DatePicker.RangePicker
-              picker="month"
-              format="YYYY-MM"
-              value={[dayjs(trendRange.from), dayjs(trendRange.to)]}
-              onChange={(dates, _dateStrings) => {
-                if (!dates) return;
-                const [start, end] = dates;
-                if (!start || !end) return;
-                const from = start.format("YYYY-MM");
-                const to = end.format("YYYY-MM");
-                const span = monthsBetween(from, to).length;
-                // §57.4: 서버 상한(36개월)과 같은 규칙을 화면에서도 먼저 막는다.
-                if (span === 0 || span > 36) {
-                  setTrendRangeNotice("조회 범위는 최대 36개월입니다. 범위를 줄여 주세요.");
-                  return;
-                }
-                setTrendRangeNotice("");
-                setTrendRange({ from, to });
-                void loadTrend(from, to);
-              }}
-              placeholder={["시작", "종료"]}
-              style={{ minWidth: 320 }}
-            />
-          </div>
-          {trendRangeNotice ? (
-            <Alert
-              type="warning"
-              showIcon
-              title={trendRangeNotice}
-              role="status"
-              aria-live="polite"
-              style={{ marginBottom: 16 }}
-            />
-          ) : null}
-          <StateBlock status={trendStatus} onRetry={() => void loadTrend(trendRange.from, trendRange.to)} errorText={trendError}>
-            {trendSeries ? (
-              <Suspense fallback={<Skeleton active paragraph={{ rows: 3 }} />}>
-                <ExpenseTrendChart series={trendSeries} from={trendRange.from} to={trendRange.to} />
-              </Suspense>
-            ) : null}
+          <StateBlock status={summaryStatus} onRetry={load} errorText={summaryError}>
+            {cashRows.length === 0 ? (
+              <Typography.Text type="secondary">현금성 계좌가 없습니다</Typography.Text>
+            ) : (
+              <ul style={{ margin: 0, paddingLeft: 20 }}>
+                {cashRows.map((row) => (
+                  <li key={row.id}>
+                    {row.name} — {formatKrwExact(row.value)}
+                  </li>
+                ))}
+              </ul>
+            )}
           </StateBlock>
         </Card>
       </section>
