@@ -104,16 +104,21 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     }
   });
 
-  it("영역 순서가 정보구조와 일치한다 (지표→구성비→현금→현금흐름)", async () => {
+  it("영역 순서가 정보구조와 일치한다 (지표→카드→지출추이→현금흐름→구성비→현금)", async () => {
     stubFetch(route);
     render(<DashboardPage onLogout={() => {}} />);
     // 로딩이 끝나야 컨테이너에 실측 가능한 콘텐츠가 채워진다.
     await screen.findByText("6.9억");
-    const content = (document.querySelector(".af-container") as HTMLElement).textContent ?? "";
-    const order = ["핵심 지표", "자산 구성비", "현금 2계좌", "월별 현금흐름"];
-    const positions = order.map((name) => content.indexOf(name));
-    expect(positions.every((p) => p >= 0)).toBe(true);
-    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    const headings = screen.getAllByRole("heading", { level: 2 });
+    const titles = headings.map((h) => h.textContent);
+    expect(titles).toEqual([
+      "핵심 지표",
+      "카드별 본인·가족 사용 내역",
+      "지출 추이",
+      "월별 현금흐름",
+      "자산 구성비",
+      expect.stringMatching(/^현금/),
+    ]);
   });
 
   it("헤더의 로그아웃은 토큰을 지우고 onLogout 을 부른다 (§21 승계)", () => {
