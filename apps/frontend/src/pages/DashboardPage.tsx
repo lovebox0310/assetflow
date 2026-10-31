@@ -550,42 +550,45 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
         </Card>
       </section>
 
-<section aria-labelledby="h-composition" style={{ marginBottom: 32 }}>
-        <Typography.Title level={2} id="h-composition" style={{ fontSize: 16 }}>
-          자산 구성비
-        </Typography.Title>
-        <Card>
-          <StateBlock status={summaryStatus} onRetry={load} errorText={summaryError}>
-            {dataReady ? (
-              <Suspense fallback={<Skeleton active paragraph={{ rows: 3 }} />}>
-                {/* 번들 분리: recharts 를 대시보드 본체에서 떼어 lazy 로딩한다 (§39 리스크 3) */}
-                <CompositionDonut slices={composition} />
-              </Suspense>
-            ) : null}
-          </StateBlock>
-        </Card>
-      </section>
+<ResponsiveGrid spans={{ xs: 24, md: 12 }}>
+        <section aria-labelledby="h-composition" style={{ marginBottom: 32 }}>
+          <Typography.Title level={2} id="h-composition" style={{ fontSize: 16 }}>
+            자산 구성비
+          </Typography.Title>
+          <Card>
+            <StateBlock status={summaryStatus} onRetry={load} errorText={summaryError}>
+              {dataReady ? (
+                <Suspense fallback={<Skeleton active paragraph={{ rows: 3 }} />}>
+                  {/* 번들 분리: recharts 를 대시보드 본체에서 떼어 lazy 로딩한다 (§39 리스크 3) */}
+                  <CompositionDonut slices={composition} />
+                </Suspense>
+              ) : null}
+            </StateBlock>
+          </Card>
+        </section>
 
-<section aria-labelledby="h-cash" style={{ marginBottom: 32 }}>
-        <Typography.Title level={2} id="h-cash" style={{ fontSize: 16 }}>
-          {cashHeading}
-        </Typography.Title>
-        <Card>
-          <StateBlock status={summaryStatus} onRetry={load} errorText={summaryError}>
-            {cashRows.length === 0 ? (
-              <Typography.Text type="secondary">현금성 계좌가 없습니다</Typography.Text>
-            ) : (
-              <ul style={{ margin: 0, paddingLeft: 20 }}>
-                {cashRows.map((row) => (
-                  <li key={row.id}>
-                    {row.name} — {formatKrwExact(row.value)}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </StateBlock>
-        </Card>
-      </section>
+        <section aria-labelledby="h-cash" style={{ marginBottom: 32 }}>
+          <Typography.Title level={2} id="h-cash" style={{ fontSize: 16 }}>
+            {cashHeading}
+          </Typography.Title>
+          <Card>
+            <StateBlock status={summaryStatus} onRetry={load} errorText={summaryError}>
+              {cashRows.length === 0 ? (
+                <Typography.Text type="secondary">현금성 계좌가 없습니다</Typography.Text>
+              ) : (
+                <ul className="af-composition">
+                  {cashRows.map((row) => (
+                    <li key={row.id}>
+                      <span>{row.name}</span>
+                      <span className="af-num">{formatKrwExact(row.value)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </StateBlock>
+          </Card>
+        </section>
+      </ResponsiveGrid>
 
       <EmergencyFundSettingsModal
         open={emergencyModalOpen}
