@@ -53,3 +53,9 @@ samples/card/*.csv
 
 # storybook static build output
 storybook-static/
+
+# Playwright test artifacts
+test-results/
+playwright-report/
+playwright/.cache/
+e2e/.auth/
