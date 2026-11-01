@@ -320,7 +320,8 @@ rowKey = approvedAt | merchantName | grossAmount | vat | approvalNo | cardMasked
 
 ## 파서는 두 벌, 규격은 하나
 
-FE는 SheetJS로 **미리보기**, BE는 Apache POI로 **검증·저장**을 맡는다. 양쪽에
+FE는 SheetJS로 **미리보기**(CSV·평문 XLSX), BE는 정규화된 행을 **재검증·저장**한다
+(POI 기반 파일 재검증은 아직 없다 — §53.1 B2). 양쪽에
 파서 규칙이 두 벌 생기므로 **판정 기준은 `card-columns.json` 한 곳에만 둔다.**
 
 - FE: 원본 파일이 서버로 올라가지 않고 표를 먼저 보여준다

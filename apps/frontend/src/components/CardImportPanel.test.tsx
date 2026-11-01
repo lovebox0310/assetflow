@@ -7,6 +7,7 @@ import samsungCsv from "../../../../samples/card/anonymized/samsungcard-personal
 import { CardImportPanel } from "./CardImportPanel";
 import { clearInflight } from "../api/client";
 import { detectCardCompany, inspectContainer } from "../lib/card/detect-card.mjs";
+import * as XLSX from "xlsx";
 import { clearToken, saveToken } from "../auth/authStore";
 
 /**
@@ -87,11 +88,43 @@ describe("CardImportPanel (§29.7 흐름 이관)", () => {
     expect(screen.queryByPlaceholderText(/비밀번호/i)).toBeNull();
   });
 
-  it("xlsx(zip)는 아직 미지원 안내", async () => {
+  it("평문 XLSX 도 CSV 와 같은 파서·검토 흐름을 탄다 (§29.2)", async () => {
+    render(<CardImportPanel />);
+    const input = screen.getByTestId("card-file") as HTMLInputElement;
+    // 실제 익명화 삼성카드 샘플을 xlsx 로 저장한 파일 — 조작된 대역이 아니다.
+    const bytes = new Uint8Array(XLSX.write(XLSX.read(SAMSUNG_TEXT, { type: "string" }), { type: "array", bookType: "xlsx" }));
+    const file = new File([bytes as BlobPart], "statement.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    Object.defineProperty(input, "files", { value: [file], configurable: true });
+    fireEvent.change(input);
+
+    expect(await screen.findByLabelText("가져온 카드 내역 검토")).toBeDefined();
+    // CSV 경로와 같은 가맹점이 잡힌다.
+    await screen.findByText("합성한식당");
+  });
+
+  it("카드사 표가 없는 XLSX 는 카드사 미판별로 거절한다", async () => {
+    render(<CardImportPanel />);
+    const input = screen.getByTestId("card-file") as HTMLInputElement;
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["메모", "값"], ["a", 1]]), "Sheet1");
+    const bytes = new Uint8Array(XLSX.write(wb, { type: "array", bookType: "xlsx" }));
+    Object.defineProperty(input, "files", {
+      value: [new File([bytes as BlobPart], "statement.xlsx")],
+      configurable: true,
+    });
+    fireEvent.change(input);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/카드사 명세 표를 찾지 못했습니다/);
+  });
+
+  it("깨진 zip 은 읽기 실패로 안내한다 (판별 실패와 구분)", async () => {
     render(<CardImportPanel />);
     chooseFile(new Uint8Array([0x50, 0x4b, 0x03, 0x04]));
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toMatch(/xlsx 파일은 지원하지 않습니다/);
+    expect(alert.textContent).toMatch(/XLSX 파일을 읽지 못했습니다/);
   });
 
   it("판별 불가 파일은 거절한다", async () => {

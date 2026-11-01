@@ -14,7 +14,7 @@ The `apps/` directory contains two implementation workspaces: `frontend/` (brows
 | Task | Location | Notes |
 |------|----------|-------|
 | Frontend code | `apps/frontend/` | SheetJS integration for card statement preview |
-| Backend code | `apps/backend/` | Apache POI for server-side re-validation |
+| Backend code | `apps/backend/` | Server-side re-validation of normalized card rows (POI not implemented yet, §53.1 B2) |
 | Shared contract | `samples/card/card-columns.json` | Single source of truth for column schema |
 | Agent configs | `.opencode/agent/` | Five subagent role definitions |
 
@@ -25,7 +25,7 @@ The `apps/` directory contains two implementation workspaces: `frontend/` (brows
 
 ## CONVENTIONS
 - Both frontend and backend must read the same column contract (`samples/card/card-columns.json`) to prevent parser drift.
-- Frontend uses SheetJS for browser-side preview; backend uses Apache POI for re-validation.
+- Frontend uses SheetJS for browser-side preview (CSV + plaintext XLSX); the backend re-validates the normalized rows against the contract. POI-based file re-validation is still a backlog item.
 - Follow the permission boundaries defined in `.opencode/agent/` – only `developer` can write files freely.
 
 ## ANTI-PATTERNS
