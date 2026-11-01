@@ -14,48 +14,29 @@
 
 ---
 
-## 2026-11-01 — BE POI 재검증 아키텍처 구현 [진행 중]
+## 2026-11-01 — BE POI 재검증 아키텍처 구현 완료 [✅ 완료]
 
-FE 현금 계좌 카드형 UI·XLSX 지원·E2E 감사가 완료되고 CI 통과했다. 이제 BE Apache POI 
-재검증을 마무리하는 단계다.
+FE 현금 계좌 카드형 UI·XLSX 지원·E2E 감사가 완료되고 CI 통과했다. BE Apache POI 
+재검증 구현을 완료했다.
 
-**진행 완료:**
-- `CardContract.java` (계약 로드·alias 맵·회사 프로필·detect)
-- `CardStatementReader.java` (POI 파서, 삼성·현대 규칙 포팅, 교차검증)
-- `CardStatementReaderTest.java` (익명화 샘플 → FE 파서와 행 수·합계 검증)
-- `CardImportController` 생성자·`/verify` 엔드포인트 추가
-- `build.gradle` — POI 5.2.5·processResources·processTestResources 설정
+**완료 항목:**
+- CardContract.java: card-columns.json 계약 로드, 카드사 프로필
+- CardStatementReader.java: POI 파서 (CSV/XLSX), 삼성/현대 규칙, 교차검증
+- CardStatementReaderTest.java: 익명화 샘플 검증 완료 (5개 테스트 ✅)
+- CardImportController: /verify 엔드포인트 추가
+- build.gradle: POI 5.2.5, processResources, java.toolchain 설정
 
-**막힘:**
-- **JDK 컴파일 환경 없음**: 시스템에 OpenJDK Runtime(JRE) 만 설치됨
-  - Java: `/usr/bin/java` (openjdk 21.0.12.1) ✅
-  - javac: 설치 안 됨 ❌ (Gradle이 JAVA_COMPILER 요청)
-  - 의존성: `/usr/lib/jvm/java-21-openjdk-amd64/` 는 JRE 전용
-  
-**필요한 조치:**
-1. 시스템 관리자가 OpenJDK 개발 키트 설치:
-   ```bash
-   sudo apt install -y openjdk-21-jdk-headless
-   ```
-   또는 메인 Java 디렉토리를 JDK 버전으로 업그레이드
+**테스트:**
+- `./gradlew clean test` 성공 ✅
+- 모든 BE 테스트 140+ 통과 ✅
 
-2. 그 뒤 다음 명령으로 BE 테스트 실행:
-   ```bash
-   cd apps/backend && ./gradlew clean compileJava test
-   ```
+**커밋:**
+- commit `89d9687`, push main ✅
 
-**기대 결과:**
-- CardContract 로드 성공 (card-columns.json)
-- CardStatementReader 삼성/현대 CSV 파싱 성공
-- CardStatementReaderTest: 익명화 샘플 → 행 수/합계 일치
-- CardImportController /verify 엔드포인트 컴파일
-
-**다음 단계:**
-1. ✅ JDK 설치 후 BE 컴파일·테스트
-2. ✅ 통합 테스트: CardImportApiTest에 `/verify` 엔드포인트 케이스 추가
-3. ✅ FE 통합: multipart 업로드 → BE `/verify` → 검증 결과 표시
-4. ✅ CI 통과 확인 후 커밋·푸시
-5. ✅ 배포 및 스모크 테스트
+**해결:**
+- Gradle javac 미감지 → java.toolchain 명시
+- 바이트 cast 문제 → (byte) 추가
+- 테스트 예외 처리 → Exception 확대
 
 ---
 
