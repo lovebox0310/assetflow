@@ -1,13 +1,6 @@
 import { test, expect } from "@playwright/test";
-import {
-  authToken,
-  cardCompanyGroupsResponse,
-  cashflowResponse,
-  monthlyCategoriesResponse,
-  monthlyIncomeResponse,
-  settingsResponse,
-  summaryResponse,
-} from "./fixtures";
+import { authToken } from "./fixtures";
+import { mockDashboardApi } from "./dashboard-mocks";
 
 /**
  * 레이아웃 실측 — jsdom 은 레이아웃을 계산하지 않으므로 가로 넘침은
@@ -15,18 +8,7 @@ import {
  */
 test.describe("DashboardPage 레이아웃 실측", () => {
   test.beforeEach(async ({ page }) => {
-    await page.route(/\/api\/v1\/.*/, async (route) => {
-      const pathname = new URL(route.request().url()).pathname;
-      if (pathname === "/api/v1/dashboard/summary") return route.fulfill({ json: summaryResponse() });
-      if (pathname === "/api/v1/dashboard/cashflow") return route.fulfill({ json: cashflowResponse() });
-      if (pathname === "/api/v1/dashboard/monthly-income") return route.fulfill({ json: monthlyIncomeResponse() });
-      if (pathname === "/api/v1/assets/card-imports/monthly-categories")
-        return route.fulfill({ json: monthlyCategoriesResponse() });
-      if (pathname === "/api/v1/assets/card-imports/by-card")
-        return route.fulfill({ json: cardCompanyGroupsResponse() });
-      if (pathname === "/api/v1/settings") return route.fulfill({ json: settingsResponse() });
-      return route.fulfill({ status: 404, body: "Not mocked: " + pathname });
-    });
+    await mockDashboardApi(page);
 
     await page.addInitScript((token) => {
       localStorage.setItem("assetflow.token", token);
