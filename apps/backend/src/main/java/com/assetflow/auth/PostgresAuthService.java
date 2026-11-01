@@ -2,6 +2,7 @@ package com.assetflow.auth;
 
 import com.assetflow.auth.dto.LoginRequest;
 import com.assetflow.auth.dto.LoginResponse;
+import com.assetflow.auth.dto.SignupRequest;
 import com.assetflow.common.api.AuthRequiredException;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -59,5 +60,39 @@ public class PostgresAuthService implements AuthService {
         if (updated == 0) {
             throw new com.assetflow.common.api.NotFoundException("user " + email);
         }
+    }
+
+    @Override
+    public LoginResponse signup(SignupRequest request) {
+        if (request.getEmail() == null || request.getPassword() == null) {
+            throw new IllegalArgumentException("Email and password are required");
+        }
+        if (request.getPassword().length() < MIN_PASSWORD_LENGTH) {
+            throw new IllegalArgumentException("Password must be at least " + MIN_PASSWORD_LENGTH + " characters");
+        }
+        // 간단한 이메일 검증
+        if (!request.getEmail().contains("@")) {
+            throw new IllegalArgumentException("Invalid email format");
+        }
+        
+        // 중복 확인
+        List<String> existing = jdbc.queryForList(
+                "SELECT email FROM users WHERE email = ?", String.class, request.getEmail());
+        if (!existing.isEmpty()) {
+            throw new IllegalArgumentException("Email already registered");
+        }
+        
+        String passwordHash = encoder.encode(request.getPassword());
+        String displayName = request.getDisplayName() != null ? request.getDisplayName() : request.getEmail();
+        
+        int inserted = jdbc.update(
+                "INSERT INTO users (email, password_hash, display_name) VALUES (?, ?, ?)",
+                request.getEmail(), passwordHash, displayName);
+        
+        if (inserted == 0) {
+            throw new IllegalArgumentException("Failed to create user");
+        }
+        
+        return new LoginResponse(tokenService.issue(request.getEmail()), System.currentTimeMillis() + 3_600_000);
     }
 }
