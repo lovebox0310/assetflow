@@ -413,7 +413,7 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
                 loadCardGroups(from, to);
               }}
               placeholder={["시작", "종료"]}
-              style={{ minWidth: 320 }}
+              style={{ flex: "1 1 220px", minWidth: 0, maxWidth: 360 }}
             />
           </div>
           {cardGroupsRangeNotice ? (
@@ -467,7 +467,7 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
                 void loadTrend(from, to);
               }}
               placeholder={["시작", "종료"]}
-              style={{ minWidth: 320 }}
+              style={{ flex: "1 1 220px", minWidth: 0, maxWidth: 360 }}
             />
           </div>
           {trendRangeNotice ? (
