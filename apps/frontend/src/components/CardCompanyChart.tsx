@@ -89,58 +89,125 @@ export function CardCompanyChart({ groups, from, to }: CardCompanyChartProps) {
 
   return (
     <div style={{ width: "100%" }}>
-      <div
-        role="img"
-        aria-label={`카드별 본인·가족 사용 내역 — 총 ${formatKrwExact(total)}, 본인 ${formatKrwExact(selfTotal)}, 가족 ${formatKrwExact(familyTotal)}`}
-        style={{ width: "100%", height: 320 }}
+      <figure style={{ margin: 0 }}>
+        <figcaption className="sr-only" style={{ marginBottom: 8 }}>
+          {`카드별 본인·가족 사용 내역 — 총 ${formatKrwExact(total)}, 본인 ${formatKrwExact(selfTotal)}, 가족 ${formatKrwExact(familyTotal)}`}
+        </figcaption>
+        <div
+          role="img"
+          aria-label={`카드별 본인·가족 사용 내역 — 총 ${formatKrwExact(total)}, 본인 ${formatKrwExact(selfTotal)}, 가족 ${formatKrwExact(familyTotal)}`}
+          style={{ width: "100%", height: 320 }}
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+              <CartesianGrid stroke="var(--af-border)" strokeDasharray="3 3" vertical={false} />
+              <XAxis
+                dataKey="month"
+                tickFormatter={formatMonthTick}
+                tick={{ fill: "var(--af-muted-foreground)", fontSize: 12 }}
+                stroke="var(--af-border)"
+              />
+              <YAxis
+                tickFormatter={(value) => formatKrwAbbr(Number(value))}
+                tick={{ fill: "var(--af-muted-foreground)", fontSize: 12 }}
+                stroke="var(--af-border)"
+                width={56}
+              />
+              <Tooltip
+                formatter={(value, name) => {
+                  const [company, relation] = String(name).split("|");
+                  return [formatKrwExact(Number(value)), `${company} · ${relation}`];
+                }}
+                cursor={{ fill: "var(--af-secondary)" }}
+                contentStyle={{
+                  background: "var(--af-card)",
+                  border: "1px solid var(--af-border)",
+                  borderRadius: 8,
+                  color: "var(--af-foreground)",
+                }}
+              />
+              <Legend
+                formatter={(value) => String(value).replace("|", " · ")}
+                wrapperStyle={{ color: "var(--af-foreground)" }}
+              />
+              {companyOrder.map((company) =>
+                RELATIONS.map((relation) => (
+                  <Bar
+                    key={`${company}|${relation}`}
+                    dataKey={`${company}|${relation}`}
+                    name={`${company}|${relation}`}
+                    stackId={company}
+                    fill={RELATION_COLORS[relation]}
+                    isAnimationActive={false}
+                  />
+                )),
+              )}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </figure>
+
+      {/* 스크린리더용 데이터 테이블 (Sprint 1.1 접근성) */}
+      <table
+        className="sr-only"
+        style={{
+          borderCollapse: "collapse",
+          width: "100%",
+          marginTop: 12,
+        }}
       >
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-            <CartesianGrid stroke="var(--af-border)" strokeDasharray="3 3" vertical={false} />
-            <XAxis
-              dataKey="month"
-              tickFormatter={formatMonthTick}
-              tick={{ fill: "var(--af-muted-foreground)", fontSize: 12 }}
-              stroke="var(--af-border)"
-            />
-            <YAxis
-              tickFormatter={(value) => formatKrwAbbr(Number(value))}
-              tick={{ fill: "var(--af-muted-foreground)", fontSize: 12 }}
-              stroke="var(--af-border)"
-              width={56}
-            />
-            <Tooltip
-              formatter={(value, name) => {
-                const [company, relation] = String(name).split("|");
-                return [formatKrwExact(Number(value)), `${company} · ${relation}`];
-              }}
-              cursor={{ fill: "var(--af-secondary)" }}
-              contentStyle={{
-                background: "var(--af-card)",
-                border: "1px solid var(--af-border)",
-                borderRadius: 8,
-                color: "var(--af-foreground)",
-              }}
-            />
-            <Legend
-              formatter={(value) => String(value).replace("|", " · ")}
-              wrapperStyle={{ color: "var(--af-foreground)" }}
-            />
+        <caption style={{ textAlign: "left", marginBottom: 8, fontWeight: 600 }}>
+          카드별 본인·가족 사용 내역 데이터 ({from} ~ {to})
+        </caption>
+        <thead>
+          <tr>
+            <th style={{ textAlign: "left", padding: "8px 8px 8px 0", borderBottom: "1px solid currentColor" }}>
+              월
+            </th>
+            {companyOrder.map((company) => (
+              <th
+                key={company}
+                colSpan={RELATIONS.length}
+                style={{ textAlign: "center", padding: "8px 8px 8px 0", borderBottom: "1px solid currentColor" }}
+              >
+                {company}
+              </th>
+            ))}
+          </tr>
+          <tr>
+            <th style={{ textAlign: "left", padding: "8px 8px 8px 0", borderBottom: "1px solid currentColor" }}>
+              구분
+            </th>
             {companyOrder.map((company) =>
               RELATIONS.map((relation) => (
-                <Bar
+                <th
                   key={`${company}|${relation}`}
-                  dataKey={`${company}|${relation}`}
-                  name={`${company}|${relation}`}
-                  stackId={company}
-                  fill={RELATION_COLORS[relation]}
-                  isAnimationActive={false}
-                />
+                  style={{ textAlign: "right", padding: "8px 8px 8px 0", borderBottom: "1px solid currentColor" }}
+                >
+                  {relation}
+                </th>
               )),
             )}
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+          </tr>
+        </thead>
+        <tbody>
+          {points.map((point) => (
+            <tr key={point.month}>
+              <td style={{ textAlign: "left", padding: "8px 8px 8px 0" }}>{point.month}</td>
+              {companyOrder.map((company) =>
+                RELATIONS.map((relation) => (
+                  <td
+                    key={`${company}|${relation}`}
+                    style={{ textAlign: "right", padding: "8px 8px 8px 0" }}
+                  >
+                    {formatKrwExact((point as Record<string, number>)[`${company}|${relation}`] ?? 0)}
+                  </td>
+                )),
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

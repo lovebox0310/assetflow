@@ -30,14 +30,19 @@ body {
   color-scheme: dark;
 }
 
-/* 테마 전환을 부드럽게 — 색 계열만 전이한다 (§28.4) */
+/* 테마 전환을 부드럽게 — 색 계열만 전이한다 (§28.4)
+   다크모드 토글 시 200ms ease-in-out 으로 부드러운 색상 전환 (Sprint 1.1) */
 body,
 .ant-card,
 .ant-table,
-.ant-layout {
-  transition: background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
-    color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
-    border-color 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+.ant-layout,
+.ant-btn,
+.ant-input,
+input,
+button {
+  transition: background-color 0.2s ease-in-out,
+    color 0.2s ease-in-out,
+    border-color 0.2s ease-in-out;
 }
 
 /* §35 컨테이너: max 1200px, 거터 모바일 16px / 데스크톱(>=992) 24px */
@@ -117,7 +122,7 @@ body,
   font: inherit;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
 }
 
 /* 주 액션(잉크) hover/active — 잉크를 살짝 밝게/어둡게 (§28.5).
@@ -283,4 +288,17 @@ body,
 /* 스킵 링크 이동 대상(#main): 포커스는 이동에만 쓰고 육안 링은 띄우지 않는다. */
 #main:focus {
   outline: none;
+}
+
+/* sr-only: 스크린리더만 읽고 시각적으로 숨김 (§70 접근성, Sprint 1.1) */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }
