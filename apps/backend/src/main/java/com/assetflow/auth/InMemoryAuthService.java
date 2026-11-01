@@ -2,6 +2,7 @@ package com.assetflow.auth;
 
 import com.assetflow.auth.dto.LoginRequest;
 import com.assetflow.auth.dto.LoginResponse;
+import com.assetflow.auth.dto.SignupRequest;
 import com.assetflow.common.api.AuthRequiredException;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -24,6 +25,7 @@ public class InMemoryAuthService implements AuthService {
     private final TokenService tokenService;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
     private String currentHash = SEED_HASH;
+    private String currentEmail = SEED_EMAIL;
 
     public InMemoryAuthService(TokenService tokenService) {
         this.tokenService = tokenService;
@@ -33,7 +35,7 @@ public class InMemoryAuthService implements AuthService {
         if (request.getEmail() == null || request.getPassword() == null) {
             throw new IllegalArgumentException("Invalid credentials");
         }
-        boolean ok = SEED_EMAIL.equals(request.getEmail())
+        boolean ok = currentEmail.equals(request.getEmail())
                 && encoder.matches(request.getPassword(), currentHash);
         if (!ok) {
             // §21: 계정 존재 여부를 노출하지 않는 공통 메시지
@@ -50,9 +52,27 @@ public class InMemoryAuthService implements AuthService {
         if (newPassword.length() < MIN_PASSWORD_LENGTH) {
             throw new IllegalArgumentException("new password must be at least " + MIN_PASSWORD_LENGTH + " characters");
         }
-        if (!SEED_EMAIL.equals(email) || !encoder.matches(currentPassword, currentHash)) {
+        if (!currentEmail.equals(email) || !encoder.matches(currentPassword, currentHash)) {
             throw new AuthRequiredException("Invalid credentials");
         }
         currentHash = encoder.encode(newPassword);
+    }
+
+    @Override
+    public LoginResponse signup(SignupRequest request) {
+        if (request.getEmail() == null || request.getPassword() == null) {
+            throw new IllegalArgumentException("Email and password are required");
+        }
+        if (request.getPassword().length() < MIN_PASSWORD_LENGTH) {
+            throw new IllegalArgumentException("Password must be at least " + MIN_PASSWORD_LENGTH + " characters");
+        }
+        // 간단한 이메일 검증
+        if (!request.getEmail().contains("@")) {
+            throw new IllegalArgumentException("Invalid email format");
+        }
+        // InMemory 구현: 단일 사용자만 지원하므로 기존 사용자 업데이트
+        this.currentEmail = request.getEmail();
+        this.currentHash = encoder.encode(request.getPassword());
+        return new LoginResponse(tokenService.issue(request.getEmail()), System.currentTimeMillis() + 3_600_000);
     }
 }

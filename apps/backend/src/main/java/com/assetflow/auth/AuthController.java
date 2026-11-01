@@ -3,6 +3,7 @@ package com.assetflow.auth;
 import com.assetflow.auth.dto.LoginRequest;
 import com.assetflow.auth.dto.LoginResponse;
 import com.assetflow.auth.dto.PasswordUpdateRequest;
+import com.assetflow.auth.dto.SignupRequest;
 import com.assetflow.common.api.ApiResponse;
 import com.assetflow.settings.AuthEmailResolver;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -27,6 +28,13 @@ public class AuthController {
     public ApiResponse<LoginResponse> login(@RequestBody LoginRequest request) {
         LoginResponse response = authService.login(request);
         return new ApiResponse<>("OK", "Login success", response);
+    }
+
+    /** 회원가입 (Sprint 1.1 임시, 프로덕션 미사용) */
+    @PostMapping("/signup")
+    public ApiResponse<LoginResponse> signup(@RequestBody SignupRequest request) {
+        LoginResponse response = authService.signup(request);
+        return new ApiResponse<>("OK", "Signup success", response);
     }
 
     /** 비밀번호 변경 — Bearer 인증 필요. WebConfig 에서 /api/v1/auth/password 는 보호 경로로 등록한다. */
