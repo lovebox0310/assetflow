@@ -136,10 +136,14 @@ export function App() {
   return (
     <LoginPage
       onSuccess={() => {
-        setAuthed(true);
         // §54.4: 로그인 직후 네이버 시세로 투자 현재가를 한 번 갱신한다.
         // 실패해도 로그인 흐름은 그대로다(저장된 현재가 사용).
         void refreshHoldingPrices().catch(() => undefined);
+        // 상태 업데이트를 microtask queue에 넣어서 UI 업데이트가 먼저 완료되게 한다
+        Promise.resolve().then(() => {
+          setAuthed(true);
+          navigate("dashboard");
+        });
       }}
     />
   );
