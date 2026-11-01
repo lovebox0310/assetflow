@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Alert, Button, Card, Select, Space, Table, Tag, Typography } from "antd";
 import contractJson from "../../../../samples/card/card-columns.json";
 import { detectCardCompany, inspectContainer, parserFor } from "../lib/card/detect-card.mjs";
+import { sheetCsvCandidates } from "../lib/card/card-xlsx.mjs";
 import {
   getImportedRowKeys,
   getMerchantRules,
@@ -40,6 +41,59 @@ export function CardImportPanel() {
       .catch(() => setDupKeys(new Set()));
   }, []);
 
+  /**
+   * 명세 텍스트(CSV 또는 xlsx 시트를 CSV 로 바꾼 것)를 판별·파싱해 검토 단계로 넘긴다.
+   * 카드사 판별은 계약의 headerSignature 가 한다(§29.7).
+   */
+  const ingestText = useCallback(async (text: string) => {
+    const company = detectCardCompany(text, contract);
+    const module_ = parserFor(company);
+    if (!module_) {
+      throw new Error("카드사를 판별할 수 없습니다. 지원 형식은 삼성카드/현대카드 CSV·XLSX입니다.");
+    }
+    const parserMod = await import(`../lib/card/${module_.replace(/\.mjs$/, "")}.mjs`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const parse = (parserMod as any)[company === "samsungcard" ? "parseSamsungCardStatement" : "parseHyundaiCardStatement"];
+    const parsed = parse(text, contract);
+
+    // 가맹점 단위 그룹(§29.7)
+    const map = new Map<string, { count: number; gross: number; rows: CardImportRow[] }>();
+    for (const r of parsed.rows) {
+      const g = map.get(r.merchantName) ?? { count: 0, gross: 0, rows: [] };
+      g.count++;
+      g.gross += r.grossAmount;
+      g.rows.push(r as CardImportRow);
+      map.set(r.merchantName, g);
+    }
+    const list = [...map.entries()].map(([merchant, v]) => ({ merchant, ...v }));
+    setGroups(list);
+    const merchants = list.map((g) => g.merchant);
+    // §55.8.9: 가맹점 대표 업종(첫 비어 있지 않은 값)을 자동 분류 3순위 힌트로 보낸다.
+    const businessCategories = Object.fromEntries(
+      list
+        .map((g) => [
+          g.merchant,
+          g.rows.find((r) => r.businessCategory?.trim())?.businessCategory?.trim() ?? "",
+        ] as const)
+        .filter(([, businessCategory]) => businessCategory !== ""),
+    );
+    const initialRules: Record<string, MerchantRule> = Object.fromEntries(
+      merchants.map((m) => [m, { category: "", subCategory: "" }]),
+    );
+    try {
+      const fetched = await getMerchantRules(merchants, businessCategories);
+      for (const m of merchants) {
+        if (fetched[m]) {
+          initialRules[m] = fetched[m];
+        }
+      }
+    } catch {
+      // 규칙 조회 실패 시 미분류 상태로 진행 — 반영은 가능해야 한다.
+    }
+    setRules(initialRules);
+    setPhase("review");
+  }, []);
+
   const onFile = useCallback(async (file: File) => {
     setPhase("parsing");
     setErrorText("");
@@ -55,65 +109,25 @@ export function CardImportPanel() {
         return;
       }
       if (container === "zip") {
-        setErrorText("아직 xlsx 파일은 지원하지 않습니다. CSV 파일로 올려 주세요.");
-        setPhase("error");
+        // 평문 xlsx — 시트를 CSV 로 바꿔 CSV 와 같은 파서·검증 경로를 탄다.
+        const candidates = await sheetCsvCandidates(bytes);
+        const chosen = candidates.find((c) => detectCardCompany(c.csv, contract));
+        if (!chosen) {
+          setErrorText("XLSX 에서 카드사 명세 표를 찾지 못했습니다. 삼성카드/현대카드 명세인지 확인해 주세요.");
+          setPhase("error");
+          return;
+        }
+        await ingestText(chosen.csv);
         return;
       }
 
       const text = new TextDecoder("utf-8").decode(bytes);
-      const company = detectCardCompany(text, contract);
-      const module_ = parserFor(company);
-      if (!module_) {
-        setErrorText("카드사를 판별할 수 없습니다. 지원 형식은 삼성카드/현대카드 CSV입니다.");
-        setPhase("error");
-        return;
-      }
-      const parserMod = await import(`../lib/card/${module_.replace(/\.mjs$/, "")}.mjs`);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const parse = (parserMod as any)[company === "samsungcard" ? "parseSamsungCardStatement" : "parseHyundaiCardStatement"];
-      const parsed = parse(text, contract);
-
-      // 가맹점 단위 그룹(§29.7)
-      const map = new Map<string, { count: number; gross: number; rows: CardImportRow[] }>();
-      for (const r of parsed.rows) {
-        const g = map.get(r.merchantName) ?? { count: 0, gross: 0, rows: [] };
-        g.count++;
-        g.gross += r.grossAmount;
-        g.rows.push(r as CardImportRow);
-        map.set(r.merchantName, g);
-      }
-      const list = [...map.entries()].map(([merchant, v]) => ({ merchant, ...v }));
-      setGroups(list);
-      const merchants = list.map((g) => g.merchant);
-      // §55.8.9: 가맹점 대표 업종(첫 비어 있지 않은 값)을 자동 분류 3순위 힌트로 보낸다.
-      const businessCategories = Object.fromEntries(
-        list
-          .map((g) => [
-            g.merchant,
-            g.rows.find((r) => r.businessCategory?.trim())?.businessCategory?.trim() ?? "",
-          ] as const)
-          .filter(([, businessCategory]) => businessCategory !== ""),
-      );
-      const initialRules: Record<string, MerchantRule> = Object.fromEntries(
-        merchants.map((m) => [m, { category: "", subCategory: "" }]),
-      );
-      try {
-        const fetched = await getMerchantRules(merchants, businessCategories);
-        for (const m of merchants) {
-          if (fetched[m]) {
-            initialRules[m] = fetched[m];
-          }
-        }
-      } catch {
-        // 규칙 조회 실패 시 미분류 상태로 진행 — 반영은 가능해야 한다.
-      }
-      setRules(initialRules);
-      setPhase("review");
+      await ingestText(text);
     } catch (e) {
       setErrorText(e instanceof Error ? e.message : "파싱에 실패했습니다.");
       setPhase("error");
     }
-  }, []);
+  }, [ingestText]);
 
   const setCategory = useCallback((merchant: string, category: string) => {
     setRules((prev) => {
@@ -192,14 +206,15 @@ export function CardImportPanel() {
             <input
               data-testid="card-file"
               type="file"
-              accept=".csv,text/csv"
+              accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) void onFile(f);
               }}
             />
             <Typography.Text type="secondary" style={{ display: "block", marginTop: 4 }}>
-              삼성카드/현대카드 CSV (UTF-8) 를 올리면 가맹점별로 확인 후 반영합니다.
+              삼성카드/현대카드 CSV(UTF-8) 또는 평문 XLSX 를 올리면 가맹점별로 확인 후 반영합니다.
+              암호화된 XLSX 는 열지 않습니다.
               원본 파일은 서버로 올라가지 않습니다.
             </Typography.Text>
           </label>

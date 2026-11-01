@@ -14,6 +14,38 @@
 
 ---
 
+## 2026-11-01 — 카드 임포트 평문 XLSX 직접 지원 (§60)
+
+업로드 화면이 "아직 xlsx 파일은 지원하지 않습니다" 로 끝나던 것을, CSV 와 같은
+파서·검증 경로로 읽게 했다. 암호화(CFB) 파일 정책은 그대로다 — 열지 않는다.
+
+- 프런트엔드
+  - `lib/card/card-xlsx.mjs` 신규 — `sheetCsvCandidates(bytes)`: 시트마다 CSV 후보 생성
+    (SheetJS 동적 import, `cellDates` + `dateNF: yyyy-mm-dd`, 빈 행 제거)
+  - `CardImportPanel` — 파싱 본문을 `ingestText(text)` 로 분리해 CSV 와 XLSX 가 같은
+    경로를 탄다. zip 이면 카드사가 판별되는 첫 시트를 쓴다. `accept` 에 `.xlsx` 추가
+  - 읽기 실패("XLSX 파일을 읽지 못했습니다")와 카드사 미판별("카드사 명세 표를 찾지
+    못했습니다")을 다른 문구로 나눈다
+- 의존성
+  - `xlsx@0.20.3` (cdn.sheetjs.com tarball, lock 고정). npm 최신 0.18.5 는
+    CVE-2023-30533 이 있어 쓰지 않는다 — 근거는 §60.2. 결과물에서 xlsx 청크(~490KB)는
+    업로드 시점에만 로드된다
+- 테스트
+  - `card-xlsx.test.ts` — 시트 순서·빈 행 제거·쉼표 인용·날짜 ISO·깨진 zip 오류
+  - `CardImportPanel.test.tsx` — 실제 삼성카드 익명화 샘플을 xlsx 로 저장해 업로드 →
+    검토 단계 진입, 카드사 표 없는 xlsx 거절, 깨진 zip 안내
+- 문서
+  - `.ai/project.md` §60 신규, §29.8·§53.1 B1 갱신
+  - `AGENTS.md`·`apps/AGENTS.md`·`samples/card/README.md` 의 "BE Apache POI" 서술을
+    실제 상태(행 재검증, POI 미구현)로 정정
+- 검증
+  - FE `pnpm typecheck`·`lint`·`test`(207)·`e2e`(10)·`build` ✅
+- 남은 것
+  - [ ] 암호화 CFB 복호화 — 정책만 있고 구현이 없다(§29.5.1)
+  - [ ] BE Apache POI 재검증(§53.1 B2)
+
+---
+
 ## 2026-11-01 — 대시보드 현금 계좌 카드 UI · 모바일 레이아웃/접근성 실측
 
 프로토타입(`design/prototype/dashboard.html`)의 `.cash-grid`/`.cash-item` 에 맞춰
