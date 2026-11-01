@@ -239,6 +239,12 @@ body,
   font-size: 12px;
 }
 
+.af-cash-note {
+  margin: 12px 0 0;
+  color: var(--af-muted-foreground);
+  font-size: 12px;
+}
+
 .field-error,
 .form-error {
   margin: 0;

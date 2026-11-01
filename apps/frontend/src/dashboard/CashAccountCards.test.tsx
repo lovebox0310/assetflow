@@ -20,6 +20,8 @@ describe("CashAccountCards — 현금 계좌 카드형 목록", () => {
     expect(screen.getByText("6,200,000원")).toBeDefined();
     expect(screen.getByText("현금의 25.1%")).toBeDefined();
     expect(document.querySelectorAll(".af-cash-item")).toHaveLength(2);
+    // 합계와 비상금 지정 계좌 수를 한 줄로 요약한다.
+    expect(screen.getByText(/현금 합계 24,700,000원/)).toBeDefined();
   });
 
   it("비상금으로 지정된 계좌에만 태그와 강조 표시를 준다", () => {
@@ -32,6 +34,7 @@ describe("CashAccountCards — 현금 계좌 카드형 목록", () => {
     expect(card.textContent).toContain("비상금");
     // 지정되지 않은 계좌에는 태그가 없다.
     expect(document.querySelectorAll(".af-cash-item__tag")).toHaveLength(1);
+    expect(screen.getByText(/비상금으로 지정된 계좌 1개/)).toBeDefined();
   });
 
   it("현금 계좌가 없으면 빈 상태 문구를 보여 준다", () => {
