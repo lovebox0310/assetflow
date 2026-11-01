@@ -93,11 +93,55 @@ test.beforeEach(async ({ page }) => {
     expect(await columns()).toBeGreaterThanOrEqual(2);
   });
 
-  test("카드별 본인·가족 차트가 렌더된다", async ({ page }) => {    const section = page.locator("section", { has: page.getByRole("heading", { name: "카드별 본인·가족 사용 내역" }) });
+  test("카드별 본인·가족 차트가 렌더된다", async ({ page }) => {
+    const section = page.locator("section", { has: page.getByRole("heading", { name: "카드별 본인·가족 사용 내역" }) });
     await expect(section).toBeVisible();
     // 차트 컨테이너는 role="img" 와 요약 aria-label 을 갖는다.
     await expect(
       section.getByRole("img", { name: /카드별 본인·가족 사용 내역/ }),
     ).toBeVisible();
+  });
+
+  /**
+   * 실브라우저 접근성 실측 (스크린리더가 받는 트리 기준).
+   * jsdom 단위 테스트는 DOM 속성만 보므로, 브라우저가 실제로 계산한
+   * 접근성 트리(역할·이름)와 포커스 이동을 여기서 확인한다.
+   */
+  test("스킵 링크가 첫 Tab 대상이고 Enter 로 본문에 포커스가 이동한다", async ({ page }) => {
+    await page.keyboard.press("Tab");
+    const skip = page.getByRole("link", { name: "본문으로 건너뛰기" });
+    await expect(skip).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("main#main")).toBeFocused();
+  });
+
+  test("접근성 트리에 랜드마크·제목·목록 의미가 노출된다", async ({ page }) => {
+    await expect(page.getByRole("heading", { level: 1, name: "대시보드" })).toBeVisible();
+
+    const main = await page.locator("main#main").ariaSnapshot();
+    expect(main).toContain('heading "대시보드" [level=1]');
+    expect(main).toContain('heading "핵심 지표" [level=2]');
+    expect(main).toContain('heading "현금 2계좌" [level=2]');
+    // 현금 계좌는 목록 의미로 노출된다 (카드형이어도 ul/li 유지).
+    expect(main).toContain("list");
+    expect(main).toContain('listitem');
+    expect(main).toContain("우리 파킹통장");
+  });
+
+  test("제목 단계가 건너뛰지 않고 id 가 중복되지 않는다", async ({ page }) => {
+    const levels = await page.evaluate(() =>
+      [...document.querySelectorAll("h1,h2,h3,h4,h5,h6")].map((h) => Number(h.tagName.slice(1))),
+    );
+    // 첫 제목은 h1, 이후에는 직전 단계보다 2 이상 깊어지지 않는다.
+    expect(levels[0]).toBe(1);
+    for (let i = 1; i < levels.length; i += 1) {
+      expect(levels[i] - levels[i - 1]).toBeLessThanOrEqual(1);
+    }
+
+    const duplicateIds = await page.evaluate(() => {
+      const ids = [...document.querySelectorAll("[id]")].map((el) => el.id);
+      return ids.filter((id, index) => ids.indexOf(id) !== index);
+    });
+    expect(duplicateIds).toEqual([]);
   });
 });

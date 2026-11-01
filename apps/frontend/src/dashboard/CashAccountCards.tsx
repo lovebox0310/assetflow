@@ -24,27 +24,34 @@ export function CashAccountCards({
 
   const total = rows.reduce((sum, row) => sum + row.value, 0);
   const emergency = new Set(emergencyAccountIds);
+  const emergencyCount = rows.filter((row) => emergency.has(row.id)).length;
 
   return (
-    <ul className="af-cash-grid">
-      {rows.map((row) => {
-        const isEmergency = emergency.has(row.id);
-        return (
-          <li
-            key={row.id}
-            className={`af-cash-item${isEmergency ? " af-cash-item--emergency" : ""}`}
-          >
-            <div className="af-cash-item__top">
-              <span className="af-cash-item__label">{row.name}</span>
-              {isEmergency ? <span className="af-cash-item__tag">비상금</span> : null}
-            </div>
-            <p className="af-cash-item__amount af-num">{formatKrwExact(row.value)}</p>
-            <p className="af-cash-item__pct af-num">
-              현금의 {formatPercent(total > 0 ? (row.value / total) * 100 : 0)}
-            </p>
-          </li>
-        );
-      })}
-    </ul>
+    <>
+      <ul className="af-cash-grid">
+        {rows.map((row) => {
+          const isEmergency = emergency.has(row.id);
+          return (
+            <li
+              key={row.id}
+              className={`af-cash-item${isEmergency ? " af-cash-item--emergency" : ""}`}
+            >
+              <div className="af-cash-item__top">
+                <span className="af-cash-item__label">{row.name}</span>
+                {isEmergency ? <span className="af-cash-item__tag">비상금</span> : null}
+              </div>
+              <p className="af-cash-item__amount af-num">{formatKrwExact(row.value)}</p>
+              <p className="af-cash-item__pct af-num">
+                현금의 {formatPercent(total > 0 ? (row.value / total) * 100 : 0)}
+              </p>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="af-cash-note">
+        현금 합계 {formatKrwExact(total)}
+        {" · "}비상금으로 지정된 계좌 {emergencyCount}개
+      </p>
+    </>
   );
 }
