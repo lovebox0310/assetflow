@@ -14,6 +14,51 @@
 
 ---
 
+## 2026-11-01 — BE POI 재검증 아키텍처 구현 [진행 중]
+
+FE 현금 계좌 카드형 UI·XLSX 지원·E2E 감사가 완료되고 CI 통과했다. 이제 BE Apache POI 
+재검증을 마무리하는 단계다.
+
+**진행 완료:**
+- `CardContract.java` (계약 로드·alias 맵·회사 프로필·detect)
+- `CardStatementReader.java` (POI 파서, 삼성·현대 규칙 포팅, 교차검증)
+- `CardStatementReaderTest.java` (익명화 샘플 → FE 파서와 행 수·합계 검증)
+- `CardImportController` 생성자·`/verify` 엔드포인트 추가
+- `build.gradle` — POI 5.2.5·processResources·processTestResources 설정
+
+**막힘:**
+- **JDK 컴파일 환경 없음**: 시스템에 OpenJDK Runtime(JRE) 만 설치됨
+  - Java: `/usr/bin/java` (openjdk 21.0.12.1) ✅
+  - javac: 설치 안 됨 ❌ (Gradle이 JAVA_COMPILER 요청)
+  - 의존성: `/usr/lib/jvm/java-21-openjdk-amd64/` 는 JRE 전용
+  
+**필요한 조치:**
+1. 시스템 관리자가 OpenJDK 개발 키트 설치:
+   ```bash
+   sudo apt install -y openjdk-21-jdk-headless
+   ```
+   또는 메인 Java 디렉토리를 JDK 버전으로 업그레이드
+
+2. 그 뒤 다음 명령으로 BE 테스트 실행:
+   ```bash
+   cd apps/backend && ./gradlew clean compileJava test
+   ```
+
+**기대 결과:**
+- CardContract 로드 성공 (card-columns.json)
+- CardStatementReader 삼성/현대 CSV 파싱 성공
+- CardStatementReaderTest: 익명화 샘플 → 행 수/합계 일치
+- CardImportController /verify 엔드포인트 컴파일
+
+**다음 단계:**
+1. ✅ JDK 설치 후 BE 컴파일·테스트
+2. ✅ 통합 테스트: CardImportApiTest에 `/verify` 엔드포인트 케이스 추가
+3. ✅ FE 통합: multipart 업로드 → BE `/verify` → 검증 결과 표시
+4. ✅ CI 통과 확인 후 커밋·푸시
+5. ✅ 배포 및 스모크 테스트
+
+---
+
 ## 2026-11-01 — 운영·QA 실측: 해시 내비게이션 · axe 접근성 감사 (§53.1 A1·A2)
 
 자동화로 확인 가능한 범위에서 실브라우저 실측을 붙였다. 스크린리더 낭독과
