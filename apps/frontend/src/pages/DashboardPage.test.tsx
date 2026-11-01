@@ -153,8 +153,16 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     // 구성비 카드와 도넛 범례가 같은 유형명을 보일 수 있어 getAll 로 존재를 검사한다.
     expect(screen.getAllByText("부동산·기타").length).toBeGreaterThan(0);
     expect(screen.getByText("84.1% · 6.4억")).toBeDefined();
-    // 현금 계좌 섹션: summary 의 cash 계좌가 이름·금액으로 렌더
-    expect(screen.getByText(/우리 파킹통장/)).toBeDefined();
+    // 현금 계좌 섹션: summary 의 cash 계좌가 카드형으로 이름·금액·비중과 함께 렌더
+    expect(screen.getByText("우리 파킹통장")).toBeDefined();
+    expect(screen.getByText("현금의 74.9%")).toBeDefined();
+    // §59 설정의 비상금 통장(c1)에만 태그가 붙는다. (스위치 라벨에도 "비상금"이 있어 클래스로 확인)
+    await waitFor(() => {
+      const tagged = document.querySelector(".af-cash-item--emergency");
+      expect(tagged?.textContent).toContain("우리 파킹통장");
+      expect(tagged?.textContent).toContain("비상금");
+    });
+    expect(document.querySelectorAll(".af-cash-item--emergency")).toHaveLength(1);
     // 월별 현금흐름 표: 확정 3개월이 최신순으로 나온다
     expect(screen.getByText(monthKey(0))).toBeDefined();
     expect(screen.getByText(monthKey(1))).toBeDefined();

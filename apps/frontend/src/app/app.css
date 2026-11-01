@@ -180,6 +180,65 @@ body,
   }
 }
 
+/* 현금 계좌 카드 (프로토타입 .cash-grid / .cash-item).
+ * 반응형은 breakpoint 대신 컨테이너 폭을 따른다 — 이 섹션은 데스크톱에서
+ * 구성비와 나란히 절반 폭에 놓이므로 화면 폭 기준 열 수는 과대해진다. */
+.af-cash-grid {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.af-cash-item {
+  padding: 14px;
+  border: 1px solid var(--af-border);
+  border-radius: 8px;
+  background: var(--af-muted);
+}
+
+/* 비상금으로 지정된 계좌만 강조한다 — 나머지는 일반 현금성 계좌. */
+.af-cash-item--emergency {
+  border-color: var(--af-primary);
+  background: var(--af-card);
+}
+
+.af-cash-item__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.af-cash-item__label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.af-cash-item__tag {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--af-secondary);
+  color: var(--af-foreground);
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.af-cash-item__amount {
+  margin: 8px 0 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.af-cash-item__pct {
+  margin: 4px 0 0;
+  color: var(--af-muted-foreground);
+  font-size: 12px;
+}
+
 .field-error,
 .form-error {
   margin: 0;
