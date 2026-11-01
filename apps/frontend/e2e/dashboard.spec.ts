@@ -1,44 +1,10 @@
 import { test, expect } from "@playwright/test";
-import {
-  authToken,
-  cardCompanyGroupsResponse,
-  cashflowResponse,
-  monthlyCategoriesResponse,
-  monthlyIncomeResponse,
-  settingsResponse,
-  summaryResponse,
-} from "./fixtures";
+import { authToken } from "./fixtures";
+import { mockDashboardApi } from "./dashboard-mocks";
 
 test.describe("DashboardPage E2E", () => {
 test.beforeEach(async ({ page }) => {
-    // API 응답을 모의로 채워 백엔드 없이도 대시보드를 렌더링한다.
-    await page.route(/\/api\/v1\/.*/, async (route) => {
-      const url = new URL(route.request().url());
-      const pathname = url.pathname;
-      const search = url.search;
-
-      if (pathname === "/api/v1/dashboard/summary") {
-        return route.fulfill({ json: summaryResponse() });
-      }
-      if (pathname === "/api/v1/dashboard/cashflow") {
-        return route.fulfill({ json: cashflowResponse() });
-      }
-      if (pathname === "/api/v1/dashboard/monthly-income") {
-        return route.fulfill({ json: monthlyIncomeResponse() });
-      }
-      if (pathname === "/api/v1/assets/card-imports/monthly-categories") {
-        return route.fulfill({ json: monthlyCategoriesResponse() });
-      }
-      if (pathname === "/api/v1/assets/card-imports/by-card") {
-        return route.fulfill({ json: cardCompanyGroupsResponse() });
-      }
-      if (pathname === "/api/v1/settings") {
-        return route.fulfill({ json: settingsResponse() });
-      }
-
-      // 모의가 없는 엔드포인트는 404 로 남긴다.
-      return route.fulfill({ status: 404, body: "Not mocked: " + pathname + search });
-    });
+    await mockDashboardApi(page);
 
     // 인증 토큰을 미리 주입해 로그인 화면을 걷어낸다.
     await page.addInitScript((token) => {
