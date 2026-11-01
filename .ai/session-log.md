@@ -14,6 +14,41 @@
 
 ---
 
+## 2026-11-01 — 대시보드 현금 계좌 카드 UI · 모바일 레이아웃/접근성 실측
+
+프로토타입(`design/prototype/dashboard.html`)의 `.cash-grid`/`.cash-item` 에 맞춰
+현금 계좌 목록을 카드형으로 바꾸고, 실브라우저에서 레이아웃·접근성을 측정했다.
+
+- 프런트엔드
+  - `dashboard/CashAccountCards.tsx` 신규 — 계좌별 카드(이름·금액·현금 대비 비중),
+    비상금 지정 계좌만 태그(`비상금`)와 강조 테두리, 하단에 현금 합계·지정 계좌 수 요약
+  - `app.css` — `.af-cash-grid` 는 `auto-fit minmax(200px, 1fr)`. 이 섹션은 데스크톱에서
+    구성비와 절반 폭을 나누므로 화면 폭 기준 breakpoint 대신 컨테이너 폭을 따른다
+  - `DashboardPage` — 현금 섹션을 `CashAccountCards` 로 교체, `summary` 준비 전에는
+    `StateBlock` 상태만 보여 준다
+  - 조회 범위 `RangePicker` — `minWidth: 320` → `flex: 1 1 220px; min-width: 0; max-width: 360`
+- 고친 결함 (실측에서 발견)
+  - 360px 화면에서 `RangePicker` 가 카드 오른쪽을 16px 넘어 문서에 1px 가로 스크롤이 생겼다.
+    폭 고정값을 없애 카드 안으로 넣었다
+- 테스트
+  - `CashAccountCards.test.tsx` — 카드·비중·비상금 태그·합계·빈 상태·0원(NaN 방지)
+  - `DashboardPage.test.tsx` — 카드형 비중 표기와 비상금 태그 확인
+  - `e2e/dashboard.spec.ts` — 카드 렌더/강조, 360·1280 열 수(1 vs 다열), 스킵 링크
+    첫 Tab→Enter 로 `main` 포커스, 접근성 트리(랜드마크·h1/h2·목록), 제목 단계·id 중복
+  - `e2e/layout.spec.ts` 신규 — 360px 가로 스크롤 0, 조회 범위 컨트롤이 카드 안에 있음
+- 검증
+  - FE `pnpm typecheck`·`lint`·`test`(201)·`e2e`(10)·`build` ✅
+  - 운영 `GET /health` → `{"status":"UP"}` (배포본은 이전 빌드 `index-DJwQtPjg.js`)
+- 스테이징
+  - `/tmp/opencode/deploy/dist` — 최신 빌드(`index-LQxUI8qX.js`)로 교체. BE 변경 없음
+- 남은 것
+  - [ ] FE 재배포 — `sudo bash /tmp/opencode/deploy-assetflow.sh`
+  - [ ] 이슈 라벨 자동화 수정 푸시 — 브랜치 `infra/sprint-label-from-title` 준비됨.
+        OAuth 토큰에 `workflow` 스코프가 없어 push 거부(`gh auth refresh -s workflow` 필요)
+  - [ ] 스크린리더 실측(NVDA/VoiceOver)은 자동화 밖 — 접근성 트리까지만 확인했다
+
+---
+
 ## 2026-10-30 — 비상금 통장 복수 계좌(현금성 합산) (§59.6)
 
 사용자 요청: 비상금 통장은 **cash만**, **잔액 합산**, **용도가 다른 계좌는 대상에서 제외**.
