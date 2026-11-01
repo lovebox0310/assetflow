@@ -14,6 +14,34 @@
 
 ---
 
+## 2026-11-01 — Sprint 1 스모크 테스트 & 로그인 전환 수정 [✅ 완료]
+
+**로그인 흐름 개선:**
+- 문제: 로그인 성공 후 대시보드로 즉시 전환 안 됨 (새로고침 필요)
+- 원인: React setState 비동기 처리 + Promise 대기 없음
+- 해결: `Promise.resolve().then()` 으로 상태 업데이트 타이밍 제어
+- 결과: ✅ 대시보드로 즉시 전환
+
+**Playwright E2E 테스트 추가:**
+- e2e/login-smoke.spec.ts: 로그인 스모크 테스트
+  - `should login and navigate to dashboard immediately` ✅
+  - `should show error on invalid credentials` ✅
+- playwright.config.ts: 운영 환경 테스트 지원
+  - ignoreHTTPSErrors 활성화
+  - baseURL 환경변수 지원
+
+**전체 스모크 테스트 결과:**
+- BE 헬스체크: ✅ UP
+- 로그인 API: ✅ JWT 발급 성공
+- 보호된 API: ✅ 투자자산 조회 (8개 자산)
+- FE 접근: ✅ HTTP 200
+- Playwright E2E: ✅ 2/2 PASS
+
+**커밋:**
+- `bf8083b`: fix(frontend) 로그인 전환 + E2E 테스트
+
+---
+
 ## 2026-11-01 — BE POI 재검증 아키텍처 구현 완료 [✅ 완료]
 
 FE 현금 계좌 카드형 UI·XLSX 지원·E2E 감사가 완료되고 CI 통과했다. BE Apache POI 
