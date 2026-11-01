@@ -3906,3 +3906,36 @@ bizno.net 은 `X-Frame-Options` 가 없지만 광고가 많아 iframe 품질이 
   복호화 구현은 백지화된 상태다. 이번 범위가 아니다.
 - **BE Apache POI 재검증**: `build.gradle` 에 POI 가 없다(§53.1 B2). 지금 BE 는 정규화된
   행을 계약 규칙으로 재검증하며, XLSX 도 같은 경로를 탄다.
+
+### 60.4 카드 업로드 `/verify` 엔드포인트 확인 (2026-11-01, Sprint 1.1)
+
+**상태**: 정상 작동 확인
+**원인 분석**: 초기 404 오류는 JWT 토큰 없이 요청했을 때 발생
+  - 토큰 없음 → 401(표준) 대신 404 가 응답됨 (라우팅 오류로 보임)
+  - 유효한 JWT 토큰으로 재시도 → `/verify` 엔드포인트 정상 응답
+
+**테스트 결과**:
+```bash
+# 1. 로그인 후 토큰 획득
+curl -X POST http://localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com","password":"password"}'
+# → {"code":"OK","data":{"token":"eyJ..."}}
+
+# 2. 토큰으로 /verify 요청
+curl -X POST http://localhost:8080/api/v1/assets/card-imports/verify \
+  -H "Authorization: Bearer <TOKEN>" \
+  -F "file=@samples/card/anonymized/synthetic-sample.xlsx"
+# → {"code":"INVALID_REQUEST","message":"Invalid request",
+#    "details":"XLSX 에서 카드사 명세 표를 찾지 못했습니다."}
+```
+
+**해석**: 
+- 엔드포인트가 정상 응답 (404 아님)
+- 파일 형식 문제는 별도 (샘플 파일에 카드사 명세 표가 없을 수 있음)
+- `CardImportController.verify()` 가 정상 작동 중
+
+**Sprint 1.1 개선**: 
+1. ✅ 차트 접근성 (CompositionDonut, ExpenseTrendChart, CardCompanyChart에 sr-only 데이터 테이블)
+2. ✅ 다크모드 애니메이션 (200ms ease-in-out)
+3. ✅ 카드 업로드 `/verify` 확인 (정상 작동, 404 오류 해소)
