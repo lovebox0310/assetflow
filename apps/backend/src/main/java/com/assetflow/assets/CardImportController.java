@@ -12,15 +12,22 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
+
+import com.assetflow.assets.card.CardContract;
+import com.assetflow.assets.card.CardStatementReader;
 
 /**
  * 카드매입 임포트 확정 API (§41).
@@ -39,6 +46,7 @@ public class CardImportController {
     private final MerchantRuleLedger ruleLedger;
     private final CategoryClassifier categoryClassifier;
     private final ExpenseItemLedger expenseItemLedger;
+    private final CardStatementReader statementReader;
 
     public CardImportController(CardImportLedger ledger,
                                 MerchantRuleLedger ruleLedger,
@@ -48,6 +56,7 @@ public class CardImportController {
         this.ruleLedger = ruleLedger;
         this.categoryClassifier = categoryClassifier;
         this.expenseItemLedger = expenseItemLedger;
+        this.statementReader = new CardStatementReader(CardContract.loadDefault());
     }
 
     public record ImportRow(String rowKey, String approvedAt, String merchantName,
@@ -124,6 +133,55 @@ public class CardImportController {
             throw new IllegalArgumentException("month must be YYYY-MM");
         }
         return new ApiResponse<>("OK", "Card imports loaded", ledger.inMonth(month));
+    }
+
+    /**
+     * §29.2 BE 재검증: 업로드된 원본 평문 파일을 서버에서 다시 읽어
+     * 행 수·합계·교차검증을 계산한다. 아직 저장하지는 않는다.
+     * 암호화 파일은 열지 않는다(§29.5.1).
+     */
+    @PostMapping(value = "/card-imports/verify", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<Map<String, Object>> verify(@RequestPart("file") MultipartFile file) throws IOException {
+        if (file.isEmpty()) {
+            throw new IllegalArgumentException("파일이 비어 있습니다");
+        }
+        CardStatementReader.Result result = statementReader.read(file.getBytes());
+
+        long rowGross = 0, rowVat = 0, rowSupply = 0;
+        for (CardStatementReader.ParsedRow r : result.rows()) {
+            rowGross += r.grossAmount();
+            rowVat += r.vat();
+            rowSupply += r.supplyExVat();
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("company", result.company());
+        data.put("cardCompany", result.cardCompanyLabel());
+        data.put("rowCount", result.rows().size());
+        data.put("totals", Map.of("grossAmount", rowGross, "vat", rowVat, "supplyExVat", rowSupply));
+        if (result.declaredTotals() != null) {
+            CardStatementReader.DeclaredTotals d = result.declaredTotals();
+            Map<String, Object> declared = new LinkedHashMap<>();
+            declared.put("gross", d.gross());
+            declared.put("vat", d.vat());
+            if (d.count() != null) declared.put("count", d.count());
+            if (d.approved() != null) declared.put("approved", d.approved());
+            data.put("declaredTotals", declared);
+        }
+        if (result.crossCheck() != null) {
+            CardStatementReader.CrossCheck c = result.crossCheck();
+            data.put("crossCheck", Map.of(
+                    "grossOk", c.grossOk(),
+                    "vatOk", c.vatOk(),
+                    "countOk", c.countOk(),
+                    "grossDelta", c.grossDelta(),
+                    "vatDelta", c.vatDelta()
+            ));
+        }
+        data.put("warnings", result.warnings().stream()
+                .map(w -> Map.of("row", w.row(), "code", w.code(), "message", w.message()))
+                .toList());
+        return new ApiResponse<>("OK", "Statement verified", data);
     }
 
     /**
