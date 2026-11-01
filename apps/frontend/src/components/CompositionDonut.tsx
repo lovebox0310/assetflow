@@ -124,29 +124,72 @@ export function CompositionDonut({
   // §35 중단점: md(768px) 이상은 폭이 넓은 카드 — 도넛 좌측·범례 우측 세로 목록, 미만은 상하 스택
   const wide = Boolean(screens.md);
 
+  // 스크린리더용 데이터 테이블 (aria-label 로 차트 설명)
+  const dataTable = (
+    <table
+      className="sr-only"
+      style={{
+        borderCollapse: "collapse",
+        width: "100%",
+        marginTop: 12,
+      }}
+    >
+      <caption style={{ textAlign: "left", marginBottom: 8, fontWeight: 600 }}>
+        자산 구성비 데이터
+      </caption>
+      <thead>
+        <tr>
+          <th style={{ textAlign: "left", padding: "8px 8px 8px 0", borderBottom: "1px solid currentColor" }}>
+            유형
+          </th>
+          <th style={{ textAlign: "right", padding: "8px 8px 8px 0", borderBottom: "1px solid currentColor" }}>
+            금액
+          </th>
+          <th style={{ textAlign: "right", padding: "8px 0 8px 0", borderBottom: "1px solid currentColor" }}>
+            비중
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {slices.map((s) => (
+          <tr key={s.type}>
+            <td style={{ textAlign: "left", padding: "8px 8px 8px 0" }}>{s.label}</td>
+            <td style={{ textAlign: "right", padding: "8px 8px 8px 0" }}>{formatKrwExact(s.value)}</td>
+            <td style={{ textAlign: "right", padding: "8px 0 8px 0" }}>{s.percent.toFixed(1)}%</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
   const chart = (
-    <div style={{ width: wide ? 260 : "100%", maxWidth: 320, height: 240, flexShrink: 0, margin: "0 auto" }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
-          <Tooltip
-            formatter={(value, name) => [
-              formatKrwExact(Number(value)),
-              String(name),
-            ]}
-          />
-          <Pie
-            data={slices.map((s, i) => ({ name: s.label, value: s.value, fill: colorFor(i) }))}
-            dataKey="value"
-            nameKey="name"
-            innerRadius="55%"
-            outerRadius="85%"
-            paddingAngle={2}
-            stroke="var(--af-card)"
-            strokeWidth={2}
-          />
-        </PieChart>
-      </ResponsiveContainer>
-    </div>
+    <figure style={{ margin: 0, width: wide ? 260 : "100%", maxWidth: 320, flexShrink: 0 }}>
+      <figcaption className="sr-only" style={{ marginBottom: 8 }}>
+        자산 구성 도넛 차트 — {slices.map((s) => `${s.label} ${s.percent.toFixed(1)}%`).join(", ")}
+      </figcaption>
+      <div style={{ width: "100%", height: 240, margin: "0 auto" }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Tooltip
+              formatter={(value, name) => [
+                formatKrwExact(Number(value)),
+                String(name),
+              ]}
+            />
+            <Pie
+              data={slices.map((s, i) => ({ name: s.label, value: s.value, fill: colorFor(i) }))}
+              dataKey="value"
+              nameKey="name"
+              innerRadius="55%"
+              outerRadius="85%"
+              paddingAngle={2}
+              stroke="var(--af-card)"
+              strokeWidth={2}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+    </figure>
   );
 
   const legend =
@@ -155,17 +198,20 @@ export function CompositionDonut({
     : <LegendInline slices={slices} wide={wide} />;
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: wide ? "row" : "column",
-        alignItems: wide ? "center" : "stretch",
-        gap: wide ? 32 : 16,
-        width: "100%",
-      }}
-    >
-      {chart}
-      {legend}
-    </div>
+    <>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: wide ? "row" : "column",
+          alignItems: wide ? "center" : "stretch",
+          gap: wide ? 32 : 16,
+          width: "100%",
+        }}
+      >
+        {chart}
+        {legend}
+      </div>
+      {dataTable}
+    </>
   );
 }
