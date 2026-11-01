@@ -52,11 +52,11 @@ test.beforeEach(async ({ page }) => {
     const headings = await page.locator("h2").allTextContents();
     expect(headings).toEqual([
       "핵심 지표",
+      "자산 구성비",
+      expect.stringMatching(/^현금/),
       "카드별 본인·가족 사용 내역",
       "지출 추이",
       "월별 현금흐름",
-      "자산 구성비",
-      expect.stringMatching(/^현금/),
     ]);
   });
 
