@@ -66,8 +66,34 @@ test.beforeEach(async ({ page }) => {
     await expect(page.getByRole("heading", { name: /비상금|투자금 유지 개월/ })).toBeVisible();
   });
 
-  test("카드별 본인·가족 차트가 렌더된다", async ({ page }) => {
-    const section = page.locator("section", { has: page.getByRole("heading", { name: "카드별 본인·가족 사용 내역" }) });
+  test("현금 계좌가 카드형으로 렌더되고 비상금 계좌만 강조된다", async ({ page }) => {
+    const items = page.locator(".af-cash-item");
+    await expect(items).toHaveCount(2);
+    // 현금 합계 25,500,000 → 18,500,000 은 72.5%
+    await expect(items.first()).toContainText("우리 파킹통장");
+    await expect(items.first()).toContainText("18,500,000원");
+    await expect(items.first()).toContainText("현금의 72.5%");
+
+    const emergency = page.locator(".af-cash-item--emergency");
+    await expect(emergency).toHaveCount(1);
+    await expect(emergency).toContainText("비상금");
+  });
+
+  test("현금 계좌 카드는 좁은 화면 1열·넓은 화면 다열", async ({ page }) => {
+    const grid = page.locator(".af-cash-grid");
+    const columns = () =>
+      grid.evaluate((el) =>
+        getComputedStyle(el).gridTemplateColumns.split(" ").filter(Boolean).length,
+      );
+
+    await page.setViewportSize({ width: 360, height: 800 });
+    expect(await columns()).toBe(1);
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    expect(await columns()).toBeGreaterThanOrEqual(2);
+  });
+
+  test("카드별 본인·가족 차트가 렌더된다", async ({ page }) => {    const section = page.locator("section", { has: page.getByRole("heading", { name: "카드별 본인·가족 사용 내역" }) });
     await expect(section).toBeVisible();
     // 차트 컨테이너는 role="img" 와 요약 aria-label 을 갖는다.
     await expect(

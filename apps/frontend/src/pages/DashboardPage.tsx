@@ -31,6 +31,7 @@ import {
   netWorth,
 } from "../dashboard/metrics";
 import { AssetCompositionList } from "../dashboard/AssetCompositionList";
+import { CashAccountCards } from "../dashboard/CashAccountCards";
 import { buildExpenseTrend, lastMonthsRange, monthsBetween } from "../dashboard/expenseTrend";
 import { listCardCompanyGroups, listMonthlyCategoryTotals, type CardCompanyGroup, type MonthlyCategoryTotal } from "../api/cardImportApi";
 import { CardCompanyChart } from "../components/CardCompanyChart";
@@ -374,18 +375,12 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
           </Typography.Title>
           <Card>
             <StateBlock status={summaryStatus} onRetry={load} errorText={summaryError}>
-              {cashRows.length === 0 ? (
-                <Typography.Text type="secondary">현금성 계좌가 없습니다</Typography.Text>
-              ) : (
-                <ul className="af-composition">
-                  {cashRows.map((row) => (
-                    <li key={row.id}>
-                      <span>{row.name}</span>
-                      <span className="af-num">{formatKrwExact(row.value)}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              {dataReady ? (
+                <CashAccountCards
+                  rows={cashRows}
+                  emergencyAccountIds={settings?.emergencyAccountIds ?? []}
+                />
+              ) : null}
             </StateBlock>
           </Card>
         </section>
