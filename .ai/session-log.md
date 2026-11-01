@@ -14,6 +14,44 @@
 
 ---
 
+## 2026-11-01 — Playwright 디자인 검증 테스트 구현 [✅ 완료]
+
+**Playwright 원래 목적 재확인:**
+- 처음에는 기능 테스트(functional testing)만 구현
+- 실제 목적은 디자인 검증(visual regression testing)
+
+**구현 완료:**
+- design-login.spec.ts: 로그인 페이지 8가지 상태 검증
+  - 기본/오류/포커스 상태, 모바일/태블릿, 다크모드, 텍스트 줄임
+  - 3개 디바이스 × 8개 테스트 = 24개 스크린샷 베이스라인 ✅
+  
+- design-dashboard.spec.ts: 대시보드 8가지 검증
+  - 풀페이지, 헤더, 핵심지표, 차트, 모바일/태블릿, 다크모드, 인쇄모드
+  
+- design-responsive.spec.ts: 반응형 디자인 15가지
+  - 모바일 360px → 태블릿 768px → 데스크톱 2560px
+  - 카드 격자 1→2→3열 배치 검증
+  - 네비게이션 전환, 안전 영역 확인
+
+**playwright.config.ts 개선:**
+- 3개 디바이스 프로필: Desktop (1280x720), Tablet (768x1024), Mobile (393x851)
+- HTML 리포터 추가 (test-results/index.html)
+- 각 디바이스별 독립적 스크린샷 저장
+
+**package.json 스크립트:**
+- `npm run e2e:design`: 모든 디자인 테스트
+- `npm run e2e:design-login`: 로그인 테스트만
+- `npm run e2e:update-design`: 베이스라인 업데이트
+
+**테스트 결과:**
+- design-login: 24/24 PASS ✅
+- 87개 스크린샷 베이스라인 저장
+- 시각적 회귀 테스트 CI 준비 완료
+
+**커밋:** `416f02a` - feat(frontend) Playwright 디자인 검증 테스트
+
+---
+
 ## 2026-11-01 — Sprint 1 스모크 테스트 & 로그인 전환 수정 [✅ 완료]
 
 **로그인 흐름 개선:**
