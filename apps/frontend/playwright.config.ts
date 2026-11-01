@@ -12,9 +12,10 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: "list",
   use: {
-    baseURL: "http://localhost:5173",
+    baseURL: process.env.TEST_URL || "http://localhost:5173",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
+    ignoreHTTPSErrors: true, // 자체 서명된 인증서 무시
   },
   projects: [
     {
@@ -24,7 +25,7 @@ export default defineConfig({
   ],
   webServer: {
     command: "pnpm dev",
-    url: "http://localhost:5173",
+    url: process.env.TEST_URL || "http://localhost:5173",
     reuseExistingServer: !process.env.CI,
     timeout: 120000,
   },
