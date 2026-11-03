@@ -14,12 +14,18 @@ export type ApiErrorKind = "auth" | "network" | "server" | "client";
 export class ApiError extends Error {
   readonly kind: ApiErrorKind;
   readonly code: string;
+  /**
+   * 서버가 보낸 사용자용 상세 문구(은행 거절 사유 등). 화면이 종류별 일반 문구 대신
+   * 이 값을 보여 줄 수 있다. 없으면 null.
+   */
+  readonly detail: string | null;
 
-  constructor(kind: ApiErrorKind, message: string, code: string) {
+  constructor(kind: ApiErrorKind, message: string, code: string, detail: string | null = null) {
     super(message);
     this.name = "ApiError";
     this.kind = kind;
     this.code = code;
+    this.detail = detail;
   }
 }
 
@@ -52,12 +58,13 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
       // LoginPage 의 로그인 실패도 이 경로를 타지만, 로그인 화면에서는 영향이 없다.
       clearToken();
       window.dispatchEvent(new Event("assetflow:unauthorized"));
-      throw new ApiError("auth", AUTH_MESSAGE, body?.code ?? "AUTH_REQUIRED");
+      throw new ApiError("auth", AUTH_MESSAGE, body?.code ?? "AUTH_REQUIRED", body?.message ?? null);
     }
     throw new ApiError(
       response.status < 500 ? "client" : "server",
       response.status < 500 ? CLIENT_MESSAGE : SERVER_MESSAGE,
       body?.code ?? "UNKNOWN",
+      body?.message ?? null,
     );
   }
 

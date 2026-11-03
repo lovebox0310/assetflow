@@ -20,6 +20,7 @@ import {
 import { getPortfolio, type Portfolio } from "../api/investmentsApi";
 import { clearInflight } from "../api/client";
 import { clearToken } from "../auth/authStore";
+import { BankLinkSection } from "../components/BankLinkSection";
 import { formatKrwExact } from "../utils/formatters";
 
 interface AssetsPageProps {
@@ -82,9 +83,9 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
   const [form] = Form.useForm<UpsertPayload>();
   const mountedRef = useRef(false);
 
-  const load = useCallback(() => {
+  const load = useCallback((silent = false) => {
     clearInflight(); // 앞선 요청의 dedupe 잔여를 비우고 새로 읽는다
-    setStatus("loading");
+    if (!silent) setStatus("loading");
     setErrorText("");
     Promise.all([
       listAccounts(),
@@ -110,6 +111,8 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
   }, [load]);
 
   const assets = rows?.filter((r) => !r.isDebt) ?? [];
+  /** §61: 은행 동기화 대상 — 현금성·예적금이면서 부채가 아닌 계좌만. */
+  const bankAccounts = assets.filter((r) => r.accountType === "cash" || r.accountType === "deposit");
   const liabilities = rows?.filter((r) => r.isDebt) ?? [];
   const investTotals = new Map((portfolio?.accounts ?? []).map((a) => [a.accountId, a.totalValue]));
   /** §54.3: invest 행은 예수금이 아니라 계좌 총액(예수금+평가액)을 보여 준다. */
@@ -306,7 +309,7 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
           <Button onClick={beginCreate} disabled={editingId !== null}>+ 자산 추가</Button>
         </div>
         <Card>
-          <StateBlock status={status} onRetry={load} errorText={errorText} emptyText="자산 행이 없습니다 — '+ 자산 추가'로 시작하세요">
+          <StateBlock status={status} onRetry={() => load()} errorText={errorText} emptyText="자산 행이 없습니다 — '+ 자산 추가'로 시작하세요">
             {editingId === "new" && debtFormOpen === false ? (
               <div style={{ marginBottom: 12 }}>
                 <EditForm form={form} isDebt={false} wide={wide} />
@@ -337,6 +340,9 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
         </Card>
       </section>
 
+      {/* §61: 은행 잔액 자동 갱신 — 표의 편집 동작과 섞지 않도록 별도 섹션. */}
+      <BankLinkSection accounts={bankAccounts} onSynced={() => load(true)} />
+
       <section aria-labelledby="h-liab" style={{ marginBottom: 24 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
           <Typography.Title level={2} id="h-liab" style={{ fontSize: 16, margin: 0 }}>부채</Typography.Title>
@@ -351,7 +357,7 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
           </Button>
         </div>
         <Card>
-          <StateBlock status={status} onRetry={load} errorText={errorText} emptyText="부채가 비어 있는 것은 정상이다 (§31.4)">
+          <StateBlock status={status} onRetry={() => load()} errorText={errorText} emptyText="부채가 비어 있는 것은 정상이다 (§31.4)">
             {editingId === "new" && debtFormOpen ? (
               <div style={{ marginBottom: 12 }}>
                 <EditForm form={form} isDebt wide={wide} />

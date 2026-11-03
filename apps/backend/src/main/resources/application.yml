@@ -28,3 +28,13 @@ app:
   # bizno.net 이 접속대기로 막을 때 대신 읽는 리더 서비스(비우면 폴백 없음).
   business-info:
     fallback-reader: ${BIZNO_FALLBACK_READER:https://r.jina.ai/}
+  # §61 은행 잔액 빠른조회(bankapi.co.kr). 무료·이메일 가입으로 즉시 발급된다.
+  # 키가 비어 있으면 연결 시도 시 503(BANK_NOT_CONFIGURED) — 조용히 실패하지 않는다.
+  # 국내 IP 에서만 호출된다(해외 배포는 403).
+  bank:
+    api-key: ${BANK_API_KEY:}
+    secret-key: ${BANK_SECRET_KEY:}
+    base-url: ${BANK_API_BASE_URL:https://api.bankapi.co.kr}
+    # 계좌번호 암호화 키(AES/GCM). 비우면 JWT_SECRET, 둘 다 없으면 기동마다 랜덤
+    # (개발 편의 — 운영에서는 반드시 고정값).
+    link-key: ${BANK_LINK_KEY:}
