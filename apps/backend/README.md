@@ -19,6 +19,18 @@ All three are implemented (mock ledger, spec in §38 of `.ai/project.md`):
 - GET /api/v1/investments/holdings — holdings + per-account cash/holdings/total (§54)
 - POST /api/v1/investments/holdings — add a holding (invest accounts only)
 - PUT /api/v1/investments/holdings/{id} · DELETE /api/v1/investments/holdings/{id} — update/remove
+- GET /api/v1/assets/bank/banks — supported no-login banks (NH·KB·WR·IBK, §61)
+- GET /api/v1/assets/bank-links — linked accounts (account number masked)
+- PUT /api/v1/assets/accounts/{id}/bank-link — link + first balance query (§61)
+- DELETE /api/v1/assets/accounts/{id}/bank-link — unlink (balance stays)
+- POST /api/v1/assets/accounts/{id}/bank-sync — refresh balance (password + birth date re-entered)
+
+Bank balance refresh (§61) calls the free quick-inquiry API at `api.bankapi.co.kr`.
+It needs `BANK_API_KEY`, `BANK_SECRET_KEY` (from an email signup) and a fixed
+`BANK_LINK_KEY` (falls back to `JWT_SECRET`) to encrypt stored account numbers.
+Only Korean source IPs are accepted by that API, and the bank account must have
+the bank's 빠른조회/간편조회 service enabled. Account passwords and birth dates are
+never stored; only the account number is kept, encrypted.
 
 Protected endpoints require `Authorization: Bearer <token>`; failures use the
 `{code, message, details, timestamp}` format (401 AUTH_REQUIRED / 400 INVALID_REQUEST).

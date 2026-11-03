@@ -14,6 +14,46 @@
 
 ---
 
+## 2026-11-03 — 은행 잔액 빠른조회 연동 1단계 [✅ 구현 완료 · 운영 키 미설정]
+
+**결정 근거:** `.ai/project.md` §61. 개인은 오픈뱅킹 이용기관 등록이 어렵고 CODEF 는
+유료·사업자 계약이 필요하다. 대신 무료·이메일 가입으로 즉시 쓰는 bankapi.co.kr
+빠른조회 API 를 1단계로 붙였다. 브랜치: `feature/bank-quick-inquiry`.
+
+**구현:**
+- 백엔드 `com.assetflow.assets.bank` — `BankCode`(NH·KB·WR·IBK), `BankQuery`,
+  `BankApiClient`(HTTP), `BankAccountCipher`(AES/GCM), `BankSyncService`,
+  `BankSyncController`, 인메모리/Postgres 연결 원장.
+- API 5종: 은행 목록 / 연결 목록 / 연결(+1회 조회) / 해제 / 재동기화.
+- `bank_account_links` 테이블 추가(계좌번호만 암호화, 비밀번호·생년월일 미저장).
+- `app.bank.*` 설정 + `BANK_API_KEY`·`BANK_SECRET_KEY`·`BANK_LINK_KEY` env.
+- `BankApiException` → 표준 오류 매핑(BANK_REJECTED 400, 한도 429, 서버 502/503).
+- 프론트 `BankLinkSection`(자산 화면 별도 섹션), `api/bankApi.ts`,
+  `ApiError.detail`(은행 거절 사유 노출).
+- 테스트: `BankAccountCipherTest`, `BankSyncApiTest`(11건), `BankLinkSection.test.tsx`(4건).
+
+**검증:**
+- 백엔드 `./gradlew test` 전체 통과.
+- 프론트 `pnpm typecheck` 통과. 새 테스트 4건 통과.
+- 프론트 전체 `pnpm test`: 211건 중 5건 실패 — **모두 이번 변경 전부터 있던 실패**
+  (App 미인증 딥링크 1, Dashboard 중복 텍스트 4). 스태시 후 재현 확인.
+
+**키 검증 (2026-11-03, 실제 API 호출):**
+- `POST /v1/transactions` 에 발급받은 키 쌍으로 호출 → 인증 통과, 가짜 계좌번호에 대해
+  `success:false` + `BANK_REJECTED` 응답 수신. (키/시크릿을 하나씩 바꾸면 각각
+  `Invalid API Key` · `Invalid or revoked Secret Key` — 키 쌍이 실제로 유효하다.)
+- 빌드한 jar 를 로컬 18080 에 띄워 전 구간 확인: 은행 4개 목록 OK,
+  실패한 연결은 저장되지 않고(`bank-links` 빈 배열), 자산 잔액도 그대로(18,500,000).
+- 주의: 발급 직후 첫 호출은 401 `Secret Key required` 가 날 수 있다(활성화 지연). 재시도로 통과.
+
+**남은 것:**
+1. ~~bankapi.co.kr 가입 → API Key/Secret 발급~~ → 발급·검증 완료. 운영 env 반영만 남음.
+2. 운영 서버가 **국내 IP** 인지 확인(해외면 403).
+3. 동기화할 계좌를 은행 빠른조회(간편조회)에 등록.
+4. (선택) 사업자 계좌 UI, 거래내역 저장·분류, CSV 정합성 보정 — §61.7.
+
+---
+
 ## 2026-11-01 — 포괄적 디자인 검토 완료 [✅ 완료]
 
 **검토 범위:**

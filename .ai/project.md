@@ -3939,3 +3939,113 @@ curl -X POST http://localhost:8080/api/v1/assets/card-imports/verify \
 1. ✅ 차트 접근성 (CompositionDonut, ExpenseTrendChart, CardCompanyChart에 sr-only 데이터 테이블)
 2. ✅ 다크모드 애니메이션 (200ms ease-in-out)
 3. ✅ 카드 업로드 `/verify` 확인 (정상 작동, 404 오류 해소)
+
+---
+
+## 61) 은행 잔액 빠른조회 연동 — bankapi.co.kr (2026-11-03 확정 · 1단계 구현 완료)
+
+결정일: 2026-11-03
+상태: 1단계 구현 완료 (`feature/bank-quick-inquiry`) — 실 API 키 발급·운영 배포는 별도
+근거: 은행 잔액 자동 갱신은 개인 프로젝트에서 **오픈뱅킹(이용기관 등록)·CODEF(유료·사업자)**
+없이는 불가능하다. 대신 무료·이메일 가입으로 즉시 쓸 수 있는 **빠른조회(간편조회) 기반
+계좌조회 API**(bankapi.co.kr)를 1단계로 붙인다. CSV 임포트·문자 웹훅은 2단계 후보로 남긴다.
+
+### 61.1 범위
+
+| 구분 | 1단계 포함 | 제외 |
+|---|---|---|
+| 은행 | 농협(NH)·국민(KB)·우리(WR)·기업(IBK) — 무로그인 빠른조회 | 신한(인터넷뱅킹 로그인 필요), 씨티 등 미지원 은행 |
+| 계좌 | `cash`(현금성)·`deposit`(예적금), 부채 아님 | `invest`(예수금·총액 계산과 충돌), `realty`, 부채 |
+| 데이터 | 잔액(`accountInfo.balance`) + 최근 7일 거래 요약 | 거래내역 저장·분류·지출 자동 생성 |
+| 인증 | 계좌 비밀번호 + 생년월일 6자리(개인) | 사업자 계좌 UI(백엔드는 `business` 지원, 화면은 `personal` 고정) |
+
+### 61.2 보안 규칙 (타협 없음)
+
+- **계좌 비밀번호·생년월일은 저장하지 않는다.** 연결·동기화 요청 처리 동안만 메모리에 있고,
+  DB·로그·응답 어디에도 남기지 않는다. `BankQuery.toString()` 도 값을 가린다.
+- **계좌번호만 암호화해 저장**한다(AES/GCM, `bank_account_links.account_number_enc`).
+  화면·API 응답에는 `****6789` 처럼 마지막 4자리만 나간다.
+- 암호화 키: `BANK_LINK_KEY` → 없으면 `JWT_SECRET`. 둘 다 없으면(로컬) 기동마다 랜덤 —
+  재시작하면 기존 연결을 복호화할 수 없으므로 운영에서는 **반드시 고정값**을 둔다.
+- 연결은 성공한 조회에만 저장한다. 잘못된 계좌번호·비밀번호를 남기지 않는다.
+
+### 61.3 외부 API 계약
+
+```
+POST https://api.bankapi.co.kr/v1/transactions
+Authorization: Bearer {apiKey}:{secretKey}
+Content-Type: application/json
+
+{
+  "bankCode": "WR",
+  "accountNumber": "1002345678901",
+  "accountPassword": "1234",
+  "residentNumber": "900101",
+  "accountType": "personal",
+  "startDate": "20261028",
+  "endDate": "20261103"
+}
+```
+
+- 성공: `{ success: true, transactions: [...], accountInfo: { accountNumber, balance, ... } }`
+- 은행 거절도 **HTTP 200 + `success:false`** 로 온다. 상태 코드가 아니라 `success`·`code` 로 판단한다.
+- 주요 code: `BANK_REJECTED`(400) / `ACCOUNT_COOLDOWN`·`QUERY_QUOTA_EXCEEDED`·`TOO_MANY_REQUESTS`(429)
+  / `BANK_TIMEOUT`·`BANK_UNAVAILABLE`·`CRAWLER_*`(502) / `UNAUTHORIZED`·`CRAWLER_UNAVAILABLE`(503).
+- 한도: 동일 계좌 5분에 1회, 30분당 성공 30회·요청 60회. 화면은 받은 `message`(은행 문장)를 그대로 보여 준다.
+- **국내 IP 에서만 호출된다.** 해외 배포는 403. 운영 서버(redbox9.iptime.org)는 국내라 가능하다.
+- 계좌가 해당 은행의 **빠른조회(간편조회)에 등록**되어 있어야 한다.
+
+### 61.4 데이터 모델
+
+```sql
+bank_account_links (
+    id                  BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id             BIGINT NOT NULL REFERENCES users (id),
+    account_id          BIGINT NOT NULL REFERENCES asset_accounts (id) ON DELETE CASCADE,
+    bank_code           VARCHAR(8) NOT NULL CHECK (bank_code IN ('NH','KB','WR','IBK')),
+    account_number_enc  TEXT NOT NULL,             -- AES/GCM, 화면에는 마스킹만
+    account_type        VARCHAR(16) NOT NULL DEFAULT 'personal'
+                        CHECK (account_type IN ('personal','business')),
+    last_synced_at      TIMESTAMPTZ,
+    last_balance        BIGINT,
+    created_at / updated_at,
+    UNIQUE (account_id)                            -- 계좌 1개 : 연결 1개
+);
+```
+
+`asset_accounts` 는 건드리지 않는다 — 잔액의 단일 출처(§31.1)는 그대로이고, 동기화는
+`balance` 를 갱신할 뿐이다. 자산 계좌를 지우면 연결도 함께 지운다(CASCADE).
+
+### 61.5 API
+
+| 메서드 | 경로 | 동작 |
+|---|---|---|
+| GET | `/api/v1/assets/bank/banks` | 지원 은행 4개 |
+| GET | `/api/v1/assets/bank-links` | 연결 목록(계좌번호 마스킹) |
+| PUT | `/api/v1/assets/accounts/{id}/bank-link` | 연결 + 1회 조회(잔액 갱신) |
+| DELETE | `/api/v1/assets/accounts/{id}/bank-link` | 연결 해제(잔액 유지) |
+| POST | `/api/v1/assets/accounts/{id}/bank-sync` | 잔액 다시 가져오기(비밀번호·생년월일 입력) |
+
+- 연결 요청 body: `{ bankCode, accountNumber, accountPassword, residentNumber, accountType? }`
+- 동기화 요청 body: `{ accountPassword, residentNumber, days? }` — `days` 기본 7, 최대 31.
+- 잔액이 음수면(마이너스 통장) 400 으로 거절한다. `asset_accounts.balance >= 0` 계약을 깨지 않고,
+  "부채로 등록하라"는 이유를 알린다.
+
+### 61.6 화면
+
+- `AssetsPage` 의 금융자산 표 아래에 **"은행 잔액 가져오기"** 섹션을 둔다(표 편집 동작과 분리).
+- 계좌별로 `계좌 연결` 또는 `잔액 가져오기` / `연결 해제`.
+- 연결·동기화 모달은 계좌 비밀번호(`Input.Password`)·생년월일을 받고, **닫으면 입력값을 비운다**.
+- 성공 시 자산 목록을 조용히 다시 읽어(`load(true)`) 표의 잔액이 즉시 바뀐다.
+- 은행 거절 사유는 `ApiError.detail` 로 그대로 노출한다 — "실패했지만 이유를 모른다"를 만들지 않는다.
+- 같은 계좌 이름이 자산 표와 겹쳐 테스트/스크린리더가 혼동하지 않도록, 섹션의 계좌 라벨에는
+  항상 기관(없으면 유형)을 붙인다.
+
+### 61.7 하지 않은 것 / 다음 단계
+
+- **거래내역 저장·지출 자동 분류**: 지금은 최근 7일 건수와 최신 1건만 요약한다.
+- **사업자 계좌 UI**: 백엔드는 `accountType=business`(사업자번호 뒷 7자리)를 지원하지만 화면은 개인만.
+- **신한·씨티**: 각각 로그인 기반 엔드포인트/미지원이라 1단계에서 제외.
+- **자동 스케줄 동기화**: 조회 한도(5분/계좌)와 자격증명 재입력 요구 때문에 수동 실행만 둔다.
+  자동화하려면 비밀번호·생년월일을 저장해야 하므로 §61.2 와 충돌한다 — 별도 결정이 필요하다.
+- **문자/알림 웹훅·CSV 임포트**: 2단계 후보. 정합성 보정(월 1회 CSV)은 그때 붙인다.

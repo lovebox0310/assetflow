@@ -27,6 +27,24 @@ public class ApiExceptionHandler {
                 .body(ErrorResponse.of("AUTH_REQUIRED", "Authentication required", e.getMessage()));
     }
 
+    /**
+     * §61 은행 빠른조회 실패. code 로 상태를 가른다 — 은행 거절(BANK_REJECTED)은 400,
+     * 조회 한도(429 계열)는 429, 서버·키 문제는 502/503 이다. message 는 은행이 준
+     * 문장을 그대로 내려 화면이 사유를 보여 줄 수 있게 한다.
+     */
+    @ExceptionHandler(com.assetflow.assets.bank.BankApiException.class)
+    public ResponseEntity<ErrorResponse> bankApi(com.assetflow.assets.bank.BankApiException e) {
+        HttpStatus status = switch (e.code()) {
+            case "ACCOUNT_COOLDOWN", "QUERY_QUOTA_EXCEEDED", "TOO_MANY_REQUESTS" -> HttpStatus.TOO_MANY_REQUESTS;
+            case "BANK_NOT_CONFIGURED", "UNAUTHORIZED", "CRAWLER_UNAVAILABLE" -> HttpStatus.SERVICE_UNAVAILABLE;
+            case "BANK_TIMEOUT", "BANK_UNAVAILABLE", "CRAWLER_ERROR" -> HttpStatus.BAD_GATEWAY;
+            default -> HttpStatus.BAD_REQUEST;
+        };
+        String details = e.retryAfterSec() > 0 ? "retryAfterSec=" + e.retryAfterSec() : "";
+        return ResponseEntity.status(status)
+                .body(ErrorResponse.of(e.code(), e.getMessage(), details));
+    }
+
     /** 403 자리표시자: 스프린트 1에 권한 계층이 없어 발생하지 않지만, 포맷은 표준을 쓴다. */
     @ExceptionHandler(PermissionDeniedException.class)
     public ResponseEntity<ErrorResponse> permissionDenied(PermissionDeniedException e) {

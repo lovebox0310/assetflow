@@ -27,11 +27,37 @@
 | `DB_USER` | PostgreSQL 계정 | |
 | `DB_PASSWORD` | PostgreSQL 비밀번호 | |
 | `JWT_SECRET` | JWT 서명 키 (32바이트 이상 랜덤 문자열) | **고정값 필수**. 누락 시 부팅마다 랜덤 키가 생성되어 모든 토큰 무효화 |
+| `BANK_API_KEY` | bankapi.co.kr API Key (§61) | 이메일 가입 후 발급. 없으면 은행 연결 시 503 |
+| `BANK_SECRET_KEY` | bankapi.co.kr Secret Key (§61) | 발급 화면에서 1회만 표시 — 안전한 곳에 보관 |
+| `BANK_LINK_KEY` | 계좌번호 암호화 키 (AES/GCM) | **고정값 권장**. 비우면 `JWT_SECRET` 사용, 둘 다 없으면 기동마다 랜덤 |
+| `BANK_API_BASE_URL` | `https://api.bankapi.co.kr` | 선택. 테스트 대역으로 바꿀 때만 |
 | `OWNER_EMAIL` | 단일 사용자 원장 소유자 이메일 | `users` 테이블 행과 일치해야 함 |
 | `SERVER_PORT` | 8080 | |
 | `ALLOWED_ORIGIN` | CORS 허용 출처(쉼표 구분) | 홈서버 동일 출처 시 생략 가능 |
 
 `JWT_SECRET`은 `apps/backend/src/main/resources/application.yml`의 `app.jwt-secret: ${JWT_SECRET:}` 매핑을 통해 `TokenService`에 전달됩니다. 실제 JWT 발급·검증이 이미 구현되어 있으므로(2026-10-18), 운영 환경에서는 반드시 고정된 `JWT_SECRET`을 설정해야 합니다.
+
+### 2.1 은행 잔액 동기화 (§61)
+
+은행 잔액 갱신은 무료 빠른조회 API(`api.bankapi.co.kr`)를 서버가 대신 호출합니다.
+
+1. <https://bankapi.co.kr/signup> 이메일 가입 → API Key·Secret Key 발급
+2. 키를 `/etc/assetflow/bank.env`(600 root:root)에 두고, 메인 유닛은 건드리지 않고
+   drop-in 으로 읽게 한다 — 배포 스크립트가 자동 생성한다:
+   ```
+   /etc/systemd/system/assetflow.service.d/bank.conf
+   [Service]
+   EnvironmentFile=-/etc/assetflow/bank.env
+   ```
+   `EnvironmentFile` 은 systemd 가 root 권한으로 읽으므로 서비스 사용자 권한과 무관하다.
+   **기존 `bank.env` 가 있으면 재배포해도 덮어쓰지 않는다** — `BANK_LINK_KEY` 가 바뀌면
+   저장된 계좌번호를 복호화할 수 없어 전부 재연결해야 하기 때문이다.
+3. 동기화할 계좌를 해당 은행의 **빠른조회(간편조회)** 에 등록
+4. 이 서버가 **국내 IP** 인지 확인 — 이 API 는 해외 IP 를 403 으로 거절한다
+   (홈서버 `redbox9.iptime.org` 는 국내라 가능)
+
+계좌 비밀번호·생년월일은 저장하지 않고 요청에만 쓰며, 계좌번호만 `BANK_LINK_KEY` 로
+암호화해 `bank_account_links` 에 저장합니다. 한도는 계좌당 5분에 1회다.
 
 ## 3. 빌드·배포
 

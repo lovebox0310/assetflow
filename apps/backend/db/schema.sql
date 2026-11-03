@@ -285,3 +285,25 @@ ALTER TABLE card_imports ADD COLUMN IF NOT EXISTS member_relation VARCHAR(20) NO
 
 -- 2026-10-31: 기존 DB 에 card_imports.card_company 추가 마이그레이션
 ALTER TABLE card_imports ADD COLUMN IF NOT EXISTS card_company VARCHAR(20);
+
+-- ---------------------------------------------------------------------------
+-- bank_account_links: 자산 계좌 ↔ 은행 빠른조회 연결 (§61 — 2026-11-03 확정).
+-- 계좌번호는 암호화 문자열(account_number_enc)로만 저장한다. 계좌 비밀번호·
+-- 생년월일은 저장하지 않는다 — 매 조회 요청마다 사용자가 입력한다.
+-- 계좌 1개에 연결 1개(UNIQUE account_id). 자산 계좌를 지우면 연결도 지운다.
+-- ---------------------------------------------------------------------------
+CREATE TABLE bank_account_links (
+    id                  BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id             BIGINT NOT NULL REFERENCES users (id),
+    account_id          BIGINT NOT NULL REFERENCES asset_accounts (id) ON DELETE CASCADE,
+    bank_code           VARCHAR(8) NOT NULL CHECK (bank_code IN ('NH', 'KB', 'WR', 'IBK')),
+    account_number_enc  TEXT NOT NULL,
+    account_type        VARCHAR(16) NOT NULL DEFAULT 'personal'
+                        CHECK (account_type IN ('personal', 'business')),
+    last_synced_at      TIMESTAMPTZ,
+    last_balance        BIGINT,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_bank_link_account UNIQUE (account_id)
+);
+CREATE INDEX ix_bank_account_links_user ON bank_account_links (user_id);
