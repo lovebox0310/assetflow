@@ -6,7 +6,7 @@ export interface UserSettings {
   email: string;
   displayName: string;
   targetMonths: number;
-  /** §59 비상금 통장(현금성 계좌) id 목록. 자산 API 와 같은 문자열 형식. 미지정이면 빈 배열. */
+  /** §59·§62 비상금 계좌(현금성·증권 예수금) id 목록. 자산 API 와 같은 문자열 형식. 미지정이면 빈 배열. */
   emergencyAccountIds?: string[];
   /** 카드지출 평균 개월 수 — 당월 제외 이전 N개월. */
   emergencyAvgMonths?: number;

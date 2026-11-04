@@ -21,7 +21,7 @@ interface EmergencyFundSettingsModalProps {
   open: boolean;
   /** 저장된 설정. 아직 로드되지 않았으면 null — 기본값으로 시작한다. */
   settings: UserSettings | null;
-  /** 자산 목록 — 비상금 통장 선택지는 현금성(cash)만. */
+  /** 자산 목록 — 비상금 계좌 선택지는 현금성(cash)·증권(invest)만. */
   assets: AssetRow[];
   /** source=card 로 조회한 월별 대분류 합계. null 이면 아직 로딩 중. */
   cardTotals: MonthlyCategoryTotal[] | null;
@@ -35,12 +35,19 @@ interface EmergencyFundSettingsModalProps {
 
 const ACCOUNT_TYPE_LABEL: Record<string, string> = {
   cash: "현금",
+  invest: "증권",
 };
+
+/** §62: 비상금으로 고를 수 있는 유형 — 현금성과 증권(CMA·예수금). */
+const SELECTABLE_TYPES = new Set(["cash", "invest"]);
 
 /**
  * §59 비상금 유지 개월 기준 설정 모달.
- * 분자(현금성 비상금 통장들의 잔액 합계)와 분모(필수지출 + 선택 카테고리 카드지출 평균)를
+ * 분자(현금성·증권 비상금 계좌의 예수금 합계)와 분모(필수지출 + 선택 카테고리 카드지출 평균)를
  * 여기서 정한다. 저장은 PUT /api/v1/settings 한 번 — 변경 즉시 대시보드 카드가 다시 계산된다.
+ *
+ * §62: 증권(CMA) 계좌도 고를 수 있다. 다만 분자에 들어가는 금액은 **예수금**이고
+ * 보유종목 평가액은 제외한다 — 주가는 비상금이 아니다.
  */
 export function EmergencyFundSettingsModal({
   open,
@@ -70,16 +77,27 @@ export function EmergencyFundSettingsModal({
     setErrorText("");
   }, [open, settings]);
 
-  const accountOptions = useMemo(
-    () =>
-      assets
-        .filter((asset) => asset.type === "cash")
-        .map((asset) => ({
-          value: asset.id,
-          label: `${asset.name} · ${ACCOUNT_TYPE_LABEL[asset.type] ?? asset.type} · ${formatKrwExact(asset.value)}`,
-        })),
-    [assets],
-  );
+  const accountOptions = useMemo(() => {
+    const selectable = assets.filter((asset) => SELECTABLE_TYPES.has(asset.type));
+    const options = selectable.map((asset) => ({
+      value: asset.id,
+      label: `${asset.name} · ${ACCOUNT_TYPE_LABEL[asset.type] ?? asset.type} · ${formatKrwExact(
+        asset.balance ?? asset.value,
+      )}`,
+    }));
+
+    /*
+     * 저장된 id 중 지금 목록에 없는 계좌(삭제·유형 변경)는 Ant Design 이 값 그대로
+     * ("17")를 칩에 찍는다. 그 자리에 무엇인지 알 수 있는 라벨을 넣어 준다.
+     */
+    const known = new Set(options.map((option) => option.value));
+    for (const id of accountIds) {
+      if (!known.has(id)) {
+        options.push({ value: id, label: `${id}번 계좌 (목록에 없음)` });
+      }
+    }
+    return options;
+  }, [assets, accountIds]);
 
   const runway = useMemo(
     () =>
@@ -130,7 +148,8 @@ export function EmergencyFundSettingsModal({
       }
     >
       <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-        분자는 선택한 <b>현금성 계좌 잔액의 합계</b>입니다. 예적금과 자동이체·부가세처럼
+        분자는 선택한 <b>현금성·증권 계좌의 예수금 합계</b>입니다. 증권 계좌는 CMA처럼 바로
+        꺼낼 수 있는 돈만 반영되고, 보유종목 평가액은 제외됩니다. 예적금과 자동이체·부가세처럼
         용도가 정해진 계좌는 선택하지 마세요. 월 사용액 = 월 필수지출 + 선택한 카테고리
         카드지출의 평균이며, 카드지출 평균은 당월을 뺀 이전 N개월을 먼저 보고 이전 데이터가
         없을 때만 이번 달(진행 중)로 계산합니다.
@@ -160,11 +179,11 @@ export function EmergencyFundSettingsModal({
 
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <span style={{ fontWeight: 600 }}>비상금 통장</span>
+          <span style={{ fontWeight: 600 }}>비상금 계좌</span>
           <Select
-            aria-label="비상금 통장"
+            aria-label="비상금 계좌"
             mode="multiple"
-            placeholder="현금성 계좌 선택 (여러 개 가능)"
+            placeholder="현금성·증권 계좌 선택 (여러 개 가능)"
             options={accountOptions}
             value={accountIds}
             onChange={(value) => setAccountIds(value)}
@@ -255,7 +274,7 @@ export function EmergencyFundSettingsModal({
           </Typography.Text>
           {runway.accountCount > 0 ? (
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              선택한 비상금 통장 {runway.accountCount}개 합계 {formatKrwExact(runway.accountBalance)}
+              선택한 비상금 계좌 {runway.accountCount}개 합계 {formatKrwExact(runway.accountBalance)}
             </Typography.Text>
           ) : null}
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -282,7 +301,7 @@ export function EmergencyFundSettingsModal({
           ) : null}
           {!runway.accountSelected ? (
             <Typography.Text type="warning" style={{ fontSize: 12 }}>
-              비상금 통장을 지정하면 실제 버틸 수 있는 개월을 계산합니다.
+              비상금 계좌를 지정하면 실제 버틸 수 있는 개월을 계산합니다.
             </Typography.Text>
           ) : null}
           {runway.accountSelected && runway.accountCount === 0 ? (

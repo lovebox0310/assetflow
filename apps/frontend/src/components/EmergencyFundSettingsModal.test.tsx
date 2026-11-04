@@ -93,7 +93,7 @@ describe("EmergencyFundSettingsModal (§59)", () => {
     expect(screen.getByText("7,800,000원")).toBeDefined();
   });
 
-  it("선택한 현금성 통장 여러 개의 잔액을 합산해 보여 준다 (§59.6)", () => {
+  it("선택한 현금성·증권 계좌 여러 개의 예수금을 합산해 보여 준다 (§59.6, §62)", () => {
     render(
       <EmergencyFundSettingsModal
         open
@@ -114,11 +114,11 @@ describe("EmergencyFundSettingsModal (§59)", () => {
       />,
     );
 
-    expect(screen.getByText("선택한 비상금 통장 2개 합계 15,000,000원")).toBeDefined();
+    expect(screen.getByText("선택한 비상금 계좌 2개 합계 15,000,000원")).toBeDefined();
     expect(screen.getByText("15.00개월")).toBeDefined();
   });
 
-  it("비상금 통장이 없으면 개월 수 대신 지정 안내를 보여 준다", () => {
+  it("비상금 계좌가 없으면 개월 수 대신 지정 안내를 보여 준다", () => {
     render(
       <EmergencyFundSettingsModal
         open
@@ -139,7 +139,7 @@ describe("EmergencyFundSettingsModal (§59)", () => {
       />,
     );
 
-    expect(screen.getByText(/비상금 통장을 지정하면 실제 버틸 수 있는 개월을 계산합니다/)).toBeDefined();
+    expect(screen.getByText(/비상금 계좌를 지정하면 실제 버틸 수 있는 개월을 계산합니다/)).toBeDefined();
   });
 
   it("목표 개월을 바꾸면 예측 비상금이 즉시 다시 계산된다", () => {
@@ -223,5 +223,65 @@ describe("EmergencyFundSettingsModal (§59)", () => {
       ),
     );
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  });
+
+  it("증권(CMA) 계좌도 선택지에 표시되고 예수금 기준으로 합산한다 (§62)", () => {
+    const assetsWithInvest: AssetRow[] = [
+      { id: "c1", type: "cash", name: "파킹통장", value: 10_000_000 },
+      {
+        id: "i1",
+        type: "invest",
+        name: "한국투자 CMA",
+        value: 30_000_000,
+        balance: 2_421_729,
+      },
+    ];
+    render(
+      <EmergencyFundSettingsModal
+        open
+        settings={{
+          id: 1,
+          email: "user@example.com",
+          displayName: "사용자",
+          targetMonths: 6,
+          emergencyAccountIds: ["c1", "i1"],
+          emergencyAvgMonths: 3,
+          emergencyCategories: ["식비"],
+        }}
+        assets={assetsWithInvest}
+        cardTotals={[]}
+        essentialExpenses={1_000_000}
+        onClose={() => {}}
+        onSaved={() => {}}
+      />,
+    );
+
+    // invest 는 value(평가액 3,000만)가 아니라 balance(예수금)만 비상금 분자에 들어간다.
+    expect(screen.getByText("선택한 비상금 계좌 2개 합계 12,421,729원")).toBeDefined();
+    expect(screen.getByText("12.42개월")).toBeDefined();
+  });
+
+  it("목록에 없는 id 는 'N번 계좌 (목록에 없음)'으로 표시된다", () => {
+    render(
+      <EmergencyFundSettingsModal
+        open
+        settings={{
+          id: 1,
+          email: "user@example.com",
+          displayName: "사용자",
+          targetMonths: 6,
+          emergencyAccountIds: ["c1", "x99"],
+          emergencyAvgMonths: 3,
+          emergencyCategories: ["식비"],
+        }}
+        assets={assets}
+        cardTotals={[]}
+        essentialExpenses={1_000_000}
+        onClose={() => {}}
+        onSaved={() => {}}
+      />,
+    );
+
+    expect(screen.getByText(/x99번 계좌 \(목록에 없음\)/)).toBeDefined();
   });
 });

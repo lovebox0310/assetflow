@@ -92,7 +92,7 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
   const [summaryError, setSummaryError] = useState("");
   // §28.7: 비상금/투자금 유지 개월을 한 카드에서 토글로 전환해서 본다.
   const [showInvestMonths, setShowInvestMonths] = useState(false);
-  // §59: 비상금 통장·카드지출 평균 기준. 설정 실패 시에도 카드는 기본값으로 동작한다.
+  // §59: 비상금 계좌·카드지출 평균 기준. 설정 실패 시에도 카드는 기본값으로 동작한다.
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [settingsStatus, setSettingsStatus] = useState<SurfaceStatus>("loading");
   const [cardTotals, setCardTotals] = useState<MonthlyCategoryTotal[] | null>(null);
@@ -138,7 +138,7 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
   }, []);
 
   /**
-   * §59: 비상금 카드의 기준(비상금 통장·평균 개월·카테고리)과 카드지출만의
+   * §59: 비상금 카드의 기준(비상금 계좌·평균 개월·카테고리)과 카드지출만의
    * 월별 합계를 함께 읽는다. 설정/카드 조회가 실패해도 대시보드의 다른 카드는
    * 그대로 동작해야 하므로 각각 독립적으로 폴백한다.
    */
@@ -327,8 +327,8 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
                     {formatKrwExact(Math.round(runway.variableMonthly))}
                     <br />
                     {!runway.accountSelected
-                      ? "비상금 통장을 지정해 주세요"
-                      : `비상금 통장 ${runway.accountCount}개 합계 ${formatKrwExact(runway.accountBalance)}`}
+                      ? "비상금 계좌를 지정해 주세요"
+                      : `비상금 계좌 ${runway.accountCount}개 합계 ${formatKrwExact(runway.accountBalance)}`}
                     <br />
                     {runway.usedCurrentMonthFallback
                       ? "이전 카드 데이터 없음 · 이번 달(진행 중) 기준"

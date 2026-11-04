@@ -7,7 +7,7 @@ import { formatKrwExact, formatPercent } from "../utils/formatters";
  * `.cash-grid` / `.cash-item` 을 따른다.
  *
  * - 좁은 화면 1열 → 넓은 화면 다열 (`.af-cash-grid` 의 auto-fit).
- * - 계좌 성격은 비상금 통장 지정 여부만 데이터로 알 수 있으므로, 지정된 계좌에
+ * - 계좌 성격은 비상금 계좌 지정 여부만 데이터로 알 수 있으므로, 지정된 계좌에
  *   "비상금" 태그와 강조 테두리를 준다. 나머지는 일반 현금성 계좌로 둔다.
  * - 비중은 현금 합계 대비 — 0으로 나누지 않는다.
  */
@@ -24,7 +24,6 @@ export function CashAccountCards({
 
   const total = rows.reduce((sum, row) => sum + row.value, 0);
   const emergency = new Set(emergencyAccountIds);
-  const emergencyCount = rows.filter((row) => emergency.has(row.id)).length;
 
   return (
     <>
@@ -50,7 +49,7 @@ export function CashAccountCards({
       </ul>
       <p className="af-cash-note">
         현금 합계 {formatKrwExact(total)}
-        {" · "}비상금으로 지정된 계좌 {emergencyCount}개
+        {" · "}비상금으로 지정된 계좌 {emergencyAccountIds.length}개
       </p>
     </>
   );
