@@ -22,7 +22,6 @@ import {
 } from "../api/dashboardApi";
 import {
   assetComposition,
-  cashAccountCount,
   cashflowWindow,
   emergencyRunway,
   investMonths,
@@ -252,10 +251,11 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
   };
   const monthlySpendLabel = runway ? formatKrwExact(Math.round(runway.monthlySpend)) : "—";
   const composition = dataReady ? assetComposition(summary) : [];
-  const cashRows = dataReady ? summary.assets.filter((a) => a.type === "cash") : [];
-  // #73: "현금 3계좌" 하드코딩 제거 — 실제 현금성 계좌 수를 센다.
-  const cashCount = dataReady ? cashAccountCount(summary) : 0;
-  const cashHeading = cashCount === 0 ? "현금 계좌" : `현금 ${cashCount}계좌`;
+  // §62: 대시보드에서는 현금 전체가 아니라 사용자가 지정한 비상금 계좌만 한눈에 본다.
+  const emergencyIds = settings?.emergencyAccountIds ?? [];
+  const emergencyRows = dataReady
+    ? summary.assets.filter((a) => emergencyIds.includes(a.id))
+    : [];
   // #73: 3개월 → 6개월. 행이 없는 월은 0원이 아니라 "미확정"으로 남긴다(§34.6).
   const cashflowRows = cashflow ? cashflowWindow(cashflow, CASHFLOW_MONTHS) : [];
   const confirmedMonths = cashflowRows.filter((row) => row.confirmed).length;
@@ -369,16 +369,16 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
           </Card>
         </section>
 
-        <section aria-labelledby="h-cash" style={{ marginBottom: 32 }}>
-          <Typography.Title level={2} id="h-cash" style={{ fontSize: 16 }}>
-            {cashHeading}
+        <section aria-labelledby="h-emergency-accounts" style={{ marginBottom: 32 }}>
+          <Typography.Title level={2} id="h-emergency-accounts" style={{ fontSize: 16 }}>
+            비상금 계좌
           </Typography.Title>
           <Card>
             <StateBlock status={summaryStatus} onRetry={load} errorText={summaryError}>
               {dataReady ? (
                 <CashAccountCards
-                  rows={cashRows}
-                  emergencyAccountIds={settings?.emergencyAccountIds ?? []}
+                  rows={emergencyRows}
+                  emergencyAccountIds={emergencyIds}
                 />
               ) : null}
             </StateBlock>

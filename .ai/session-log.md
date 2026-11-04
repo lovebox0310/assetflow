@@ -31,6 +31,13 @@
   `metrics.test.ts`, `DashboardPage.test.tsx`.
 - 문서: `.ai/project.md` §62.
 
+**변경 (추가, 2026-11-04-2)**:
+- 대시보드 "현금 N계좌" 카드를 "비상금 계좌"로 전환 — 지정된 비상금 계좌만 카드형 표시.
+- `CashAccountCards`에서 금액은 `balance`(예수금) 우선, 비중 라벨은 "비상금의 X%",
+  빈 상태는 "비상금 계좌를 지정하면 여기에 표시됩니다".
+- `DashboardPage`에서 현금 카운트 제거, 비상금 행만 전달.
+- 테스트: `CashAccountCards.test.tsx` 재작성, `DashboardPage.test.tsx`·`e2e/dashboard.spec.ts` 갱신.
+
 **검증**:
 - BE `./gradlew test` 전체 통과.
 - FE `typecheck`·`lint` 통과. 변경 관련 테스트 30건 통과.

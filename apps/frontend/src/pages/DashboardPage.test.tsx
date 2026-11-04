@@ -114,7 +114,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     expect(titles).toEqual([
       "핵심 지표",
       "자산 구성비",
-      expect.stringMatching(/^현금/),
+      expect.stringMatching(/^비상금/),
       "카드별 본인·가족 사용 내역",
       "지출 추이",
       "월별 현금흐름",
@@ -137,7 +137,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     expect(cols.length).toBe(4);
   });
 
-  it("정상 응답 시 카드에 계산·포맷된 값과 현금 계좌가 노출된다 (§26 AC)", async () => {
+  it("정상 응답 시 카드에 계산·포맷된 값과 비상금 계좌가 노출된다 (§26 AC)", async () => {
     stubFetch(route);
     render(<DashboardPage onLogout={() => {}} />);
 
@@ -153,10 +153,10 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     // 구성비 카드와 도넛 범례가 같은 유형명을 보일 수 있어 getAll 로 존재를 검사한다.
     expect(screen.getAllByText("부동산·기타").length).toBeGreaterThan(0);
     expect(screen.getByText("84.1% · 6.4억")).toBeDefined();
-    // 현금 계좌 섹션: summary 의 cash 계좌가 카드형으로 이름·금액·비중과 함께 렌더
+    // 비상금 계좌 섹션: 지정된 계좌가 카드형으로 이름·금액·비중과 함께 렌더
     expect(screen.getByText("우리 파킹통장")).toBeDefined();
-    expect(screen.getByText("현금의 74.9%")).toBeDefined();
-    // §59 설정의 비상금 계좌(c1)에만 태그가 붙는다. (스위치 라벨에도 "비상금"이 있어 클래스로 확인)
+    expect(screen.getByText("비상금의 100.0%")).toBeDefined();
+    // §59 설정의 비상금 계좌(c1)에 태그가 붙는다.
     await waitFor(() => {
       const tagged = document.querySelector(".af-cash-item--emergency");
       expect(tagged?.textContent).toContain("우리 파킹통장");
@@ -256,7 +256,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     expect(screen.getByText(monthKey(5))).toBeDefined();
   });
 
-  it("'현금 N계좌'는 실제 현금성 계좌 수를 따른다 (#73 AC)", async () => {
+  it("'비상금 계좌' 섹션은 지정된 계좌만 보여 준다 (#73 AC, §62)", async () => {
     const oneCash = {
       ...dashboardMock,
       assets: [
@@ -268,8 +268,9 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
       path.includes("/dashboard/summary") ? apiResponse(oneCash) : route(path),
     );
     render(<DashboardPage onLogout={() => {}} />);
-    expect(await screen.findByRole("heading", { name: "현금 1계좌" })).toBeDefined();
-    expect(screen.queryByRole("heading", { name: "현금 2계좌" })).toBeNull();
+    expect(await screen.findByRole("heading", { name: "비상금 계좌" })).toBeDefined();
+    expect(screen.getByText("우리 파킹통장")).toBeDefined();
+    expect(screen.queryByText("우리 예적금")).toBeNull();
   });
 
   it("재요청 시 진행 중 요청은 중복으로 나가지 않는다 (§26 연동 기준)", async () => {
