@@ -14,6 +14,31 @@
 
 ---
 
+## 2026-11-04 — 비상금 계좌에 증권(CMA) 포함 (§62) [✅ 구현 완료]
+
+**요약**: 비상금 유지 개월(§59)의 분자에 현금성(cash) 외에 증권(invest) 계좌도 포함.
+다만 증권 계좌는 평가액이 아닌 예수금(balance)만 합산 — CMA·증권사 예수금 통장은
+포함, 주식 보유분은 제외.
+
+**변경**:
+- BE `SettingsController`: cash+invest 허용, deposit/realty/debt 거절.
+- BE `DashboardService`·`MockDashboardSource`: summary 자산 행에 `balance` 추가.
+- FE `dashboard/metrics`: `cash|invest` 필터, 분자 `balance ?? value`.
+- FE `EmergencyFundSettingsModal`: 선택지 확장, 라벨 개선, 미존재 id 는
+  "N번 계좌 (목록에 없음)"으로 표시 — 사용자가 "17번"만 보이던 현상 해결.
+- FE `DashboardPage`·`CashAccountCards`·`SettingsPage`: "비상금 통장" → "비상금 계좌".
+- 테스트: `SettingsApiTest`, `EmergencyFundSettingsModal.test.tsx`(2건 추가),
+  `metrics.test.ts`, `DashboardPage.test.tsx`.
+- 문서: `.ai/project.md` §62.
+
+**검증**:
+- BE `./gradlew test` 전체 통과.
+- FE `typecheck`·`lint` 통과. 변경 관련 테스트 30건 통과.
+- FE 전체 `pnpm test`: 213건 중 8건 실패 — 5건은 기존(App·Dashboard), 3건은
+  현재 작업과 무관한 InvestmentsPage(미완료 KIS 관련 수정분으로 추정) 실패.
+
+---
+
 ## 2026-11-03 — 은행 잔액 빠른조회 연동 1단계 [✅ 구현 완료 · 운영 키 미설정]
 
 **결정 근거:** `.ai/project.md` §61. 개인은 오픈뱅킹 이용기관 등록이 어렵고 CODEF 는

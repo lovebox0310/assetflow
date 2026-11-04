@@ -53,7 +53,7 @@ public class DashboardService {
         List<MockDashboardSource.AssetRow> assets = rows.stream()
                 .filter(r -> !r.isDebt())
                 .map(r -> new MockDashboardSource.AssetRow(String.valueOf(r.id()),
-                        r.accountType(), r.name(), valueOf(r, investTotals)))
+                        r.accountType(), r.name(), valueOf(r, investTotals), r.balance()))
                 .toList();
         List<LiabilityRow> liabilities = rows.stream()
                 .filter(AssetRow::isDebt)

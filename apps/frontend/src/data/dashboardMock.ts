@@ -8,6 +8,12 @@ export interface AssetRow {
   name: string;
   /** 원 단위 정수 (§28.3 — Issue 6 API 단위 규칙과 동일) */
   value: number;
+  /**
+   * §62 예수금(원장 잔액). invest 는 `value`(예수금 + 보유종목 평가액)와 다를 수 있고,
+   * 비상금 분자는 이 값만 쓴다 — 주가 평가액은 비상금이 아니다.
+   * 구 응답·mock 처럼 없으면 `value` 로 폴백한다.
+   */
+  balance?: number;
 }
 
 export interface LiabilityRow {

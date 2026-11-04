@@ -18,7 +18,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * §59 비상금 유지 개월 기준 저장 API.
  * 모든 필드는 선택이고, 빠진 필드는 기존 값을 유지한다(기존 {targetMonths} 호출 호환).
- * 비상금 통장은 현금성(cash) 계좌 여러 개를 지정할 수 있다.
+ * 비상금 계좌은 현금성(cash) 계좌 여러 개를 지정할 수 있다.
  */
 class SettingsApiTest {
 
@@ -107,8 +107,8 @@ class SettingsApiTest {
     }
 
     @Test
-    void rejectsAccountsThatAreNotCash() throws Exception {
-        // id 3 = deposit, id 4 = invest
+    void rejectsAccountsThatAreNotCashOrInvest() throws Exception {
+        // id 3 = deposit, id 6 = realty (isDebt=false), id 4 = invest
         mvc.perform(put("/api/v1/settings").header("Authorization", TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"emergencyAccountIds\":[\"3\"]}"))
@@ -116,8 +116,15 @@ class SettingsApiTest {
 
         mvc.perform(put("/api/v1/settings").header("Authorization", TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"emergencyAccountIds\":[\"1\",\"4\"]}"))
+                        .content("{\"emergencyAccountIds\":[\"1\",\"6\"]}"))
                 .andExpect(status().isBadRequest());
+
+        // §62: invest 는 이제 허용된다.
+        mvc.perform(put("/api/v1/settings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"emergencyAccountIds\":[\"1\",\"4\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.emergencyAccountIds.length()").value(2));
     }
 
     @Test

@@ -7,6 +7,9 @@ import { currentMonth, monthsEndingAt, previousMonth } from "../utils/months";
  * 계산이 화면에 중복되지 않는다 (§34.6 단일 출처 관례).
  */
 
+/** §62 비상금 분자에 포함하는 계좌 유형. 예적금(deposit)·부동산(realty)은 제외한다. */
+const EMERGENCY_ACCOUNT_TYPES: ReadonlySet<AssetType> = new Set<AssetType>(["cash", "invest"]);
+
 export interface CompositionSlice {
   type: AssetType;
   label: string;
@@ -37,10 +40,14 @@ export function monthlyBalance(data: DashboardData): number {
 }
 
 /**
- * 비상금 유지 개월 = 비상금 통장 잔액 / 월 사용액 (§59)
+ * 비상금 유지 개월 = 비상금 계좌 잔액 / 월 사용액 (§59, §62)
  *
- * - 분자: 사용자가 지정한 **현금성(cash) 비상금 통장들의 잔액 합계**.
- *   예적금(deposit)과 용도가 정해진 계좌(자동이체·부가세 등)는 지정하지 않는 방식으로 제외한다.
+ * - 분자: 사용자가 지정한 **현금성(cash) + 증권(invest) 계좌의 예수금 합계**.
+ *   - invest 는 CMA·증권사 예수금 통장처럼 실제로 즉시 인출 가능한 자산을 담기 위해
+ *     포함한다(§62). 다만 **평가액은 제외**하고 예수금(balance)만 쓴다 — 주가는
+ *     비상금이 아니다. balance 가 없는 구 응답·mock 에서는 value 로 폴백한다.
+ *   - 예적금(deposit)과 부동산은 제외하고, 용도가 정해진 계좌(자동이체·부가세 등)는
+ *     사용자가 선택하지 않는 방식으로 뺀다.
  * - 분모: 월 필수지출(고정) + 선택 카테고리 카드지출의 N개월 평균(변동).
  *   평균은 당월을 뺀 이전 N개월을 먼저 본다. 이전 카드 데이터가 전혀 없을 때만
  *   당월(진행 중)로 폴백한다. 카드 데이터가 없는 달은 0원으로 메우지 않는다.
@@ -58,7 +65,7 @@ export interface EmergencyRunwayInput {
   /** 지출 화면 단일 출처의 월 필수지출. */
   essentialExpenses: number;
   targetMonths: number;
-  /** 비상금 통장으로 지정한 현금성 계좌 id 목록. */
+  /** 비상금 계좌로 지정한 현금성·증권 계좌 id 목록. */
   emergencyAccountIds: readonly string[];
   selectedCategories: readonly string[];
   /** 당월 제외 이전 N개월. */
@@ -70,9 +77,9 @@ export interface EmergencyRunwayInput {
 
 export interface EmergencyRunway {
   accountBalance: number;
-  /** 비상금 통장이 하나 이상 지정됐는가. false 면 개월 수를 계산하지 않는다. */
+  /** 비상금 계좌가 하나 이상 지정됐는가. false 면 개월 수를 계산하지 않는다. */
   accountSelected: boolean;
-  /** 잔액 합계에 실제로 포함된 현금성 계좌 수. */
+  /** 잔액 합계에 실제로 포함된 현금성·증권 계좌 수. */
   accountCount: number;
   fixedMonthly: number;
   variableMonthly: number;
@@ -113,11 +120,15 @@ export function emergencyRunway(input: EmergencyRunwayInput): EmergencyRunway {
   const monthlySpend = fixedMonthly + variableMonthly;
 
   const accountSelected = input.emergencyAccountIds.length > 0;
-  // 지정된 id 중 현금성 계좌만 합산한다. 예적금·투자 계좌가 섞여 들어와도 분자에 더하지 않는다.
+  // §62: 현금성(cash)과 증권(invest)만 합산한다. 예적금·부동산이 섞여 들어와도 더하지 않는다.
   const selectedAccounts = input.assets.filter(
-    (asset) => asset.type === "cash" && input.emergencyAccountIds.includes(asset.id),
+    (asset) =>
+      EMERGENCY_ACCOUNT_TYPES.has(asset.type) && input.emergencyAccountIds.includes(asset.id),
   );
-  const accountBalance = sum(selectedAccounts.map((asset) => asset.value));
+  // invest 는 예수금(balance)만 쓴다 — 보유종목 평가액(value-balance)은 비상금이 아니다.
+  const accountBalance = sum(
+    selectedAccounts.map((asset) => asset.balance ?? asset.value),
+  );
   const accountCount = selectedAccounts.length;
   const runwayMonths =
     accountSelected && monthlySpend > 0 ? accountBalance / monthlySpend : null;

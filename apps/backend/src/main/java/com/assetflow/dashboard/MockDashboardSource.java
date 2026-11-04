@@ -10,7 +10,12 @@ import java.util.List;
  */
 public final class MockDashboardSource {
 
-    public record AssetRow(String id, String type, String name, long value) {}
+    /**
+     * @param value   화면 표시용 계좌 가치 — invest 는 예수금 + 보유종목 평가액(§54.3).
+     * @param balance 예수금(원장 잔액). invest 라도 평가액을 뺀 현금성 금액이다 —
+     *                비상금 분자는 이 값을 쓴다(§62: 주가 변동을 비상금에 섞지 않는다).
+     */
+    public record AssetRow(String id, String type, String name, long value, long balance) {}
     public record LiabilityRow(String id, String name, long balance) {}
 /**
      * @param vatSetAside 부가세통장 적립 이체(§57.9) — 지출이 아님.

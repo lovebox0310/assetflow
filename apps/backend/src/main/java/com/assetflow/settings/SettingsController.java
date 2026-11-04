@@ -28,6 +28,8 @@ public class SettingsController {
     private static final int MAX_MONTHS = 60;
     private static final int MIN_AVG_MONTHS = 1;
     private static final int MAX_AVG_MONTHS = 12;
+    /** §62 비상금 계좌로 지정할 수 있는 유형 — 현금성 + 증권(예수금). 예적금·부동산은 제외. */
+    private static final Set<String> EMERGENCY_ACCOUNT_TYPES = Set.of("cash", "invest");
 
     private final UserSettingsLedger ledger;
     private final AssetLedger assets;
@@ -42,7 +44,7 @@ public class SettingsController {
 
     /**
      * 모든 필드는 선택이다 — 빠진 필드는 기존 값을 유지한다.
-     * emergencyAccountIds 는 비상금 통장(현금성 계좌) id 목록이다. 빈 배열이면 지정 해제.
+     * emergencyAccountIds 는 비상금 계좌(현금성·증권 예수금) id 목록이다. 빈 배열이면 지정 해제.
      */
     public record SettingsBody(Integer targetMonths, List<String> emergencyAccountIds,
                                Integer emergencyAvgMonths, List<String> emergencyCategories) {}
@@ -86,9 +88,16 @@ public class SettingsController {
     }
 
     /**
-     * 비상금 통장은 **현금성(cash)·비부채** 계좌만 허용한다. 예적금은 잔액이 고정
-     * 목적일 수 있어 제외하고, 자동이체·부가세처럼 용도가 정해진 계좌는 사용자가
-     * 선택하지 않는 방식으로 뺀다. 중복 id 는 순서를 유지한 채 하나로 합친다.
+     * 비상금 계좌는 **현금성(cash)·증권(invest)·비부채** 계좌만 허용한다(§62).
+     *
+     * - invest 를 허용하는 이유: CMA·증권사 예수금 통장처럼 실제로는 즉시 인출 가능한
+     *   현금성 자산이 invest 유형으로 등록되는 경우가 흔하다(은행 계좌가 아니므로 cash 로
+     *   분류할 수 없다).
+     * - 다만 계산은 **예수금(balance)** 만 쓴다. 주식 보유분(평가액)은 주가에 따라
+     *   흔들리므로 비상금 분자에 넣지 않는다(FE `emergencyRunway`).
+     * - 예적금(deposit)은 계속 제외한다 — 잔액이 고정 목적일 수 있고, §59 의 정의를 유지한다.
+     *   자동이체·부가세처럼 용도가 정해진 계좌도 사용자가 선택하지 않는 방식으로 뺀다.
+     * - 중복 id 는 순서를 유지한 채 하나로 합친다.
      */
     private List<String> validateAccountIds(List<String> raw) {
         Set<String> unique = new LinkedHashSet<>();
@@ -101,8 +110,8 @@ public class SettingsController {
             if (row.isDebt()) {
                 throw new IllegalArgumentException("emergencyAccountIds must not include a debt account");
             }
-            if (!"cash".equals(row.accountType())) {
-                throw new IllegalArgumentException("emergencyAccountIds must be cash accounts");
+            if (!EMERGENCY_ACCOUNT_TYPES.contains(row.accountType())) {
+                throw new IllegalArgumentException("emergencyAccountIds must be cash or invest accounts");
             }
             unique.add(String.valueOf(row.id()));
         }

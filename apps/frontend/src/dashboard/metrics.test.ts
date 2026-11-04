@@ -156,7 +156,7 @@ describe("metrics (§23 표시 규칙)", () => {
     expect(runway.unclassifiedTotal).toBe(100_000);
   });
 
-  it("비상금 통장이 없거나 월 사용액이 0이면 개월 수를 만들지 않는다", () => {
+  it("비상금 계좌가 없거나 월 사용액이 0이면 개월 수를 만들지 않는다", () => {
     const noAccount = emergencyRunway({
       assets: base.assets,
       essentialExpenses: 1_000_000,
@@ -212,7 +212,7 @@ describe("metrics (§23 표시 규칙)", () => {
     const { dashboardMock } = await import("../data/dashboardMock");
     expect(netWorth(dashboardMock)).toBe(691_844_440);
     expect(monthlyBalance(dashboardMock)).toBe(3_240_000);
-    // 비상금 통장(우리 파킹통장 18,500,000) / 필수 2,317,180 = 7.98...개월
+    // 비상금 계좌(우리 파킹통장 18,500,000) / 필수 2,317,180 = 7.98...개월
     expect(
       emergencyRunway({
         assets: dashboardMock.assets,

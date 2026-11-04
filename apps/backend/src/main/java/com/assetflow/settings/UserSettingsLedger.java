@@ -6,11 +6,12 @@ import java.util.List;
 public interface UserSettingsLedger {
 
     /**
-     * §59 비상금 유지 개월 기준.
+     * §59·§62 비상금 유지 개월 기준.
      *
-     * emergencyAccountIds 는 사용자가 비상금 통장으로 지정한 **현금성(cash) 계좌 id** 목록이다.
-     * 자산 계좌 id 의 문자열 표현(대시보드 자산 id 와 같은 형식)이며, 분자는 이 계좌들의
-     * 잔액 **합계**다. 용도가 정해진 계좌(자동이체·부가세 등)는 지정하지 않는 방식으로 제외한다.
+     * emergencyAccountIds 는 사용자가 비상금 계좌로 지정한 **현금성(cash) + 증권(invest)**
+     * 계좌 id 목록이다. 자산 계좌 id 의 문자열 표현(대시보드 자산 id 와 같은 형식)이며,
+     * 분자는 이 계좌들의 **예수금(balance) 합계**다(§62 — invest 평가액은 제외).
+     * 용도가 정해진 계좌(자동이체·부가세 등)는 지정하지 않는 방식으로 제외한다.
      */
     record UserSettings(long id, String email, String displayName, int targetMonths,
                         List<String> emergencyAccountIds, int emergencyAvgMonths,

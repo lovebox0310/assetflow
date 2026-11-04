@@ -38,7 +38,7 @@ function apiResponse(data: unknown, ok = true, status = 200): Response {
 
 function route(path: string): Response | Promise<Response> {
   if (path.includes("/dashboard/summary")) return apiResponse(dashboardMock);
-  // §59: 비상금 통장과 카드지출 카테고리 기준
+  // §59: 비상금 계좌와 카드지출 카테고리 기준
   if (path.includes("/settings")) {
     return apiResponse({
       id: 1,
@@ -156,7 +156,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     // 현금 계좌 섹션: summary 의 cash 계좌가 카드형으로 이름·금액·비중과 함께 렌더
     expect(screen.getByText("우리 파킹통장")).toBeDefined();
     expect(screen.getByText("현금의 74.9%")).toBeDefined();
-    // §59 설정의 비상금 통장(c1)에만 태그가 붙는다. (스위치 라벨에도 "비상금"이 있어 클래스로 확인)
+    // §59 설정의 비상금 계좌(c1)에만 태그가 붙는다. (스위치 라벨에도 "비상금"이 있어 클래스로 확인)
     await waitFor(() => {
       const tagged = document.querySelector(".af-cash-item--emergency");
       expect(tagged?.textContent).toContain("우리 파킹통장");
@@ -187,7 +187,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     await screen.findByText("6.9억");
     fireEvent.click(screen.getByRole("button", { name: "기준 설정" }));
     expect(await screen.findByText("비상금 유지 개월 기준")).toBeDefined();
-    expect(screen.getByLabelText("비상금 통장")).toBeDefined();
+    expect(screen.getByLabelText("비상금 계좌")).toBeDefined();
     expect(screen.getByText("카드 데이터 1/3개월 집계")).toBeDefined();
   });
 
