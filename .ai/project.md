@@ -4213,5 +4213,7 @@ bank_account_links (
 - 통합 테스트: IMAP mock + Playwright headless로 end-to-end 수집 시뮬레이션.
 - End-to-end: `/tmp/opencode/hyundaicard.html`에서 복호화 성공, 거래 행 **90건** 추출
   (2026-10-02 ~ 2026-10-27, 본인/가족 카드 구분 포함, 총 이용금액 3,326,643원).
+- 실제 Gmail IMAP 수동 수집: **90건** 저장 성공. `SubjectTerm` 한국어 부분 매칭
+  이슈로 `GmailImapAttachmentDownloader`를 발신자 검색 + Java 제목 필터링으로 수정.
 - 삼성카드 샘플: VestMail 암호화 HTML임을 확인. 별도 복호화 로직 필요.
 - 보안: DB에 저장된 자격증명이 평문이 아닌 암호문인지 확인.

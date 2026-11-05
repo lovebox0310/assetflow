@@ -7,10 +7,8 @@ import jakarta.mail.Multipart;
 import jakarta.mail.Part;
 import jakarta.mail.Session;
 import jakarta.mail.Store;
-import jakarta.mail.search.AndTerm;
 import jakarta.mail.search.FromStringTerm;
 import jakarta.mail.search.SearchTerm;
-import jakarta.mail.search.SubjectTerm;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
@@ -46,15 +44,18 @@ public class GmailImapAttachmentDownloader implements CardEmailAttachmentDownloa
             Folder inbox = store.getFolder("INBOX");
             inbox.open(Folder.READ_ONLY);
 
-            SearchTerm term = new AndTerm(
-                    new FromStringTerm(SENDER),
-                    new SubjectTerm(SUBJECT_KEYWORD));
+            // 발신자로만 검색한 뒤 제목은 Java 에서 필터링한다.
+            // SubjectTerm 은 한국어 인코딩에서 부분 문자열 매칭이 실패할 수 있다.
+            SearchTerm term = new FromStringTerm(SENDER);
             Message[] messages = inbox.search(term);
 
             List<Message> sorted = new ArrayList<>();
             for (Message m : messages) {
                 if (m.getSentDate() != null) {
-                    sorted.add(m);
+                    String subject = m.getSubject();
+                    if (subject != null && subject.contains(SUBJECT_KEYWORD)) {
+                        sorted.add(m);
+                    }
                 }
             }
             sorted.sort(Comparator.comparing((Message m) -> {
