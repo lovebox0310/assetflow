@@ -49,7 +49,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   }
 
   const body = (await response.json().catch(() => null)) as
-    | { code?: string; message?: string; data?: unknown }
+    | { code?: string; message?: string; details?: string; data?: unknown }
     | null;
 
   if (!response.ok) {
@@ -58,13 +58,18 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
       // LoginPage 의 로그인 실패도 이 경로를 타지만, 로그인 화면에서는 영향이 없다.
       clearToken();
       window.dispatchEvent(new Event("assetflow:unauthorized"));
-      throw new ApiError("auth", AUTH_MESSAGE, body?.code ?? "AUTH_REQUIRED", body?.message ?? null);
+      throw new ApiError("auth", AUTH_MESSAGE, body?.code ?? "AUTH_REQUIRED",
+        body?.details?.trim() ? body.details : body?.message ?? null);
     }
+    // §25 실패 응답은 ErrorResponse(code, message, details). 외부 API가 준 실제
+    // 사유가 어느 필드에 오는지는 핸들러마다 다르다: KIS 는 details, 은행은 message.
+    // 비어 있지 않은 쪽을 고른다 — "" 를 먼저 택하면 사유가 일반 문구에 묻힌다.
+    const detail = body?.details?.trim() ? body.details : body?.message ?? null;
     throw new ApiError(
       response.status < 500 ? "client" : "server",
       response.status < 500 ? CLIENT_MESSAGE : SERVER_MESSAGE,
       body?.code ?? "UNKNOWN",
-      body?.message ?? null,
+      detail,
     );
   }
 

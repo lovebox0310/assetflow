@@ -4456,3 +4456,57 @@ public static final String[] PUBLIC_PATHS = {"/api/v1/auth/login", "/api/v1/auth
 즉 **"수집·복호화·분류·저장" 은 자동이지만 "문서 발송 트리거" 는 사람**이다.
 완전 무인 실시간 수집이 필요하면 상용 API(CODEF/바로빌) 또는 마이데이터
 사업자 등록이 별도로 필요하며, §63 의 비용/자격 이유로 이번 범위에서 제외했다.
+
+---
+
+## 69) KIS 비상금 동기화 시 잔액이 변하지 않는 문제 (2026-11-06)
+
+**증상**: 투자 화면에서 `비상금`(한국투자증권 CMA) 계좌의 "한투 동기화"를 눌러도
+예수금·비상금 잔액이 0 에서 바뀌지 않는다.
+
+**진단** (운영 DB + 실제 KIS 호출):
+- `asset_accounts` id=17 `비상금` / 한국투자 / `balance=0`, `updated_at` 은 당일.
+  동기화 자체는 실행됐지만 예수금 0 이 쓰였다.
+- `kis_account_credentials`: `cano=64116780`, `acnt_prdt_cd=21`(CMA),
+  `base_url=https://openapivts.koreainvestment.com:29443` (**모의투자**).
+  반면 전역 `KIS_BASE_URL=https://openapi.koreainvestment.com:9443` (**실전**).
+- 저장된 앱키로 **실서버** 호출 →
+  `"실전투자 도메인은 모의투자 앱키로 호출하실 수 없습니다."` (EGW02004)
+- **모의서버** 호출 → `"모의투자 처리계좌의 ID와 사용자정보가 상이하여 처리 불가능"`.
+- 즉 **모의투자 앱키 + 실계좌번호** 조합이라 어떤 서버로도 잔고를 못 읽는다.
+  근본 원인은 `KisCredentialsModal` 이 API 환경 기본값을 모의투자로 두던 것.
+
+**코드 문제 (함께 수정)**:
+1. `RestTemplateKisApiClient` 가 HTTP 오류 body 의 `msg1` 을 버리고 상태 텍스트만
+   던졌다 → 사용자는 "Internal Server Error" 만 보고 원인을 알 수 없었다.
+2. `KisBalanceService.fetchBalance` 가 **예외일 때만** 폴백했다. CMA 처럼
+   `rt_cd=0` 인데 `dnca_tot_amt=0` 인 경우 폴백하지 않아 예수금이 0 이 됐다.
+   `parseAccountBalance` 도 `output2` 를 객체로만 가정(실제로는 배열로도 옴).
+3. `InvestmentController.syncKis` 가 예수금 0 을 **그대로 덮어써** 기존 잔액을
+   파괴했다. 계좌가 진짜 비어서 0 인 것과 값을 못 받은 것을 구분할 수 없으므로
+   보수적으로 **기존 값 유지 + 경고**로 바꿨다.
+4. `apiFetch` 가 실패 응답의 `details` 를 읽지 않고 `message`(일반 문구)만 읽었다.
+   KIS 사유는 `details`, 은행 사유는 `message` 로 핸들러마다 달라서 **비어 있지
+   않은 쪽**을 고르도록 했다. 화면도 `ApiError.detail` 을 보여 준다.
+5. `getKisCredentials` 는 키를 마스킹해 돌려주는데 모달이 그 값을 폼에 넣어
+   그대로 저장할 수 있었다 → 자격증명 손상. 빈 값은 "기존 키 유지", 마스킹
+   값(`****`)은 거부하도록 했다.
+
+**결정**:
+- 예수금 후보 필드를 여러 개(`tot_dncl_amt`/`dncl_amt`/`cma_evlu_amt`/
+  `dnca_tot_amt`/…) 훑고, 주 조회에서 0 이면 계좌자산현황조회로 폴백한다.
+  둘 다 실패하면 **양쪽 사유를 함께** 던진다.
+- 예수금을 못 읽으면 잔액을 갱신하지 않고 `Portfolio.warning` 으로 화면에 알린다.
+- KIS 설정 화면의 API 환경 기본값을 **실전**으로 바꾸고, 앱키·CANO·환경이
+  짝이 맞아야 한다는 안내를 붙였다.
+
+**사용자 조치 (코드로 해결 불가)**: 실계좌 `64116780` 을 동기화하려면 KIS
+포털에서 **실전투자 앱키/앱시크릿**을 발급해 "실전" 환경으로 다시 저장해야 한다.
+현재 키는 모의투자용이다. 또는 기존 모의투자 키를 쓰려면 KIS가 부여한
+**모의투자 전용 CANO** 를 입력해야 한다(그 경우 실제 비상금 잔액은 아니다).
+
+**검증**:
+- BE `./gradlew test`: **226 tests**, 실패 0
+  (`KisBalanceServiceTest` 5건, `KisSyncCashTest` 4건 신규).
+- FE `npx tsc --noEmit` 통과, `npx vitest run`: **221 tests** 통과
+  (`client.test.ts` 2건, InvestmentsPage 경고 표시 1건 신규).

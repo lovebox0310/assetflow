@@ -22,7 +22,11 @@ public class PortfolioService {
     public record AccountValue(long accountId, String accountName, String institutionName,
                                long cashBalance, long holdingsValue, long totalValue) {}
 
-    public record Portfolio(List<HoldingRow> holdings, List<AccountValue> accounts) {}
+    /**
+     * @param warning KIS 동기화처럼 "일부 값만 갱신" 되는 작업이 남기는 경고.
+     *                일반 조회에는 null 이다. 화면이 조용히 성공으로 넘기지 않게 한다.
+     */
+    public record Portfolio(List<HoldingRow> holdings, List<AccountValue> accounts, String warning) {}
 
     private final AssetLedger assetLedger;
     private final InvestmentLedger investmentLedger;
@@ -47,7 +51,13 @@ public class PortfolioService {
                             cash, holdingsValue, cash + holdingsValue);
                 })
                 .toList();
-        return new Portfolio(holdings, accounts);
+        return new Portfolio(holdings, accounts, null);
+    }
+
+    /** 포트폴리오 조회 결과에 경고를 붙여 돌려준다(KIS 동기화 전용). */
+    public Portfolio withWarning(String warning) {
+        Portfolio current = portfolio();
+        return new Portfolio(current.holdings(), current.accounts(), warning);
     }
 
     /** 대시보드가 invest 행의 value 로 쓸 계좌 총액. 행이 없으면 빈 맵. */

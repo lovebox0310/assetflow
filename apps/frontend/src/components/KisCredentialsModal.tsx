@@ -12,6 +12,12 @@ interface Props {
 
 const MOCK_URL = "https://openapivts.koreainvestment.com:29443";
 const REAL_URL = "https://openapi.koreainvestment.com:9443";
+/**
+ * 기본값은 **실전**으로 둔다. 모의투자를 기본으로 두면 실계좌번호(CANO)와
+ * 모의투자 앱키가 섞여 "처리계좌 ID와 사용자정보가 상이" 로 잔고가 0 이 된다.
+ * 전역 KIS_BASE_URL 도 실전 서버다(application.yml).
+ */
+const DEFAULT_URL = REAL_URL;
 
 /**
  * §62.2 한국투자증권 계좌별 API 자격증명 설정 모달.
@@ -33,16 +39,18 @@ export function KisCredentialsModal({ accountId, accountName, open, onClose, onS
       .then((data) => {
         setExists(true);
         form.setFieldsValue({
-          appKey: data.appKey,
-          appSecret: data.appSecret,
-          baseUrl: data.baseUrl || MOCK_URL,
+          // GET 응답의 키는 마스킹돼 있다. 빈 값으로 두고 "바꿀 때만 입력" 으로
+          // 안내한다 — 마스킹 문자열을 그대로 저장하면 자격증명이 깨진다.
+          appKey: "",
+          appSecret: "",
+          baseUrl: data.baseUrl || DEFAULT_URL,
           cano: data.cano,
           acntPrdtCd: data.acntPrdtCd,
         });
       })
       .catch(() => {
         // 없으면 기본값으로 신규 입력
-        form.setFieldsValue({ baseUrl: MOCK_URL, acntPrdtCd: "01" });
+        form.setFieldsValue({ baseUrl: DEFAULT_URL, acntPrdtCd: "01" });
       })
       .finally(() => setLoading(false));
   }, [open, accountId, form]);
@@ -74,7 +82,7 @@ export function KisCredentialsModal({ accountId, accountName, open, onClose, onS
     try {
       await deleteKisCredentials(accountId);
       form.resetFields();
-      form.setFieldsValue({ baseUrl: MOCK_URL, acntPrdtCd: "01" });
+      form.setFieldsValue({ baseUrl: DEFAULT_URL, acntPrdtCd: "01" });
       setExists(false);
       onSaved();
     } catch (e) {
@@ -99,27 +107,45 @@ export function KisCredentialsModal({ accountId, accountName, open, onClose, onS
         disabled={loading}
         style={{ marginTop: 16 }}
       >
-        <Form.Item name="baseUrl" label="API 환경" rules={[{ required: true }]}>
+        <Form.Item
+          name="baseUrl"
+          label="API 환경"
+          rules={[{ required: true }]}
+          extra={
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              실전 계좌번호(CANO)에는 실전 앱키 + 실전 환경을, 모의투자 계좌에는 모의투자
+              앱키 + 모의투자 환경을 짝지어야 합니다. 둘이 섞이면 KIS가 잔고 조회를
+              거부하고 잔액이 갱신되지 않습니다.
+            </Typography.Text>
+          }
+        >
           <Radio.Group>
-            <Radio value={MOCK_URL}>모의투자</Radio>
             <Radio value={REAL_URL}>실전</Radio>
+            <Radio value={MOCK_URL}>모의투자</Radio>
           </Radio.Group>
         </Form.Item>
 
         <Form.Item
           name="appKey"
           label="App Key"
-          rules={[{ required: true, message: "App Key를 입력하세요" }]}
+          rules={[{ required: !exists, message: "App Key를 입력하세요" }]}
+          extra={
+            exists ? (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                키가 저장돼 있습니다. 바꿀 때만 입력하세요.
+              </Typography.Text>
+            ) : undefined
+          }
         >
-          <Input placeholder="KIS App Key" />
+          <Input placeholder={exists ? "변경할 때만 입력" : "KIS App Key"} />
         </Form.Item>
 
         <Form.Item
           name="appSecret"
           label="App Secret"
-          rules={[{ required: true, message: "App Secret을 입력하세요" }]}
+          rules={[{ required: !exists, message: "App Secret을 입력하세요" }]}
         >
-          <Input.Password placeholder="KIS App Secret" />
+          <Input.Password placeholder={exists ? "변경할 때만 입력" : "KIS App Secret"} />
         </Form.Item>
 
         <Space align="start" style={{ width: "100%" }}>
