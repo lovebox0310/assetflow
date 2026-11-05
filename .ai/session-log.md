@@ -232,9 +232,43 @@ mock downloader를 이용한 통합 흐름 테스트를 추가. 실제 IMAP/Play
 **검증**:
 - BE `./gradlew test`: BUILD SUCCESSFUL
 
+---
+
+## 2026-11-05 — KIS 계좌별 자격증명 DB 저장 + 설정 UI [✅ 완료]
+
+**요약**: 사용자가 "계좌마다 KIS 키가 다르다"고 요청한 것을 반영, 환경변수 방식에서
+DB 저장 방식으로 전환. 키 등록/변경 시 서버 재시작 불필요.
+
+**변경**:
+- DB `schema.sql`: `kis_account_credentials` 테이블 추가.
+- BE:
+  - `KisCredentials`, `KisCredentialsLedger`, `InMemoryKisCredentialsLedger`,
+    `PostgresKisCredentialsLedger`, `KisCredentialsService` 추가.
+  - `KisProperties`에서 전역 `appKey`/`appSecret` 제거.
+  - `KisTokenClient`를 계좌별 키 조합마다 토큰 캐싱하도록 변경.
+  - `KisApiClient`/`RestTemplateKisApiClient`/`KisBalanceService`가
+    `KisCredentials`를 받도록 변경.
+  - `KisAccountMappingService`가 DB credentials 를 조회하도록 변경.
+  - `InvestmentController`에 `/accounts/{accountId}/kis-credentials` CRUD 추가.
+    `sync-kis`는 `accountId`만 받고 서버가 DB에서 자격증명 조회.
+  - `application.yml`에서 `KIS_APP_KEY`/`KIS_APP_SECRET`/`KIS_ACCOUNT_MAPPINGS_JSON` 제거.
+  - `deploy.sh` 경고 메시지 갱신: `CARD_IMPORT_KEY` 누락 경고 추가.
+- FE:
+  - `KisCredentialsModal` 추가.
+  - `investmentsApi.ts`에 `getKisCredentials`/`saveKisCredentials`/`deleteKisCredentials` 추가.
+  - `InvestmentsPage.tsx`에서 inline CANO/상품코드 입력 제거, "KIS 설정" 모달과
+    간소화된 "한투 동기화" 버튼으로 교체.
+- 문서: `.ai/project.md` §64 추가.
+
+**검증**:
+- BE `./gradlew test`: BUILD SUCCESSFUL.
+- FE `npx vitest run`: 25 files / 216 tests passed.
+
+**주의**: 운영 배포 시 기존 DB에 `kis_account_credentials` 테이블 마이그레이션 필요.
+
 **다음 단계**:
 1. 삼성카드: 별도 VestMail 복호화 추출기 연구 또는 바로빌/CODEF 상용 API 검토.
-2. `deploy.sh` 전체 실행하여 운영 배포 검증.
+2. 운영 DB 마이그레이션 후 KIS 설정 페이지에서 키 등록 및 동기화 테스트.
 
 ---
 

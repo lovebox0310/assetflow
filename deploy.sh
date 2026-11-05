@@ -71,19 +71,14 @@ EOF
 fi
 
 # KIS 설정이 누락되었는지 경고만 한다(값은 출력하지 않는다).
+# §62.2: appKey/appSecret 은 DB 에 계좌별로 저장되므로 환경변수에서 제외했다.
 ENV_FILE="/opt/assetflow/assetflow.env"
 if [ -f "$ENV_FILE" ]; then
     if ! grep -qE '^KIS_ENABLED=(true|yes|1)$' "$ENV_FILE" 2>/dev/null; then
         echo "WARN: KIS_ENABLED is not true in $ENV_FILE"
     fi
-    if ! grep -qE '^KIS_APP_KEY=[^[:space:]]+$' "$ENV_FILE" 2>/dev/null; then
-        echo "WARN: KIS_APP_KEY is empty in $ENV_FILE"
-    fi
-    if ! grep -qE '^KIS_APP_SECRET=[^[:space:]]+$' "$ENV_FILE" 2>/dev/null; then
-        echo "WARN: KIS_APP_SECRET is empty in $ENV_FILE"
-    fi
-    if ! grep -qE '^KIS_BASE_URL=[^[:space:]]+$' "$ENV_FILE" 2>/dev/null; then
-        echo "WARN: KIS_BASE_URL is empty in $ENV_FILE"
+    if ! grep -qE '^CARD_IMPORT_KEY=[^[:space:]]+$' "$ENV_FILE" 2>/dev/null; then
+        echo "WARN: CARD_IMPORT_KEY is empty in $ENV_FILE — KIS/Card credentials cannot be decrypted after restart"
     fi
 else
     echo "WARN: $ENV_FILE not found — KIS will be disabled"

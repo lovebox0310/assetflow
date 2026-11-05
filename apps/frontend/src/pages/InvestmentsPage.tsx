@@ -22,13 +22,13 @@ import {
   MobileListCardItem,
   MobileListCardMeta,
 } from "../components/MobileListCard";
+import { KisCredentialsModal } from "../components/KisCredentialsModal";
 import {
   clearKisBalance,
   createHolding,
   deleteHolding,
   fetchFxRate,
   fetchQuote,
-  getKisMapping,
   getPortfolio,
   refreshHoldingPrices,
   syncKisBalance,
@@ -37,7 +37,6 @@ import {
   type HoldingPayload,
   type HoldingRow,
   type InvestmentAccountValue,
-  type KisAccountMapping,
   type Portfolio,
 } from "../api/investmentsApi";
 import { deleteAccount, updateAccount, type UpsertPayload } from "../api/assetsApi";
@@ -146,11 +145,9 @@ export function InvestmentsPage({
   const [accountEditId, setAccountEditId] = useState<number | null>(null);
   const [accountBusy, setAccountBusy] = useState(false);
   const [accountForm] = Form.useForm<AccountFormValues>();
-  /** §62 한국투자증권 잔고 동기화 입력 상태. */
-  const [kisSyncAccountId, setKisSyncAccountId] = useState<number | null>(null);
-  const [kisCano, setKisCano] = useState("");
-  const [kisAcntPrdtCd, setKisAcntPrdtCd] = useState("01");
-  const [kisSyncing, setKisSyncing] = useState(false);
+  /** §62 한국투자증권 잔고 동기화 상태. */
+  const [kisSyncingAccountId, setKisSyncingAccountId] = useState<number | null>(null);
+  const [kisCredentialsAccount, setKisCredentialsAccount] = useState<{ id: number; name: string } | null>(null);
   const mountedRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -470,42 +467,17 @@ export function InvestmentsPage({
   };
 
   /** §62 한국투자증권 잔고 동기화. */
-  const beginKisSync = async (accountId: number, accountName: string) => {
-    setActionError("");
-    setKisSyncAccountId(accountId);
-    setKisCano("");
-    setKisAcntPrdtCd("01");
-    try {
-      const mapping: KisAccountMapping = await getKisMapping(accountName);
-      setKisCano(mapping.cano);
-      setKisAcntPrdtCd(mapping.acntPrdtCd || "01");
-    } catch {
-      // 매핑이 없으면 사용자가 직접 입력한다.
-    }
-  };
-
-  const cancelKisSync = () => {
-    setKisSyncAccountId(null);
-    setKisCano("");
-    setKisAcntPrdtCd("01");
-  };
-
   const doKisSync = async (accountId: number) => {
-    if (!kisCano.trim()) {
-      setActionError("계좌번호 앞 8자리(CANO)를 입력하세요");
-      return;
-    }
-    setKisSyncing(true);
+    setKisSyncingAccountId(accountId);
     setActionError("");
     try {
-      const data = await syncKisBalance(accountId, kisCano.trim(), kisAcntPrdtCd.trim() || "01");
+      const data = await syncKisBalance(accountId);
       setPortfolio(data);
       setStatus(data.holdings.length === 0 && data.accounts.length === 0 ? "empty" : "ready");
-      cancelKisSync();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "한국투자증권 동기화에 실패했습니다");
     } finally {
-      setKisSyncing(false);
+      setKisSyncingAccountId(null);
     }
   };
 
@@ -705,7 +677,7 @@ export function InvestmentsPage({
                               type="text"
                               aria-label={`${account.accountName} 계좌 편집`}
                               onClick={() => beginAccountEdit(account)}
-                              disabled={editingId !== null || priceMode || accountBusy || kisSyncAccountId !== null}
+                              disabled={editingId !== null || priceMode || accountBusy || kisSyncingAccountId !== null}
                             >
                               계좌 편집
                             </Button>
@@ -713,9 +685,21 @@ export function InvestmentsPage({
                               <Button
                                 size="small"
                                 type="text"
+                                aria-label={`${account.accountName} KIS 연동 설정`}
+                                onClick={() => setKisCredentialsAccount({ id: account.accountId, name: account.accountName })}
+                                disabled={editingId !== null || priceMode || accountBusy || kisSyncingAccountId !== null}
+                              >
+                                KIS 설정
+                              </Button>
+                            ) : null}
+                            {isKisAccount ? (
+                              <Button
+                                size="small"
+                                type="text"
                                 aria-label={`${account.accountName} 한국투자증권 동기화`}
-                                onClick={() => void beginKisSync(account.accountId, account.accountName)}
-                                disabled={editingId !== null || priceMode || accountBusy || kisSyncing}
+                                onClick={() => void doKisSync(account.accountId)}
+                                disabled={editingId !== null || priceMode || accountBusy || kisSyncingAccountId !== null}
+                                loading={kisSyncingAccountId === account.accountId}
                               >
                                 한투 동기화
                               </Button>
@@ -731,7 +715,7 @@ export function InvestmentsPage({
                                   type="text"
                                   danger
                                   aria-label={`${account.accountName} 동기화 해제`}
-                                  disabled={editingId !== null || priceMode || accountBusy || kisSyncing}
+                                  disabled={editingId !== null || priceMode || accountBusy || kisSyncingAccountId !== null}
                                 >
                                   동기화 해제
                                 </Button>
@@ -751,7 +735,7 @@ export function InvestmentsPage({
                                 type="text"
                                 danger
                                 aria-label={`${account.accountName} 계좌 삭제`}
-                                disabled={accountBusy || kisSyncing}
+                                disabled={accountBusy || kisSyncingAccountId !== null}
                               >
                                 계좌 삭제
                               </Button>
@@ -790,33 +774,9 @@ export function InvestmentsPage({
                           </Space>
                         </div>
                       ) : null}
-                      {kisSyncAccountId === account.accountId ? (
+                      {kisSyncingAccountId === account.accountId ? (
                         <div style={{ marginBottom: 12, padding: 12, background: "var(--af-secondary)", borderRadius: 8 }}>
-                          <Space direction="vertical" style={{ width: "100%" }} size={8}>
-                            <Typography.Text strong>한국투자증권 잔고 동기화</Typography.Text>
-                            <Space wrap>
-                              <Input
-                                placeholder="계좌번호 앞 8자리 (CANO)"
-                                value={kisCano}
-                                onChange={(e) => setKisCano(e.target.value)}
-                                style={{ width: 180 }}
-                              />
-                              <Input
-                                placeholder="상품코드"
-                                value={kisAcntPrdtCd}
-                                onChange={(e) => setKisAcntPrdtCd(e.target.value)}
-                                style={{ width: 100 }}
-                              />
-                            </Space>
-                            <Space>
-                              <Button type="primary" onClick={() => void doKisSync(account.accountId)} loading={kisSyncing}>
-                                가져오기
-                              </Button>
-                              <Button onClick={cancelKisSync} disabled={kisSyncing}>
-                                취소
-                              </Button>
-                            </Space>
-                          </Space>
+                          <Typography.Text type="secondary">한국투자증권 잔고를 가져오는 중...</Typography.Text>
                         </div>
                       ) : null}
                       {rows.length === 0 ? (
@@ -980,6 +940,15 @@ export function InvestmentsPage({
           ) : null}
         </div>
       </section>
+      {kisCredentialsAccount && (
+        <KisCredentialsModal
+          accountId={kisCredentialsAccount.id}
+          accountName={kisCredentialsAccount.name}
+          open={kisCredentialsAccount !== null}
+          onClose={() => setKisCredentialsAccount(null)}
+          onSaved={() => void load()}
+        />
+      )}
     </AppLayout>
   );
 }

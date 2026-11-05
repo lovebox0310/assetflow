@@ -109,3 +109,70 @@ export function fetchQuote(symbol: string): Promise<Quote> {
 export function fetchFxRate(currency = "USD"): Promise<FxRate> {
   return apiFetch<FxRate>(`/api/v1/investments/fx?currency=${encodeURIComponent(currency)}`);
 }
+
+/** §62.1 계좌명으로 등록된 KIS 계좌번호(CANO/상품코드) 매핑. */
+export interface KisAccountMapping {
+  cano: string;
+  acntPrdtCd: string;
+}
+
+/** §62.2 계좌별 KIS API 자격증명. */
+export interface KisCredentials {
+  accountId: number;
+  appKey: string;
+  appSecret: string;
+  baseUrl: string;
+  cano: string;
+  acntPrdtCd: string;
+}
+
+export function getKisMapping(accountName: string): Promise<KisAccountMapping> {
+  return apiFetch<KisAccountMapping>(
+    `/api/v1/investments/holdings/kis-mapping/${encodeURIComponent(accountName)}`,
+  );
+}
+
+export function getKisCredentials(accountId: number): Promise<KisCredentials> {
+  return apiFetch<KisCredentials>(`/api/v1/investments/accounts/${accountId}/kis-credentials`);
+}
+
+export function saveKisCredentials(
+  accountId: number,
+  credentials: Omit<KisCredentials, "accountId">,
+): Promise<KisCredentials> {
+  return apiFetch<KisCredentials>(`/api/v1/investments/accounts/${accountId}/kis-credentials`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(credentials),
+  });
+}
+
+export function deleteKisCredentials(accountId: number): Promise<void> {
+  return apiFetch<void>(`/api/v1/investments/accounts/${accountId}/kis-credentials`, {
+    method: "DELETE",
+  });
+}
+
+/**
+ * §62 한국투자증권 국내주식 잔고를 가져와 보유종목을 동기화한다.
+ * KIS 자격증명은 서버 DB에서 계좌별로 조회한다.
+ */
+export function syncKisBalance(accountId: number): Promise<Portfolio> {
+  return apiFetch<Portfolio>("/api/v1/investments/holdings/sync-kis", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accountId }),
+  });
+}
+
+/**
+ * §62 한국투자증권 동기화를 해제한다.
+ * 해당 계좌의 모든 보유종목을 삭제하고 예수금을 0으로 초기화한다.
+ */
+export function clearKisBalance(accountId: number): Promise<Portfolio> {
+  return apiFetch<Portfolio>("/api/v1/investments/holdings/clear-kis", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accountId }),
+  });
+}

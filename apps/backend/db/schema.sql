@@ -329,3 +329,24 @@ CREATE TABLE bank_account_links (
     CONSTRAINT uq_bank_link_account UNIQUE (account_id)
 );
 CREATE INDEX ix_bank_account_links_user ON bank_account_links (user_id);
+
+-- ---------------------------------------------------------------------------
+-- kis_account_credentials: 계좌별 한국투자증권(KIS) API 자격증명 (§62.2 — 2026-11-05).
+-- app_key/app_secret 은 AES/GCM 암호화 문자열로 저장한다.
+-- base_url 은 비어 있으면 전역 기본값(모의투자)을 사용한다.
+-- ---------------------------------------------------------------------------
+CREATE TABLE kis_account_credentials (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id         BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    account_id      BIGINT NOT NULL REFERENCES asset_accounts (id) ON DELETE CASCADE,
+    app_key_enc     TEXT NOT NULL,
+    app_secret_enc  TEXT NOT NULL,
+    base_url        VARCHAR(255),
+    cano            VARCHAR(16) NOT NULL,
+    acnt_prdt_cd    VARCHAR(4) NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_kis_credentials_account UNIQUE (account_id)
+);
+
+CREATE INDEX ix_kis_credentials_user ON kis_account_credentials (user_id);
