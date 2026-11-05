@@ -365,4 +365,40 @@ describe("InvestmentsPage (§54 E2)", () => {
     expect(summary.textContent).toContain("—");
     expect(summary.textContent).not.toContain("NaN");
   });
+
+  it("KIS 동기화가 예수금을 못 읽으면 서버 경고를 화면에 보여 준다 (§62.3)", async () => {
+    const warning = "KIS에서 예수금을 읽지 못해 계좌 잔액을 유지했습니다.";
+    const kisPortfolio = {
+      holdings: [],
+      accounts: [
+        {
+          accountId: 4,
+          accountName: "비상금",
+          institutionName: "한국투자",
+          cashBalance: 0,
+          holdingsValue: 0,
+          totalValue: 0,
+        },
+      ],
+    };
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      const method = init?.method ?? "GET";
+      if (path.includes("/investments/holdings/sync-kis")) {
+        return Promise.resolve(apiResponse({ ...kisPortfolio, warning }));
+      }
+      if (path.includes("/investments/quotes/refresh")) {
+        return Promise.resolve(apiResponse(kisPortfolio));
+      }
+      if (path.includes("/investments/holdings")) {
+        return Promise.resolve(apiResponse(kisPortfolio));
+      }
+      return Promise.resolve(apiResponse({}, false, 400));
+    }));
+
+    render(<InvestmentsPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "비상금 한국투자증권 동기화" }));
+
+    expect(await screen.findByText(warning)).toBeDefined();
+  });
 });

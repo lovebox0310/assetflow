@@ -32,6 +32,8 @@ export interface InvestmentAccountValue {
 export interface Portfolio {
   holdings: HoldingRow[];
   accounts: InvestmentAccountValue[];
+  /** KIS 동기화가 예수금을 못 읽었을 때만 내려오는 경고. 일반 조회에는 없다. */
+  warning?: string | null;
 }
 
 export interface HoldingPayload {

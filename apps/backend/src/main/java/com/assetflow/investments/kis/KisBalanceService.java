@@ -13,6 +13,11 @@ import java.util.Map;
  * - endpoint: GET /uapi/domestic-stock/v1/trading/inquire-balance
  * - 모의투자 tr_id: VTTC8434R, 실전 tr_id: TTTC8434R
  * - 계좌번호는 CANO(앞 8자리) + ACNT_PRDT_CD(상품코드, 일반 "01") 로 구성.
+ *
+ * <p>CMA·연금 계좌(상품코드 21/29 등)는 주식잔고조회의 {@code dnca_tot_amt} 가
+ * 0 이거나 아예 조회가 안 된다. 이때 투자계좌자산현황조회로 예수금을 다시 읽는다.
+ * "성공했지만 예수금이 0" 도 실패로 보고 폴백해야 한다 — 그대로 두면 컨트롤러가
+ * 기존 잔액을 0 으로 덮어쓴다(§62.3).</p>
  */
 @Service
 public class KisBalanceService {
@@ -23,24 +28,65 @@ public class KisBalanceService {
     private static final String REAL_TR_ID = "TTTC8434R";
     private static final String ACCOUNT_BALANCE_TR_ID = "CTRP6548R";
 
+    /** 예수금 후보 필드 — 계좌 종류에 따라 KIS 가 다른 필드에 넣어 준다. */
+    private static final String[] CASH_FIELDS = {
+            "tot_dncl_amt", "dncl_amt", "cma_evlu_amt", "dnca_tot_amt",
+            "prvs_rcdl_excc_amt", "nxdy_excc_amt"
+    };
+
     private final KisApiClient kisApiClient;
 
     public KisBalanceService(KisApiClient kisApiClient) {
         this.kisApiClient = kisApiClient;
     }
 
+    /**
+     * 주식잔고 → (예수금이 없거나 조회 실패 시) 계좌자산현황 순서로 읽는다.
+     * 둘 다 실패하면 **두 사유를 함께** 던진다 — 어느 쪽이 막혔는지 알아야
+     * 사용자가 앱키/계좌번호/API 환경을 고칠 수 있다.
+     */
     public KisBalanceResponse fetchBalance(KisCredentials credentials) {
+        KisBalanceResponse primary = null;
+        KisApiException primaryError = null;
         try {
-            return fetchStockBalance(credentials);
-        } catch (KisApiException primary) {
-            // §62 CMA/연금 등 상품코드가 21, 29 등인 계좌는 주식잔고조회가 안 될 수 있다.
-            // 투자계좌자산현황조회로 예수금만이라도 동기화한다.
-            try {
-                return fetchAccountBalance(credentials);
-            } catch (KisApiException fallback) {
-                throw primary;
-            }
+            primary = fetchStockBalance(credentials);
+        } catch (KisApiException e) {
+            primaryError = e;
         }
+        if (primary != null && hasCash(primary)) {
+            return primary;
+        }
+
+        KisBalanceResponse fallback = null;
+        KisApiException fallbackError = null;
+        try {
+            fallback = fetchAccountBalance(credentials);
+        } catch (KisApiException e) {
+            fallbackError = e;
+        }
+        if (fallback != null && hasCash(fallback)) {
+            return fallback;
+        }
+
+        if (primaryError != null) {
+            if (fallbackError != null) {
+                throw new KisApiException("주식잔고조회: " + primaryError.getMessage()
+                        + " | 계좌자산현황조회: " + fallbackError.getMessage());
+            }
+            throw primaryError;
+        }
+        // 조회 자체는 성공했지만 예수금이 0 — 보유종목은 살리고 컨트롤러가
+        // "예수금 미확인" 으로 판단할 수 있게 한다. null 은 돌려주지 않는다.
+        if (primary != null) return primary;
+        if (fallback != null) return fallback;
+        return new KisBalanceResponse(List.of(), null);
+    }
+
+    private static boolean hasCash(KisBalanceResponse response) {
+        return response != null
+                && response.summary() != null
+                && response.summary().dncaTotAmt() != null
+                && response.summary().dncaTotAmt().compareTo(BigDecimal.ZERO) > 0;
     }
 
     private KisBalanceResponse fetchStockBalance(KisCredentials credentials) {
@@ -94,37 +140,53 @@ public class KisBalanceService {
                         text(node, "crdt_loan_yn")));
             }
         }
-        JsonNode output2 = root.path("output2");
-        KisBalanceResponse.Summary summary = null;
-        if (output2.isArray() && output2.size() > 0) {
-            JsonNode s = output2.get(0);
-            summary = new KisBalanceResponse.Summary(
-                    decimal(s.path("dnca_tot_amt").asText("0")),
-                    decimal(s.path("tot_evlu_amt").asText("0")),
-                    decimal(s.path("scts_evlu_amt").asText("0")),
-                    decimal(s.path("thdt_buy_amt").asText("0")),
-                    decimal(s.path("thdt_sll_amt").asText("0")));
-        }
+        JsonNode summaryNode = firstNode(root.path("output2"));
+        // 주식잔고조회의 dnca_tot_amt 가 0 인 CMA 계좌도 다른 예수금 필드에
+        // 값이 있을 수 있으므로 후보를 훑는다. 없으면 0(미확인)으로 둔다.
+        BigDecimal cash = firstNonZero(summaryNode, CASH_FIELDS);
+        KisBalanceResponse.Summary summary = new KisBalanceResponse.Summary(
+                cash,
+                decimal(text(summaryNode, "tot_evlu_amt")),
+                decimal(text(summaryNode, "scts_evlu_amt")),
+                decimal(text(summaryNode, "thdt_buy_amt")),
+                decimal(text(summaryNode, "thdt_sll_amt")));
         return new KisBalanceResponse(holdings, summary);
     }
 
     private KisBalanceResponse parseAccountBalance(JsonNode root) {
-        JsonNode output2 = root.path("output2");
-        BigDecimal cash = BigDecimal.ZERO;
-        if (output2.isObject() && !output2.isMissingNode()) {
-            BigDecimal totalDncl = decimal(output2.path("tot_dncl_amt").asText("0"));
-            BigDecimal dncl = decimal(output2.path("dncl_amt").asText("0"));
-            BigDecimal cma = decimal(output2.path("cma_evlu_amt").asText("0"));
-            cash = totalDncl.compareTo(BigDecimal.ZERO) > 0 ? totalDncl
-                    : dncl.compareTo(BigDecimal.ZERO) > 0 ? dncl : cma;
-        }
+        JsonNode summaryNode = firstNode(root.path("output2"));
+        BigDecimal cash = firstNonZero(summaryNode, CASH_FIELDS);
         KisBalanceResponse.Summary summary = new KisBalanceResponse.Summary(
                 cash, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
         return new KisBalanceResponse(List.of(), summary);
     }
 
+    /** output2 는 KIS 버전/엔드포인트에 따라 배열 또는 객체로 온다 — 둘 다 받는다. */
+    private static JsonNode firstNode(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        if (node.isArray()) {
+            return node.isEmpty() ? null : node.get(0);
+        }
+        return node.isObject() ? node : null;
+    }
+
+    private static BigDecimal firstNonZero(JsonNode node, String... fields) {
+        if (node == null) {
+            return BigDecimal.ZERO;
+        }
+        for (String field : fields) {
+            BigDecimal value = decimal(text(node, field));
+            if (value.compareTo(BigDecimal.ZERO) > 0) {
+                return value;
+            }
+        }
+        return BigDecimal.ZERO;
+    }
+
     private static String text(JsonNode node, String field) {
-        return node.path(field).asText("").trim();
+        return node == null ? "" : node.path(field).asText("").trim();
     }
 
     private static BigDecimal decimal(String raw) {

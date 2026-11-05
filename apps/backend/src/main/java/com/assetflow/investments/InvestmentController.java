@@ -11,6 +11,8 @@ import com.assetflow.investments.kis.KisBalanceResponse;
 import com.assetflow.investments.kis.KisBalanceService;
 import com.assetflow.investments.kis.KisCredentials;
 import com.assetflow.investments.kis.KisCredentialsService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -39,6 +41,7 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/v1/investments")
 public class InvestmentController {
 
+    private static final Logger log = LoggerFactory.getLogger(InvestmentController.class);
     private static final Set<String> CLASSES = Set.of("stock", "etf", "bond", "fund", "crypto");
 
     private final InvestmentLedger ledger;
@@ -104,10 +107,22 @@ public class InvestmentController {
         String priceAsOf = LocalDate.now().toString();
 
         // §62 CMA 계좌처럼 보유종목은 없고 현금만 있는 경우, 예수금도 동기화한다.
-        if (balance.summary() != null && balance.summary().dncaTotAmt() != null) {
-            long cash = balance.summary().dncaTotAmt().longValue();
+        // 단 예수금을 **읽지 못한 0 은 쓰지 않는다** — 계좌가 비어서 0 인 것과
+        // API/자격증명 문제로 값을 못 받은 것은 구분할 수 없으므로, 보수적으로
+        // 기존 잔액을 유지하고 경고를 돌려준다(§62.3).
+        String warning = null;
+        BigDecimal cashAmount = balance.summary() == null ? null : balance.summary().dncaTotAmt();
+        if (cashAmount != null && cashAmount.compareTo(BigDecimal.ZERO) > 0) {
+            long cash = cashAmount.longValue();
             assetLedger.update(account.id(), account.accountType(), account.name(),
                     account.institutionName(), cash, account.isDebt(), account.openedAt());
+            log.info("KIS sync updated cash balance for account {} to {}", account.id(), cash);
+        } else {
+            warning = "KIS에서 예수금을 읽지 못해 계좌 잔액을 유지했습니다. "
+                    + "App Key/App Secret이 실전·모의 중 어느 용인지, CANO·상품코드·API 환경이 "
+                    + "해당 계좌와 맞는지 확인하세요.";
+            log.warn("KIS sync could not resolve cash for account {} — keeping balance {}",
+                    account.id(), account.balance());
         }
 
         Map<String, HoldingRow> existingBySymbol = ledger.all().stream()
@@ -129,7 +144,8 @@ public class InvestmentController {
                 ledger.create(row);
             }
         }
-        return new ApiResponse<>("OK", "KIS balance synced", portfolioService.portfolio());
+        return new ApiResponse<>("OK", "KIS balance synced",
+                warning == null ? portfolioService.portfolio() : portfolioService.withWarning(warning));
     }
 
     /**
@@ -171,20 +187,31 @@ public class InvestmentController {
         if (!"invest".equals(account.accountType())) {
             throw new IllegalArgumentException("account must be an invest account");
         }
-        if (request.appKey() == null || request.appKey().isBlank()) {
-            throw new IllegalArgumentException("appKey is required");
-        }
-        if (request.appSecret() == null || request.appSecret().isBlank()) {
-            throw new IllegalArgumentException("appSecret is required");
-        }
         if (request.cano() == null || request.cano().isBlank()) {
             throw new IllegalArgumentException("cano is required");
         }
         if (request.acntPrdtCd() == null || request.acntPrdtCd().isBlank()) {
             throw new IllegalArgumentException("acntPrdtCd is required");
         }
+        // GET 은 appKey/appSecret 를 마스킹해서 돌려준다. 그 값을 그대로 다시 저장하면
+        // 자격증명이 깨진다 — 마스킹 값은 거부하고, 빈 값은 "기존 키 유지"로 받는다.
+        String appKey = request.appKey();
+        String appSecret = request.appSecret();
+        if ((appKey != null && appKey.contains("****"))
+                || (appSecret != null && appSecret.contains("****"))) {
+            throw new IllegalArgumentException(
+                    "마스킹된 키는 저장할 수 없습니다 — 원본 App Key/App Secret을 입력하세요.");
+        }
+        KisCredentials existing = kisCredentialsService.findDecrypted(accountId);
+        if (appKey == null || appKey.isBlank() || appSecret == null || appSecret.isBlank()) {
+            if (existing == null) {
+                throw new IllegalArgumentException("appKey/appSecret are required");
+            }
+            if (appKey == null || appKey.isBlank()) appKey = existing.appKey();
+            if (appSecret == null || appSecret.isBlank()) appSecret = existing.appSecret();
+        }
         KisCredentials plain = new KisCredentials(
-                accountId, request.appKey(), request.appSecret(),
+                accountId, appKey, appSecret,
                 request.baseUrl(), request.cano(), request.acntPrdtCd());
         KisCredentials saved = kisCredentialsService.save(1L, plain);
         return new ApiResponse<>("OK", "KIS credentials saved", kisCredentialsService.mask(saved));

@@ -40,7 +40,7 @@ import {
   type Portfolio,
 } from "../api/investmentsApi";
 import { deleteAccount, updateAccount, type UpsertPayload } from "../api/assetsApi";
-import { clearInflight } from "../api/client";
+import { ApiError, clearInflight } from "../api/client";
 import { clearToken } from "../auth/authStore";
 import { formatKrwExact, formatPercent, formatSignedKrw } from "../utils/formatters";
 
@@ -49,6 +49,15 @@ interface InvestmentsPageProps {
   onOpenAssets?: () => void;
   onOpenExpenses?: () => void;
   onOpenSettings?: () => void;
+}
+
+/**
+ * §25 실패 응답의 실제 사유는 ErrorResponse.details 에 들어온다.
+ * ApiError.detail 을 먼저 보여 줘야 KIS·은행이 준 원인 문구가 일반 문구에 묻히지 않는다.
+ */
+function describeError(e: unknown, fallback: string): string {
+  if (e instanceof ApiError) return e.detail ?? e.message;
+  return e instanceof Error ? e.message : fallback;
 }
 
 /** §54.2 자산군 표기. 서버 enum 과 1:1. */
@@ -131,6 +140,7 @@ export function InvestmentsPage({
   const [status, setStatus] = useState<SurfaceStatus>("loading");
   const [errorText, setErrorText] = useState("");
   const [actionError, setActionError] = useState("");
+  const [actionWarning, setActionWarning] = useState("");
   const [filter, setFilter] = useState<AssetClass | "all">("all");
   const [editingId, setEditingId] = useState<number | "new" | null>(null);
   const [busy, setBusy] = useState(false);
@@ -160,7 +170,7 @@ export function InvestmentsPage({
       setStatus(data.holdings.length === 0 && data.accounts.length === 0 ? "empty" : "ready");
     } catch (e) {
       setStatus("error");
-      setErrorText(e instanceof Error ? e.message : "불러오지 못했습니다");
+      setErrorText(describeError(e, "불러오지 못했습니다"));
     }
   }, []);
 
@@ -179,7 +189,7 @@ export function InvestmentsPage({
       setPortfolio(data);
       setStatus(data.holdings.length === 0 && data.accounts.length === 0 ? "empty" : "ready");
     } catch (e) {
-      if (!silent) setActionError(e instanceof Error ? e.message : "시세를 가져오지 못했습니다");
+      if (!silent) setActionError(describeError(e, "시세를 가져오지 못했습니다"));
     } finally {
       if (!silent) setRefreshingQuotes(false);
     }
@@ -310,7 +320,7 @@ export function InvestmentsPage({
       cancelPriceMode();
       load();
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "가격을 저장하지 못했습니다");
+      setActionError(describeError(e, "가격을 저장하지 못했습니다"));
     } finally {
       setSavingPrices(false);
     }
@@ -340,7 +350,7 @@ export function InvestmentsPage({
       cancelEdit();
       load();
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "저장하지 못했습니다");
+      setActionError(describeError(e, "저장하지 못했습니다"));
     } finally {
       setBusy(false);
     }
@@ -352,7 +362,7 @@ export function InvestmentsPage({
       await deleteHolding(id);
       load();
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "삭제하지 못했습니다");
+      setActionError(describeError(e, "삭제하지 못했습니다"));
     }
   };
 
@@ -437,7 +447,7 @@ export function InvestmentsPage({
       setAccountEditId(null);
       load();
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "계좌를 저장하지 못했습니다");
+      setActionError(describeError(e, "계좌를 저장하지 못했습니다"));
     } finally {
       setAccountBusy(false);
     }
@@ -455,7 +465,7 @@ export function InvestmentsPage({
       if (priceMode) cancelPriceMode();
       load();
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "계좌를 삭제하지 못했습니다");
+      setActionError(describeError(e, "계좌를 삭제하지 못했습니다"));
     } finally {
       setAccountBusy(false);
     }
@@ -470,12 +480,15 @@ export function InvestmentsPage({
   const doKisSync = async (accountId: number) => {
     setKisSyncingAccountId(accountId);
     setActionError("");
+    setActionWarning("");
     try {
       const data = await syncKisBalance(accountId);
       setPortfolio(data);
       setStatus(data.holdings.length === 0 && data.accounts.length === 0 ? "empty" : "ready");
+      // 잔액을 못 읽으면 서버가 기존 값을 유지하고 경고를 준다 — 조용히 성공으로 넘기지 않는다.
+      setActionWarning(data.warning ?? "");
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "한국투자증권 동기화에 실패했습니다");
+      setActionError(describeError(e, "한국투자증권 동기화에 실패했습니다"));
     } finally {
       setKisSyncingAccountId(null);
     }
@@ -488,7 +501,7 @@ export function InvestmentsPage({
       setPortfolio(data);
       setStatus(data.holdings.length === 0 && data.accounts.length === 0 ? "empty" : "ready");
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "동기화 해제에 실패했습니다");
+      setActionError(describeError(e, "동기화 해제에 실패했습니다"));
     }
   };
 
@@ -540,6 +553,12 @@ export function InvestmentsPage({
       {actionError ? (
         <Typography.Paragraph role="alert" type="danger" style={{ marginBottom: 16 }}>
           {actionError}
+        </Typography.Paragraph>
+      ) : null}
+
+      {actionWarning ? (
+        <Typography.Paragraph role="status" type="warning" style={{ marginBottom: 16 }}>
+          {actionWarning}
         </Typography.Paragraph>
       ) : null}
 
