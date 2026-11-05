@@ -1,26 +1,23 @@
 package com.assetflow.assets.card.email;
 
 import com.assetflow.assets.CardImportLedger;
+import com.assetflow.assets.card.CardContract;
 import com.assetflow.assets.card.CardImportCipher;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -42,6 +39,7 @@ public class VestMailHyundaiImporter {
     private final ObjectMapper objectMapper;
     private final CardEmailAttachmentDownloader downloader;
     private final String scriptDir;
+    private final String cardCompanyLabel;
 
     public VestMailHyundaiImporter(CardImportCipher cipher,
                                    CardImportLedger ledger,
@@ -55,6 +53,8 @@ public class VestMailHyundaiImporter {
         this.objectMapper = objectMapper;
         this.downloader = downloader;
         this.scriptDir = scriptDir;
+        // CSV 업로드와 같은 라벨을 써야 화면에서 카드사가 갈라지지 않는다(§29.3 단일 출처).
+        this.cardCompanyLabel = CardContract.loadDefault().companyProfile("hyundaicard").cardCompanyLabel();
     }
 
     /**
@@ -95,7 +95,7 @@ public class VestMailHyundaiImporter {
             throw new RuntimeException("HyundaiCard VestMail import failed", e);
         } finally {
             if (workDir != null) {
-                deleteRecursively(workDir);
+                VestMailScriptSupport.deleteRecursively(workDir, log);
             }
         }
     }
@@ -109,26 +109,29 @@ public class VestMailHyundaiImporter {
                                                              String vestmailPassword,
                                                              String year,
                                                              Long userId) throws Exception {
-        Path scriptWorkDir = prepareScriptWorkDir();
-        Path script = scriptWorkDir.resolve("extract-hyundai-vestmail.mjs");
-
-        ProcessBuilder pb = new ProcessBuilder(
-                "node", script.toString(), htmlFile.toString(),
-                "--password=" + vestmailPassword,
-                "--year=" + year);
-        pb.directory(scriptWorkDir.toFile());
-        pb.redirectErrorStream(true);
-
-        Process process = pb.start();
         String output;
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-            output = reader.lines().collect(Collectors.joining("\n"));
-        }
-        int exitCode = process.waitFor();
-        if (exitCode != 0) {
-            throw new IllegalStateException("Node extract script failed with exit code " + exitCode
-                    + ": " + output);
+        try (VestMailScriptSupport.Prepared prepared = VestMailScriptSupport.prepare(
+                scriptDir, "extract-hyundai-vestmail.mjs", "scripts/card/vestmail-hyundai",
+                new String[]{"extract-hyundai-vestmail.mjs", "package.json", "package-lock.json"}, log)) {
+            Path script = prepared.dir().resolve("extract-hyundai-vestmail.mjs");
+            // 비밀번호를 커맨드라인 인자로 넘기면 ps 에 평문이 남는다 — 환경변수로만 전달한다.
+            ProcessBuilder pb = new ProcessBuilder(
+                    "node", script.toString(), htmlFile.toString(),
+                    "--year=" + year);
+            pb.environment().put("HYUNDAI_VESTMAIL_PASSWORD", vestmailPassword);
+            pb.directory(prepared.dir().toFile());
+            pb.redirectErrorStream(true);
+
+            Process process = pb.start();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                output = reader.lines().collect(Collectors.joining("\n"));
+            }
+            int exitCode = process.waitFor();
+            if (exitCode != 0) {
+                throw new IllegalStateException("Node extract script failed with exit code " + exitCode
+                        + ": " + output);
+            }
         }
 
         JsonNode root = objectMapper.readTree(output);
@@ -157,55 +160,10 @@ public class VestMailHyundaiImporter {
                     null, // businessNo
                     null, // businessCategory
                     cardMemberRelation(cardMasked),
-                    "hyundaicard"
+                    cardCompanyLabel
             ));
         }
         return rows;
-    }
-
-    private Path prepareScriptWorkDir() throws Exception {
-        if (scriptDir != null && !scriptDir.isBlank()) {
-            Path external = Path.of(scriptDir);
-            if (Files.exists(external.resolve("extract-hyundai-vestmail.mjs"))) {
-                return external;
-            }
-            log.warn("Configured script-dir does not contain extract script: {}", scriptDir);
-        }
-
-        Path temp = Files.createTempDirectory("af-vestmail-script-");
-        String[] files = {
-                "extract-hyundai-vestmail.mjs",
-                "package.json",
-                "package-lock.json"
-        };
-        for (String name : files) {
-            ClassPathResource resource = new ClassPathResource("scripts/card/vestmail-hyundai/" + name);
-            if (!resource.exists()) {
-                throw new IllegalStateException("Missing classpath resource: " + name);
-            }
-            try (InputStream is = resource.getInputStream()) {
-                Files.copy(is, temp.resolve(name), StandardCopyOption.REPLACE_EXISTING);
-            }
-        }
-        // classpath 폴 백에서도 동작하도록 의존성을 설치한다.
-        runNpmInstall(temp);
-        return temp;
-    }
-
-    private void runNpmInstall(Path dir) throws Exception {
-        ProcessBuilder pb = new ProcessBuilder("npm", "install", "--production");
-        pb.directory(dir.toFile());
-        pb.redirectErrorStream(true);
-        Process process = pb.start();
-        String output;
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-            output = reader.lines().collect(Collectors.joining("\n"));
-        }
-        int exitCode = process.waitFor();
-        if (exitCode != 0) {
-            throw new IllegalStateException("npm install failed with exit code " + exitCode + ": " + output);
-        }
     }
 
     private String buildRowKey(Long userId, String approvedAt, String merchant, long grossAmount, String cardMasked) {
@@ -221,21 +179,5 @@ public class VestMailHyundaiImporter {
             return "가족";
         }
         return "본인";
-    }
-
-    private void deleteRecursively(Path path) {
-        try {
-            Files.walk(path)
-                    .sorted(Comparator.reverseOrder())
-                    .forEach(p -> {
-                        try {
-                            Files.deleteIfExists(p);
-                        } catch (Exception ignored) {
-                            // ignore
-                        }
-                    });
-        } catch (Exception e) {
-            log.warn("Failed to delete temp dir {}", path, e);
-        }
     }
 }

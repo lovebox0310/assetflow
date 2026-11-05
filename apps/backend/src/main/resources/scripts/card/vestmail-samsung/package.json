@@ -1,0 +1,14 @@
+{
+  "name": "@assetflow/vestmail-samsung",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "삼성카드 VestMail 이메일 명세서 복호화 및 거래 내역 추출 (Playwright)",
+  "scripts": {
+    "extract": "node extract-samsung-vestmail.mjs",
+    "test": "node --test samsung-table.test.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.64.1"
+  }
+}

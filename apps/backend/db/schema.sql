@@ -159,7 +159,7 @@ CREATE TABLE card_email_import_settings (
     id                   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id              BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     enabled              BOOLEAN NOT NULL DEFAULT FALSE,
-    card_company         VARCHAR(20) NOT NULL CHECK (card_company IN ('hyundaicard')),
+    card_company         VARCHAR(20) NOT NULL CHECK (card_company IN ('hyundaicard','samsungcard')), -- §68
     email_provider       VARCHAR(20) NOT NULL DEFAULT 'gmail',
     email_address        VARCHAR(255) NOT NULL,
     email_password_enc   VARCHAR(500) NOT NULL,    -- IMAP 앱 비밀번호 암호문
@@ -172,6 +172,15 @@ CREATE TABLE card_email_import_settings (
 );
 
 CREATE INDEX ix_card_email_import_settings_user ON card_email_import_settings (user_id);
+
+-- §68 기존 DB 마이그레이션: spring.sql.init 은 CREATE TABLE 이 이미 있으면 그냥
+-- 건너뛰므로(continue-on-error) CHECK 제약은 따로 갱신해 줘야 한다. 신규 DB 에서도
+-- 같은 제약이 되므로 결과는 동일하다.
+ALTER TABLE card_email_import_settings
+    DROP CONSTRAINT IF EXISTS card_email_import_settings_card_company_check;
+ALTER TABLE card_email_import_settings
+    ADD CONSTRAINT card_email_import_settings_card_company_check
+    CHECK (card_company IN ('hyundaicard','samsungcard'));
 
 -- ---------------------------------------------------------------------------
 -- merchant_category_keywords: 가맹점명 키워드 → 카테고리 매핑 (§55.8).

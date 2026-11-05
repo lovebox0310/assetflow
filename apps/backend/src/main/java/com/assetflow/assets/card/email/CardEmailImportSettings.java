@@ -11,7 +11,7 @@ import java.time.Instant;
  * @param id 설정 ID
  * @param userId 사용자 ID
  * @param enabled 자동 수집 사용 여부
- * @param cardCompany 카드사 — 현재는 {@code hyundaicard}만 지원
+ * @param cardCompany 카드사 — {@code hyundaicard} | {@code samsungcard} (§68)
  * @param emailProvider 이메일 서비스 — 현재는 {@code gmail}만 지원
  * @param emailAddress 이메일 주소
  * @param emailPasswordEnc IMAP 앱 비밀번호 암호문

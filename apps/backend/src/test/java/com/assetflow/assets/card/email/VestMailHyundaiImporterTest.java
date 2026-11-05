@@ -40,7 +40,7 @@ class VestMailHyundaiImporterTest {
 
     @Test
     void disabledSettingDoesNothing() {
-        CardEmailAttachmentDownloader downloader = (email, password, workDir) -> {
+        CardEmailAttachmentDownloader downloader = (email, password, workDir, criteria) -> {
             throw new AssertionError("should not be called");
         };
         VestMailHyundaiImporter importer = new VestMailHyundaiImporter(
@@ -62,7 +62,7 @@ class VestMailHyundaiImporterTest {
         Path fakeHtml = Files.createTempFile("hyundai", ".html");
         fakeHtml.toFile().deleteOnExit();
 
-        CardEmailAttachmentDownloader downloader = (email, password, workDir) -> fakeHtml;
+        CardEmailAttachmentDownloader downloader = (email, password, workDir, criteria) -> fakeHtml;
 
         CardImportLedger.ImportedRow row = new CardImportLedger.ImportedRow(
                 "key", "2026-10-02", "가맹점A", 10000, 0, 10000,
@@ -100,7 +100,7 @@ class VestMailHyundaiImporterTest {
 
     @Test
     void noAttachmentSavesNoMailStatus() throws Exception {
-        CardEmailAttachmentDownloader downloader = (email, password, workDir) -> null;
+        CardEmailAttachmentDownloader downloader = (email, password, workDir, criteria) -> null;
         VestMailHyundaiImporter importer = new VestMailHyundaiImporter(
                 cipher, ledger, settingsLedger, objectMapper, downloader, "");
 

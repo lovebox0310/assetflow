@@ -4154,8 +4154,9 @@ bank_account_links (
 - **삼성카드**: `billing@samsungcard.com` 발신, `samsungcard_detail_YYYYMMDD.html` 첨부.
   실제 파일 확인 결과 이 파일도 **VestMail 암호화 HTML**이며, 복호화 UI와 제출 폼이
   현대카드와 다른 구조(`decForm`, `input#password`, `input#confirm`)를 가진다.
-  복호화 메커니즘 역시 외부 ActiveX/플러그인 의존 가능성이 있어 **현대카드 추출기로는
-  작동하지 않는다**. 삼성카드는 별도 추출기 또는 상용 API 적용이 필요하다.
+  초기에는 외부 ActiveX 의존으로 판단했으나, 재분석 결과 `doAction()` 은 HTML 안의
+  base64 스크립트 블록에 든 **순수 JS** 였다. **§68 에서 별도 추출기로 해결했다.**
+  수집 대상은 `이용상세내역서` 메일이며 `이용대금 명세서` 는 요약본이라 제외한다.
 - 첫 단계는 **현대카드 본인 카드**만. 가족카드/법인카드는 별도 카드번호 필드가 있는지
   확인 후 확장한다.
 
@@ -4169,9 +4170,10 @@ bank_account_links (
 ### 63.4 화면
 
 **설정 페이지** (`/settings`)에 "카드 명세서 자동 수집" 섹션 추가.
-- 카드사 탭/선택 — 현재는 현대카드만.
+- 카드사 선택 — 현대카드 / 삼성카드(§68). 카드사별로 설정 행이 따로 저장된다.
 - 자동 수집 ON/OFF 스위치.
-- Gmail 주소, Gmail 앱 비밀번호, 현대카드 명세서 비밀번호 입력.
+- Gmail 주소, Gmail 앱 비밀번호, 해당 카드사 명세서 비밀번호 입력.
+  이미 저장된 설정이라 비밀번호를 비워두면 기존 암호문을 유지한다.
 - 저장/삭제/지금 수집 버튼.
 - 마지막 수집 상태 표시.
 
@@ -4215,7 +4217,8 @@ bank_account_links (
   (2026-10-02 ~ 2026-10-27, 본인/가족 카드 구분 포함, 총 이용금액 3,326,643원).
 - 실제 Gmail IMAP 수동 수집: **90건** 저장 성공. `SubjectTerm` 한국어 부분 매칭
   이슈로 `GmailImapAttachmentDownloader`를 발신자 검색 + Java 제목 필터링으로 수정.
-- 삼성카드 샘플: VestMail 암호화 HTML임을 확인. 별도 복호화 로직 필요.
+- 삼성카드 샘플: VestMail 암호화 HTML임을 확인. 당시엔 별도 복호화 로직 필요로 남겼으나
+  §68 에서 순수 JS 복호화 경로를 찾아 해결했다.
 - 보안: DB에 저장된 자격증명이 평문이 아닌 암호문인지 확인.
 
 ---
@@ -4366,3 +4369,66 @@ public static final String[] PUBLIC_PATHS = {"/api/v1/auth/login", "/api/v1/auth
   PG 패턴 분리, 긴 패턴 우선, 시드로 실제 카드 가맹점 분류.
 - `CardImportApiTest` — 임포트·재분류·미리보기에서 사업자번호 사용.
 - BE `./gradlew test`: **204 tests**, 실패 0. FE `npx vitest run`: 216 tests 통과.
+
+---
+
+## 68) 삼성카드 명세서 자동 수집 — VestMail 순수 JS 복호화 (2026-11-06)
+
+**요구**: §63.2 에서 "별도 추출기 또는 상용 API 필요"로 남겨둔 삼성카드 자동 수집을
+마무리한다.
+
+**재분석으로 바로잡은 사실**:
+- 이전 기록은 "`doAction()` 이 HTML 안에 없어 외부 ActiveX/플러그인 의 가능성"이라고
+  적었지만, 실제로는 `<script>` 의 **`var b_p = '<base64>'`** 블록에 디코딩된
+  순수 JavaScript 로 들어있었다. 외부 `script src`/`object`/`embed` 는 없다.
+- 따라서 headless Chromium 에서 **현대카드와 같은 방식으로 복호화된다**. 상용 API
+  (바로빌/CODEF)는 필요 없다.
+- 복호화가 끝나면 `document.write()` 로 **문서 전체가 교체**된다. 완료 신호는
+  `#decForm` 소멸, 실패 신호는 벤더가 띄우는 `alert("비밀번호 입력이 잘못되었습니다")` 다.
+
+**메일 두 종류 구분** (실제 Gmail 확인):
+
+| 메일 | 발신자 | 제목 키워드 | 암호 페이로드 | 수집 |
+|---|---|---|---|---|
+| 이용상세내역서 | `sscyber@samsungcard.com` | `이용상세내역서` | 6청크 / 약 58KB | ✅ |
+| 이용대금 명세서 | `billing@samsungcard.com` | `이용대금 명세서` | 1청크 / 약 1KB | ❌ 요약본 |
+
+`이용상세내역서` 에는 VestMail HTML 외에 `samsungcard_detail_*.xlsx` 도 붙지만,
+매직바이트 `d0cf11e0` 의 **ECMA-376 암호화 문서**다. §29.5.1 정책상 사용자가 직접
+입력한 비밀번호 없이는 열지 않으므로 자동 수집에서는 **HTML만 쓴다**.
+
+**결정**:
+1. 별도 추출기 `scripts/card/vestmail-samsung/` — Playwright 로 `#decForm` 제출 후
+   교체된 DOM 에서 12컬럼 거래 표를 읽는다.
+2. 헤더 이름을 하드코딩하지 않고 `card-columns.json` 의
+   `companies.samsungcard.columns` 를 읽어 매핑한다(§29.3 단일 출처). Java 가
+   classpath 계약을 임시 파일로 뽑아 `--contract` 로 넘긴다.
+3. 삼성 명세서는 **table 이 중첩**돼 있다. `tr.querySelectorAll('td,th')` 는 자손
+   셀 200여 개를 물고 와 바깥 `<tr>` 을 헤더로 오인한다 — **직계 자식 셀만** 본다.
+4. 이 명세서에는 `사업자번호`·`업종` 컬럼이 있어 저장 시점에 §67 분류를 바로
+   적용한다. `rowKey` 는 CSV 수동 업로드(`parse-samsung.mjs`)와 같은 조합을 써서
+   이메일 수집 ↔ 수동 업로드 사이 중복을 막는다.
+5. 설정·스케줄러를 카드사별로 분리한다.
+   - `card_email_import_settings.card_company` CHECK 에 `samsungcard` 추가.
+     기존 DB 는 `CREATE TABLE` 이 건너뛰어지므로 **`ALTER TABLE ... DROP/ADD CONSTRAINT`
+     마이그레이션**을 schema.sql 에 함께 넣는다(continue-on-error 특성 때문).
+   - `CardEmailAttachmentDownloader` 가 `MailCriteria` 를 받는다. 발신자·제목·첨부명을
+     조건으로 넘겨 다른 카드사 메일이 섞이지 않게 한다.
+   - FE 설정 화면에 카드사 선택(현대/삼성) 추가. 비밀번호를 비우고 저장하면 기존
+     암호문을 유지한다(두 카드사가 Gmail 앱 비밀번호를 공유할 수 있게).
+6. 비밀번호는 커맨드라인 인자가 아니라 **환경변수**로 Node 에 넘긴다 — `--password=`
+   는 `ps` 에 평문이 남는다(§63.6 위반). 현대카드도 함께 고쳤다.
+7. `card_imports.card_company` 는 CSV 업로드와 같은 한글 라벨(`현대카드`/`삼성카드`)을
+   쓴다. 기존 현대카드 이메일 수집기가 `hyundaicard` 로 저장하던 것도 바로잡았다.
+
+**검증** (실제 명세서 1건, PII 는 저장소 밖에서만 다룸):
+- Playwright 복호화 성공, 거래 **14건** 추출.
+- 행 합계 `217,550` / 부가세 `17,294` 가 명세서가 밝힌 합계와 **정확히 일치**.
+- 14건 모두 `businessNo`·`businessCategory` 확보 → §67 분류 즉시 적용 가능.
+- BE `./gradlew test`: **217 tests**, 실패 0.
+- FE `npx tsc --noEmit` 통과, `npx vitest run`: **218 tests** 통과.
+- Node `node --test samsung-table.test.mjs`: 2건 통과(중첩 표 회귀 포함).
+
+**배포**: `deploy.sh` 가 `vestmail-samsung` 스크립트를
+`/opt/assetflow/scripts/card/vestmail-samsung` 에 설치하고
+`VESTMAIL_SAMSUNG_SCRIPT_DIR` 를 `assetflow.env` 에 자동 등록한다.

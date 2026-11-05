@@ -5,6 +5,9 @@
 
 # Dependency directories
 node_modules/
+# 로컬 테스트용으로 만드는 node_modules symlink 는 디렉터리가 아니라 파일이라
+# 위 패턴에 안 걸린다 — 명시적으로 막는다.
+apps/backend/src/main/resources/scripts/card/vestmail-*/node_modules
 
 # Build outputs
 dist/

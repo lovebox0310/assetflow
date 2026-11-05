@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Button, Form, Input, Space, Switch, Typography } from "antd";
+import { Alert, Button, Form, Input, Radio, Space, Switch, Typography } from "antd";
 import {
   deleteCardEmailImportSettings,
   getCardEmailImportSettings,
@@ -11,14 +11,23 @@ import {
 import { StateBlock, type SurfaceStatus } from "./StateBlock";
 import { ApiError } from "../api/client";
 
-const CARD_COMPANY = "hyundaicard";
+const COMPANY_HYUNDAI = "hyundaicard";
+const COMPANY_SAMSUNG = "samsungcard";
+
+/** §63 현대카드, §68 삼성카드 — 카드사별로 설정 행이 따로 저장된다. */
+const COMPANIES = [
+  { value: COMPANY_HYUNDAI, label: "현대카드" },
+  { value: COMPANY_SAMSUNG, label: "삼성카드" },
+];
 
 /**
- * §63 카드 이메일 명세서 자동 수집 설정 섹션.
+ * §63/§68 카드 이메일 명세서 자동 수집 설정 섹션.
  *
- * 현재는 현대카드(VestMail)만 지원한다.
+ * 카드사마다 발신자·명세서 형식이 다르지만 Gmail 계정과 보안메일 비밀번호는
+ * 공유할 수 있어, 카드사를 바꾸면 해당 카드사의 설정을 따로 불러온다.
  */
 export function CardEmailImportSettingsSection() {
+  const [cardCompany, setCardCompany] = useState<string>(COMPANY_HYUNDAI);
   const [settings, setSettings] = useState<CardEmailImportSettings | null>(null);
   const [status, setStatus] = useState<SurfaceStatus>("loading");
   const [errorText, setErrorText] = useState("");
@@ -27,10 +36,24 @@ export function CardEmailImportSettingsSection() {
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [form] = Form.useForm<CardEmailImportSettingsInput>();
 
+  const companyLabel = cardCompany === COMPANY_SAMSUNG ? "삼성카드" : "현대카드";
+
+  const emptyForm = useCallback(() => {
+    form.resetFields();
+    form.setFieldsValue({
+      enabled: false,
+      emailProvider: "gmail",
+      emailAddress: "",
+      emailPassword: "",
+      vestmailPassword: "",
+    });
+  }, [form]);
+
   const load = useCallback(() => {
     setStatus("loading");
     setErrorText("");
-    getCardEmailImportSettings(CARD_COMPANY)
+    setMessage(null);
+    getCardEmailImportSettings(cardCompany)
       .then((data) => {
         setSettings(data);
         form.setFieldsValue({
@@ -46,34 +69,32 @@ export function CardEmailImportSettingsSection() {
         // 설정이 없으면 404 — 이건 정상 상태로 처리하고 폼을 비운다.
         if (e instanceof ApiError && e.code === "NOT_FOUND") {
           setSettings(null);
-          form.resetFields();
-          form.setFieldsValue({
-            enabled: false,
-            emailProvider: "gmail",
-            emailAddress: "",
-            emailPassword: "",
-            vestmailPassword: "",
-          });
+          emptyForm();
           setStatus("ready");
           return;
         }
         setStatus("error");
         setErrorText(e instanceof Error ? e.message : "설정을 불러오지 못했습니다.");
       });
-  }, [form]);
+  }, [form, cardCompany, emptyForm]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const handleCompanyChange = (value: string) => {
+    setCardCompany(value);
+    setSettings(null);
+  };
 
   const handleSave = async () => {
     const values = await form.validateFields();
     setSaving(true);
     setMessage(null);
     try {
-      const saved = await saveCardEmailImportSettings(CARD_COMPANY, values);
+      const saved = await saveCardEmailImportSettings(cardCompany, values);
       setSettings(saved);
-      setMessage({ type: "success", text: "현대카드 자동 수집 설정을 저장했습니다." });
+      setMessage({ type: "success", text: `${companyLabel} 자동 수집 설정을 저장했습니다.` });
       form.setFieldsValue({ emailPassword: "", vestmailPassword: "" });
     } catch (e: unknown) {
       setMessage({ type: "error", text: e instanceof Error ? e.message : "저장에 실패했습니다." });
@@ -86,16 +107,9 @@ export function CardEmailImportSettingsSection() {
     setSaving(true);
     setMessage(null);
     try {
-      await deleteCardEmailImportSettings(CARD_COMPANY);
+      await deleteCardEmailImportSettings(cardCompany);
       setSettings(null);
-      form.resetFields();
-      form.setFieldsValue({
-        enabled: false,
-        emailProvider: "gmail",
-        emailAddress: "",
-        emailPassword: "",
-        vestmailPassword: "",
-      });
+      emptyForm();
       setMessage({ type: "success", text: "자동 수집 설정을 삭제했습니다." });
     } catch (e: unknown) {
       setMessage({ type: "error", text: e instanceof Error ? e.message : "삭제에 실패했습니다." });
@@ -108,7 +122,7 @@ export function CardEmailImportSettingsSection() {
     setRunning(true);
     setMessage(null);
     try {
-      const count = await runCardEmailImport(CARD_COMPANY);
+      const count = await runCardEmailImport(cardCompany);
       setMessage({ type: "success", text: `${count}건의 거래 내역을 가져왔습니다.` });
       void load();
     } catch (e: unknown) {
@@ -130,6 +144,22 @@ export function CardEmailImportSettingsSection() {
         {message?.type === "error" && (
           <Alert type="error" showIcon message={message.text} style={{ marginBottom: 16 }} aria-live="assertive" />
         )}
+
+        <Radio.Group
+          aria-label="카드사"
+          value={cardCompany}
+          onChange={(e) => handleCompanyChange(e.target.value)}
+          options={COMPANIES}
+          optionType="button"
+          buttonStyle="solid"
+          style={{ marginBottom: 16 }}
+        />
+
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: -8 }}>
+          {cardCompany === COMPANY_SAMSUNG
+            ? "삼성카드는 「삼성카드이용상세내역서」 메일의 거래 표를 수집합니다. 사업자번호·업종이 함께 들어와 자동 분류에 바로 쓰입니다."
+            : "현대카드는 「개인카드명세서」 메일의 거래 표를 수집합니다."}
+        </Typography.Paragraph>
 
         <Form form={form} layout="vertical" style={{ maxWidth: 480 }}>
           <Form.Item name="enabled" valuePropName="checked" style={{ marginBottom: 12 }}>
@@ -167,11 +197,12 @@ export function CardEmailImportSettingsSection() {
 
           <Form.Item
             name="vestmailPassword"
-            label="현대카드 명세서 비밀번호"
+            label={`${companyLabel} 명세서 비밀번호`}
             rules={[{ required: !settings, message: "명세서 비밀번호를 입력하세요" }]}
             extra={
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 보안메일을 열 때 사용하는 비밀번호(생년월일 6자리 또는 사업자등록번호 뒤 7자리)입니다.
+                설정이 이미 저장된 상태에서 바꾸지 않으려면 비워두세요.
               </Typography.Text>
             }
           >
