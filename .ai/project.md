@@ -4258,3 +4258,37 @@ bank_account_links (
 - BE `./gradlew test`: BUILD SUCCESSFUL.
 - FE `npx vitest run`: 216 tests passed.
 - 운영 배포 시 기존 DB에 `kis_account_credentials` 테이블 마이그레이션 필요.
+
+---
+
+## 65) 인증 인터셉터 경로를 화이트리스트 → 전체 보호로 전환 (2026-11-05)
+
+**증상**: 설정 화면 진입 시 `GET /api/v1/card-email-import-settings/hyundaicard` 가
+`401 AUTH_REQUIRED (details: "Not authenticated")` 를 돌려주고, 앱이 토큰을 지워
+로그인 화면으로 튕겼다. 같은 시점에 `/api/v1/settings`, `/api/v1/dashboard/summary` 는
+**200** 이었다 — 즉 토큰은 유효했다.
+
+**원인**: `WebConfig.addPathPatterns(...)` 에 보호 경로를 하나씩 나열했는데
+`/api/v1/card-email-import-settings/**` 가 빠져 있었다.
+- `BearerTokenInterceptor` 가 실행되지 않아 `request.setAttribute("auth.email", …)` 가 없다.
+- 컨트롤러의 `AuthEmailResolver.currentEmail()` 이 속성을 찾지 못해
+  `AuthRequiredException("Not authenticated")` → 401.
+- FE `apiFetch` 는 401 이면 무조건 `clearToken()` + 로그인 전환 → **정상 세션이 삭제됨**.
+
+**결정**: 경로 나열 방식을 버리고 **기본 전체 보호 + 공개 경로만 제외**로 바꾼다.
+```java
+public static final String[] PROTECTED_PATHS = {"/api/v1/**"};
+public static final String[] PUBLIC_PATHS = {"/api/v1/auth/login", "/api/v1/auth/signup"};
+```
+
+**근거**:
+- 경로를 추가할 때마다 목록을 고쳐야 하는 구조는 누락을 만든다(이번이 그 사례).
+- 누락의 결과가 "인증 우회"가 아니라 "정상 요청 401" 이라 발견이 늦었다. `/api/v1/**`
+  기본 보호는 두 방향(누락·우회) 모두 막는다.
+- 공개 경로는 로그인·회원가입 2개뿐이며 명시적으로 선언한다.
+
+**회귀 방지**: `WebConfigPathCoverageTest` — 실제 컨트롤러 경로가 모두 보호 패턴에
+매칭되고, 로그인·회원가입만 제외되는지 `AntPathMatcher` 로 검증한다.
+
+**검증**:
+- BE `./gradlew test`: 22개 클래스 / **183 tests**, 실패 0.
