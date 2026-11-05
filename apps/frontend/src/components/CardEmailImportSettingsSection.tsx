@@ -157,7 +157,7 @@ export function CardEmailImportSettingsSection() {
 
         <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: -8 }}>
           {cardCompany === COMPANY_SAMSUNG
-            ? "삼성카드는 「삼성카드이용상세내역서」 메일의 거래 표를 수집합니다. 사업자번호·업종이 함께 들어와 자동 분류에 바로 쓰입니다."
+            ? "삼성카드는 「삼성카드이용상세내역서」 메일의 거래 표를 수집합니다. 이 메일은 정기 발송이 아니라 삼성카드 앱/홈페이지에서 기간을 지정해 요청할 때 옵니다. 새 내역서를 이메일로 신청하면 자동 반영됩니다."
             : "현대카드는 「개인카드명세서」 메일의 거래 표를 수집합니다."}
         </Typography.Paragraph>
 
