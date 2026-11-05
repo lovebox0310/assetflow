@@ -39,18 +39,14 @@ app:
     # (개발 편의 — 운영에서는 반드시 고정값).
     link-key: ${BANK_LINK_KEY:}
   # §62 한국투자증권 Open API(KIS Developers) 연동.
-  # 모의투자 기본 도메인. 실전 전환 시 KIS_BASE_URL 과 KIS_APP_KEY/SECRET 을 교체한다.
+  # 모의투자 기본 도메인. 실전 전환 시 KIS_BASE_URL 을 교체하거나 계좌별 baseUrl 을 지정한다.
   # enabled=false 이면 sync API 는 503(KIS_NOT_CONFIGURED) 을 돌려준다.
+  # appKey/appSecret 은 §62.2 에서 계좌별로 DB(kis_account_credentials)에 암호화 저장한다.
   kis:
     enabled: ${KIS_ENABLED:false}
-    app-key: ${KIS_APP_KEY:}
-    app-secret: ${KIS_APP_SECRET:}
     base-url: ${KIS_BASE_URL:https://openapivts.koreainvestment.com:29443}
     # 한국투자증권 접근토큰 유효기간(초). 기본 24시간 — 재발급 직전 10분 여유를 둔다.
     token-expiry-seconds: ${KIS_TOKEN_EXPIRY_SECONDS:86400}
-    # §62.1 계좌명 → KIS 계좌번호 매핑(JSON). 비밀이므로 환경변수로만 주입한다.
-    # 예: '{"비상금":{"cano":"12345678","acntPrdtCd":"29"}}'
-    account-mappings-json: ${KIS_ACCOUNT_MAPPINGS_JSON:}
   # §63 현대카드 VestMail 이메일 명세서 자동 수집
   card:
     # AES/GCM 암호화 키. 비우면 JWT_SECRET, 둘 다 없으면 기동마다 랜덤(개발 편의).

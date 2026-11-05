@@ -2,9 +2,14 @@ package com.assetflow.investments;
 
 import com.assetflow.assets.AssetLedger;
 import com.assetflow.assets.InMemoryAssetLedger;
+import com.assetflow.assets.card.CardImportCipher;
 import com.assetflow.auth.TokenService;
 import com.assetflow.common.api.ApiExceptionHandler;
 import com.assetflow.common.web.BearerTokenInterceptor;
+import com.assetflow.investments.kis.InMemoryKisCredentialsLedger;
+import com.assetflow.investments.kis.KisAccountMappingService;
+import com.assetflow.investments.kis.KisCredentialsService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
@@ -55,9 +60,12 @@ class InvestmentQuoteApiTest {
     void setUp() {
         AssetLedger assets = new InMemoryAssetLedger();
         InvestmentLedger ledger = new InMemoryInvestmentLedger();
+        KisCredentialsService kisCredentialsService = new KisCredentialsService(
+                new InMemoryKisCredentialsLedger(), new CardImportCipher("test", null));
         mvc = MockMvcBuilders
                 .standaloneSetup(new InvestmentController(ledger, assets,
-                                new PortfolioService(assets, ledger)),
+                                new PortfolioService(assets, ledger), null,
+                                new KisAccountMappingService(assets, kisCredentialsService), kisCredentialsService),
                         new InvestmentQuoteController(new FakeQuotes(), ledger,
                                 new PortfolioService(assets, ledger)))
                 .setControllerAdvice(new ApiExceptionHandler())

@@ -4217,3 +4217,44 @@ bank_account_links (
   이슈로 `GmailImapAttachmentDownloader`를 발신자 검색 + Java 제목 필터링으로 수정.
 - 삼성카드 샘플: VestMail 암호화 HTML임을 확인. 별도 복호화 로직 필요.
 - 보안: DB에 저장된 자격증명이 평문이 아닌 암호문인지 확인.
+
+---
+
+## 64) 한국투자증권 KIS API 연동 — 계좌별 자격증명 DB 저장 (2026-11-05)
+
+**결정**: KIS appKey/appSecret 을 환경변수에서 제거하고, `kis_account_credentials`
+테이블에 **계좌별로 AES/GCM 암호화하여 저장**한다. 키 등록·변경 시 서버 재시작
+없이 설정 화면에서 바로 반영되도록 한다.
+
+**근거**:
+- 사용자가 여러 KIS 계좌(모의·실전, 본인·가족 등)를 사용할 때 계좌마다 키가 다르다.
+- 환경변수 방식은 키 추가/변경마다 서버 재시작이 필요해 운영 부담이 크다.
+- 카드 이메일 자동 수집(§63)과 마찬가지로 `CardImportCipher`로 암호화하면
+  동일한 키 관리 체계를 재사용할 수 있다.
+
+**구현**:
+- DB: `kis_account_credentials` 테이블 추가 (`app_key_enc`, `app_secret_enc`,
+  `base_url`, `cano`, `acnt_prdt_cd`).
+- BE:
+  - `KisCredentials`, `KisCredentialsLedger`, `KisCredentialsService`(암호화/복호화).
+  - `KisTokenClient`를 계좌별 키 조합마다 토큰을 캐싱하도록 변경.
+  - `KisApiClient`/`KisBalanceService`가 `KisCredentials`를 인자로 받도록 변경.
+  - `InvestmentController`에 `/accounts/{accountId}/kis-credentials` CRUD API 추가.
+  - `KisAccountMappingService`가 DB credentials 를 조회하도록 변경.
+- FE:
+  - `KisCredentialsModal` 컴포넌트 추가.
+  - 투자 계좌 카드에 "KIS 설정" 버튼 추가.
+  - "한투 동기화" 버튼은 `accountId`만 서버로 전송.
+- 운영:
+  - `KIS_APP_KEY`, `KIS_APP_SECRET`, `KIS_ACCOUNT_MAPPINGS_JSON` 환경변수 제거.
+  - 남은 환경변수: `KIS_ENABLED`, `KIS_BASE_URL`(기본값), `CARD_IMPORT_KEY`(암호화 키).
+
+**보안**:
+- DB 에는 AES/GCM 암호문만 저장.
+- API 응답 시 appKey/appSecret 은 마스킹(앞 4자리 + **** + 뒤 4자리) 처리.
+- 복호화 키는 `CARD_IMPORT_KEY` 또는 `JWT_SECRET` 환경변수로 분리.
+
+**검증**:
+- BE `./gradlew test`: BUILD SUCCESSFUL.
+- FE `npx vitest run`: 216 tests passed.
+- 운영 배포 시 기존 DB에 `kis_account_credentials` 테이블 마이그레이션 필요.

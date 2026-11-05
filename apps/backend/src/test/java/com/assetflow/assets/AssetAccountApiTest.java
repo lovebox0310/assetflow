@@ -11,6 +11,10 @@ import com.assetflow.investments.InMemoryInvestmentLedger;
 import com.assetflow.investments.InvestmentController;
 import com.assetflow.investments.InvestmentLedger;
 import com.assetflow.investments.PortfolioService;
+import com.assetflow.investments.kis.InMemoryKisCredentialsLedger;
+import com.assetflow.investments.kis.KisAccountMappingService;
+import com.assetflow.investments.kis.KisCredentialsService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -39,11 +43,14 @@ class AssetAccountApiTest {
         ledger = new InMemoryAssetLedger();
         investmentLedger = new InMemoryInvestmentLedger();
         PortfolioService portfolioService = new PortfolioService(ledger, investmentLedger);
+        KisCredentialsService kisCredentialsService = new KisCredentialsService(
+                new InMemoryKisCredentialsLedger(), new com.assetflow.assets.card.CardImportCipher("test", null));
         mvc = MockMvcBuilders
                 .standaloneSetup(
                         new AssetAccountController(ledger, investmentLedger),
                         new DashboardController(new DashboardService(ledger, new InMemoryExpenseSnapshotLedger(), portfolioService)),
-                        new InvestmentController(investmentLedger, ledger, portfolioService))
+                        new InvestmentController(investmentLedger, ledger, portfolioService, null,
+                                new KisAccountMappingService(ledger, kisCredentialsService), kisCredentialsService))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .addInterceptors(new BearerTokenInterceptor(new TokenService("test-secret-0123456789-0123456789-0123456789")))
                 .build();
