@@ -66,6 +66,45 @@ public final class CategoryTaxonomy {
         return ASSET_TRANSFER_SUB.equals(subCategory);
     }
 
+    /**
+     * 카드 명세서 파서가 넣는 기본값. 대분류가 아니라 "아직 정하지 않음" 이다 (§66).
+     * 이 값을 그대로 카테고리로 쓰면 화면이 미분류로 보인다.
+     */
+    public static final String UNCLASSIFIED = "unclassified";
+
+    /** 대분류가 비었거나 파서 기본값(unclassified)이면 "정해지지 않음" 으로 본다. */
+    public static boolean isUnset(String category) {
+        if (category == null || category.isBlank()) {
+            return true;
+        }
+        return UNCLASSIFIED.equalsIgnoreCase(category.trim());
+    }
+
+    /**
+     * 세부 분류로 대분류를 역추적한다 (§66).
+     *
+     * <p>세부 분류는 9개 대분류 중 정확히 한 곳에만 속하므로 되짚을 수 있다.
+     * 예: "통신비" → "주거/통신". legacy 데이터처럼 대분류만 잃어버린 행을
+     * 사용자 의도대로 되살릴 때 쓴다.</p>
+     *
+     * @return 대분류 이름, 알 수 없는 세부면 null
+     */
+    public static String groupOfSub(String subCategory) {
+        if (subCategory == null) {
+            return null;
+        }
+        String target = subCategory.trim();
+        if (target.isEmpty()) {
+            return null;
+        }
+        for (Group group : GROUPS) {
+            if (group.subs().contains(target)) {
+                return group.name();
+            }
+        }
+        return null;
+    }
+
     private CategoryTaxonomy() {
     }
 }

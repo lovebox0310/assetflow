@@ -450,6 +450,77 @@ class CardImportApiTest {
     }
 
     @Test
+    void reclassifyKeepsCategorizedRowsWhenLegacyRuleSaysUnclassified() throws Exception {
+        // §66 회귀: legacy 규칙 category='unclassified' + 세부 '통신비'.
+        // 과거에는 재분류가 이 값을 그대로 써서 잘 분류된 행을 미분류로 덮어썼다.
+        String body = "{\"rows\":["
+                + rowWithCategory("k1", "2026-10-01", "KT통신", 9000, "주거/통신", "통신비")
+                + "],\"merchantRules\":{}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        // legacy 데이터: 대분류만 잃어버린 규칙 (운영에서는 merchant_rules 테이블, 테스트에서는 두 곳)
+        ruleLedger.saveAllDetails(Map.of("KT통신",
+                new MerchantRuleLedger.MerchantRule("unclassified", "통신비")));
+        classifier.addRule("KT통신", "unclassified", "통신비");
+
+        mvc.perform(post("/api/v1/assets/card-imports/reclassify").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rulesRepaired").value(1));
+
+        mvc.perform(get("/api/v1/assets/card-imports?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].expenseKind").value("주거/통신"));
+        // 규칙도 'unclassified' 에서 벗어난다 — 다음 재분류가 다시 덮어쓰지 않게.
+        org.assertj.core.api.Assertions.assertThat(ruleLedger.allRuleDetails().get("KT통신").category())
+                .isEqualTo("주거/통신");
+    }
+
+    @Test
+    void reclassifySkipsMerchantWithoutAnyCategoryInsteadOfWritingUnclassified() throws Exception {
+        // §66: 규칙·세부·키워드·업종 어디에도 단서가 없으면 행을 건드리지 않는다.
+        // (예전에는 규칙의 'unclassified' 를 그대로 써서 미분류로 덮어썼다.)
+        String body = "{\"rows\":["
+                + row("k1", "2026-10-01", "알수없는가맹점", 5000, 500, 5500)
+                + "],\"merchantRules\":{}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+        ruleLedger.saveAllDetails(Map.of("알수없는가맹점",
+                new MerchantRuleLedger.MerchantRule("unclassified", "")));
+        classifier.addRule("알수없는가맹점", "unclassified", "");
+
+        mvc.perform(post("/api/v1/assets/card-imports/reclassify").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.updated").value(0))
+                .andExpect(jsonPath("$.data.rulesRepaired").value(0));
+
+        mvc.perform(get("/api/v1/assets/card-imports?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].expenseKind").value(""));
+    }
+
+    @Test
+    void reclassifySavesRulesWithDerivedGroupWhenOnlySubCategorySurvives() throws Exception {
+        // §66: legacy 규칙에 세부만 남아 있으면 그 세부로 대분류를 되살리고 규칙도 고친다.
+        String body = "{\"rows\":["
+                + rowWithCategory("k1", "2026-10-01", "KT통신", 9000, "주거/통신", "통신비")
+                + "],\"merchantRules\":{}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+        ruleLedger.saveAllDetails(Map.of("KT통신",
+                new MerchantRuleLedger.MerchantRule("unclassified", "통신비")));
+        classifier.addRule("KT통신", "unclassified", "통신비");
+
+        mvc.perform(post("/api/v1/assets/card-imports/reclassify").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rulesRepaired").value(1));
+
+        org.assertj.core.api.Assertions.assertThat(ruleLedger.allRuleDetails().get("KT통신").category())
+                .isEqualTo("주거/통신");
+    }
+
+    @Test
     void reclassifyUpdatesExistingRowsWithKeywordResult() throws Exception {
         // 분류 없이 저장된 기존 행을 일괄 재분류한다 (§55.8)
         String body = "{\"rows\":["

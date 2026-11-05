@@ -70,14 +70,25 @@ public class PostgresCategoryClassifier implements CategoryClassifier {
                 """,
                 (rs, n) -> new RuleMapping(rs.getString("kind"), rs.getString("sub_category")),
                 userId, merchantName);
-        if (!rules.isEmpty() && rules.get(0).category() != null && !rules.get(0).category().isBlank()) {
+        if (!rules.isEmpty()) {
             RuleMapping rule = rules.get(0);
-            // 규칙에 세부가 없으면 같은 대분류의 키워드 세부를 빌려 온다.
-            String sub = rule.subCategory();
-            if (sub == null || sub.isBlank()) {
-                sub = keywordSubFor(normalized, rule.category());
+            // §66 legacy 데이터: expense_kind='unclassified' 는 카테고리가 아니라 "아직 안 정함" 이다.
+            // 그대로 쓰면 재분류가 모든 행을 미분류로 덮어쓴다. 세부 분류가 있으면 대분류를
+            // 되살리고, 없으면 규칙을 무시하고 키워드/업종으로 넘어간다.
+            if (CategoryTaxonomy.isUnset(rule.category())) {
+                String sub = rule.subCategory() == null ? "" : rule.subCategory().trim();
+                String derived = CategoryTaxonomy.groupOfSub(sub);
+                if (derived != null) {
+                    return new Classification(derived, sub);
+                }
+            } else {
+                // 규칙에 세부가 없으면 같은 대분류의 키워드 세부를 빌려 온다.
+                String sub = rule.subCategory();
+                if (sub == null || sub.isBlank()) {
+                    sub = keywordSubFor(normalized, rule.category());
+                }
+                return new Classification(rule.category(), sub);
             }
-            return new Classification(rule.category(), sub);
         }
 
         // 2순위: 키워드 매칭 (긴 키워드 우선)

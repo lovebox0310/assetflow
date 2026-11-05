@@ -6,6 +6,7 @@ import com.assetflow.common.api.ApiResponse;
 import com.assetflow.expenses.ExpenseItemLedger;
 import com.assetflow.expenses.categories.CategoryClassifier;
 import com.assetflow.expenses.categories.CategoryClassifier.Classification;
+import com.assetflow.expenses.categories.CategoryTaxonomy;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -331,9 +332,10 @@ public class CardImportController {
             // 파서가 넣는 기본값 "unclassified" 는 카테고리가 아니라 "아직 안 정함" 이다.
             // 이 값을 그대로 두면 규칙/키워드/업종 자동 분류를 덮어써 저장 행이 미분류로 남는다.
             String submittedKind = normalizeSubmittedKind(row.expenseKind());
-            MerchantRule rule = submittedRules.get(row.merchantName());
-            if (rule == null || isBlank(rule.category())) {
-                rule = storedRules.get(row.merchantName());
+            // §66: 규칙의 대분류가 'unclassified'(파서 기본값)면 카테고리가 아니다. 세부로 되살리거나 버린다.
+            MerchantRule rule = usableRule(submittedRules.get(row.merchantName()));
+            if (rule == null) {
+                rule = usableRule(storedRules.get(row.merchantName()));
             }
             String category = rule == null ? "" : safe(rule.category());
             String subCategory = rule == null ? "" : safe(rule.subCategory());
@@ -388,7 +390,15 @@ public class CardImportController {
         }
 
         // §49: 제출된 규칙을 저장한다. 사용자가 수정한 값은 이후 반영에 적용된다.
-        Map<String, MerchantRule> rulesToSave = new HashMap<>(submittedRules);
+        // §66: 'unclassified' 는 카테고리가 아니므로 저장하지 않는다 — 저장하면 다음 재분류가
+        //      모든 행을 미분류로 덮어쓴다.
+        Map<String, MerchantRule> rulesToSave = new HashMap<>();
+        for (Map.Entry<String, MerchantRule> entry : submittedRules.entrySet()) {
+            MerchantRule usable = usableRule(entry.getValue());
+            if (usable != null) {
+                rulesToSave.put(entry.getKey(), usable);
+            }
+        }
         for (ImportedRow r : incoming) {
             if (!r.expenseKind().isBlank()) {
                 rulesToSave.put(r.merchantName(), new MerchantRule(r.expenseKind(), r.subCategory()));
@@ -423,25 +433,92 @@ public class CardImportController {
     @PostMapping("/card-imports/reclassify")
     public ApiResponse<Map<String, Object>> reclassify() {
         List<ImportedRow> rows = ledger.all();
+        Set<String> merchants = new HashSet<>();
+        for (ImportedRow row : rows) {
+            if (row.merchantName() != null && !row.merchantName().isBlank()) {
+                merchants.add(row.merchantName());
+            }
+        }
+        Map<String, MerchantRule> storedRules = ruleLedger.ruleDetailsFor(merchants);
         int updated = 0;
+        // §66: 분류가 확정된 가맹점의 legacy 규칙('unclassified')을 함께 고친다 —
+        //      그대로 두면 다음 재분류에서 다시 미분류로 덮어쓴다.
+        Map<String, MerchantRule> resolved = new LinkedHashMap<>();
         for (ImportedRow row : rows) {
             if (row.merchantName() == null || row.merchantName().isBlank()) {
                 continue;
             }
             Classification classified = categoryClassifier.classify(row.merchantName(), row.businessCategory());
-            if (classified == null || isBlank(classified.category())) {
-                continue;
+            String category = classified == null ? null : classified.category();
+            String subCategory = classified == null ? "" : safe(classified.subCategory());
+            if (CategoryTaxonomy.isUnset(category)) {
+                // §66: 대분류만 잃어버린 행은 자기 세부 분류로 되살린다.
+                // (세부는 9개 대분류 중 한 곳에만 속하므로 되짚을 수 있다.)
+                String derived = CategoryTaxonomy.groupOfSub(row.subCategory());
+                if (derived == null) {
+                    continue;
+                }
+                category = derived;
+                subCategory = safe(row.subCategory()).trim();
             }
-            String category = classified.category();
-            String subCategory = safe(classified.subCategory());
+            category = category.trim();
+            resolved.put(row.merchantName(), new MerchantRule(category, subCategory));
             if (!category.equals(row.expenseKind()) || !subCategory.equals(safe(row.subCategory()))) {
                 ledger.updateClassification(row.rowKey(), category, subCategory);
                 updated++;
             }
         }
+        int rulesRepaired = repairRules(resolved, storedRules);
         return new ApiResponse<>("OK", "Reclassification completed", Map.of(
                 "total", rows.size(),
-                "updated", updated));
+                "updated", updated,
+                "rulesRepaired", rulesRepaired));
+    }
+
+    /**
+     * §66: 재분류로 확정된 값으로 **legacy 규칙만** 고친다.
+     *
+     * <p>이미 정상인 규칙은 건드리지 않는다 — 키워드 매칭 결과로 사용자 규칙을 덮어쓰면
+     * 다음 임포트부터 엉뚱한 카테고리가 승계된다.</p>
+     *
+     * @return 실제로 고친 규칙 수
+     */
+    private int repairRules(Map<String, MerchantRule> resolved, Map<String, MerchantRule> storedRules) {
+        Map<String, MerchantRule> changed = new HashMap<>();
+        for (Map.Entry<String, MerchantRule> entry : resolved.entrySet()) {
+            MerchantRule old = storedRules.get(entry.getKey());
+            if (old == null || !CategoryTaxonomy.isUnset(old.category())) {
+                continue;
+            }
+            MerchantRule now = entry.getValue();
+            if (!now.category().equals(safe(old.category()))
+                    || !now.subCategory().equals(safe(old.subCategory()))) {
+                changed.put(entry.getKey(), now);
+            }
+        }
+        if (!changed.isEmpty()) {
+            ruleLedger.saveAllDetails(changed);
+        }
+        return changed.size();
+    }
+
+    /**
+     * §66: 규칙의 대분류를 정규화한다.
+     * 'unclassified'(파서 기본값)나 빈 값은 카테고리가 아니다 — 세부 분류로 되살릴 수 있으면
+     * 되살리고, 아니면 null(규칙 없음)로 취급해 키워드/업종 분류로 넘긴다.
+     */
+    private static MerchantRule usableRule(MerchantRule rule) {
+        if (rule == null) {
+            return null;
+        }
+        if (!CategoryTaxonomy.isUnset(rule.category())) {
+            return rule;
+        }
+        String derived = CategoryTaxonomy.groupOfSub(rule.subCategory());
+        if (derived == null) {
+            return null;
+        }
+        return new MerchantRule(derived, safe(rule.subCategory()));
     }
 
     /** 한 카드 행의 카테고리를 사용자가 직접 바꾼다. 같은 가맹점 행 전체 + 향후 임포트 규칙에 반영한다. */

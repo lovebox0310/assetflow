@@ -4292,3 +4292,34 @@ public static final String[] PUBLIC_PATHS = {"/api/v1/auth/login", "/api/v1/auth
 
 **검증**:
 - BE `./gradlew test`: 22개 클래스 / **183 tests**, 실패 0.
+
+---
+
+## 66) 카테고리 재분류가 정상 분류를 미분류로 덮어쓰는 문제 (2026-11-06)
+
+**증상**: 카드 지출 화면에서 "카테고리 자동 분류"를 누르면 잘 분류돼 있던 항목이
+**미분류**로 바뀌었다.
+
+**원인** (운영 DB 확인):
+- `merchant_rules` 707건 중 **707건의 `expense_kind` 가 `'unclassified'`** (파서 기본값),
+  그중 526건은 `sub_category` 가 정상(통신비·대주교통 등)으로 남아 있었다.
+- 분류기 1순위가 규칙인데 `COALESCE(c.name, r.expense_kind)` 가 `'unclassified'` 를
+  **정상 카테고리로** 돌려줬다. `Classification.unclassified()` 는 빈 값만 검사했다.
+- `reclassify` 가 그 값을 그대로 `card_imports.expense_kind` 에 써서 2,462행이 미분류가 됐다.
+
+**결정**:
+1. `'unclassified'` 는 카테고리가 아니라 "아직 안 정함" 이다 — `CategoryTaxonomy.isUnset()`.
+2. **세부 분류로 대분류를 역추적한다**(`CategoryTaxonomy.groupOfSub`). 세부는 9개 대분류 중
+   한 곳에만 속하므로 되짚을 수 있다. 예: `통신비 → 주거/통신`.
+3. 규칙 저장·임포트·재분류 어디에서도 `'unclassified'` 를 카테고리로 쓰지 않는다.
+4. 재분류는 legacy 규칙만 고친다(정상 규칙은 건드리지 않는다 — 키워드 결과로 사용자
+   규칙을 덮어쓰지 않기 위해).
+
+**복구**: 배포 후 "카테고리 자동 분류" 1회로 세부가 남아 있는 **2,077행**이 되살아난다.
+나머지 385행은 세부가 없어 키워드·업종으로만 복구된다.
+
+**검증**:
+- `CategoryTaxonomyTest` — 모든 세부가 단일 대분류에 속하는지, 역추적·미설정 판정.
+- `CardImportApiTest` — legacy 규칙이 있어도 정상 행이 유지되는지, 규칙이 복구되는지,
+  단서가 없으면 아무것도 쓰지 않는지.
+- BE `./gradlew test`: **190 tests**, 실패 0. FE `npx vitest run`: 216 tests 통과.
