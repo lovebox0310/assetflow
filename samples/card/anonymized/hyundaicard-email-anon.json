@@ -1,0 +1,97 @@
+{
+  "source": "hyundaicard-email-anon",
+  "note": "익명화된 현대카드 이메일 명세서 추출 샘플. 개인정보/가맹점명/금액 일부 변경.",
+  "count": 10,
+  "rows": [
+    {
+      "approvedAt": "2026-10-02",
+      "merchantName": "가맹점A",
+      "grossAmount": 10000,
+      "vat": 0,
+      "supplyExVat": 10000,
+      "installmentCount": 0,
+      "cardMasked": "본인 카드"
+    },
+    {
+      "approvedAt": "2026-10-04",
+      "merchantName": "가맹점B",
+      "grossAmount": 57000,
+      "vat": 0,
+      "supplyExVat": 57000,
+      "installmentCount": 0,
+      "cardMasked": "가족 카드"
+    },
+    {
+      "approvedAt": "2026-10-04",
+      "merchantName": "가맹점C",
+      "grossAmount": 5000,
+      "vat": 0,
+      "supplyExVat": 5000,
+      "installmentCount": 0,
+      "cardMasked": "가족 카드"
+    },
+    {
+      "approvedAt": "2026-10-04",
+      "merchantName": "가맹점D",
+      "grossAmount": 7000,
+      "vat": 0,
+      "supplyExVat": 7000,
+      "installmentCount": 0,
+      "cardMasked": "가족 카드"
+    },
+    {
+      "approvedAt": "2026-10-06",
+      "merchantName": "가맹점E",
+      "grossAmount": 555900,
+      "vat": 0,
+      "supplyExVat": 555900,
+      "installmentCount": 0,
+      "cardMasked": "본인 카드"
+    },
+    {
+      "approvedAt": "2026-10-07",
+      "merchantName": "가맹점F",
+      "grossAmount": 9600,
+      "vat": 0,
+      "supplyExVat": 9600,
+      "installmentCount": 0,
+      "cardMasked": "본인 카드"
+    },
+    {
+      "approvedAt": "2026-10-07",
+      "merchantName": "가맹점G",
+      "grossAmount": 17600,
+      "vat": 0,
+      "supplyExVat": 17600,
+      "installmentCount": 0,
+      "cardMasked": "본인 카드"
+    },
+    {
+      "approvedAt": "2026-10-07",
+      "merchantName": "가맹점H",
+      "grossAmount": 9400,
+      "vat": 0,
+      "supplyExVat": 9400,
+      "installmentCount": 0,
+      "cardMasked": "가족 카드"
+    },
+    {
+      "approvedAt": "2026-10-08",
+      "merchantName": "가맹점I",
+      "grossAmount": 153100,
+      "vat": 0,
+      "supplyExVat": 153100,
+      "installmentCount": 0,
+      "cardMasked": "가족 카드"
+    },
+    {
+      "approvedAt": "2026-10-08",
+      "merchantName": "가맹점J",
+      "grossAmount": 47000,
+      "vat": 0,
+      "supplyExVat": 47000,
+      "installmentCount": 0,
+      "cardMasked": "본인 카드"
+    }
+  ]
+}

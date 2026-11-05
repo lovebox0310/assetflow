@@ -46,6 +46,35 @@
 
 ---
 
+## 2026-11-05 — 카드 거래내역 자동 수집 연구 및 방향 결정 (§63) [🔄 진행 중]
+
+**요약**: 현대/삼성카드 거래내역 자동 가져오기 방식을 Playwright + VestMail 이메일 명세서
+파싱으로 결정. 카드사 웹 직접 크롤링은 보안프로그램/인증 불가, 공식 API는 개인 이용 불가,
+상용 API는 비용 발생. 이메일 명세서도 VestMail 암호화 HTML이라 단순 파싱은 안 되지만,
+Playwright 브라우저에서 복호화하면 자동화 가능.
+
+**결정**:
+- §63: Playwright + VestMail 이메일 명세서 자동 수집.
+- 사용자 VestMail 비밀번호·Gmail IMAP 자격증명을 서버에 암호화 저장(§63.6 보안 예외).
+- Node.js + Playwright로 복호화 및 DOM 추출, Java 백엔드로 스케줄러/DB/API 연동.
+
+**진행**:
+- 현대/삼성 이메일 명세서 샘플 확보 (`/tmp/opencode/`).
+- VestMail 암호화 HTML임 확인. Playwright 복호화 PoC 완료.
+- 현대카드: 복호화 후 90건 거래 내역 추출, `card-columns.json` 매핑 확인.
+- 삼성카드: 복호화 후 HTML이 템플릿이라 실제 거래 데이터 없음 → 이메일 방식 제외.
+- 정식 파서 모듈을 `apps/backend/src/main/resources/scripts/card/vestmail-hyundai/`에 추가.
+- 익명화 샘플 `samples/card/anonymized/hyundaicard-email-anon.json` 등록.
+
+**다음 단계**:
+1. BE 연동: Gmail IMAP 수신 + Node 스크립트 호출 + DB 저장.
+2. 자격증명 암호화 저장 설계 및 구현.
+3. FE 설정 UI: Gmail/IMAP/VestMail 비밀번호/수집 주기 입력.
+4. Spring 스케줄러 1일 2회 실행.
+5. 문서: `project.md` §63 갱신.
+
+---
+
 ## 2026-11-03 — 은행 잔액 빠른조회 연동 1단계 [✅ 구현 완료 · 운영 키 미설정]
 
 **결정 근거:** `.ai/project.md` §61. 개인은 오픈뱅킹 이용기관 등록이 어렵고 CODEF 는
