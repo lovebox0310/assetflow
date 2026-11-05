@@ -42,6 +42,8 @@ for file in extract-hyundai-vestmail.mjs package.json package-lock.json README.m
     cp "$BACKEND_DIR/src/main/resources/scripts/card/vestmail-hyundai/$file" "$VESTMAIL_DIR/"
 done
 chmod +x "$VESTMAIL_DIR/install.sh"
+# npm install 이 소유 사용자로 파일을 쓸 수 있도록 권한을 맞춘다.
+chown -R "$BUILD_USER:$BUILD_USER" "$VESTMAIL_DIR"
 $BUILD_SHELL "export PATH='$NODE_BIN:\$PATH' && cd '$VESTMAIL_DIR' && ./install.sh"
 
 # 환경변수가 없으면 경고만 한다(값은 출력하지 않는다).
