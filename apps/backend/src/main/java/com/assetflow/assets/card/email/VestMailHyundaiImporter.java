@@ -4,17 +4,6 @@ import com.assetflow.assets.CardImportLedger;
 import com.assetflow.assets.card.CardImportCipher;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.mail.BodyPart;
-import jakarta.mail.Folder;
-import jakarta.mail.Message;
-import jakarta.mail.Multipart;
-import jakarta.mail.Part;
-import jakarta.mail.Session;
-import jakarta.mail.Store;
-import jakarta.mail.search.AndTerm;
-import jakarta.mail.search.FromStringTerm;
-import jakarta.mail.search.SearchTerm;
-import jakarta.mail.search.SubjectTerm;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,44 +19,41 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Properties;
 import java.util.stream.Collectors;
 
 /**
  * 현대카드 VestMail 이메일 명세서 수집기 (§63).
  *
- * <p>Gmail IMAP으로 첨부 HTML을 받아, Playwright 기반 Node 스크립트로 복호화 및
- * 거래 내역을 추출한 뒤 {@link CardImportLedger}에 저장한다.</p>
+ * <p>{@link CardEmailAttachmentDownloader}로 첨부 HTML을 받아, Playwright 기반
+ * Node 스크립트로 복호화 및 거래 내역을 추출한 뒤 {@link CardImportLedger}에
+ * 저장한다.</p>
  */
 @Component
 public class VestMailHyundaiImporter {
 
     private static final Logger log = LoggerFactory.getLogger(VestMailHyundaiImporter.class);
 
-    private static final String SENDER = "webmaster@hcs.com";
-    private static final String SUBJECT_KEYWORD = "개인카드명세서";
-    private static final String ATTACHMENT_NAME = "hyundaicard.html";
-
     private final CardImportCipher cipher;
     private final CardImportLedger ledger;
     private final CardEmailImportSettingsLedger settingsLedger;
     private final ObjectMapper objectMapper;
+    private final CardEmailAttachmentDownloader downloader;
     private final String scriptDir;
 
     public VestMailHyundaiImporter(CardImportCipher cipher,
                                    CardImportLedger ledger,
                                    CardEmailImportSettingsLedger settingsLedger,
                                    ObjectMapper objectMapper,
+                                   CardEmailAttachmentDownloader downloader,
                                    @Value("${app.vestmail.hyundai.script-dir:}") String scriptDir) {
         this.cipher = cipher;
         this.ledger = ledger;
         this.settingsLedger = settingsLedger;
         this.objectMapper = objectMapper;
+        this.downloader = downloader;
         this.scriptDir = scriptDir;
     }
 
@@ -88,7 +74,7 @@ public class VestMailHyundaiImporter {
             String vestmailPassword = cipher.decrypt(settings.vestmailPasswordEnc());
 
             workDir = Files.createTempDirectory("af-vestmail-");
-            Path htmlFile = downloadAttachment(settings.emailAddress(), emailPassword, workDir);
+            Path htmlFile = downloader.download(settings.emailAddress(), emailPassword, workDir);
             if (htmlFile == null) {
                 log.info("No HyundaiCard statement email found for user {}", settings.userId());
                 settingsLedger.save(settings.withLastImport("NO_MAIL", Instant.now()));
@@ -114,70 +100,15 @@ public class VestMailHyundaiImporter {
         }
     }
 
-    private Path downloadAttachment(String email, String password, Path workDir) throws Exception {
-        Properties props = new Properties();
-        props.setProperty("mail.store.protocol", "imaps");
-        props.setProperty("mail.imaps.host", "imap.gmail.com");
-        props.setProperty("mail.imaps.port", "993");
-        // Gmail IMAP은 SSL/TLS
-        Session session = Session.getInstance(props, null);
-
-        try (Store store = session.getStore("imaps")) {
-            store.connect("imap.gmail.com", email, password);
-            Folder inbox = store.getFolder("INBOX");
-            inbox.open(Folder.READ_ONLY);
-
-            SearchTerm term = new AndTerm(
-                    new FromStringTerm(SENDER),
-                    new SubjectTerm(SUBJECT_KEYWORD));
-            Message[] messages = inbox.search(term);
-
-            // 가장 최근 메일부터 확인
-            List<Message> sorted = new ArrayList<>();
-            for (Message m : messages) {
-                if (m.getSentDate() != null) {
-                    sorted.add(m);
-                }
-            }
-            sorted.sort(Comparator.comparing((Message m) -> {
-                try {
-                    return m.getSentDate().toInstant();
-                } catch (Exception e) {
-                    return Instant.EPOCH;
-                }
-            }).reversed());
-
-            for (Message message : sorted) {
-                Object content = message.getContent();
-                if (!(content instanceof Multipart multipart)) {
-                    continue;
-                }
-                for (int i = 0; i < multipart.getCount(); i++) {
-                    BodyPart part = multipart.getBodyPart(i);
-                    String disposition = part.getDisposition();
-                    String fileName = part.getFileName();
-                    if (Part.ATTACHMENT.equalsIgnoreCase(disposition)
-                            && fileName != null
-                            && fileName.toLowerCase().contains("hyundaicard")
-                            && fileName.toLowerCase().endsWith(".html")) {
-                        Path out = workDir.resolve(ATTACHMENT_NAME);
-                        try (InputStream is = part.getInputStream()) {
-                            Files.copy(is, out, StandardCopyOption.REPLACE_EXISTING);
-                        }
-                        inbox.close(false);
-                        return out;
-                    }
-                }
-            }
-            inbox.close(false);
-            return null;
-        }
-    }
-
-    private List<CardImportLedger.ImportedRow> extractRows(Path htmlFile,
-                                                           String vestmailPassword,
-                                                           String year,
-                                                           Long userId) throws Exception {
+    /**
+     * Node 스크립트를 실행해 VestMail HTML에서 거래 내역을 추출한다.
+     *
+     * <p>테스트에서 override 할 수 있도록 protected 로 열어둔다.</p>
+     */
+    protected List<CardImportLedger.ImportedRow> extractRows(Path htmlFile,
+                                                             String vestmailPassword,
+                                                             String year,
+                                                             Long userId) throws Exception {
         Path scriptWorkDir = prepareScriptWorkDir();
         Path script = scriptWorkDir.resolve("extract-hyundai-vestmail.mjs");
 
@@ -241,7 +172,6 @@ public class VestMailHyundaiImporter {
             log.warn("Configured script-dir does not contain extract script: {}", scriptDir);
         }
 
-        // classpath에서 스크립트 전체를 임시 디렉토리로 복사
         Path temp = Files.createTempDirectory("af-vestmail-script-");
         String[] files = {
                 "extract-hyundai-vestmail.mjs",
@@ -257,8 +187,6 @@ public class VestMailHyundaiImporter {
                 Files.copy(is, temp.resolve(name), StandardCopyOption.REPLACE_EXISTING);
             }
         }
-        // node_modules는 classpath에 포함되지 않으므로, 실행 환경에서 npm install이 필요.
-        // 운영에서는 script-dir을 외부 설치 경로로 설정한다.
         return temp;
     }
 
