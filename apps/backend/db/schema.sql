@@ -152,6 +152,28 @@ CREATE TABLE card_imports (
 );
 
 -- ---------------------------------------------------------------------------
+-- card_email_import_settings: 이메일 명세서 자동 수집 설정 (§63)
+-- VestMail 비밀번호와 Gmail IMAP 앱 비밀번호는 AES/GCM 암호화하여 저장.
+-- ---------------------------------------------------------------------------
+CREATE TABLE card_email_import_settings (
+    id                   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id              BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    enabled              BOOLEAN NOT NULL DEFAULT FALSE,
+    card_company         VARCHAR(20) NOT NULL CHECK (card_company IN ('hyundaicard')),
+    email_provider       VARCHAR(20) NOT NULL DEFAULT 'gmail',
+    email_address        VARCHAR(255) NOT NULL,
+    email_password_enc   VARCHAR(500) NOT NULL,    -- IMAP 앱 비밀번호 암호문
+    vestmail_password_enc VARCHAR(500) NOT NULL,   -- VestMail 복호화 비밀번호 암호문
+    last_import_at       TIMESTAMPTZ,
+    last_import_status   VARCHAR(20),               -- SUCCESS / FAILED / NO_MAIL
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_card_email_import_settings_user_company UNIQUE (user_id, card_company)
+);
+
+CREATE INDEX ix_card_email_import_settings_user ON card_email_import_settings (user_id);
+
+-- ---------------------------------------------------------------------------
 -- merchant_category_keywords: 가맹점명 키워드 → 카테고리 매핑 (§55.8).
 -- 우선순위가 높을수록 먼저 매칭한다.
 -- ---------------------------------------------------------------------------

@@ -59,6 +59,8 @@ dependencies {
     // §29.2 BE 재검증: 업로드된 평문 XLSX를 서버에서 다시 읽는다.
     // 암호화(CFB)는 열지 않는다(§29.5.1) — POI도 EncryptedDocumentException 으로 실패한다.
     implementation 'org.apache.poi:poi-ooxml:5.2.5'
+    // §63 이메일 명세서 자동 수집 — IMAP 첨부 다운로드
+    implementation 'org.springframework.boot:spring-boot-starter-mail'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }
 
