@@ -137,10 +137,12 @@ export function CardExpensesPage({
     setUndo(null);
     try {
       const result = await reclassifyCardImports();
+      const repaired = result.rulesRepaired ?? 0;
+      const suffix = repaired > 0 ? ` (가맹점 규칙 ${repaired}건 복구)` : "";
       setNotice(
         result.updated > 0
-          ? `카드내역 ${result.total}건 중 ${result.updated}건을 자동 분류했습니다.`
-          : `카드내역 ${result.total}건을 확인했습니다 — 새로 분류된 항목은 없습니다.`,
+          ? `카드내역 ${result.total}건 중 ${result.updated}건을 자동 분류했습니다.${suffix}`
+          : `카드내역 ${result.total}건을 확인했습니다 — 새로 분류된 항목은 없습니다.${suffix}`,
       );
       loadCard();
       loadUnclassified();

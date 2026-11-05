@@ -14,6 +14,29 @@
 
 ---
 
+## 2026-11-06 — 카테고리 재분류가 정상 분류를 미분류로 덮어쓰는 문제 (§66) [✅ 구현 완료]
+
+**요약**: "카테고리 자동 분류"를 누르면 잘 분류된 항목이 미분류로 돌아가던 문제.
+운영 DB 확인 결과 `merchant_rules` 707건의 `expense_kind` 가 `'unclassified'`(파서 기본값)였고,
+분류기가 그 값을 정상 카테고리로 취급해 `card_imports` 2,462행을 미분류로 덮어썼다.
+
+**변경**:
+- `CategoryTaxonomy`: `isUnset()`(빈 값·unclassified 판정), `groupOfSub()`(세부 → 대분류 역추적).
+- `PostgresCategoryClassifier` / `InMemoryCategoryClassifier`: legacy 규칙은 세부로 대분류를
+  되살리고, 단서가 없으면 규칙을 버리고 키워드·업종으로 넘어간다.
+- `CardImportController`: 임포트·재분류 어디에서도 `'unclassified'` 를 카테고리로 쓰지 않는다.
+  재분류는 legacy 규칙만 복구하고(`rulesRepaired`), 정상 규칙은 건드리지 않는다.
+- FE: 재분류 안내문에 규칙 복구 건수 표시.
+- 테스트: `CategoryTaxonomyTest`, `CardImportApiTest` 재분류 회귀 3건.
+
+**검증**:
+- BE `./gradlew test`: 190 tests, 실패 0. FE `npx vitest run`: 216 tests 통과.
+- 배포 후 "카테고리 자동 분류" 1회로 2,077행 복구 예상(세부 분류 보유 행).
+
+**다음 단계**: 배포 후 재분류 실행 → DB 로 복구 결과 확인.
+
+---
+
 ## 2026-11-05 — 인증 인터셉터 경로 누락 수정 (§65) [✅ 구현 완료]
 
 **요약**: 설정 화면에서 카드 메일 설정 API 가 유효한 토큰에도 401 을 돌려줘 앱이

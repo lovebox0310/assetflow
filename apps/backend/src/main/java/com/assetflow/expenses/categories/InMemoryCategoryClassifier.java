@@ -46,11 +46,19 @@ public class InMemoryCategoryClassifier implements CategoryClassifier {
 
         Classification rule = merchantRules.get(merchantName);
         if (rule != null) {
-            if (rule.subCategory() != null && !rule.subCategory().isBlank()) {
-                return rule;
+            // §66: 'unclassified' 는 카테고리가 아니다 — 세부로 대분류를 되살리거나 규칙을 버린다.
+            if (CategoryTaxonomy.isUnset(rule.category())) {
+                String derived = CategoryTaxonomy.groupOfSub(rule.subCategory());
+                if (derived != null) {
+                    return new Classification(derived, rule.subCategory().trim());
+                }
+            } else {
+                if (rule.subCategory() != null && !rule.subCategory().isBlank()) {
+                    return rule;
+                }
+                String sub = keywordSubFor(normalized, rule.category());
+                return new Classification(rule.category(), sub);
             }
-            String sub = keywordSubFor(normalized, rule.category());
-            return new Classification(rule.category(), sub);
         }
 
         for (KeywordMapping kw : keywords) {

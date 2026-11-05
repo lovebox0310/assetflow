@@ -75,6 +75,8 @@ export function submitCardImports(
 export interface ReclassifyResult {
   total: number;
   updated: number;
+  /** §66: legacy 'unclassified' 규칙을 복구한 건수(서버가 안 내려주면 0). */
+  rulesRepaired?: number;
 }
 
 /** §55.8: 저장된 기존 카드 내역을 가맹점 규칙·키워드로 일괄 재분류한다. */
