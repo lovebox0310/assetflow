@@ -59,3 +59,6 @@ app:
         # Node 스크립트 디렉토리. 비우면 classpath에서 임시 복사.
         # 운영 예: /opt/assetflow/scripts/card/vestmail-hyundai
         script-dir: ${VESTMAIL_HYUNDAI_SCRIPT_DIR:}
+      # §68 삼성카드 VestMail — 같은 Playwright 의존성을 쓰지만 폼·표 구조가 달라 별도 스크립트.
+      samsung:
+        script-dir: ${VESTMAIL_SAMSUNG_SCRIPT_DIR:}

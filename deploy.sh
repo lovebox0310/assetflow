@@ -47,18 +47,36 @@ chmod +x "$VESTMAIL_DIR/install.sh"
 chown -R "$BUILD_USER:$BUILD_USER" "$VESTMAIL_DIR"
 $BUILD_SHELL "export PATH='$NODE_BIN:\$PATH' && cd '$VESTMAIL_DIR' && ./install.sh"
 
+# §68 삼성카드 VestMail 추출기 — 같은 Playwright 설치를 공유하지만 스크립트는 별도.
+VESTMAIL_SAMSUNG_DIR="$DEPLOY_DIR/scripts/card/vestmail-samsung"
+mkdir -p "$VESTMAIL_SAMSUNG_DIR"
+rm -rf "$VESTMAIL_SAMSUNG_DIR/"*
+for file in extract-samsung-vestmail.mjs samsung-table.mjs package.json package-lock.json README.md install.sh; do
+    cp "$BACKEND_DIR/src/main/resources/scripts/card/vestmail-samsung/$file" "$VESTMAIL_SAMSUNG_DIR/"
+done
+chmod +x "$VESTMAIL_SAMSUNG_DIR/install.sh"
+chown -R "$BUILD_USER:$BUILD_USER" "$VESTMAIL_SAMSUNG_DIR"
+$BUILD_SHELL "export PATH='$NODE_BIN:\$PATH' && cd '$VESTMAIL_SAMSUNG_DIR' && ./install.sh"
+
 # 환경변수가 없으면 경고만 한다(값은 출력하지 않는다).
 if [ -f "$ENV_FILE" ]; then
     if grep -qE '^VESTMAIL_HYUNDAI_SCRIPT_DIR=' "$ENV_FILE" 2>/dev/null; then
-        echo "VestMail script dir already configured in $ENV_FILE"
+        echo "Hyundai VestMail script dir already configured in $ENV_FILE"
     else
         # 스크립트를 방금 이 경로에 설치했으므로 자동으로 채워 넣는다(재실행해도 중복되지 않음).
         printf '\n# §63 현대카드 VestMail 추출 스크립트 경로(없으면 classpath 폴 백)\nVESTMAIL_HYUNDAI_SCRIPT_DIR=%s\n' \
             "$VESTMAIL_DIR" >> "$ENV_FILE"
         echo "Added VESTMAIL_HYUNDAI_SCRIPT_DIR=$VESTMAIL_DIR to $ENV_FILE"
     fi
+    if grep -qE '^VESTMAIL_SAMSUNG_SCRIPT_DIR=' "$ENV_FILE" 2>/dev/null; then
+        echo "Samsung VestMail script dir already configured in $ENV_FILE"
+    else
+        printf '\n# §68 삼성카드 VestMail 추출 스크립트 경로(없으면 classpath 폴 백)\nVESTMAIL_SAMSUNG_SCRIPT_DIR=%s\n' \
+            "$VESTMAIL_SAMSUNG_DIR" >> "$ENV_FILE"
+        echo "Added VESTMAIL_SAMSUNG_SCRIPT_DIR=$VESTMAIL_SAMSUNG_DIR to $ENV_FILE"
+    fi
 else
-    echo "WARN: $ENV_FILE not found — VestMail Hyundai extractor will fall back to classpath (slower)"
+    echo "WARN: $ENV_FILE not found — VestMail extractors will fall back to classpath (slower)"
 fi
 
 echo "[7/7] Restart service..."

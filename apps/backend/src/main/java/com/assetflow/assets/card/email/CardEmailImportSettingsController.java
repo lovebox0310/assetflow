@@ -14,11 +14,14 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Optional;
+
 /**
- * 이메일 명세서 자동 수집 설정 API (§63).
+ * 이메일 명세서 자동 수집 설정 API (§63, §68).
  *
  * <p>비밀번호는 PUT 시에만 평문으로 받아서 즉시 AES/GCM 암호화한다.
- * GET 응답에는 비밀번호 필드를 제외한다.</p>
+ * GET 응답에는 비밀번호 필드를 제외한다. 설정이 이미 있으면 비밀번호를 비워
+ * 보낼 수 있고, 그 경우 기존 암호문을 그대로 유지한다.</p>
  */
 @RestController
 @RequestMapping("/api/v1/card-email-import-settings")
@@ -26,23 +29,27 @@ public class CardEmailImportSettingsController {
 
     private static final String PROVIDER_GMAIL = "gmail";
     private static final String COMPANY_HYUNDAI = "hyundaicard";
+    private static final String COMPANY_SAMSUNG = "samsungcard";
 
     private final CardEmailImportSettingsLedger ledger;
     private final CardImportCipher cipher;
     private final AuthEmailResolver emailResolver;
     private final UserSettingsLedger userSettingsLedger;
     private final VestMailHyundaiImporter hyundaiImporter;
+    private final VestMailSamsungImporter samsungImporter;
 
     public CardEmailImportSettingsController(CardEmailImportSettingsLedger ledger,
                                              CardImportCipher cipher,
                                              AuthEmailResolver emailResolver,
                                              UserSettingsLedger userSettingsLedger,
-                                             VestMailHyundaiImporter hyundaiImporter) {
+                                             VestMailHyundaiImporter hyundaiImporter,
+                                             VestMailSamsungImporter samsungImporter) {
         this.ledger = ledger;
         this.cipher = cipher;
         this.emailResolver = emailResolver;
         this.userSettingsLedger = userSettingsLedger;
         this.hyundaiImporter = hyundaiImporter;
+        this.samsungImporter = samsungImporter;
     }
 
     public record SettingsDto(boolean enabled,
@@ -79,24 +86,38 @@ public class CardEmailImportSettingsController {
         if (dto.emailAddress() == null || dto.emailAddress().isBlank()) {
             throw new IllegalArgumentException("emailAddress is required");
         }
+
+        Optional<CardEmailImportSettings> existing =
+                ledger.findByUserIdAndCardCompany(userId, company);
         if (dto.emailPassword() == null || dto.emailPassword().isBlank()) {
-            throw new IllegalArgumentException("emailPassword is required");
+            if (existing.isEmpty()) {
+                throw new IllegalArgumentException("emailPassword is required");
+            }
         }
         if (dto.vestmailPassword() == null || dto.vestmailPassword().isBlank()) {
-            throw new IllegalArgumentException("vestmailPassword is required");
+            if (existing.isEmpty()) {
+                throw new IllegalArgumentException("vestmailPassword is required");
+            }
         }
 
+        String emailPasswordEnc = dto.emailPassword() == null || dto.emailPassword().isBlank()
+                ? existing.orElseThrow().emailPasswordEnc()
+                : cipher.encrypt(dto.emailPassword());
+        String vestmailPasswordEnc = dto.vestmailPassword() == null || dto.vestmailPassword().isBlank()
+                ? existing.orElseThrow().vestmailPasswordEnc()
+                : cipher.encrypt(dto.vestmailPassword());
+
         CardEmailImportSettings settings = new CardEmailImportSettings(
-                null,
+                existing.map(CardEmailImportSettings::id).orElse(null),
                 userId,
                 dto.enabled(),
                 company,
                 provider,
                 dto.emailAddress().trim(),
-                cipher.encrypt(dto.emailPassword()),
-                cipher.encrypt(dto.vestmailPassword()),
-                null,
-                null);
+                emailPasswordEnc,
+                vestmailPasswordEnc,
+                existing.map(CardEmailImportSettings::lastImportAt).orElse(null),
+                existing.map(CardEmailImportSettings::lastImportStatus).orElse(null));
 
         CardEmailImportSettings saved = ledger.save(settings);
         return new ApiResponse<>("OK", "Card email import settings saved", toResponse(saved));
@@ -118,7 +139,10 @@ public class CardEmailImportSettingsController {
         if (!settings.enabled()) {
             throw new IllegalStateException("card email import is not enabled");
         }
-        int imported = hyundaiImporter.importForUser(settings);
+        int imported = switch (company) {
+            case COMPANY_SAMSUNG -> samsungImporter.importForUser(settings);
+            default -> hyundaiImporter.importForUser(settings);
+        };
         return new ApiResponse<>("OK", "Import finished", imported);
     }
 
@@ -141,8 +165,8 @@ public class CardEmailImportSettingsController {
     }
 
     private String validateCompany(String cardCompany) {
-        if (!COMPANY_HYUNDAI.equals(cardCompany)) {
-            throw new IllegalArgumentException("Only hyundaicard is supported");
+        if (!COMPANY_HYUNDAI.equals(cardCompany) && !COMPANY_SAMSUNG.equals(cardCompany)) {
+            throw new IllegalArgumentException("Unsupported card company: " + cardCompany);
         }
         return cardCompany;
     }
