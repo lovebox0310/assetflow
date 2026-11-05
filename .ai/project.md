@@ -4105,3 +4105,92 @@ bank_account_links (
 - BE: `SettingsApiTest` — deposit/realty 거절, invest 허용.
 - FE: `EmergencyFundSettingsModal.test.tsx` — CMA 선택 시 예수금 합산, 미존재 id 라벨.
 - FE: `metrics.test.ts` — invest 포함/예적금 제외.
+
+## 63) 카드 거래내역 자동 수집 — Playwright + VestMail 이메일 명세서 (2026-11-05)
+
+**결정**: 현대/삼성카드 거래내역 자동 가져오기를 **이메일 명세서 + Playwright 복호화** 방식으로
+구현한다. 카드사가 이메일로 본인확인 후 발송하는 **VestMail 암호화 HTML 명세서**를
+브라우저에서 열고, 사용자가 제공한 비밀번호로 복호화한 뒤 **DOM에서 거래 테이블을 추출**하여
+`card-columns.json`에 매핑한다.
+
+**근거**:
+- 카드사 웹사이트 직접 크롤링은 보안프로그램 설치·간편인증·공동인증 등으로 개인 프로젝트에서
+  자동화가 사실상 불가능하다.
+- 금융결제원 오픈뱅킹·마이데이터 카드 API는 **이용기관/마이데이터사업자 등록**이 필요해
+  개인이 직접 사용할 수 없다.
+- 바로빌·CODEF 등 상용 스크래핑 API는 비용이 발생하며, 본 프로젝트는 우선 직접 구현으로
+  운영 비용을 줄이고 데이터 형식을 AssetFlow 컬럼 규격에 맞추고자 한다.
+- 이메일 명세서는 사용자가 카드사에서 직접 신청하는 정식 채널이므로, 사용자 동의 하에
+  자동 수집하는 것이 가능하다.
+
+**보안 및 정책 예외**:
+- 사용자의 **VestMail 복호화 비밀번호와 Gmail IMAP 자격증명**을 AssetFlow 서버에
+  암호화 저장한다. 이는 §3의 "암호화 파일은 사용자가 직접 입력한 비밀번호로만 열고,
+  파일과 비밀번호는 서버에 도달하지 않는다"는 원칙과 충돌한다.
+- 다만 사용자가 개인용 프로젝트이며 서버 저장을 명시적으로 동의했고, 복호화는
+  Playwright 브라우저 프로세스 내에서만 이루어지며 평문 비밀번호는 메모리에만 존재한다.
+- 자격증명은 AES-256-GCM 등으로 암호화하여 DB에 저장하고, 복호화 키는 환경변수로 분리한다.
+
+### 63.1 수집 파이프라인
+
+```
+[Gmail IMAP] → [VestMail HTML 첨부 다운로드]
+        ↓
+[Playwright: file:// 로 HTML 열기]
+        ↓
+[비밀번호 입력 → 복호화 대기]
+        ↓
+[복호화된 DOM에서 거래 테이블 추출]
+        ↓
+[card-columns.json 매핑 → DB 저장]
+        ↓
+[스케줄러: 1일 2회]
+```
+
+### 63.2 지원 범위
+
+- **현대카드**: `webmaster@hcs.com` 발신, `hyundaicard.html` 첨부. 복호화 후 정적인
+  HTML 테이블에 거래 내역이 포함되어 있어 추출 가능.
+- **삼성카드**: `billing@samsungcard.com` 발신, `samsungcard_detail_YYYYMMDD.html` 첨부.
+  복호화 후에도 HTML은 jQuery Template(`{{html mrcNm}}`)만 있고 실제 거래 데이터는
+  별도 로드되므로 **이메일 HTML만으로는 추출 불가**. 삼성카드는 별도 방법을 적용.
+- 첫 단계는 **현대카드 본인 카드**만. 가족카드/법인카드는 별도 카드번호 필드가 있는지
+  확인 후 확장한다.
+
+### 63.3 기술 스택
+
+- **Node.js + Playwright**: VestMail 복호화 및 DOM 추출.
+- **Java 백엔드**: 스케줄러, 설정 관리, DB 저장, API 노출.
+- **Gmail IMAP**: 메일 수신 및 첨부 다운로드(앱 비밀번호 사용).
+- **암호화**: 서버 DB 저장 전 자격증명 암호화(Jasypt 또는 Java Cipher + 환경변수 키).
+
+### 63.4 데이터 매핑
+
+추출한 필드를 기존 `samples/card/card-columns.json`에 맞춘다.
+
+| VestMail/명세서 필드 | card-columns.json 필드 | 비고 |
+|---|---|---|
+| 승인일자/이용일자 | `approvedAt` | `YYYY-MM-DD` |
+| 가맹점명 | `merchantName` | |
+| 이용금액/공급대가 | `grossAmount` | |
+| 세액 | `vat` | 없으면 0 또는 계산 |
+| 공급가액 | `supplyExVat` | `grossAmount - vat` |
+| 할부개월 | `installmentCount` | 일시불은 0 |
+| 승인번호 | `approvalNo` | 선택 |
+
+### 63.5 단계별 구현
+
+1. **PoC**: `/tmp/opencode/`에서 Playwright로 현대카드 VestMail HTML 복호화 및 테이블 추출.
+2. **파서 모듈**: `apps/backend/src/main/resources/scripts/card/vestmail-hyundai/`에
+   Node 스크립트(`extract-hyundai-vestmail.mjs`) 및 `package.json` 정리.
+3. **익명화 샘플**: `samples/card/anonymized/hyundaicard-email-anon.json` 등록.
+4. **BE 연동**: Java에서 Node 스크립트를 호출하거나, 별도 worker 프로세스로 실행.
+5. **FE 설정 UI**: Gmail 계정, IMAP 앱 비밀번호, VestMail 비밀번호, 수집 주기 입력.
+6. **스케줄러**: Spring `@Scheduled` 또는 Quartz로 1일 2회 실행.
+
+### 63.6 검증
+
+- PoC: 현대/삼성 샘플 각 1건에서 거래 행 1건 이상 추출 → `card-columns.json` 필드 매핑.
+- 단위 테스트: 샘플 HTML(익명화)을 fixture로 하여 파서 출력 검증.
+- 통합 테스트: IMAP mock + Playwright headless로 end-to-end 수집 시뮬레이션.
+- 보안: DB에 저장된 자격증명이 평문이 아닌 암호문인지 확인.
