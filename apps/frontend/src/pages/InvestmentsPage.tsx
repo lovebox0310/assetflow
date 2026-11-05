@@ -23,17 +23,21 @@ import {
   MobileListCardMeta,
 } from "../components/MobileListCard";
 import {
+  clearKisBalance,
   createHolding,
   deleteHolding,
   fetchFxRate,
   fetchQuote,
+  getKisMapping,
   getPortfolio,
   refreshHoldingPrices,
+  syncKisBalance,
   updateHolding,
   type AssetClass,
   type HoldingPayload,
   type HoldingRow,
   type InvestmentAccountValue,
+  type KisAccountMapping,
   type Portfolio,
 } from "../api/investmentsApi";
 import { deleteAccount, updateAccount, type UpsertPayload } from "../api/assetsApi";
@@ -142,6 +146,11 @@ export function InvestmentsPage({
   const [accountEditId, setAccountEditId] = useState<number | null>(null);
   const [accountBusy, setAccountBusy] = useState(false);
   const [accountForm] = Form.useForm<AccountFormValues>();
+  /** §62 한국투자증권 잔고 동기화 입력 상태. */
+  const [kisSyncAccountId, setKisSyncAccountId] = useState<number | null>(null);
+  const [kisCano, setKisCano] = useState("");
+  const [kisAcntPrdtCd, setKisAcntPrdtCd] = useState("01");
+  const [kisSyncing, setKisSyncing] = useState(false);
   const mountedRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -151,7 +160,7 @@ export function InvestmentsPage({
     try {
       const data = await getPortfolio();
       setPortfolio(data);
-      setStatus(data.holdings.length === 0 ? "empty" : "ready");
+      setStatus(data.holdings.length === 0 && data.accounts.length === 0 ? "empty" : "ready");
     } catch (e) {
       setStatus("error");
       setErrorText(e instanceof Error ? e.message : "불러오지 못했습니다");
@@ -171,7 +180,7 @@ export function InvestmentsPage({
     try {
       const data = await refreshHoldingPrices();
       setPortfolio(data);
-      setStatus(data.holdings.length === 0 ? "empty" : "ready");
+      setStatus(data.holdings.length === 0 && data.accounts.length === 0 ? "empty" : "ready");
     } catch (e) {
       if (!silent) setActionError(e instanceof Error ? e.message : "시세를 가져오지 못했습니다");
     } finally {
@@ -460,6 +469,57 @@ export function InvestmentsPage({
     onOpenDashboard?.();
   };
 
+  /** §62 한국투자증권 잔고 동기화. */
+  const beginKisSync = async (accountId: number, accountName: string) => {
+    setActionError("");
+    setKisSyncAccountId(accountId);
+    setKisCano("");
+    setKisAcntPrdtCd("01");
+    try {
+      const mapping: KisAccountMapping = await getKisMapping(accountName);
+      setKisCano(mapping.cano);
+      setKisAcntPrdtCd(mapping.acntPrdtCd || "01");
+    } catch {
+      // 매핑이 없으면 사용자가 직접 입력한다.
+    }
+  };
+
+  const cancelKisSync = () => {
+    setKisSyncAccountId(null);
+    setKisCano("");
+    setKisAcntPrdtCd("01");
+  };
+
+  const doKisSync = async (accountId: number) => {
+    if (!kisCano.trim()) {
+      setActionError("계좌번호 앞 8자리(CANO)를 입력하세요");
+      return;
+    }
+    setKisSyncing(true);
+    setActionError("");
+    try {
+      const data = await syncKisBalance(accountId, kisCano.trim(), kisAcntPrdtCd.trim() || "01");
+      setPortfolio(data);
+      setStatus(data.holdings.length === 0 && data.accounts.length === 0 ? "empty" : "ready");
+      cancelKisSync();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "한국투자증권 동기화에 실패했습니다");
+    } finally {
+      setKisSyncing(false);
+    }
+  };
+
+  const clearKisSync = async (accountId: number) => {
+    setActionError("");
+    try {
+      const data = await clearKisBalance(accountId);
+      setPortfolio(data);
+      setStatus(data.holdings.length === 0 && data.accounts.length === 0 ? "empty" : "ready");
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "동기화 해제에 실패했습니다");
+    }
+  };
+
   const filterButton = (key: AssetClass | "all", label: string) => (
     <Button
       key={key}
@@ -574,53 +634,62 @@ export function InvestmentsPage({
           </Typography.Paragraph>
         ) : null}
 
-        <Card>
-          <StateBlock
-            status={editingId !== null ? "ready" : status}
-            onRetry={load}
-            errorText={errorText}
-            emptyText="보유종목이 없습니다 — '+ 종목 추가'로 시작하세요"
-          >
-            {editingId !== null ? (
-              <div style={{ marginBottom: 16 }}>
-                <HoldingForm
-                  form={form}
-                  accounts={accounts}
-                  wide={wide}
-                  onFetchQuote={() => void fetchQuoteForForm()}
-                  fetchingQuote={quoteBusy}
-                />
-                <Space style={{ marginTop: 8 }}>
-                  <Button type="primary" onClick={() => void save()} loading={busy}>
-                    저장
-                  </Button>
-                  <Button onClick={cancelEdit} disabled={busy}>
-                    취소
-                  </Button>
-                </Space>
-              </div>
-            ) : null}
-
-            <Space wrap style={{ marginBottom: 12 }} aria-label="자산군 필터">
-              {filterButton("all", "전체")}
-              {CLASS_ORDER.map((cls) => filterButton(cls, CLASS_LABELS[cls]))}
-            </Space>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: wide ? "minmax(0, 1fr) 300px" : "1fr",
-                gap: 24,
-                alignItems: "start",
-              }}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: wide ? "minmax(0, 1fr) 300px" : "1fr",
+            gap: 24,
+            alignItems: "start",
+          }}
+        >
+          <Card>
+            <StateBlock
+              status={editingId !== null ? "ready" : status}
+              onRetry={load}
+              errorText={errorText}
+              emptyText="보유종목이 없습니다 — '+ 종목 추가'로 시작하세요"
             >
+              {editingId !== null ? (
+                <div style={{ marginBottom: 16 }}>
+                  <HoldingForm
+                    form={form}
+                    accounts={accounts}
+                    wide={wide}
+                    onFetchQuote={() => void fetchQuoteForForm()}
+                    fetchingQuote={quoteBusy}
+                  />
+                  <Space style={{ marginTop: 8 }}>
+                    <Button type="primary" onClick={() => void save()} loading={busy}>
+                      저장
+                    </Button>
+                    <Button onClick={cancelEdit} disabled={busy}>
+                      취소
+                    </Button>
+                  </Space>
+                </div>
+              ) : null}
+
+              <Space wrap style={{ marginBottom: 12 }} aria-label="자산군 필터">
+                {filterButton("all", "전체")}
+                {CLASS_ORDER.map((cls) => filterButton(cls, CLASS_LABELS[cls]))}
+              </Space>
+
               <div>
                 {accounts.map((account) => {
                   const rows = visible.filter((h) => h.accountId === account.accountId);
                   const accountHoldings = holdings.filter((h) => h.accountId === account.accountId);
-                  if (visible.length > 0 && rows.length === 0) return null;
+                  const isKisAccount = account.institutionName === "한국투자";
                   return (
-                    <div key={account.accountId} style={{ marginBottom: 20 }}>
+                    <div
+                      key={account.accountId}
+                      style={{
+                        marginBottom: 16,
+                        padding: "12px 16px",
+                        background: "var(--af-card, #fff)",
+                        border: "1px solid var(--af-border, #e5e7eb)",
+                        borderRadius: 8,
+                      }}
+                    >
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8, alignItems: "baseline" }}>
                         <Typography.Text strong>
                           {account.accountName}
@@ -636,10 +705,38 @@ export function InvestmentsPage({
                               type="text"
                               aria-label={`${account.accountName} 계좌 편집`}
                               onClick={() => beginAccountEdit(account)}
-                              disabled={editingId !== null || priceMode || accountBusy}
+                              disabled={editingId !== null || priceMode || accountBusy || kisSyncAccountId !== null}
                             >
                               계좌 편집
                             </Button>
+                            {isKisAccount ? (
+                              <Button
+                                size="small"
+                                type="text"
+                                aria-label={`${account.accountName} 한국투자증권 동기화`}
+                                onClick={() => void beginKisSync(account.accountId, account.accountName)}
+                                disabled={editingId !== null || priceMode || accountBusy || kisSyncing}
+                              >
+                                한투 동기화
+                              </Button>
+                            ) : null}
+                            {isKisAccount ? (
+                              <Popconfirm
+                                title="동기화를 해제할까요?"
+                                description="이 계좌의 보유종목과 예수금이 모두 초기화됩니다."
+                                onConfirm={() => void clearKisSync(account.accountId)}
+                              >
+                                <Button
+                                  size="small"
+                                  type="text"
+                                  danger
+                                  aria-label={`${account.accountName} 동기화 해제`}
+                                  disabled={editingId !== null || priceMode || accountBusy || kisSyncing}
+                                >
+                                  동기화 해제
+                                </Button>
+                              </Popconfirm>
+                            ) : null}
                             <Popconfirm
                               title="이 투자 계좌를 삭제할까요?"
                               description={
@@ -654,7 +751,7 @@ export function InvestmentsPage({
                                 type="text"
                                 danger
                                 aria-label={`${account.accountName} 계좌 삭제`}
-                                disabled={accountBusy}
+                                disabled={accountBusy || kisSyncing}
                               >
                                 계좌 삭제
                               </Button>
@@ -693,8 +790,41 @@ export function InvestmentsPage({
                           </Space>
                         </div>
                       ) : null}
+                      {kisSyncAccountId === account.accountId ? (
+                        <div style={{ marginBottom: 12, padding: 12, background: "var(--af-secondary)", borderRadius: 8 }}>
+                          <Space direction="vertical" style={{ width: "100%" }} size={8}>
+                            <Typography.Text strong>한국투자증권 잔고 동기화</Typography.Text>
+                            <Space wrap>
+                              <Input
+                                placeholder="계좌번호 앞 8자리 (CANO)"
+                                value={kisCano}
+                                onChange={(e) => setKisCano(e.target.value)}
+                                style={{ width: 180 }}
+                              />
+                              <Input
+                                placeholder="상품코드"
+                                value={kisAcntPrdtCd}
+                                onChange={(e) => setKisAcntPrdtCd(e.target.value)}
+                                style={{ width: 100 }}
+                              />
+                            </Space>
+                            <Space>
+                              <Button type="primary" onClick={() => void doKisSync(account.accountId)} loading={kisSyncing}>
+                                가져오기
+                              </Button>
+                              <Button onClick={cancelKisSync} disabled={kisSyncing}>
+                                취소
+                              </Button>
+                            </Space>
+                          </Space>
+                        </div>
+                      ) : null}
                       {rows.length === 0 ? (
-                        <Typography.Text type="secondary">이 계좌에 해당 자산군 종목이 없습니다.</Typography.Text>
+                        <Typography.Text type="secondary">
+                          {filter === "all"
+                            ? "보유종목이 없습니다 — '+ 종목 추가'로 시작하세요"
+                            : "이 계좌에 해당 자산군 종목이 없습니다."}
+                        </Typography.Text>
                       ) : wide ? (
                         <table aria-label={`${account.accountName} 보유종목`} style={{ width: "100%", borderCollapse: "collapse" }}>
                           <thead>
@@ -806,49 +936,49 @@ export function InvestmentsPage({
                   );
                 })}
               </div>
+            </StateBlock>
+          </Card>
 
-              {slices.length > 0 && sliceTotal > 0 ? (
-                <div>
-                  <Typography.Title level={3} style={{ fontSize: 14, margin: "0 0 8px" }}>
-                    자산군 비중
-                  </Typography.Title>
-                  <div style={{ height: 200 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={slices.map((s) => ({ name: s.label, value: s.value }))}
-                          dataKey="value"
-                          nameKey="name"
-                          innerRadius={48}
-                          outerRadius={78}
-                          paddingAngle={2}
-                          isAnimationActive={false}
-                        >
-                          {slices.map((s) => (
-                            <Cell key={s.cls} fill={CLASS_COLORS[s.cls]} />
-                          ))}
-                        </Pie>
-                        <Tooltip formatter={(v) => formatKrwExact(Number(v))} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <ul aria-label="자산군 비중 범례" style={{ listStyle: "none", margin: 0, padding: 0 }}>
-                    {slices.map((s) => (
-                      <li key={s.cls} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                        <span aria-hidden style={{ width: 10, height: 10, borderRadius: "50%", background: CLASS_COLORS[s.cls] }} />
-                        <span>{s.label}</span>
-                        <span style={{ marginLeft: "auto", fontWeight: 600 }}>
-                          {(s.value / sliceTotal * 100).toFixed(1)}%
-                        </span>
-                        <span style={{ color: "var(--af-muted-foreground)" }}>{formatKrwExact(s.value)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-            </div>
-          </StateBlock>
-        </Card>
+          {status === "ready" && slices.length > 0 && sliceTotal > 0 ? (
+            <Card>
+              <Typography.Title level={3} style={{ fontSize: 14, margin: "0 0 8px" }}>
+                자산군 비중
+              </Typography.Title>
+              <div style={{ height: 200 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={slices.map((s) => ({ name: s.label, value: s.value }))}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={48}
+                      outerRadius={78}
+                      paddingAngle={2}
+                      isAnimationActive={false}
+                    >
+                      {slices.map((s) => (
+                        <Cell key={s.cls} fill={CLASS_COLORS[s.cls]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v) => formatKrwExact(Number(v))} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <ul aria-label="자산군 비중 범례" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                {slices.map((s) => (
+                  <li key={s.cls} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <span aria-hidden style={{ width: 10, height: 10, borderRadius: "50%", background: CLASS_COLORS[s.cls] }} />
+                    <span>{s.label}</span>
+                    <span style={{ marginLeft: "auto", fontWeight: 600 }}>
+                      {(s.value / sliceTotal * 100).toFixed(1)}%
+                    </span>
+                    <span style={{ color: "var(--af-muted-foreground)" }}>{formatKrwExact(s.value)}</span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          ) : null}
+        </div>
       </section>
     </AppLayout>
   );

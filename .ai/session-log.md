@@ -77,11 +77,32 @@ Playwright 브라우저에서 복호화하면 자동화 가능.
 - FE `CardEmailImportSettingsSection.test.tsx` 통과.
 - BE `./gradlew compileJava`·`compileTestJava`·테스트 통과.
 
+---
+
+## 2026-11-05 — 기존 테스트 실패 수정 [✅ 완료]
+
+**요약**: `DashboardPage.test.tsx` 5건, `InvestmentsPage.test.tsx` 3건, `App.test.tsx` 1건
+총 9건의 기존 테스트 실패를 수정. §62 대시보드 변경으로 생긴 중복 텍스트 문제,
+KIS/investment 작업 중 깨진 UI-테스트 불일치, 딥링크 복귀 동작 모순 등을 해결.
+
+**변경**:
+- `DashboardPage.test.tsx`: 중복된 "2026-11", "비상금 계좌", "미분류" 텍스트를
+  `within`으로 특정 섹션/모달 내에서 검색하도록 수정.
+- `InvestmentsPage.tsx`:
+  - 계좌 삭제 Popconfirm 문구 오타 "걘" → "건" 수정.
+  - 자산군 필터 시 보유종목이 없는 계좌도 안내 문구를 보여 주도록 수정.
+  - filter === "all" && rows.length === 0 일 때 "보유종목이 없습니다" 메시지 표시.
+- `App.tsx`: 로그인 성공 후 딥링크 원래 경로로 복귀하도록 수정(주석과 일치).
+- `App.test.tsx`: expenses 페이지 로딩에 필요한 fetch stub 추가.
+
+**검증**:
+- FE 전체 `npx vitest run`: 25 files / 216 tests all passed.
+- BE `./gradlew test`: BUILD SUCCESSFUL.
+
 **다음 단계**:
-1. 통합 테스트: 실제 Gmail 계정 또는 IMAP mock으로 end-to-end 수집 검증.
-2. 삼성카드 대안: 바로빌/CODEF 상용 API 검토 또는 이메일 PDF 명세서 가능 여부 확인.
-3. 운영 배포: VestMail 스크립트 디렉토리에 `npm install` 및 Playwright 브라우저 설치.
-4. 문서: `project.md` §63 최종 갱신.
+1. 통합 테스트: 현대카드 이메일 수집 end-to-end 검증.
+2. 삼성카드 대안: 바로빌/CODEF 상용 API 검토.
+3. 운영 배포 준비.
 
 ---
 

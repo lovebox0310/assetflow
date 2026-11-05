@@ -19,6 +19,10 @@ beforeEach(() => {
     }
     if (path.includes("/dashboard/summary")) return Promise.resolve(apiResponse(dashboardMock));
     if (path.includes("/dashboard/cashflow")) return Promise.resolve(apiResponse([]));
+    if (path.includes("/expenses/snapshots")) return Promise.resolve(apiResponse({ month: "2026-10", income: 0, vatSetAside: 0, expenses: 0, essentialExpenses: 0, essentialComplete: true, balance: 0 }));
+    if (path.includes("/expenses/items")) return Promise.resolve(apiResponse([]));
+    if (path.includes("/expenses/recurring")) return Promise.resolve(apiResponse([]));
+    if (path.includes("/settings")) return Promise.resolve(apiResponse({ id: 1, email: "a@b.com", displayName: "사용자", targetMonths: 6, emergencyAccountIds: [], emergencyAvgMonths: 3, emergencyCategories: ["식비"] }));
     return Promise.resolve(apiResponse({}, false, 500));
   }));
 });
