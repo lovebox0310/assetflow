@@ -159,10 +159,34 @@ mock downloader를 이용한 통합 흐름 테스트를 추가. 실제 IMAP/Play
 - FE 전체 `npx vitest run`: 25 files / 216 tests passed.
 - BE `./gradlew test`: BUILD SUCCESSFUL.
 
+---
+
+## 2026-11-05 — 현대카드 VestMail 운영 배포 준비 [✅ 완료]
+
+**요약**: 현대카드 이메일 추출기의 운영 설치 및 배포 프로세스를 자동화. 익명화 샘플은
+이미 `samples/card/anonymized/hyundaicard-email-anon.json`에 등록되어 있어 설치
+스크립트와 배포 흐름에 집중.
+
+**변경**:
+- `apps/backend/src/main/resources/scripts/card/vestmail-hyundai/install.sh` 추가:
+  `npm install` + `npx playwright install chromium` + 브라우저 런치 검증.
+- `VestMailHyundaiImporter.prepareScriptWorkDir()` 보강: classpath 폴 백 시에도
+  `npm install --production`을 자동 실행하여 임시 디렉토리에서 동작하도록 함.
+- `deploy.sh`에 단계 추가:
+  - `/opt/assetflow/scripts/card/vestmail-hyundai`로 스크립트 복사
+  - `./install.sh` 실행
+  - `VESTMAIL_HYUNDAI_SCRIPT_DIR` 누락 시 경고 출력
+- `README.md`에 운영 배포 가이드 추가.
+
+**검증**:
+- `./install.sh` 실행: Browser launch OK
+- BE `./gradlew test`: BUILD SUCCESSFUL
+- FE `npx vitest run`: 216 tests passed
+
 **다음 단계**:
-1. 현대카드: 익명화 샘플 등록 및 운영 배포 준비 (`npm install` + Playwright 브라우저 설치).
-2. 삼성카드: 별도 VestMail 복호화 추출기 연구 또는 바로빌/CODEF 상용 API 검토.
-3. 운영: 실제 Gmail IMAP으로 1회 수동 수집 테스트.
+1. 삼성카드: 별도 VestMail 복호화 추출기 연구 또는 바로빌/CODEF 상용 API 검토.
+2. 운영: 실제 Gmail IMAP으로 1회 수동 수집 테스트.
+3. `deploy.sh` 전체 실행하여 운영 배포 검증.
 
 ---
 
