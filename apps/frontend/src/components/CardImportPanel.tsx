@@ -80,8 +80,17 @@ export function CardImportPanel() {
     const initialRules: Record<string, MerchantRule> = Object.fromEntries(
       merchants.map((m) => [m, { category: "", subCategory: "" }]),
     );
+    // §67: 사업자번호는 가맹점명보다 안정적인 키 — 서버가 키워드보다 먼저 본다.
+    const businessNos = Object.fromEntries(
+      list
+        .map((g) => [
+          g.merchant,
+          g.rows.find((r) => r.businessNo?.replace(/\D/g, ""))?.businessNo?.replace(/\D/g, "") ?? "",
+        ] as const)
+        .filter(([, businessNo]) => businessNo !== ""),
+    );
     try {
-      const fetched = await getMerchantRules(merchants, businessCategories);
+      const fetched = await getMerchantRules(merchants, businessCategories, businessNos);
       for (const m of merchants) {
         if (fetched[m]) {
           initialRules[m] = fetched[m];

@@ -8,8 +8,8 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * PostgreSQL 기반 카테고리 분류기 (§55.8, §55.10).
- * 가맹점 규칙 → 키워드 매칭 순서로 대분류와 세부 분류를 정한다.
+ * PostgreSQL 기반 카테고리 분류기 (§55.8, §55.10, §67).
+ * 사용자 규칙 → 사업자번호 매핑 → 키워드 매칭 순서로 대분류와 세부 분류를 정한다.
  */
 @Component
 @Profile("postgres")
@@ -18,10 +18,11 @@ public class PostgresCategoryClassifier implements CategoryClassifier {
     private final JdbcTemplate jdbc;
     private final long userId;
     /**
-     * 키워드 시드는 CommandLineRunner(CategorySeedData)가 넣는다 — 이 빈의 생성자보다 늦게 실행되므로
+     * 시드는 CommandLineRunner(CategorySeedData)가 넣는다 — 이 빈의 생성자보다 늦게 실행되므로
      * 생성 시점에 읽으면 첫 부팅에서 빈 목록이 된다. 그래서 비어 있으면 매번 다시 읽는다.
      */
     private volatile List<KeywordMapping> keywords = List.of();
+    private volatile List<BusinessMapping> businessCategories = List.of();
 
     public PostgresCategoryClassifier(JdbcTemplate jdbc,
                                       @Value("${app.owner-email:user@example.com}") String ownerEmail) {
@@ -53,8 +54,33 @@ public class PostgresCategoryClassifier implements CategoryClassifier {
                         rs.getInt("priority")));
     }
 
+    private List<BusinessMapping> businessCategories() {
+        List<BusinessMapping> cached = businessCategories;
+        if (cached.isEmpty()) {
+            cached = loadBusinessCategories();
+            businessCategories = cached;
+        }
+        return cached;
+    }
+
+    private List<BusinessMapping> loadBusinessCategories() {
+        return jdbc.query("""
+                        SELECT b.business_no, b.merchant_pattern, c.name AS category_name, b.sub_category
+                        FROM merchant_business_categories b
+                        JOIN expense_categories c ON c.id = b.category_id
+                        WHERE b.user_id = ?
+                        ORDER BY LENGTH(b.merchant_pattern) DESC
+                        """,
+                (rs, n) -> new BusinessMapping(
+                        rs.getString("business_no"),
+                        rs.getString("merchant_pattern") == null ? "" : rs.getString("merchant_pattern"),
+                        rs.getString("category_name"),
+                        rs.getString("sub_category")),
+                userId);
+    }
+
     @Override
-    public Classification classify(String merchantName) {
+    public Classification classifyByRule(String merchantName) {
         if (merchantName == null || merchantName.isBlank()) {
             return null;
         }
@@ -70,28 +96,63 @@ public class PostgresCategoryClassifier implements CategoryClassifier {
                 """,
                 (rs, n) -> new RuleMapping(rs.getString("kind"), rs.getString("sub_category")),
                 userId, merchantName);
-        if (!rules.isEmpty()) {
-            RuleMapping rule = rules.get(0);
-            // §66 legacy 데이터: expense_kind='unclassified' 는 카테고리가 아니라 "아직 안 정함" 이다.
-            // 그대로 쓰면 재분류가 모든 행을 미분류로 덮어쓴다. 세부 분류가 있으면 대분류를
-            // 되살리고, 없으면 규칙을 무시하고 키워드/업종으로 넘어간다.
-            if (CategoryTaxonomy.isUnset(rule.category())) {
-                String sub = rule.subCategory() == null ? "" : rule.subCategory().trim();
-                String derived = CategoryTaxonomy.groupOfSub(sub);
-                if (derived != null) {
-                    return new Classification(derived, sub);
+        if (rules.isEmpty()) {
+            return null;
+        }
+        RuleMapping rule = rules.get(0);
+        // §66 legacy 데이터: expense_kind='unclassified' 는 카테고리가 아니라 "아직 안 정함" 이다.
+        // 그대로 쓰면 재분류가 모든 행을 미분류로 덮어쓴다. 세부 분류가 있으면 대분류를
+        // 되살리고, 없으면 규칙을 무시하고 사업자번호/키워드/업종으로 넘어간다.
+        if (CategoryTaxonomy.isUnset(rule.category())) {
+            String sub = rule.subCategory() == null ? "" : rule.subCategory().trim();
+            String derived = CategoryTaxonomy.groupOfSub(sub);
+            return derived == null ? null : new Classification(derived, sub);
+        }
+        // 규칙에 세부가 없으면 같은 대분류의 키워드 세부를 빌려 온다.
+        String sub = rule.subCategory();
+        if (sub == null || sub.isBlank()) {
+            sub = keywordSubFor(normalized, rule.category());
+        }
+        return new Classification(rule.category(), sub);
+    }
+
+    @Override
+    public Classification classifyByBusinessNo(String businessNo, String merchantName) {
+        String digits = businessNo == null ? "" : businessNo.replaceAll("\\D", "");
+        if (digits.isEmpty()) {
+            return null;
+        }
+        String normalized = normalize(merchantName);
+        BusinessMapping generic = null;
+        BusinessMapping specific = null;
+        for (BusinessMapping mapping : businessCategories()) {
+            if (!mapping.businessNo().equals(digits)) {
+                continue;
+            }
+            if (mapping.pattern().isEmpty()) {
+                if (generic == null) {
+                    generic = mapping;
                 }
-            } else {
-                // 규칙에 세부가 없으면 같은 대분류의 키워드 세부를 빌려 온다.
-                String sub = rule.subCategory();
-                if (sub == null || sub.isBlank()) {
-                    sub = keywordSubFor(normalized, rule.category());
+                continue;
+            }
+            // PG 사업자번호는 여러 가맹점이 공유한다 — 가장 긴 패턴이 이긴다.
+            if (normalized.contains(mapping.pattern())) {
+                if (specific == null || mapping.pattern().length() > specific.pattern().length()) {
+                    specific = mapping;
                 }
-                return new Classification(rule.category(), sub);
             }
         }
+        BusinessMapping matched = specific != null ? specific : generic;
+        return matched == null ? null : new Classification(matched.categoryName(), matched.subCategory());
+    }
 
-        // 2순위: 키워드 매칭 (긴 키워드 우선)
+    @Override
+    public Classification classifyByKeyword(String merchantName) {
+        if (merchantName == null || merchantName.isBlank()) {
+            return null;
+        }
+        String normalized = normalize(merchantName);
+        // 3순위: 키워드 매칭 (긴 키워드 우선)
         for (KeywordMapping kw : keywords()) {
             if (normalized.contains(normalize(kw.keyword()))) {
                 return new Classification(kw.categoryName(), kw.subCategory());
@@ -114,10 +175,13 @@ public class PostgresCategoryClassifier implements CategoryClassifier {
     }
 
     private static String normalize(String value) {
-        return value.toLowerCase().replaceAll("\\s+", "");
+        return BusinessCategorySeed.normalize(value);
     }
 
     private record KeywordMapping(String keyword, String categoryName, String subCategory, int priority) {}
 
     private record RuleMapping(String category, String subCategory) {}
+
+    private record BusinessMapping(String businessNo, String pattern,
+                                   String categoryName, String subCategory) {}
 }

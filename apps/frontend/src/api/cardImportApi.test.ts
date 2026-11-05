@@ -73,6 +73,24 @@ describe("cardImportApi (§55.10)", () => {
     });
   });
 
+  it("사업자번호를 함께 보내 사업자번호 기반 자동 분류 제안을 받는다 (§67)", async () => {
+    saveToken("tok", Date.now() + 60_000);
+    const fetchMock = stubFetch({ 알수없는가맹점: { category: "건강/의료", subCategory: "약국" } });
+
+    await getMerchantRules(
+      ["알수없는가맹점"],
+      { 알수없는가맹점: "PG_일반인증" },
+      { 알수없는가맹점: "9999999901" },
+    );
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({
+      merchants: ["알수없는가맹점"],
+      businessCategories: { 알수없는가맹점: "PG_일반인증" },
+      businessNos: { 알수없는가맹점: "9999999901" },
+    });
+  });
+
   it("반영 요청에는 행과 merchantRules(대분류+세부)를 실어 본다", async () => {
     saveToken("tok", Date.now() + 60_000);
     const fetchMock = stubFetch({ stored: 1 });

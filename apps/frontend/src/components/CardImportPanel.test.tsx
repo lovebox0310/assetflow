@@ -189,6 +189,8 @@ describe("CardImportPanel (§29.7 흐름 이관)", () => {
     expect(sent.businessCategories["합성한식당"]).toBe("한식");
     // PG/온라인거래 업종도 그대로 보낸다 — 분류 여부는 서버가 판단한다.
     expect(sent.businessCategories["합성쇼핑몰"]).toBe("PG_일반인증");
+    // §67: 사업자번호도 함께 보낸다 — 서버는 키워드보다 먼저 본다.
+    expect(sent.businessNos["합성한식당"]).toBe("9999999902");
   });
 
   it("저장된 규칙이 없는 가맹점도 키워드 자동 분류 결과가 미리보기에 채워진다 (§55.8)", async () => {

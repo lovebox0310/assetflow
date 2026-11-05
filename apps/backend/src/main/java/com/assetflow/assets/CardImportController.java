@@ -75,17 +75,19 @@ public class CardImportController {
     public record CardCompanyGroup(String month, String cardCompany, String memberRelation, long count, long grossAmount) {}
 
     /**
-     * merchants 와 함께 가맹점별 업종을 보낼 수 있다. 업종은 3순위 자동 분류 힌트로만
-     * 쓰인다(§55.8.9). 업종을 모르는 클라이언트는 merchants 만 보내도 된다.
+     * merchants 와 함께 가맹점별 업종·사업자번호를 보낼 수 있다.
+     * 사업자번호는 키워드보다 먼저(2순위), 업종은 마지막(4순위) 자동 분류 힌트다
+     * (§55.8.9, §67). 둘 다 모르는 클라이언트는 merchants 만 보내도 된다.
      */
-    public record MerchantRulesRequest(List<String> merchants, Map<String, String> businessCategories) {}
+    public record MerchantRulesRequest(List<String> merchants, Map<String, String> businessCategories,
+                                       Map<String, String> businessNos) {}
 
     /**
-     * 가맹점별 카테고리 제안 (§55.8, §55.10).
-     * 저장된 사용자 규칙이 1순위, 없으면 키워드 기반 자동 분류 결과를, 그것도 없으면
-     * 명세서 업종(businessCategories)을 3순위로 함께 돌려준다(§55.8.9).
-     * 요청 본문에 merchants 가 없으면 저장된 규칙 전천리만 반환한다(키워드 제안은 대상 가맹점이 필요).
-     * GET 쿼리스트링으로 긴 가맹점 목록을 본낼 때 URL 길이/특수문자 제한 때문에 400 이 발생할 수 있어 POST 를 쓴다.
+     * 가맹점별 카테고리 제안 (§55.8, §55.10, §67).
+     * 저장된 사용자 규칙이 1순위, 사업자번호 매핑이 2순위, 없으면 키워드 기반 자동 분류 결과를,
+     * 그것도 없으면 명세서 업종(businessCategories)을 4순위로 함께 돌려준다(§55.8.9).
+     * 요청 본문에 merchants 가 없으면 저장된 규칙 전체만 반환한다(키워드 제안은 대상 가맹점이 필요).
+     * GET 쿼리스트링으로 긴 가맹점 목록을 보낼 때 URL 길이/특수문자 제한 때문에 400 이 발생할 수 있어 POST 를 쓴다.
      */
     @PostMapping("/card-imports/merchant-rules")
     public ApiResponse<Map<String, MerchantRule>> merchantRules(
@@ -94,6 +96,8 @@ public class CardImportController {
                 ? List.of() : request.merchants();
         Map<String, String> businessCategories = request == null || request.businessCategories() == null
                 ? Map.of() : request.businessCategories();
+        Map<String, String> businessNos = request == null || request.businessNos() == null
+                ? Map.of() : request.businessNos();
         if (merchants.isEmpty()) {
             return new ApiResponse<>("OK", "Merchant rules loaded", Map.copyOf(ruleLedger.allRuleDetails()));
         }
@@ -106,7 +110,8 @@ public class CardImportController {
             if (stored != null && !isBlank(stored.subCategory())) {
                 continue;
             }
-            Classification classified = categoryClassifier.classify(merchant, businessCategories.get(merchant));
+            Classification classified = categoryClassifier.classify(
+                    merchant, businessCategories.get(merchant), businessNos.get(merchant));
             if (classified == null) {
                 continue;
             }
@@ -329,6 +334,8 @@ public class CardImportController {
         int supplyInconsistent = 0;
         for (ImportRow row : request.rows()) {
             String businessCategory = row.businessCategory() == null ? "" : row.businessCategory().trim();
+            // §67: 사업자번호는 가맹점명보다 안정적인 키 — 규칙 다음, 키워드보다 먼저 본다.
+            String businessNo = row.businessNo() == null ? "" : row.businessNo().replaceAll("-", "").trim();
             // 파서가 넣는 기본값 "unclassified" 는 카테고리가 아니라 "아직 안 정함" 이다.
             // 이 값을 그대로 두면 규칙/키워드/업종 자동 분류를 덮어써 저장 행이 미분류로 남는다.
             String submittedKind = normalizeSubmittedKind(row.expenseKind());
@@ -339,17 +346,17 @@ public class CardImportController {
             }
             String category = rule == null ? "" : safe(rule.category());
             String subCategory = rule == null ? "" : safe(rule.subCategory());
-            // §55.8: 제출/저장 규칙이 없으면 키워드 기반 자동 분류를 제안한다.
-            // §55.8.9: 키워드도 없으면 명세서 업종을 3순위로 쓴다.
+            // §55.8: 제출/저장 규칙이 없으면 사업자번호·키워드 기반 자동 분류를 제안한다.
+            // §55.8.9: 그것도 없으면 명세서 업종을 마지막 순위로 쓴다.
             if (isBlank(category)) {
-                Classification classified = categoryClassifier.classify(row.merchantName(), businessCategory);
+                Classification classified = categoryClassifier.classify(row.merchantName(), businessCategory, businessNo);
                 if (classified != null) {
                     category = safe(classified.category());
                     subCategory = safe(classified.subCategory());
                 }
             } else if (isBlank(subCategory)) {
                 // 규칙에 세부가 없으면 같은 대분류의 키워드/업종 세부를 빌려 온다.
-                Classification classified = categoryClassifier.classify(row.merchantName(), businessCategory);
+                Classification classified = categoryClassifier.classify(row.merchantName(), businessCategory, businessNo);
                 if (classified != null && category.equals(classified.category())) {
                     subCategory = safe(classified.subCategory());
                 }
@@ -364,7 +371,6 @@ public class CardImportController {
             if (isBlank(category)) {
                 subCategory = "";
             }
-            String businessNo = row.businessNo() == null ? "" : row.businessNo().replaceAll("-", "").trim();
             String memberRelation = row.memberRelation() == null || row.memberRelation().isBlank()
                     ? "본인" : row.memberRelation().trim();
             ImportedRow r = new ImportedRow(
@@ -448,7 +454,8 @@ public class CardImportController {
             if (row.merchantName() == null || row.merchantName().isBlank()) {
                 continue;
             }
-            Classification classified = categoryClassifier.classify(row.merchantName(), row.businessCategory());
+            Classification classified = categoryClassifier.classify(
+                    row.merchantName(), row.businessCategory(), row.businessNo());
             String category = classified == null ? null : classified.category();
             String subCategory = classified == null ? "" : safe(classified.subCategory());
             if (CategoryTaxonomy.isUnset(category)) {

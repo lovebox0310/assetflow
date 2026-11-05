@@ -40,15 +40,17 @@ export function getImportedRowKeys(): Promise<string[]> {
 }
 
 /**
- * §49, §55.10: 저장된 가맹점 분류 규칙을 조회한다.
+ * §49, §55.10, §67: 저장된 가맹점 분류 규칙을 조회한다.
  * merchant 가 없으면 전체 규칙, 있으면 해당 가맹점만 — 자동 분류 제안을 포함한다.
  * §55.8.9: 가맹점별 업종(businessCategories)을 함께 보내면 키워드로 못 맞춘 가맹점을
- * 서버가 업종으로 3순위 제안한다. 업종을 모르면 두 번째 인자를 생략한다.
+ * 서버가 업종으로 제안한다. §67: 사업자번호(businessNos)는 키워드보다 먼저 쓰인다.
+ * 업종·사업자번호를 모르면 해당 인자를 생략한다.
  * GET 쿼리스트링으로 긴 목록을 본낼 때 URL 길이/특수문자 제한으로 400 이 발생할 수 있어 POST 를 쓴다.
  */
 export function getMerchantRules(
   merchants?: string[],
   businessCategories?: Record<string, string>,
+  businessNos?: Record<string, string>,
 ): Promise<Record<string, MerchantRule>> {
   return apiFetch<Record<string, MerchantRule>>("/api/v1/assets/card-imports/merchant-rules", {
     method: "POST",
@@ -56,6 +58,7 @@ export function getMerchantRules(
     body: JSON.stringify({
       merchants: merchants ?? [],
       ...(businessCategories ? { businessCategories } : {}),
+      ...(businessNos ? { businessNos } : {}),
     }),
   });
 }
