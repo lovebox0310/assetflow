@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -71,7 +72,17 @@ public class CategorySeedData implements CommandLineRunner {
      * {@link BusinessCategorySeed} 가 카테고리/세부 정합성을 검증한다.</p>
      */
     private void seedBusinessCategories() {
+        Set<String> categoryNames = new HashSet<>(jdbc.queryForList(
+                "SELECT name FROM expense_categories WHERE user_id IS NULL", String.class));
         for (BusinessCategorySeed.Entry entry : BusinessCategorySeed.entries()) {
+            // 카테고리 행을 못 찾으면 INSERT ... SELECT 가 조용히 0행이 된다 —
+            // 시드가 일부만 들어간 채로 부팅하면 원인을 찾기 어렵다. 소리내어 실패한다.
+            if (!categoryNames.contains(entry.category())) {
+                throw new IllegalStateException(
+                        "사업자번호 시드의 카테고리가 DB 에 없습니다: " + entry);
+            }
+            // ON CONFLICT ... WHERE source='seed' 는 사용자 행에서 0행이 되지만 그건 정상이다
+            // (사용자가 고친 값을 보존하는 것) — 그래서 영향 행 수로 검증하지 않는다.
             jdbc.update("""
                     INSERT INTO merchant_business_categories
                         (user_id, business_no, merchant_pattern, category_id, sub_category, source)
