@@ -4152,8 +4152,10 @@ bank_account_links (
 - **현대카드**: `webmaster@hcs.com` 발신, `hyundaicard.html` 첨부. 복호화 후 정적인
   HTML 테이블에 거래 내역이 포함되어 있어 추출 가능.
 - **삼성카드**: `billing@samsungcard.com` 발신, `samsungcard_detail_YYYYMMDD.html` 첨부.
-  복호화 후에도 HTML은 jQuery Template(`{{html mrcNm}}`)만 있고 실제 거래 데이터는
-  별도 로드되므로 **이메일 HTML만으로는 추출 불가**. 삼성카드는 별도 방법을 적용.
+  실제 파일 확인 결과 이 파일도 **VestMail 암호화 HTML**이며, 복호화 UI와 제출 폼이
+  현대카드와 다른 구조(`decForm`, `input#password`, `input#confirm`)를 가진다.
+  복호화 메커니즘 역시 외부 ActiveX/플러그인 의존 가능성이 있어 **현대카드 추출기로는
+  작동하지 않는다**. 삼성카드는 별도 추출기 또는 상용 API 적용이 필요하다.
 - 첫 단계는 **현대카드 본인 카드**만. 가족카드/법인카드는 별도 카드번호 필드가 있는지
   확인 후 확장한다.
 
@@ -4200,7 +4202,11 @@ bank_account_links (
 ### 63.7 검증
 
 - PoC: 현대/삼성 샘플 각 1건에서 거래 행 1건 이상 추출 → `card-columns.json` 필드 매핑.
-- BE 단위 테스트: `CardImportCipherTest`, `InMemoryCardEmailImportSettingsLedgerTest`.
+- BE 단위 테스트: `CardImportCipherTest`, `InMemoryCardEmailImportSettingsLedgerTest`,
+  `VestMailHyundaiImporterTest`.
 - FE 단위 테스트: `CardEmailImportSettingsSection.test.tsx`.
 - 통합 테스트: IMAP mock + Playwright headless로 end-to-end 수집 시뮬레이션.
+- End-to-end: `/tmp/opencode/hyundaicard.html`에서 복호화 성공, 거래 행 **90건** 추출
+  (2026-10-02 ~ 2026-10-27, 본인/가족 카드 구분 포함, 총 이용금액 3,326,643원).
+- 삼성카드 샘플: VestMail 암호화 HTML임을 확인. 별도 복호화 로직 필요.
 - 보안: DB에 저장된 자격증명이 평문이 아닌 암호문인지 확인.

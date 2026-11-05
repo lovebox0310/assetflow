@@ -106,6 +106,66 @@ KIS/investment 작업 중 깨진 UI-테스트 불일치, 딥링크 복귀 동작
 
 ---
 
+## 2026-11-05 — 현대카드 이메일 수집 통합 테스트 리팩토링 [✅ 완료]
+
+**요약**: `VestMailHyundaiImporter`에서 IMAP 다운로드를 인터페이스로 분리하고,
+mock downloader를 이용한 통합 흐름 테스트를 추가. 실제 IMAP/Playwright 없이도
+설정 복호화 → 첨부 다운로드 → 거래 추출 → 원장 저장 → 상태 갱신 흐름을 검증.
+
+**변경**:
+- `CardEmailAttachmentDownloader` 인터페이스 추가.
+- `GmailImapAttachmentDownloader` 구현 — 기존 IMAP 로직 이동.
+- `VestMailHyundaiImporter`가 downloader를 주입받도록 수정.
+- `extractRows`를 protected로 열어 테스트에서 substitution 가능.
+- `VestMailHyundaiImporterTest` 추가: disabled, 정상 수집, 첨부 없음 3건.
+
+**검증**:
+- `VestMailHyundaiImporterTest` 3건 통과.
+- BE `./gradlew test` 전체 통과.
+
+---
+
+## 2026-11-05 — 현대카드 VestMail end-to-end 추출 검증 [✅ 완료]
+
+**요약**: 사용자가 제공한 `/tmp/opencode/hyundaicard.html`로 Node/Playwright 추출기를
+실제 실행. 복호화 성공 및 거래 내역 90건 추출 확인. 삼성카드 샘플도 VestMail
+암호화 HTML임을 재확인했으나 별도 복호화 메커니즘이 필요.
+
+**실행**:
+- `apps/backend/src/main/resources/scripts/card/vestmail-hyundai/extract-hyundai-vestmail.mjs`
+  실행 (비밀번호는 `/tmp/opencode/vestmail_password.txt`에서 읽고 실행 후 삭제).
+- Playwright Chromium 이미 설치됨.
+
+**결과**:
+- 추출 행 수: **90건**
+- 기간: 2026-10-02 ~ 2026-10-27
+- 카드 구분: 본인 MY BUSINESS M 32건, 가족 MY BUSINESS M 57건, 본인 M3 하이패스 1건
+- 총 이용금액: 3,326,643원
+- 할부/부가세 행: 0건 (모든 행이 일시불, 면세/영세 거래)
+- 출력 스키마: `approvedAt`, `merchantName`, `grossAmount`, `vat`, `supplyExVat`,
+  `installmentCount`, `cardMasked` — Java `CardImportLedger.ImportedRow` 매핑과 일치.
+
+**삼성카드 샘플 분석**:
+- `/tmp/opencode/samsungcard_detail_20261015.html`은 VestMail 암호화 HTML.
+- 현대카드와 다른 폼: `decForm`, `input#password`, `input#confirm` (alt="확인").
+- `doAction()`은 HTML 내 정의되어 있지 않고, 외부 ActiveX/플러그인 또는 암호화된
+  스크립트에서 동적으로 정의될 가능성이 높음.
+- 따라서 현대카드 추출기를 그대로 쓸 수 없으며, 별도 분석/구현 또는 상용 API 필요.
+
+**변경**:
+- `.ai/project.md` §63.2, §63.7 삼성카드 실제 파일 분석 결과 반영.
+
+**검증**:
+- FE 전체 `npx vitest run`: 25 files / 216 tests passed.
+- BE `./gradlew test`: BUILD SUCCESSFUL.
+
+**다음 단계**:
+1. 현대카드: 익명화 샘플 등록 및 운영 배포 준비 (`npm install` + Playwright 브라우저 설치).
+2. 삼성카드: 별도 VestMail 복호화 추출기 연구 또는 바로빌/CODEF 상용 API 검토.
+3. 운영: 실제 Gmail IMAP으로 1회 수동 수집 테스트.
+
+---
+
 ## 2026-11-03 — 은행 잔액 빠른조회 연동 1단계 [✅ 구현 완료 · 운영 키 미설정]
 
 **결정 근거:** `.ai/project.md` §61. 개인은 오픈뱅킹 이용기관 등록이 어렵고 CODEF 는
