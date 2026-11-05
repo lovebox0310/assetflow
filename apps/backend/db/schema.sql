@@ -189,6 +189,29 @@ CREATE TABLE merchant_category_keywords (
 );
 
 -- ---------------------------------------------------------------------------
+-- merchant_business_categories: 사업자번호(+가맹점 패턴) → 카테고리 매핑 (§67).
+-- 사업자번호는 가맹점을 식별하는 가장 안정적인 키다. 다만 PG(결제대행) 사업자번호는
+-- 여러 가맹점이 공유하므로(예: KCP 1138521083 = 넷플릭스·쿠팡·배달의민족)
+-- merchant_pattern 으로 가맹점을 구분한다. 패턴이 빈 문자열이면 사업자번호 전체에 적용.
+-- 패턴은 공백 제거 + 소문자로 정규화해 저장한다.
+-- ---------------------------------------------------------------------------
+CREATE TABLE merchant_business_categories (
+    id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id          BIGINT NOT NULL REFERENCES users (id),
+    business_no      VARCHAR(10) NOT NULL,
+    merchant_pattern VARCHAR(100) NOT NULL DEFAULT '',
+    category_id      BIGINT NOT NULL REFERENCES expense_categories (id),
+    sub_category     VARCHAR(30),
+    source           VARCHAR(20) NOT NULL DEFAULT 'seed',  -- 'seed' | 'user'
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_merchant_business_category UNIQUE (user_id, business_no, merchant_pattern)
+);
+
+CREATE INDEX ix_merchant_business_categories_no
+    ON merchant_business_categories (user_id, business_no);
+
+-- ---------------------------------------------------------------------------
 -- monthly_expense_items: 월 지출 항목 (§43 — 스프린트 3 지출 화면의 원장)
 -- 합계는 저장하지 않는다 — 행에서 재계산(§34.6 계산 단일 출처는 프론트 metrics.ts).
 -- ---------------------------------------------------------------------------

@@ -14,6 +14,37 @@
 
 ---
 
+## 2026-11-06 — 사업자번호 기반 카테고리 매핑 (§67) [✅ 구현 완료]
+
+**요약**: 카드 명세서의 사업자번호로 카테고리를 정하는 목록을 만들고 자동 분류에 넣었다.
+목록은 AI 가 운영 카드 내역의 가맹점 802쌍을 보고 작성했다(406건).
+
+**변경**:
+- DB: `merchant_business_categories` — `(user_id, business_no, merchant_pattern)` 유니크.
+  패턴이 빈 값이면 사업자번호 전체, 있으면 가맹점명 부분 문자열로 매칭.
+- 분류 순위: **사용자 규칙 → 사업자번호(+패턴) → 키워드 → 명세서 업종**.
+  PG(결제대행) 번호는 여러 가맹점이 공유하므로 패턴으로 나눈다
+  (예: KCP `1138521083` + 넷플릭스 / 우아한형제들).
+- `BusinessCategorySeed`: JSON 시드 로드 + 카테고리/세부/중복 검증(어긋나면 부팅 실패).
+- `CategorySeedData`: 부팅 시 멱등 시드. `source='seed'` 행만 갱신하고 사용자 수정은 보존.
+- `CategoryClassifier`: `classifyByRule` / `classifyByBusinessNo` / `classifyByKeyword` 로
+  단계를 분리하고 `classify(merchant, businessCategory, businessNo)` 로 합친다.
+- `CardImportController`: 임포트·재분류·미리보기 모두 사업자번호를 넘긴다.
+  미리보기 요청에 `businessNos` 맵 추가(선택).
+- FE: `getMerchantRules(..., businessNos)` + `CardImportPanel` 이 가맹점별 사업자번호 전송.
+- 테스트: `BusinessCategorySeedTest` 신규, 분류기·임포트 API 회귀 4건, FE 2건.
+
+**커버리지**: 사업자번호 매핑만으로 운영 카드 내역 2,702행 중 **2,421행(89.6%)**.
+
+**검증**: BE `./gradlew test` 204 tests 실패 0, FE `npx vitest run` 216 tests 통과.
+
+**다음 단계**:
+- `sudo ./deploy.sh` → 부팅 시 새 테이블·시드 생성 확인.
+- "카테고리 자동 분류" 1회 실행 → §66 복구(2,077행)와 사업자번호 분류가 함께 적용된다.
+- DB 에서 `merchant_business_categories` 건수(406)와 복구 결과를 확인한다.
+
+---
+
 ## 2026-11-06 — 카테고리 재분류가 정상 분류를 미분류로 덮어쓰는 문제 (§66) [✅ 구현 완료]
 
 **요약**: "카테고리 자동 분류"를 누르면 잘 분류된 항목이 미분류로 돌아가던 문제.

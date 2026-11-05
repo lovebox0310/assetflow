@@ -724,6 +724,75 @@ class CardImportApiTest {
     }
 
     @Test
+    void businessNumberIsUsedBeforeMerchantKeyword() throws Exception {
+        // §67: 사업자번호가 키워드보다 정확하다 — 이름에 '병원' 이 있어도 매핑이 우선한다.
+        classifier.addKeyword("병원", "건강/의료", "병원비", 0);
+        classifier.addBusinessNo("9999999902", "교통/차량", "차량유지비");
+
+        String body = "{\"rows\":["
+                + row("k1", "2026-10-01", "서울병원", 9000, 1000, 10000, "999-99-99902", "")
+                + "],\"merchantRules\":{}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/assets/card-imports?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].expenseKind").value("교통/차량"))
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].subCategory").value("차량유지비"));
+    }
+
+    @Test
+    void pgBusinessNumberIsDisambiguatedByMerchantName() throws Exception {
+        // §67: KCP 사업자번호는 공유된다 — 가맹점명이 넷플릭스면 문화/여가, 배달의민족이면 배달.
+        classifier.addBusinessNoPattern("1138521083", "넷플릭스", "문화/여가", "취미/여가");
+        classifier.addBusinessNoPattern("1138521083", "우아한형제들", "식비", "배달");
+
+        String body = "{\"rows\":["
+                + row("k1", "2026-10-01", "KCP - 넷플릭스서비시스코리아", 9000, 1000, 10000, "1138521083", "")
+                + "," + row("k2", "2026-10-02", "KCP - 주식회사 우아한형제들", 9000, 1000, 10000, "1138521083", "")
+                + "],\"merchantRules\":{}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/assets/card-imports?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].expenseKind").value("문화/여가"))
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].subCategory").value("취미/여가"))
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k2')].expenseKind").value("식비"))
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k2')].subCategory").value("배달"));
+    }
+
+    @Test
+    void reclassifyUsesBusinessNumberMappingOfAlreadyStoredRows() throws Exception {
+        // 저장된 행에 사업자번호만 있으면 재분류 때 매핑을 적용한다.
+        ledger.addAll(List.of(new CardImportLedger.ImportedRow(
+                "k1", "2026-10-01", "알수없는가맹점", 9000, 1000, 10000,
+                "", "", "", "9999999903", "PG_일반인증", "", "")));
+        classifier.addBusinessNo("9999999903", "건강/의료", "약국");
+
+        mvc.perform(post("/api/v1/assets/card-imports/reclassify").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.updated").value(1));
+
+        mvc.perform(get("/api/v1/assets/card-imports?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].expenseKind").value("건강/의료"))
+                .andExpect(jsonPath("$.data[?(@.rowKey=='k1')].subCategory").value("약국"));
+    }
+
+    @Test
+    void merchantRulesEndpointUsesBusinessNumberSuggestion() throws Exception {
+        classifier.addBusinessNo("9999999904", "문화/여가", "여행/숙박");
+
+        mvc.perform(post("/api/v1/assets/card-imports/merchant-rules").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"merchants\":[\"알수없는숙소\"],"
+                                + "\"businessNos\":{\"알수없는숙소\":\"9999999904\"}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data['알수없는숙소'].category").value("문화/여가"))
+                .andExpect(jsonPath("$.data['알수없는숙소'].subCategory").value("여행/숙박"));
+    }
+
+    @Test
     void parserDefaultUnclassifiedDoesNotOverrideKeywordSuggestion() throws Exception {
         // 파서는 모든 행에 expenseKind="unclassified" 를 넣는다. 이 값을 실제 카테고리로
         // 취급하면 자동 분류 결과를 덮어써 저장 행이 미분류로 남는다.

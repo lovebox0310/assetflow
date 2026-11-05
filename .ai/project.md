@@ -4323,3 +4323,46 @@ public static final String[] PUBLIC_PATHS = {"/api/v1/auth/login", "/api/v1/auth
 - `CardImportApiTest` — legacy 규칙이 있어도 정상 행이 유지되는지, 규칙이 복구되는지,
   단서가 없으면 아무것도 쓰지 않는지.
 - BE `./gradlew test`: **190 tests**, 실패 0. FE `npx vitest run`: 216 tests 통과.
+
+---
+
+## 67) 사업자번호 기반 카테고리 매핑 (2026-11-06)
+
+**요구**: 카드 목록의 **사업자번호**로 카테고리 목록을 만들어 자동 분류에 사용한다.
+분류 목록은 AI 가 카드 내역을 보고 작성한다.
+
+**왜 사업자번호인가**: 카드 명세서의 사업자번호는 가맹점명 표기 흔들림(지점명·법인 표기·
+띄어쓰기)과 무관한 안정적인 키다. 가맹점명 키워드는 "메가커피 ... 서울병원점" 처럼
+위치 단어에 끌려가는 오분류가 생긴다.
+
+**함정 — PG 사업자번호 공유**: KCP `1138521083`, 이니시스 `2208155597`,
+나이스 `2208115770`/`8158100527`, 토스 `4118601799`, 한국정보통신 `1168119948`,
+스마트로 `2178114493` 등은 **여러 가맹점이 같은 번호를 쓴다**
+(예: KCP = 넷플릭스·쿠팡·배달의민족). 사업자번호만으로 분류하면 오분류가 커진다.
+
+**결정**:
+1. 테이블 `merchant_business_categories` — `(user_id, business_no, merchant_pattern)` 유니크.
+   - `merchant_pattern = ''` → 사업자번호 전체에 적용(업종이 하나뿐인 사업자)
+   - `merchant_pattern != ''` → 가맹점명 부분 문자열(정규화: 공백 제거 + 소문자)로 구분
+2. 분류 우선순위: **사용자 규칙 → 사업자번호(+패턴) → 가맹점명 키워드 → 명세서 업종**.
+   - 사용자가 직접 고친 규칙이 항상 이긴다.
+   - 사업자번호는 키워드보다 정확하므로 키워드보다 먼저 본다.
+   - PG 번호에는 generic 매핑을 두지 않는다 — 패턴만 둔다(테스트로 강제).
+3. 시드는 `apps/backend/src/main/resources/categories/merchant-business-categories.json`
+   (AI 작성, 406건). `CategorySeedData` 가 부팅 시 멱등하게 넣고,
+   `source='seed'` 행만 갱신한다(사용자 수정 `source='user'` 는 보존).
+4. 로드 시 검증한다 — 사업자번호 10자리, 카테고리/세부가 `CategoryTaxonomy` 안에 있는지,
+   `(business_no, pattern)` 중복이 없는지. 어긋나면 부팅 실패.
+5. API 계약: `POST /card-imports/merchant-rules` 에 `businessNos` 맵 추가(선택).
+   임포트·재분류는 각 행의 `businessNo` 를 그대로 분류기에 넘긴다.
+
+**커버리지** (운영 카드 내역 2,702행, 사업자번호 보유 2,365행 기준):
+- 사업자번호 매핑만으로 **2,421행 / 2,702행 = 89.6%**.
+- 남은 281행은 1~2건짜리 미상 가맹점 — 키워드·업종 폴백이 받는다.
+
+**검증**:
+- `BusinessCategorySeedTest` — 시드 정합성, PG 번호 generic 금지, 대표 가맹점 존재.
+- `InMemoryCategoryClassifierTest` — 사업자번호 > 키워드, 규칙 > 사업자번호,
+  PG 패턴 분리, 긴 패턴 우선, 시드로 실제 카드 가맹점 분류.
+- `CardImportApiTest` — 임포트·재분류·미리보기에서 사업자번호 사용.
+- BE `./gradlew test`: **204 tests**, 실패 0. FE `npx vitest run`: 216 tests 통과.

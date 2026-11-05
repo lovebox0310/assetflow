@@ -33,6 +33,7 @@ public class CategorySeedData implements CommandLineRunner {
     @Override
     public void run(String... args) {
         seedCategories();
+        seedBusinessCategories();
         Map<String, Keyword> keywords = keywordSeed();
         for (Map.Entry<String, Keyword> e : keywords.entrySet()) {
             // 업종을 직접 가리키는 키워드는 주소·건물명 키워드("병원", "버스")보다 먼저 매칭돼야 한다.
@@ -59,6 +60,31 @@ public class CategorySeedData implements CommandLineRunner {
                     ON CONFLICT (name) WHERE user_id IS NULL
                     DO UPDATE SET is_essential = EXCLUDED.is_essential, updated_at = now()
                     """, group.name(), group.essential());
+        }
+    }
+
+    /**
+     * 사업자번호 → 카테고리 시드 (§67).
+     *
+     * <p>{@code source='seed'} 행만 갱신한다 — 사용자가 고친 행(source='user')은 건드리지 않는다.
+     * 시드는 AI 가 카드 내역의 가맹점 목록을 보고 작성했고, 로드 시점에
+     * {@link BusinessCategorySeed} 가 카테고리/세부 정합성을 검증한다.</p>
+     */
+    private void seedBusinessCategories() {
+        for (BusinessCategorySeed.Entry entry : BusinessCategorySeed.entries()) {
+            jdbc.update("""
+                    INSERT INTO merchant_business_categories
+                        (user_id, business_no, merchant_pattern, category_id, sub_category, source)
+                    SELECT ?, ?, ?, c.id, ?, 'seed'
+                    FROM expense_categories c
+                    WHERE c.name = ? AND c.user_id IS NULL
+                    ON CONFLICT (user_id, business_no, merchant_pattern)
+                    DO UPDATE SET category_id = EXCLUDED.category_id,
+                                  sub_category = EXCLUDED.sub_category,
+                                  source = EXCLUDED.source,
+                                  updated_at = now()
+                    WHERE merchant_business_categories.source = 'seed'
+                    """, userId, entry.businessNo(), entry.pattern(), entry.subCategory(), entry.category());
         }
     }
 
