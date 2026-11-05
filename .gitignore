@@ -59,3 +59,7 @@ test-results/
 playwright-report/
 playwright/.cache/
 e2e/.auth/
+.env
+
+# 로컬 메모(자격증명 포함 가능) — 저장소에 올리지 않는다
+.ai/final-resolution.md

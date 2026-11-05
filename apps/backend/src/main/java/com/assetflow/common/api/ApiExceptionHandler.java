@@ -59,6 +59,19 @@ public class ApiExceptionHandler {
                 .body(ErrorResponse.of("BIZNO_BUSY", "Business info source is busy", e.getMessage()));
     }
 
+    /** §62 한국투자증권 Open API 연동 실패. 설정 누락은 503, KIS 서버/응답 오류는 502. */
+    @ExceptionHandler(com.assetflow.investments.kis.KisNotConfiguredException.class)
+    public ResponseEntity<ErrorResponse> kisNotConfigured(com.assetflow.investments.kis.KisNotConfiguredException e) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ErrorResponse.of("KIS_NOT_CONFIGURED", "KIS is not configured", e.getMessage()));
+    }
+
+    @ExceptionHandler(com.assetflow.investments.kis.KisApiException.class)
+    public ResponseEntity<ErrorResponse> kisApi(com.assetflow.investments.kis.KisApiException e) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(ErrorResponse.of("KIS_API_ERROR", "KIS API request failed", e.getMessage()));
+    }
+
     /** GET 으로 POST 전용 API 를 호출하는 경우(브라우저 주소창 접속 등) — 500 이 아니라 405 다. */
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<ErrorResponse> methodNotSupported(HttpRequestMethodNotSupportedException e) {
