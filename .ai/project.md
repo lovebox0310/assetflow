@@ -4191,13 +4191,18 @@ bank_account_links (
 
 ### 63.6 단계별 구현
 
-1. **PoC**: `/tmp/opencode/`에서 Playwright로 현대카드 VestMail HTML 복호화 및 테이블 추출.
-2. **파서 모듈**: `apps/backend/src/main/resources/scripts/card/vestmail-hyundai/`에
+1. **PoC** ✅: `/tmp/opencode/`에서 Playwright로 현대카드 VestMail HTML 복호화 및 테이블 추출.
+2. **파서 모듈** ✅: `apps/backend/src/main/resources/scripts/card/vestmail-hyundai/`에
    Node 스크립트(`extract-hyundai-vestmail.mjs`) 및 `package.json` 정리.
-3. **익명화 샘플**: `samples/card/anonymized/hyundaicard-email-anon.json` 등록.
-4. **BE 연동**: Gmail IMAP, Node 스크립트 호출, DB 저장, API 노출.
-5. **FE 설정 UI**: `CardEmailImportSettingsSection` 컴포넌트를 `SettingsPage`에 추가.
-6. **스케줄러**: Spring `@Scheduled`로 1일 2회 실행.
+3. **익명화 샘플** ✅: `samples/card/anonymized/hyundaicard-email-anon.json` 등록.
+4. **BE 연동** ✅: Gmail IMAP, Node 스크립트 호출, DB 저장, API 노출.
+5. **FE 설정 UI** ✅: `CardEmailImportSettingsSection` 컴포넌트를 `SettingsPage`에 추가.
+6. **스케줄러** ✅: Spring `@Scheduled`로 1일 2회 실행.
+7. **운영 배포 준비** ✅:
+   - `install.sh`로 `npm install` + Playwright Chromium 설치 자동화.
+   - `deploy.sh`가 `/opt/assetflow/scripts/card/vestmail-hyundai`에 스크립트 복사 및 설치.
+   - classpath 폴 백 시에도 `npm install --production`을 자동 실행하도록 Java 코드 보강.
+   - `VESTMAIL_HYUNDAI_SCRIPT_DIR` 운영 가이드 문서화.
 
 ### 63.7 검증
 

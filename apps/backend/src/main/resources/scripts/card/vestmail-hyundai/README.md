@@ -7,11 +7,32 @@ Playwright 브라우저에서 복호화하고, 거래 내역을 `samples/card/ca
 
 ## 설치
 
+### 로컬/개발
+
 ```bash
 cd apps/backend/src/main/resources/scripts/card/vestmail-hyundai
 npm install
 npx playwright install chromium
 ```
+
+또는 한 번에:
+
+```bash
+./install.sh
+```
+
+### 운영 배포
+
+`deploy.sh`가 백엔드 JAR 배포 시 자동으로 `/opt/assetflow/scripts/card/vestmail-hyundai`에
+스크립트를 복사하고 `./install.sh`를 실행한다. 이후 백엔드는 다음 환경변수로
+해당 디렉토리를 참조한다:
+
+```bash
+VESTMAIL_HYUNDAI_SCRIPT_DIR=/opt/assetflow/scripts/card/vestmail-hyundai
+```
+
+환경변수가 비어 있으면 백엔드는 classpath 에서 스크립트를 임시 복사한 뒤
+`npm install --production`을 매번 실행하므로 느리다.
 
 ## 사용법
 

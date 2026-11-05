@@ -187,7 +187,25 @@ public class VestMailHyundaiImporter {
                 Files.copy(is, temp.resolve(name), StandardCopyOption.REPLACE_EXISTING);
             }
         }
+        // classpath 폴 백에서도 동작하도록 의존성을 설치한다.
+        runNpmInstall(temp);
         return temp;
+    }
+
+    private void runNpmInstall(Path dir) throws Exception {
+        ProcessBuilder pb = new ProcessBuilder("npm", "install", "--production");
+        pb.directory(dir.toFile());
+        pb.redirectErrorStream(true);
+        Process process = pb.start();
+        String output;
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+            output = reader.lines().collect(Collectors.joining("\n"));
+        }
+        int exitCode = process.waitFor();
+        if (exitCode != 0) {
+            throw new IllegalStateException("npm install failed with exit code " + exitCode + ": " + output);
+        }
     }
 
     private String buildRowKey(Long userId, String approvedAt, String merchant, long grossAmount, String cardMasked) {
