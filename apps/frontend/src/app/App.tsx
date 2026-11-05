@@ -140,9 +140,9 @@ export function App() {
         // 실패해도 로그인 흐름은 그대로다(저장된 현재가 사용).
         void refreshHoldingPrices().catch(() => undefined);
         // 상태 업데이트를 microtask queue에 넣어서 UI 업데이트가 먼저 완료되게 한다
+        // 딥링크로 들어왔다면 원래 화면으로 복귀한다.
         Promise.resolve().then(() => {
           setAuthed(true);
-          navigate("dashboard");
         });
       }}
     />

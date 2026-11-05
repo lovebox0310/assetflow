@@ -164,13 +164,14 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     });
     expect(document.querySelectorAll(".af-cash-item--emergency")).toHaveLength(1);
     // 월별 현금흐름 표: 확정 3개월이 최신순으로 나온다
-    expect(screen.getByText(monthKey(0))).toBeDefined();
-    expect(screen.getByText(monthKey(1))).toBeDefined();
-    expect(screen.getByText(monthKey(2))).toBeDefined();
+    const cashflowSection = screen.getByRole("region", { name: "월별 현금흐름" });
+    expect(within(cashflowSection).getByText(monthKey(0))).toBeDefined();
+    expect(within(cashflowSection).getByText(monthKey(1))).toBeDefined();
+    expect(within(cashflowSection).getByText(monthKey(2))).toBeDefined();
     // 수지는 그 달 수입 − 부가세통장 이체 − 그 달 지출만 보여 준다(이전 달 누적 아님).
     // 2026-10: 8,200,000 − 0 − 4,960,000 = +3,240,000 / 2026-09: +2,640,000
-    expect(screen.getByText("+2,640,000원")).toBeDefined();
-    expect(screen.queryByText("+5,880,000원")).toBeNull();
+    expect(within(cashflowSection).getByText("+2,640,000원")).toBeDefined();
+    expect(within(cashflowSection).queryByText("+5,880,000원")).toBeNull();
 
     // 스위치를 켜면 같은 월 사용액 기준의 투자금 유지 개월(16.9개월)로 전환된다.
     const toggle = screen.getByRole("switch", { name: "유지 개월 모드 전환" });
@@ -186,9 +187,10 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
 
     await screen.findByText("6.9억");
     fireEvent.click(screen.getByRole("button", { name: "기준 설정" }));
-    expect(await screen.findByText("비상금 유지 개월 기준")).toBeDefined();
-    expect(screen.getByLabelText("비상금 계좌")).toBeDefined();
-    expect(screen.getByText("카드 데이터 1/3개월 집계")).toBeDefined();
+    const modal = await screen.findByRole("dialog");
+    expect(within(modal).getByText("비상금 유지 개월 기준")).toBeDefined();
+    expect(within(modal).getByLabelText("비상금 계좌")).toBeDefined();
+    expect(within(modal).getByText("카드 데이터 1/3개월 집계")).toBeDefined();
   });
 
   it("요청 중에는 로딩(스켈레톤)이 보인다 (§26 AC)", () => {
@@ -209,7 +211,8 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     await screen.findAllByText("데이터를 불러오지 못했습니다");
     expect(screen.queryByText("6.9억")).toBeNull();
     // cashflow 는 summary 실패와 무관하게 복구된다 (카드 단위 복구 우선)
-    await screen.findByText(monthKey(0));
+    const cashflowSection2 = await screen.findByRole("region", { name: "월별 현금흐름" });
+    expect(within(cashflowSection2).getByText(monthKey(0))).toBeDefined();
 
     // 재시도: 서버가 정상 응답으로 바뀌면 카드가 복구된다
     fail = false;
@@ -245,15 +248,15 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
   it("현금흐름은 6개월 창을 보여 주고 미확정 월을 명시한다 (#73 AC)", async () => {
     stubFetch(route);
     render(<DashboardPage onLogout={() => {}} />);
-    await screen.findByText(monthKey(0));
+    const cashflowSection3 = await screen.findByRole("region", { name: "월별 현금흐름" });
 
     // 확정 3개월 + 미확정 3개월 = 6개월 창
     // 데스크톱(표)과 모바일(카드 리스트) 어느 쪽이든 월 6개가 한 번씩 나온다.
-    expect(screen.getAllByText(/^\d{4}-\d{2}$/).length).toBe(6);
+    expect(within(cashflowSection3).getAllByText(/^\d{4}-\d{2}$/).length).toBe(6);
     expect(screen.getByText(/확정 3개월 · 미확정 3개월/)).toBeDefined();
-    expect(screen.getAllByText("미확정").length).toBe(3);
+    expect(within(cashflowSection3).getAllByText("미확정").length).toBe(3);
     // 창의 가장 오래된 월까지 자리를 지킨다 (0원으로 채우지 않는다)
-    expect(screen.getByText(monthKey(5))).toBeDefined();
+    expect(within(cashflowSection3).getByText(monthKey(5))).toBeDefined();
   });
 
   it("'비상금 계좌' 섹션은 지정된 계좌만 보여 준다 (#73 AC, §62)", async () => {
@@ -299,8 +302,8 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
 
     // 섹션 제목과 범례(카테고리 + 미분류)가 렌더된다
     expect(screen.getByRole("heading", { name: "지출 추이" })).toBeDefined();
-    await waitFor(() => expect(screen.getByLabelText("지출 추이 범례")).toBeDefined());
-    expect(screen.getByText("미분류")).toBeDefined();
+    const legend = await screen.findByLabelText("지출 추이 범례");
+    expect(within(legend).getByText("미분류")).toBeDefined();
 
     // §57.9: 같은 범위로 확정 수입을 1회 더 조회한다 (수입 스택 2개 | 지출 스택)
     const incomeCalls = fetchMock.mock.calls.filter((c) =>
@@ -311,7 +314,6 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     expect(incomeUrl).toContain(`to=${monthKey(0)}`);
     expect(incomeUrl).toContain(`from=${monthKey(11)}`);
 
-    const legend = screen.getByLabelText("지출 추이 범례");
     expect(within(legend).getByText("실수입")).toBeDefined();
     expect(within(legend).getByText("부가세통장")).toBeDefined();
     expect(within(legend).getByText("식비")).toBeDefined();
