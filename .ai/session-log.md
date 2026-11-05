@@ -187,12 +187,17 @@ mock downloader를 이용한 통합 흐름 테스트를 추가. 실제 IMAP/Play
 
 ## 2026-11-05 — deploy.sh 버그 수정
 
-**문제**: `deploy.sh`의 `cp "$DIR/"*` 명령이 `node_modules` 디렉토리를 만나
+**문제 1**: `deploy.sh`의 `cp "$DIR/"*` 명령이 `node_modules` 디렉토리를 만나
 `cp: -r을 지정하지 않음` 오류를 낸 뒤 `set -e`로 종료. 결과적으로
 `[7/7] Restart service...`까지 도달하지 못함.
 
-**해결**: `node_modules`를 제외하고 필요한 소스 파일만 복사하도록 수정.
+**해결 1**: `node_modules`를 제외하고 필요한 소스 파일만 복사하도록 수정.
 `install.sh`가 의존성을 새로 설치하므로 `node_modules` 복사는 불필요.
+
+**문제 2**: 복사 후 디렉토리가 root 소유라 `redbox9` 사용자로 실행된
+`install.sh`가 `node_modules`를 생성하지 못하고 `EACCES` 오류 발생.
+
+**해결 2**: `install.sh` 실행 전 `chown -R "$BUILD_USER:$BUILD_USER" "$VESTMAIL_DIR"` 추가.
 
 **변경**: `deploy.sh`의 VestMail 배포 단계.
 
