@@ -185,6 +185,19 @@ mock downloader를 이용한 통합 흐름 테스트를 추가. 실제 IMAP/Play
 
 ---
 
+## 2026-11-05 — deploy.sh 버그 수정
+
+**문제**: `deploy.sh`의 `cp "$DIR/"*` 명령이 `node_modules` 디렉토리를 만나
+`cp: -r을 지정하지 않음` 오류를 낸 뒤 `set -e`로 종료. 결과적으로
+`[7/7] Restart service...`까지 도달하지 못함.
+
+**해결**: `node_modules`를 제외하고 필요한 소스 파일만 복사하도록 수정.
+`install.sh`가 의존성을 새로 설치하므로 `node_modules` 복사는 불필요.
+
+**변경**: `deploy.sh`의 VestMail 배포 단계.
+
+---
+
 ## 2026-11-05 — 실제 Gmail IMAP 수동 수집 테스트 [✅ 완료]
 
 **요약**: 사용자의 실제 Gmail 계정과 현대카드 VestMail 비밀번호로 end-to-end 수동 수집

@@ -37,7 +37,11 @@ echo "[6/6] Deploy HyundaiCard VestMail extractor..."
 VESTMAIL_DIR="$DEPLOY_DIR/scripts/card/vestmail-hyundai"
 mkdir -p "$VESTMAIL_DIR"
 rm -rf "$VESTMAIL_DIR/"*
-cp "$BACKEND_DIR/src/main/resources/scripts/card/vestmail-hyundai/"* "$VESTMAIL_DIR/"
+# node_modules 는 install.sh 가 새로 설치하므로 소스 파일만 복사한다.
+for file in extract-hyundai-vestmail.mjs package.json package-lock.json README.md install.sh; do
+    cp "$BACKEND_DIR/src/main/resources/scripts/card/vestmail-hyundai/$file" "$VESTMAIL_DIR/"
+done
+chmod +x "$VESTMAIL_DIR/install.sh"
 $BUILD_SHELL "export PATH='$NODE_BIN:\$PATH' && cd '$VESTMAIL_DIR' && ./install.sh"
 
 # 환경변수가 없으면 경고만 한다(값은 출력하지 않는다).
