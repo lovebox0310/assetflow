@@ -66,12 +66,22 @@ Playwright 브라우저에서 복호화하면 자동화 가능.
 - 정식 파서 모듈을 `apps/backend/src/main/resources/scripts/card/vestmail-hyundai/`에 추가.
 - 익명화 샘플 `samples/card/anonymized/hyundaicard-email-anon.json` 등록.
 
+**변경 (추가, 2026-11-05-2)**:
+- FE `CardEmailImportSettingsSection` 추가: 현대카드 VestMail 자동 수집 설정 UI.
+- FE `cardEmailImportApi.ts` 추가: 설정 CRUD + 수동 실행 API 클라이언트.
+- `SettingsPage`에 "카드 명세서 자동 수집" 섹션 추가.
+- FE 테스트: `CardEmailImportSettingsSection.test.tsx` 추가.
+
+**검증**:
+- FE `typecheck`·`lint` 통과.
+- FE `CardEmailImportSettingsSection.test.tsx` 통과.
+- BE `./gradlew compileJava`·`compileTestJava`·테스트 통과.
+
 **다음 단계**:
-1. BE 연동: Gmail IMAP 수신 + Node 스크립트 호출 + DB 저장.
-2. 자격증명 암호화 저장 설계 및 구현.
-3. FE 설정 UI: Gmail/IMAP/VestMail 비밀번호/수집 주기 입력.
-4. Spring 스케줄러 1일 2회 실행.
-5. 문서: `project.md` §63 갱신.
+1. 통합 테스트: 실제 Gmail 계정 또는 IMAP mock으로 end-to-end 수집 검증.
+2. 삼성카드 대안: 바로빌/CODEF 상용 API 검토 또는 이메일 PDF 명세서 가능 여부 확인.
+3. 운영 배포: VestMail 스크립트 디렉토리에 `npm install` 및 Playwright 브라우저 설치.
+4. 문서: `project.md` §63 최종 갱신.
 
 ---
 

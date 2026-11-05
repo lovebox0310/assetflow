@@ -3,6 +3,7 @@ import { Alert, Button, Card, Form, Grid, Input, InputNumber, Space, Table, Typo
 import { AppLayout } from "../layout/AppLayout";
 import { StandardNav } from "../layout/StandardNav";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
+import { CardEmailImportSettingsSection } from "../components/CardEmailImportSettingsSection";
 import { clearInflight } from "../api/client";
 import { clearToken } from "../auth/authStore";
 import { getSettings, updatePassword, updateSettings, type UserSettings } from "../api/settingsApi";
@@ -196,6 +197,8 @@ export function SettingsPage({ onOpenDashboard, onOpenAssets, onOpenExpenses }: 
               </Form>
             </Card>
           </section>
+
+          <CardEmailImportSettingsSection />
         </div>
 
         <aside aria-labelledby="h-summary" style={screens.md ? { width: 300, flexShrink: 0 } : { marginTop: 24 }}>

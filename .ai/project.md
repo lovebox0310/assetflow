@@ -4162,9 +4162,18 @@ bank_account_links (
 - **Node.js + Playwright**: VestMail 복호화 및 DOM 추출.
 - **Java 백엔드**: 스케줄러, 설정 관리, DB 저장, API 노출.
 - **Gmail IMAP**: 메일 수신 및 첨부 다운로드(앱 비밀번호 사용).
-- **암호화**: 서버 DB 저장 전 자격증명 암호화(Jasypt 또는 Java Cipher + 환경변수 키).
+- **암호화**: 서버 DB 저장 전 자격증명 암호화(Java Cipher + 환경변수 키).
 
-### 63.4 데이터 매핑
+### 63.4 화면
+
+**설정 페이지** (`/settings`)에 "카드 명세서 자동 수집" 섹션 추가.
+- 카드사 탭/선택 — 현재는 현대카드만.
+- 자동 수집 ON/OFF 스위치.
+- Gmail 주소, Gmail 앱 비밀번호, 현대카드 명세서 비밀번호 입력.
+- 저장/삭제/지금 수집 버튼.
+- 마지막 수집 상태 표시.
+
+### 63.5 데이터 매핑
 
 추출한 필드를 기존 `samples/card/card-columns.json`에 맞춘다.
 
@@ -4178,19 +4187,20 @@ bank_account_links (
 | 할부개월 | `installmentCount` | 일시불은 0 |
 | 승인번호 | `approvalNo` | 선택 |
 
-### 63.5 단계별 구현
+### 63.6 단계별 구현
 
 1. **PoC**: `/tmp/opencode/`에서 Playwright로 현대카드 VestMail HTML 복호화 및 테이블 추출.
 2. **파서 모듈**: `apps/backend/src/main/resources/scripts/card/vestmail-hyundai/`에
    Node 스크립트(`extract-hyundai-vestmail.mjs`) 및 `package.json` 정리.
 3. **익명화 샘플**: `samples/card/anonymized/hyundaicard-email-anon.json` 등록.
-4. **BE 연동**: Java에서 Node 스크립트를 호출하거나, 별도 worker 프로세스로 실행.
-5. **FE 설정 UI**: Gmail 계정, IMAP 앱 비밀번호, VestMail 비밀번호, 수집 주기 입력.
-6. **스케줄러**: Spring `@Scheduled` 또는 Quartz로 1일 2회 실행.
+4. **BE 연동**: Gmail IMAP, Node 스크립트 호출, DB 저장, API 노출.
+5. **FE 설정 UI**: `CardEmailImportSettingsSection` 컴포넌트를 `SettingsPage`에 추가.
+6. **스케줄러**: Spring `@Scheduled`로 1일 2회 실행.
 
-### 63.6 검증
+### 63.7 검증
 
 - PoC: 현대/삼성 샘플 각 1건에서 거래 행 1건 이상 추출 → `card-columns.json` 필드 매핑.
-- 단위 테스트: 샘플 HTML(익명화)을 fixture로 하여 파서 출력 검증.
+- BE 단위 테스트: `CardImportCipherTest`, `InMemoryCardEmailImportSettingsLedgerTest`.
+- FE 단위 테스트: `CardEmailImportSettingsSection.test.tsx`.
 - 통합 테스트: IMAP mock + Playwright headless로 end-to-end 수집 시뮬레이션.
 - 보안: DB에 저장된 자격증명이 평문이 아닌 암호문인지 확인.
