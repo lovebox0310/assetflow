@@ -183,10 +183,40 @@ mock downloader를 이용한 통합 흐름 테스트를 추가. 실제 IMAP/Play
 - BE `./gradlew test`: BUILD SUCCESSFUL
 - FE `npx vitest run`: 216 tests passed
 
+---
+
+## 2026-11-05 — 실제 Gmail IMAP 수동 수집 테스트 [✅ 완료]
+
+**요약**: 사용자의 실제 Gmail 계정과 현대카드 VestMail 비밀번호로 end-to-end 수동 수집
+테스트를 실행. 첫 시도에서 `SubjectTerm` 한국어 부분 매칭 실패로 `NO_MAIL`이
+발생했으나, 발신자로만 IMAP 검색 후 Java 에서 제목 필터링하도록 수정하여 성공.
+
+**문제**:
+- `AndTerm(FromStringTerm("webmaster@hcs.com"), SubjectTerm("개인카드명세서"))`가
+  실제 제목 `"개인카드명세서 상세내역 메일 전송"`을 매칭하지 못함.
+- `FromStringTerm` 단독은 2건 매칭됨을 확인.
+
+**해결**:
+- `GmailImapAttachmentDownloader`에서 IMAP 검색은 발신자만 사용.
+- 제목 필터링은 `Message.getSubject().contains(SUBJECT_KEYWORD)`로 Java 에서 수행.
+
+**실행 결과**:
+- Imported rows: **90건**
+- Last status: **SUCCESS**
+- 첫 3행:
+  - 2026-10-02 | 모바일티머니선불형 | 10000
+  - 2026-10-04 | 나폴리피자 | 57000
+  - 2026-10-04 | 태경산업문막제2영업소 | 5000
+
+**정리**:
+- 수동 테스트용 임시 클래스와 자격증명 파일은 삭제.
+
+**검증**:
+- BE `./gradlew test`: BUILD SUCCESSFUL
+
 **다음 단계**:
 1. 삼성카드: 별도 VestMail 복호화 추출기 연구 또는 바로빌/CODEF 상용 API 검토.
-2. 운영: 실제 Gmail IMAP으로 1회 수동 수집 테스트.
-3. `deploy.sh` 전체 실행하여 운영 배포 검증.
+2. `deploy.sh` 전체 실행하여 운영 배포 검증.
 
 ---
 
