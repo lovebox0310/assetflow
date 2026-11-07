@@ -78,6 +78,8 @@ public class PostgresCardEmailImportSettingsLedger implements CardEmailImportSet
                            email_address = ?,
                            email_password_enc = ?,
                            vestmail_password_enc = ?,
+                           last_import_at = ?,
+                           last_import_status = ?,
                            updated_at = now()
                      WHERE id = ?
                     """,
@@ -86,6 +88,8 @@ public class PostgresCardEmailImportSettingsLedger implements CardEmailImportSet
                     settings.emailAddress(),
                     settings.emailPasswordEnc(),
                     settings.vestmailPasswordEnc(),
+                    settings.lastImportAt() == null ? null : Timestamp.from(settings.lastImportAt()),
+                    settings.lastImportStatus(),
                     existing.get().id());
             return findByUserIdAndCardCompany(settings.userId(), settings.cardCompany()).orElseThrow();
         }
@@ -93,8 +97,8 @@ public class PostgresCardEmailImportSettingsLedger implements CardEmailImportSet
         Long id = jdbc.queryForObject("""
                 INSERT INTO card_email_import_settings
                     (user_id, enabled, card_company, email_provider, email_address,
-                     email_password_enc, vestmail_password_enc)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                     email_password_enc, vestmail_password_enc, last_import_at, last_import_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 RETURNING id
                 """, Long.class,
                 settings.userId(),
@@ -103,7 +107,9 @@ public class PostgresCardEmailImportSettingsLedger implements CardEmailImportSet
                 settings.emailProvider(),
                 settings.emailAddress(),
                 settings.emailPasswordEnc(),
-                settings.vestmailPasswordEnc());
+                settings.vestmailPasswordEnc(),
+                settings.lastImportAt() == null ? null : Timestamp.from(settings.lastImportAt()),
+                settings.lastImportStatus());
         return findByUserIdAndCardCompany(settings.userId(), settings.cardCompany())
                 .map(s -> s.withId(id))
                 .orElseThrow();
