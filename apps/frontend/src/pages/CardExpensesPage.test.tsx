@@ -80,6 +80,10 @@ describe("CardExpensesPage (§58 카드내역 탭)", () => {
           id: 1, cardCompany: "현대카드", kind: "billing", usageMonth: "2026-10",
           periodStart: "2026-10-02", periodEnd: "2026-11-03", totalAmount: 3_326_643,
         },
+        {
+          id: 2, cardCompany: "삼성카드", kind: "billing", usageMonth: "2026-09",
+          periodStart: "2026-09-03", periodEnd: "2026-10-02", totalAmount: 890_156,
+        },
       ]);
       if (path.includes("/assets/card-imports")) return apiResponse([
         {
@@ -101,6 +105,7 @@ describe("CardExpensesPage (§58 카드내역 탭)", () => {
     expect(within(table).getByText("362,230원")).toBeDefined();
     expect(within(table).getByText("3,326,643원")).toBeDefined();
     expect(within(table).getByText("2026-10-02 ~ 2026-11-03")).toBeDefined();
+    expect(within(table).getByText(/최근 수집 890,156원/)).toBeDefined();
     expect(within(table).getByText(/최근 2026-10-21/)).toBeDefined();
   });
 
