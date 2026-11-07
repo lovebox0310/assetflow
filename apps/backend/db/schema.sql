@@ -288,11 +288,16 @@ CREATE TABLE investment_holdings (
     market_price NUMERIC(20, 4) NOT NULL CHECK (market_price >= 0),
     fx_rate      NUMERIC(12, 6) NOT NULL DEFAULT 1 CHECK (fx_rate > 0),
     price_as_of  DATE,
+    source       VARCHAR(16) NOT NULL DEFAULT 'manual',
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT ck_holding_currency CHECK (currency ~ '^[A-Z]{3}$')
 );
 CREATE INDEX ix_holdings_user_account ON investment_holdings (user_id, account_id);
+
+-- §70 동기화 출처('manual' 사용자 입력 / 'kis' 한투 동기화). 기존 DB 마이그레이션.
+-- 동기화가 완전히 성공하면 'kis' 행만 이번 결과로 정리하고 'manual' 행은 보존한다.
+ALTER TABLE investment_holdings ADD COLUMN IF NOT EXISTS source VARCHAR(16) NOT NULL DEFAULT 'manual';
 
 -- ---------------------------------------------------------------------------
 -- merchant_business_info: 사업자번호별 외부 조회 정보 캐시

@@ -26,9 +26,9 @@ import org.springframework.web.bind.annotation.RestController;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * 투자 보유종목 API (§54.2, Sprint 5 E1).
@@ -80,11 +80,12 @@ public class InvestmentController {
     }
 
     /**
-     * §62 한국투자증권 국내주식 잔고를 가져와 보유종목을 동기화한다.
+     * §62 · §70 한국투자증권 국내주식 잔고를 가져와 보유종목을 동기화한다.
      * - accountId 는 account_type='invest' 인 계좌여야 한다.
      * - KIS 자격증명은 DB의 kis_account_credentials 에서 조회한다.
-     * - 기존에 같은 심볼이 있으면 update, 없으면 create 한다.
-     *   KIS 에 없는 기존 종목은 삭제하지 않는다(수동 입력 보호).
+     * - 같은 심볼, 또는 심볼 없이 같은 이름으로 입력한 기존 행은 갱신해 중복을 만들지 않는다.
+     * - 동기화가 완전히 성공하면(warning == null) 이번 결과에 없는 KIS 출처 행을 삭제한다.
+     *   사용자가 직접 입력한 행은 보존한다.
      */
     @PostMapping("/holdings/sync-kis")
     public ApiResponse<Portfolio> syncKis(@RequestBody SyncKisRequest request) {
@@ -126,10 +127,7 @@ public class InvestmentController {
                     account.id(), account.balance());
         }
 
-        Map<String, HoldingRow> existingBySymbol = ledger.all().stream()
-                .filter(h -> h.accountId() == request.accountId() && h.symbol() != null && !h.symbol().isBlank())
-                .collect(Collectors.toMap(HoldingRow::symbol, h -> h, (a, b) -> a));
-
+        List<String> syncedSymbols = new ArrayList<>();
         for (KisBalanceResponse.Holding h : balance.holdings()) {
             String symbol = h.pdno();
             if (symbol == null || symbol.isBlank()) {
@@ -138,13 +136,20 @@ public class InvestmentController {
             HoldingRow row = new HoldingRow(
                     0, request.accountId(), "stock", symbol, h.prdtName(), "KRW",
                     h.hldgQty(), h.pchsAvgPric(), h.prpr(), BigDecimal.ONE, priceAsOf);
-            HoldingRow old = existingBySymbol.get(symbol);
-            if (old != null) {
-                ledger.update(old.id(), row);
-            } else {
-                ledger.create(row);
+            // §70 사용자가 수동으로 넣은 같은 종목이 있으면 그 행을 덮어쓴다.
+            ledger.upsertKis(row);
+            syncedSymbols.add(symbol);
+        }
+
+        // §70 완전히 성공한 경우에만 KIS 에서 사라진 종목을 정리한다.
+        // 예수금을 못 읽은 부분 성공에서 지우면 사용자가 입력한 것까지 잃을 수 있다.
+        if (warning == null) {
+            int removed = ledger.deleteKisOnly(request.accountId(), syncedSymbols);
+            if (removed > 0) {
+                log.info("KIS sync removed {} stale holding(s) for account {}", removed, request.accountId());
             }
         }
+
         return new ApiResponse<>("OK", "KIS balance synced",
                 warning == null ? portfolioService.portfolio() : portfolioService.withWarning(warning));
     }
