@@ -26,9 +26,10 @@ assetflow/
 | Project overview | README.md | Main project description |
 | Decision records | `.ai/project.md` | Canonical numbered decision log |
 | Work log | `.ai/session-log.md` | Chronological what was done / what is left |
-| Agent configs | `.opencode/agent/` | Analyst, architect, developer, reviewer, tester + mobile design lane (`ux-auditor`, `design-architect`, `mobile-ui-developer`, `visual-reviewer`) |
-| Pipeline commands | `.opencode/command/` | `/feature`, `/review`, `/design` entry points |
+| Agent configs | `.opencode/agent/` | Default: `lead`, `planner`, `designer`, `developer`, `qa`; optional `architect`; legacy `analyst`, `reviewer`, `tester` |
+| Pipeline commands | `.opencode/command/` | `/feature` (lead pipeline), `/review`, `/design` entry points |
 | Mobile UI skill | `.opencode/skills/mobile-ui/SKILL.md` | 320/375/390/430px overflow·modal·touch·safe-area checklist |
+| Integration runbook | `.opencode/skills/integration-runbook/SKILL.md` | 은행·증권·이메일·암호·API 키·권한·로그인 절차 |
 | Automation workflows | `.github/workflows/` | CI/CD and issue automation |
 | Card statement samples | `samples/card/` | Excel samples and column contract |
 | Design skills | `~/.config/opencode/skills/` | 31 design skills, global (not in this repo). Route with the `design-playbook` skill (§50) |
@@ -39,16 +40,17 @@ assetflow/
 - **Backend workspace**: `apps/backend/` – server-side logic and validation
 - **Design system**: `design/prototype/` – static prototype (IA map, dashboard, expenses, assets, settings, login)
 - **Card statement import**: `samples/card/` – Excel samples, column contract, and parser tools
-- **AI roles**: Five separate subagents in `.opencode/agent/`, each with distinct permissions
+- **AI roles**: 기본 경로는 `lead` → (`planner`/`designer` 선택) → `developer` → `qa`. `architect`는 계약/DB 변경 시 선택. `analyst`·`reviewer`·`tester`는 legacy 선택 역할.
 - **Design skills**: `~/.config/opencode/skills/` – 31 design skills installed globally (not in this repo); the `design-playbook` skill routes a task to the right one (§50)
 - **Engineering skills**: `~/.config/opencode/skills/` – 57 engineering, writing, and document skills installed globally; the `workflow-playbook` skill routes those (§51). Both routers are siblings: design work goes to `design-playbook`, everything else to `workflow-playbook`.
 
 ## CONVENTIONS
 - **Document placement**: A document's path tells you what belongs in it. Records go into existing files rather than new ones (see `.ai/project.md` §32).
-- **AI subagents**: Five roles run as separate subagents, not as prompt text in one session. Permissions enforce most of what each role may do: only `developer` can write files freely; `reviewer` and `tester` are deliberately denied the developer's reasoning.
-- **Mobile design lane**: UI changes run `ux-auditor` → `design-architect` → `mobile-ui-developer` → `visual-reviewer`. The visual reviewer sees only AC, scope, and before/after screenshots — not the developer's rationale. Verify at 320/375/390/430px.
+- **AI subagents**: `lead`가 사람의 말을 해석·진단하고 태스크 패킷으로 쪼개 전문 에이전트에 위임한다. 코드를 쓰는 역할은 `developer`뿐이고, `qa`는 개발자 설명 없이 AC·산출물만으로 독립 검증한다.
+- **Cost tiers**: Lite(`lead`+`developer`, ≤3 calls) / Standard(`+qa`, ≤6) / Full(`+planner`/`designer`, ≤12) / Deep(`+architect`, 병렬 조사, ≤20). `planner`·`designer`·`architect`는 필요할 때만 부른다. QA 재시도는 최대 2회.
+- **Human gates**: 기획 승인 → 외부 접근(은행·증권·이메일·키·권한) 확인 → 최종 QA → 배포. 외부 시스템은 `integration-runbook` 스킬을 따른다.
 - **Restart opencode** after changing anything under `.opencode/` – config is read once at startup.
-- **Pipeline commands**: `/feature <requirement>` runs all five roles in order; `/review <range>` reviews the current diff then verifies it; `/design <scope>` runs the mobile design lane.
+- **Pipeline commands**: `/feature <requirement>` runs the lead pipeline with cost tiers; `/review <range>` reviews the current diff then verifies it; `/design <scope>` runs the UI lane with `designer` + `qa`.
 
 ## ANTI-PATTERNS
 - **Never commit a real card statement.** Card numbers, member names, and merchant names are personal financial data. Only anonymized copies under `samples/card/anonymized/` are tracked; `.gitignore` blocks common real-data paths.
