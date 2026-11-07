@@ -32,7 +32,7 @@ import {
 import { AssetCompositionList } from "../dashboard/AssetCompositionList";
 import { CashAccountCards } from "../dashboard/CashAccountCards";
 import { buildExpenseTrend, lastMonthsRange, monthsBetween } from "../dashboard/expenseTrend";
-import { listCardCompanyGroups, listCardStatements, listMonthlyCategoryTotals, type CardCompanyGroup, type CardStatement, type MonthlyCategoryTotal } from "../api/cardImportApi";
+import { listCardCompanyGroups, listMonthlyCategoryTotals, type CardCompanyGroup, type MonthlyCategoryTotal } from "../api/cardImportApi";
 import { CardCompanyChart } from "../components/CardCompanyChart";
 import { getSettings, type UserSettings } from "../api/settingsApi";
 import { DEFAULT_EMERGENCY_CATEGORIES } from "../data/expenseCategories";
@@ -101,7 +101,6 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
   const [cashflow, setCashflow] = useState<CashflowRow[] | null>(null);
   const [cashflowStatus, setCashflowStatus] = useState<SurfaceStatus>("loading");
   const [cardGroups, setCardGroups] = useState<CardCompanyGroup[] | null>(null);
-  const [cardStatements, setCardStatements] = useState<CardStatement[]>([]);
   const [cardGroupsStatus, setCardGroupsStatus] = useState<SurfaceStatus>("loading");
   const [cardGroupsRange, setCardGroupsRange] = useState<{ from: string; to: string }>(DEFAULT_CARD_GROUPS_RANGE);
   const [cardGroupsRangeNotice, setCardGroupsRangeNotice] = useState("");
@@ -170,15 +169,10 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
 
   const loadCardGroups = useCallback((from: string, to: string) => {
     setCardGroupsStatus("loading");
-    // §72 명세서 요약은 실패해도 거래 기반 차트를 막지 않는다.
-    Promise.all([
-      listCardCompanyGroups(from, to),
-      listCardStatements(from, to).catch(() => [] as CardStatement[]),
-    ])
-      .then(([rows, statements]) => {
+    listCardCompanyGroups(from, to)
+      .then((rows) => {
         setCardGroups(rows);
-        setCardStatements(statements);
-        setCardGroupsStatus(rows.length === 0 && statements.length === 0 ? "empty" : "ready");
+        setCardGroupsStatus(rows.length === 0 ? "empty" : "ready");
       })
       .catch(() => {
         setCardGroupsStatus("error");
@@ -433,18 +427,8 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
             />
           ) : null}
           <StateBlock status={cardGroupsStatus} onRetry={() => loadCardGroups(cardGroupsRange.from, cardGroupsRange.to)}>
-            {cardGroups && (cardGroups.length > 0 || cardStatements.length > 0) ? (
-              <>
-                <CardCompanyChart
-                  groups={cardGroups}
-                  statements={cardStatements}
-                  from={cardGroupsRange.from}
-                  to={cardGroupsRange.to}
-                />
-                <Typography.Text type="secondary" style={{ display: "block", marginTop: 8, fontSize: 12 }}>
-                  명세서가 있는 달은 명세서 총 결제금액 기준입니다. 명세서가 없으면 승인일 기준 합계입니다.
-                </Typography.Text>
-              </>
+            {cardGroups && cardGroups.length > 0 ? (
+              <CardCompanyChart groups={cardGroups} from={cardGroupsRange.from} to={cardGroupsRange.to} />
             ) : (
               <Typography.Text type="secondary">표시할 카드 내역이 없습니다</Typography.Text>
             )}
