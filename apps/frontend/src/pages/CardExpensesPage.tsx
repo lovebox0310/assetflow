@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Button, Card, Checkbox, Input, Progress, Select, Space, Tag, Typography } from "antd";
 import { AppLayout } from "../layout/AppLayout";
 import { StandardNav } from "../layout/StandardNav";
@@ -15,10 +15,12 @@ import { clearInflight } from "../api/client";
 import { clearToken } from "../auth/authStore";
 import {
   assignMerchantCategory,
+  listCardCompanyGroups,
   listCardStatements,
   listUnclassifiedGroups,
   reclassifyCardImports,
   updateCardImportCategory,
+  type CardCompanyGroup,
   type CardStatement,
   type UnclassifiedGroup,
 } from "../api/cardImportApi";
@@ -92,18 +94,19 @@ export function CardExpensesPage({
   }, [month]);
 
   // §72 명세서가 있으면 승인일 기준 합계와 함께 명세서 금액을 보여 준다.
-  const [monthStatement, setMonthStatement] = useState<CardStatement | null>(null);
+  const [monthStatements, setMonthStatements] = useState<CardStatement[]>([]);
+  const [companyGroups, setCompanyGroups] = useState<CardCompanyGroup[]>([]);
   useEffect(() => {
     let cancelled = false;
-    listCardStatements(month, month)
-      .then((rows) => {
-        if (!cancelled) {
-          setMonthStatement(rows.find((r) => r.kind === "billing") ?? null);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setMonthStatement(null);
-      });
+    Promise.all([
+      listCardStatements(month, month).catch(() => [] as CardStatement[]),
+      listCardCompanyGroups(month, month).catch(() => [] as CardCompanyGroup[]),
+    ]).then(([statements, groups]) => {
+      if (!cancelled) {
+        setMonthStatements(statements);
+        setCompanyGroups(groups);
+      }
+    });
     return () => {
       cancelled = true;
     };
@@ -303,6 +306,42 @@ export function CardExpensesPage({
     [cardRows, unclassifiedOnly],
   );
 
+  /** §72.1 카드사별 승인일 합계 + 명세서 금액 비교. */
+  const cardCompanySummary = useMemo(() => {
+    const map = new Map<string, { company: string; count: number; gross: number; statement?: CardStatement }>();
+    for (const g of companyGroups) {
+      const company = g.cardCompany || "미확인";
+      const row = map.get(company) ?? { company, count: 0, gross: 0 };
+      row.count += g.count;
+      row.gross += g.grossAmount;
+      map.set(company, row);
+    }
+    for (const s of monthStatements) {
+      if (s.kind !== "billing") continue;
+      const company = s.cardCompany || "미확인";
+      const row = map.get(company) ?? { company, count: 0, gross: 0 };
+      row.statement = s;
+      map.set(company, row);
+    }
+    return [...map.values()].sort((a, b) => b.gross - a.gross || a.company.localeCompare(b.company));
+  }, [companyGroups, monthStatements]);
+
+  const lastApprovedAt = useMemo(
+    () => (cardRows ?? []).reduce((max, r) => (r.approvedAt > max ? r.approvedAt : max), ""),
+    [cardRows],
+  );
+
+  const TH_STYLE: CSSProperties = {
+    textAlign: "left", padding: "8px 8px 8px 0",
+    borderBottom: "1px solid var(--af-border)", fontWeight: 600, whiteSpace: "nowrap",
+  };
+  const TH_STYLE_RIGHT: CSSProperties = { ...TH_STYLE, textAlign: "right" };
+  const TD_STYLE: CSSProperties = {
+    padding: "8px 8px 8px 0", borderBottom: "1px solid var(--af-border)", verticalAlign: "top",
+  };
+  const TD_STYLE_RIGHT: CSSProperties = { ...TD_STYLE, textAlign: "right", whiteSpace: "nowrap" };
+  const MUTED_STYLE: CSSProperties = { color: "var(--af-muted-foreground)", fontSize: 12 };
+
   /** §55.10: CSV 내보내기 [날짜 | 사용처(가맹점) | 금액 | 카테고리 | 세부 분류]. */
   const downloadCsv = useCallback(() => {
     const rows = visibleCardRows;
@@ -334,6 +373,67 @@ export function CardExpensesPage({
       </div>
 
       <ExpenseTabs current="cards" onOpenExpenses={onOpenExpenses} />
+
+      {/* §72.1: 카드사별 승인일 합계와 명세서 금액을 한 표에서 비교한다. */}
+      <section aria-labelledby="h-card-companies" style={{ marginBottom: 32 }}>
+        <Typography.Title level={2} id="h-card-companies" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>
+          카드사별 사용금액
+        </Typography.Title>
+        <Card>
+          {cardCompanySummary.length === 0 ? (
+            <Typography.Text type="secondary">이 달 카드 사용 내역이 없습니다.</Typography.Text>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <caption className="sr-only">
+                  {month} 카드사별 승인일 기준 합계와 명세서 금액 비교
+                </caption>
+                <thead>
+                  <tr>
+                    <th style={TH_STYLE}>카드사</th>
+                    <th style={TH_STYLE_RIGHT}>승인일 기준</th>
+                    <th style={TH_STYLE_RIGHT}>명세서 금액</th>
+                    <th style={TH_STYLE}>명세서 이용기간</th>
+                    <th style={TH_STYLE_RIGHT}>차이 (명세서−승인일)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cardCompanySummary.map((row) => (
+                    <tr key={row.company}>
+                      <td style={TD_STYLE}>{row.company}</td>
+                      <td style={TD_STYLE_RIGHT}>
+                        {formatKrwExact(row.gross)}
+                        <div style={MUTED_STYLE}>{row.count}건</div>
+                      </td>
+                      <td style={TD_STYLE_RIGHT}>
+                        {row.statement ? formatKrwExact(row.statement.totalAmount) : "-"}
+                      </td>
+                      <td style={TD_STYLE}>
+                        {row.statement
+                          ? `${row.statement.periodStart} ~ ${row.statement.periodEnd}`
+                          : "-"}
+                      </td>
+                      <td style={TD_STYLE_RIGHT}>
+                        {row.statement
+                          ? formatKrwExact(row.statement.totalAmount - row.gross)
+                          : "-"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {lastApprovedAt ? (
+            <Typography.Text type="secondary" style={{ display: "block", marginTop: 8, fontSize: 12 }}>
+              이 달 수집된 마지막 승인일: {lastApprovedAt}
+            </Typography.Text>
+          ) : null}
+          <Typography.Text type="secondary" style={{ display: "block", marginTop: 4, fontSize: 12 }}>
+            명세서 금액은 이용기간 시작 월이 {month}인 정기 청구서 기준입니다. 명세서가 없으면 승인일 기준 합계만 표시합니다.
+          </Typography.Text>
+        </Card>
+      </section>
 
       {/* 이슈 #70: 변경 알림을 role=status + aria-live=polite 로 — 스크린리더가
           화면 전환 없이도 안내를 읽는다.
@@ -513,12 +613,6 @@ export function CardExpensesPage({
                   <span>지출 합계 (자산 이동 제외) · {cardSpendingCount}건</span>
                   <span>{formatKrwExact(cardSpendingTotal)}</span>
                 </div>
-                {monthStatement ? (
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, paddingLeft: 12, color: "var(--af-muted-foreground)" }}>
-                    <span>└ 명세서 금액 ({monthStatement.periodStart}~{monthStatement.periodEnd})</span>
-                    <span>{formatKrwExact(monthStatement.totalAmount)}</span>
-                  </div>
-                ) : null}
                 {cardFixedTotal > 0 ? (
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, paddingLeft: 12, color: "var(--af-muted-foreground)" }}>
                     <span>└ 고정비</span>
