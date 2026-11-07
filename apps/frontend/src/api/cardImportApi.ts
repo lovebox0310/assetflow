@@ -175,6 +175,24 @@ export function listCardCompanyGroups(from: string, to: string): Promise<CardCom
   return apiFetch<CardCompanyGroup[]>(`/api/v1/assets/card-imports/by-card?${query}`);
 }
 
+/** §72 카드 명세서 요약 — 월별 금액을 명세서 이용기간 총액으로 표시한다. */
+export interface CardStatement {
+  id: number;
+  cardCompany: string;
+  /** billing: 정기 청구서(월 금액 기준), detail: 기간 지정 상세내역서 */
+  kind: "billing" | "detail";
+  /** 이용기간 시작 월 YYYY-MM */
+  usageMonth: string;
+  periodStart: string;
+  periodEnd: string;
+  totalAmount: number;
+}
+
+export function listCardStatements(from: string, to: string): Promise<CardStatement[]> {
+  const query = new URLSearchParams({ from, to }).toString();
+  return apiFetch<CardStatement[]>(`/api/v1/assets/card-imports/statements?${query}`);
+}
+
 /**
  * from~to(YYYY-MM, 양끝 포함)의 월별 대분류 합계를 조회한다.
  * 서버가 자산 이동(저축/투자)을 제외하고, 36개월을 넘는 범위는 400 으로 거절한다.

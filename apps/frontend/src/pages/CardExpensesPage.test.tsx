@@ -237,6 +237,7 @@ describe("CardExpensesPage (§58 카드내역 탭)", () => {
       String(url).includes("/assets/card-imports")
       && !String(url).includes("/unclassified")
       && !String(url).includes("/row-keys")
+      && !String(url).includes("/statements")
       && (init?.method ?? "GET") === "GET");
     expect(cardGets.length).toBe(1);
     expect(screen.getByText("가맹점1")).toBeDefined();

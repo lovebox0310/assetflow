@@ -1,6 +1,7 @@
 package com.assetflow.assets.card.email;
 
 import com.assetflow.assets.CardImportLedger;
+import com.assetflow.assets.CardStatementLedger;
 import com.assetflow.assets.card.CardImportCipher;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -33,6 +34,9 @@ class VestMailHyundaiImporterTest {
     private CardImportLedger ledger;
 
     @Mock
+    private CardStatementLedger statementLedger;
+
+    @Mock
     private CardEmailImportSettingsLedger settingsLedger;
 
     private final CardImportCipher cipher = new CardImportCipher("test-key", null);
@@ -44,7 +48,7 @@ class VestMailHyundaiImporterTest {
             throw new AssertionError("should not be called");
         };
         VestMailHyundaiImporter importer = new VestMailHyundaiImporter(
-                cipher, ledger, settingsLedger, objectMapper, downloader, "");
+                cipher, ledger, statementLedger, settingsLedger, objectMapper, downloader, "");
 
         CardEmailImportSettings settings = new CardEmailImportSettings(
                 1L, 1L, false, "hyundaicard", "gmail", "a@b.com",
@@ -69,7 +73,7 @@ class VestMailHyundaiImporterTest {
                 "본인 카드", null, null, null, null, "본인", "hyundaicard");
 
         VestMailHyundaiImporter importer = new VestMailHyundaiImporter(
-                cipher, ledger, settingsLedger, objectMapper, downloader, "") {
+                cipher, ledger, statementLedger, settingsLedger, objectMapper, downloader, "") {
             @Override
             protected List<CardImportLedger.ImportedRow> extractRows(Path htmlFile,
                                                                      String vestmailPassword,
@@ -92,6 +96,15 @@ class VestMailHyundaiImporterTest {
         verify(ledger, times(1)).addAll(rowsCaptor.capture());
         assertThat(rowsCaptor.getValue()).containsExactly(row);
 
+        // §72 명세서 기간·총액도 함께 저장한다.
+        ArgumentCaptor<CardStatementLedger.StatementRow> statementCaptor =
+                ArgumentCaptor.forClass(CardStatementLedger.StatementRow.class);
+        verify(statementLedger, times(1)).upsert(statementCaptor.capture());
+        assertThat(statementCaptor.getValue().usageMonth()).isEqualTo("2026-10");
+        assertThat(statementCaptor.getValue().periodStart()).isEqualTo("2026-10-02");
+        assertThat(statementCaptor.getValue().totalAmount()).isEqualTo(10000);
+        assertThat(statementCaptor.getValue().kind()).isEqualTo("billing");
+
         ArgumentCaptor<CardEmailImportSettings> settingsCaptor = ArgumentCaptor.forClass(CardEmailImportSettings.class);
         verify(settingsLedger, times(1)).save(settingsCaptor.capture());
         assertThat(settingsCaptor.getValue().lastImportStatus()).isEqualTo("SUCCESS");
@@ -102,7 +115,7 @@ class VestMailHyundaiImporterTest {
     void noAttachmentSavesNoMailStatus() throws Exception {
         CardEmailAttachmentDownloader downloader = (email, password, workDir, criteria) -> null;
         VestMailHyundaiImporter importer = new VestMailHyundaiImporter(
-                cipher, ledger, settingsLedger, objectMapper, downloader, "");
+                cipher, ledger, statementLedger, settingsLedger, objectMapper, downloader, "");
 
         CardEmailImportSettings settings = new CardEmailImportSettings(
                 1L, 1L, true, "hyundaicard", "gmail", "a@b.com",

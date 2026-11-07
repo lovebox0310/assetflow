@@ -25,10 +25,10 @@ public interface CardEmailAttachmentDownloader {
         }
 
         public static MailCriteria samsung() {
-            // §68: "이용상세내역서" 메일에만 거래 표가 들어있다. "이용대금 명세서" 는
-            // 페이로드가 1청크짜리 요약이라 제외한다. 발신자는 sscyber@samsungcard.com
-            // 이지만 도메인 부분 문자열로 검색해 발신 계정 변경에도 견디게 한다.
-            return new MailCriteria("samsungcard.com", "이용상세내역서",
+            // §72: 정기 청구서('이용대금 명세서')도 첨부 HTML 에 이용기간·총액이 있어
+            // 월별 카드 금액에 쓴다. 제목을 좁히지 않고 첨부 파일명으로 고른다 —
+            // '이용상세내역서'와 '이용대금 명세서'가 같은 첨부명을 쓴다.
+            return new MailCriteria("samsungcard.com", "삼성카드",
                     "samsungcard_detail", ".html", "samsungcard_detail.html");
         }
     }

@@ -152,6 +152,29 @@ CREATE TABLE card_imports (
 );
 
 -- ---------------------------------------------------------------------------
+-- card_statements: 카드 명세서 요약 (§72)
+-- 월별 카드 금액을 거래 승인일 합계가 아니라 **명세서 이용기간 총액**으로 표시한다.
+-- kind='billing' 만 월 금액에 사용한다 — 'detail' 은 기간을 지정해 요청한 상세내역서다.
+-- usage_month 는 이용기간 시작 월(YYYY-MM)이다. 예: 10/02~11/03 → 2026-10.
+-- ---------------------------------------------------------------------------
+CREATE TABLE card_statements (
+    id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id       BIGINT NOT NULL REFERENCES users (id),
+    card_company  VARCHAR(20) NOT NULL,
+    kind          VARCHAR(16) NOT NULL DEFAULT 'billing'
+                  CHECK (kind IN ('billing', 'detail')),
+    usage_month   CHAR(7) NOT NULL,
+    period_start  DATE NOT NULL,
+    period_end    DATE NOT NULL,
+    total_amount  BIGINT NOT NULL CHECK (total_amount >= 0),
+    source        VARCHAR(20) NOT NULL DEFAULT 'email',
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_card_statements_period UNIQUE (user_id, card_company, period_start, period_end)
+);
+CREATE INDEX ix_card_statements_month ON card_statements (user_id, usage_month);
+
+-- ---------------------------------------------------------------------------
 -- card_email_import_settings: 이메일 명세서 자동 수집 설정 (§63)
 -- VestMail 비밀번호와 Gmail IMAP 앱 비밀번호는 AES/GCM 암호화하여 저장.
 -- ---------------------------------------------------------------------------

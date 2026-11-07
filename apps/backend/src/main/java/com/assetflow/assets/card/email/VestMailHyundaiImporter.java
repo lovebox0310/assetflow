@@ -1,6 +1,7 @@
 package com.assetflow.assets.card.email;
 
 import com.assetflow.assets.CardImportLedger;
+import com.assetflow.assets.CardStatementLedger;
 import com.assetflow.assets.card.CardContract;
 import com.assetflow.assets.card.CardImportCipher;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -37,6 +38,7 @@ public class VestMailHyundaiImporter {
 
     private final CardImportCipher cipher;
     private final CardImportLedger ledger;
+    private final CardStatementLedger statementLedger;
     private final CardEmailImportSettingsLedger settingsLedger;
     private final ObjectMapper objectMapper;
     private final CardEmailAttachmentDownloader downloader;
@@ -45,12 +47,14 @@ public class VestMailHyundaiImporter {
 
     public VestMailHyundaiImporter(CardImportCipher cipher,
                                    CardImportLedger ledger,
+                                   CardStatementLedger statementLedger,
                                    CardEmailImportSettingsLedger settingsLedger,
                                    ObjectMapper objectMapper,
                                    CardEmailAttachmentDownloader downloader,
                                    @Value("${app.card.vestmail.hyundai.script-dir:}") String scriptDir) {
         this.cipher = cipher;
         this.ledger = ledger;
+        this.statementLedger = statementLedger;
         this.settingsLedger = settingsLedger;
         this.objectMapper = objectMapper;
         this.downloader = downloader;
@@ -87,6 +91,8 @@ public class VestMailHyundaiImporter {
             List<CardImportLedger.ImportedRow> rows = extractRows(htmlFile, vestmailPassword, year, settings.userId());
             if (!rows.isEmpty()) {
                 ledger.addAll(rows);
+                // §72 월별 카드 금액은 명세서 이용기간 총액을 쓴다.
+                saveStatement(rows);
             }
             settingsLedger.save(settings.withLastImport("SUCCESS", Instant.now()));
             log.info("Imported {} HyundaiCard rows for user {}", rows.size(), settings.userId());
@@ -179,6 +185,21 @@ public class VestMailHyundaiImporter {
             base += "|" + cardMasked;
         }
         return base;
+    }
+
+    /** §72 현대카드 이메일 명세서는 정기 청구서이므로 kind='billing' 으로 저장한다. */
+    private void saveStatement(List<CardImportLedger.ImportedRow> rows) {
+        String periodStart = rows.stream().map(CardImportLedger.ImportedRow::approvedAt)
+                .min(String::compareTo).orElse(null);
+        String periodEnd = rows.stream().map(CardImportLedger.ImportedRow::approvedAt)
+                .max(String::compareTo).orElse(null);
+        if (periodStart == null || periodEnd == null) {
+            return;
+        }
+        long total = rows.stream().mapToLong(CardImportLedger.ImportedRow::grossAmount).sum();
+        statementLedger.upsert(new CardStatementLedger.StatementRow(
+                0, cardCompanyLabel, "billing", periodStart.substring(0, 7),
+                periodStart, periodEnd, total));
     }
 
     private String cardMemberRelation(String cardMasked) {
