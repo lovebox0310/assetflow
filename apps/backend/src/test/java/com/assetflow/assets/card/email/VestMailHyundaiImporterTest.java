@@ -3,6 +3,7 @@ package com.assetflow.assets.card.email;
 import com.assetflow.assets.CardImportLedger;
 import com.assetflow.assets.CardStatementLedger;
 import com.assetflow.assets.card.CardImportCipher;
+import com.assetflow.expenses.categories.InMemoryCategoryClassifier;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -48,7 +49,7 @@ class VestMailHyundaiImporterTest {
             throw new AssertionError("should not be called");
         };
         VestMailHyundaiImporter importer = new VestMailHyundaiImporter(
-                cipher, ledger, statementLedger, settingsLedger, objectMapper, downloader, "");
+                cipher, ledger, statementLedger, settingsLedger, objectMapper, downloader, new InMemoryCategoryClassifier(), "");
 
         CardEmailImportSettings settings = new CardEmailImportSettings(
                 1L, 1L, false, "hyundaicard", "gmail", "a@b.com",
@@ -73,7 +74,7 @@ class VestMailHyundaiImporterTest {
                 "본인 카드", null, null, null, null, "본인", "hyundaicard");
 
         VestMailHyundaiImporter importer = new VestMailHyundaiImporter(
-                cipher, ledger, statementLedger, settingsLedger, objectMapper, downloader, "") {
+                cipher, ledger, statementLedger, settingsLedger, objectMapper, downloader, new InMemoryCategoryClassifier(), "") {
             @Override
             protected List<CardImportLedger.ImportedRow> extractRows(Path htmlFile,
                                                                      String vestmailPassword,
@@ -115,7 +116,7 @@ class VestMailHyundaiImporterTest {
     void noAttachmentSavesNoMailStatus() throws Exception {
         CardEmailAttachmentDownloader downloader = (email, password, workDir, criteria) -> null;
         VestMailHyundaiImporter importer = new VestMailHyundaiImporter(
-                cipher, ledger, statementLedger, settingsLedger, objectMapper, downloader, "");
+                cipher, ledger, statementLedger, settingsLedger, objectMapper, downloader, new InMemoryCategoryClassifier(), "");
 
         CardEmailImportSettings settings = new CardEmailImportSettings(
                 1L, 1L, true, "hyundaicard", "gmail", "a@b.com",

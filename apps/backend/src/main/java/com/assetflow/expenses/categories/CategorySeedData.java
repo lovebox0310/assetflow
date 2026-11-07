@@ -23,12 +23,15 @@ public class CategorySeedData implements CommandLineRunner {
 
     private final JdbcTemplate jdbc;
     private final long userId;
+    private final PostgresCategoryClassifier categoryClassifier;
 
     public CategorySeedData(JdbcTemplate jdbc,
-                            @Value("${app.owner-email:user@example.com}") String ownerEmail) {
+                            @Value("${app.owner-email:user@example.com}") String ownerEmail,
+                            PostgresCategoryClassifier categoryClassifier) {
         this.jdbc = jdbc;
         this.userId = jdbc.queryForObject(
                 "SELECT id FROM users WHERE email = ?", Long.class, ownerEmail);
+        this.categoryClassifier = categoryClassifier;
     }
 
     @Override
@@ -51,6 +54,9 @@ public class CategorySeedData implements CommandLineRunner {
                                                         updated_at = now()
                     """, e.getKey(), e.getValue().subCategory(), priority, e.getValue().category());
         }
+        // 시드가 끝난 뒤 분류기 캐시를 새로 읽는다 — 부팅 직후 첫 분류가
+        // 시드 이전 목록을 캐시하는 경쟁을 막는다.
+        categoryClassifier.reload();
     }
 
     private void seedCategories() {
@@ -110,10 +116,10 @@ public class CategorySeedData implements CommandLineRunner {
                 "식당", "김가네", "감자탕", "해장국", "순대국", "돈까스", "돈카츠", "마라탕",
                 "우동", "곰탕", "치킨", "통닭", "한정식", "쭈꾸미", "포케", "버거", "샤브샤브",
                 "국밥", "분식", "김밥", "떡볶이", "피자", "초밥", "스시", "파스타", "애슐리",
-                "황태", "휴게소", "양꼬치", "본죽", "코이라멘", "솔솥", "카츠랩");
+                "황태", "휴게소", "양꼬치", "본죽", "코이라멘", "솔솥", "카츠랩", "수제비");
         add(map, "식비", "카페/간식",
                 "베이커리", "카페", "스타벅스", "이디야", "뚜레쥬르", "파리바게뜨", "파리바게트",
-                "배스킨라빈스", "빵", "커피", "아이스꽁꽁", "더벤티",
+                "배스킨라빈스", "빵", "커피", "아이스꽁꽁", "더벤티", "투썸", "츄로", "솔트랜드",
                 // 편의점 간식·음료 (문서의 카페/간식)
                 "GS25", "CU편의점", "세븐일레븐", "씨유", "지에스");
         add(map, "식비", "배달",
@@ -164,7 +170,7 @@ public class CategorySeedData implements CommandLineRunner {
                 // 문서의 "도서 구매"는 문화/여가로 둔다.
                 "서점", "종로서적", "도서", "교보문고");
         add(map, "문화/여가", "여행/숙박",
-                "여행", "숙소", "숙박", "리조트", "여기어때", "곤지암", "모나용평", "캠핑");
+                "여행", "숙소", "숙박", "리조트", "여기어때", "곤지암", "모나용평", "캠핑", "호텔");
 
         // ── 금융/세금 ────────────────────────────────────────────────────
         add(map, "금융/세금", "보험료", "보험");
@@ -181,7 +187,7 @@ public class CategorySeedData implements CommandLineRunner {
 
         // ── 교육 ────────────────────────────────────────────────────────
         add(map, "교육", "학원/교육",
-                "학원", "교육", "대교", "아카데미", "학교", "유치원", "codecademy");
+                "학원", "교육", "대교", "아카데미", "학교", "유치원", "codecademy", "opencode");
         add(map, "교육", "학교/등록금", "등록금", "학비", "대학교");
 
         return map;

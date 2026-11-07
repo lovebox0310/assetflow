@@ -23,7 +23,6 @@ public class PostgresCategoryClassifier implements CategoryClassifier {
      */
     private volatile List<KeywordMapping> keywords = List.of();
     private volatile List<BusinessMapping> businessCategories = List.of();
-
     public PostgresCategoryClassifier(JdbcTemplate jdbc,
                                       @Value("${app.owner-email:user@example.com}") String ownerEmail) {
         this.jdbc = jdbc;
@@ -77,6 +76,16 @@ public class PostgresCategoryClassifier implements CategoryClassifier {
                         rs.getString("category_name"),
                         rs.getString("sub_category")),
                 userId);
+    }
+
+    /**
+     * 시드/매핑 변경 후 캐시를 다시 읽는다.
+     * 부팅 직후 CategorySeedData 가 끝나기 전에 분류가 호출되면 새 키워드를 놓치므로,
+     * 시드 완료 시점에 한 번 강제로 갱신한다.
+     */
+    public void reload() {
+        this.keywords = loadKeywords();
+        this.businessCategories = loadBusinessCategories();
     }
 
     @Override
