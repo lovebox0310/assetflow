@@ -1,6 +1,8 @@
 package com.assetflow.assets;
 
+import java.text.Normalizer;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
@@ -39,6 +41,21 @@ public interface CardImportLedger {
 
     /** 이미 있는 rowKey 는 건너뛴다(§29.6 중복 반영 금지). 새로 저장된 건수를 돌려준다. */
     int addAll(List<ImportedRow> incoming);
+
+    /**
+     * §71 출처가 달라도 같은 거래로 볼 수 있는 자연키.
+     *
+     * <p>수동 업로드(CSV/XLSX)와 이메일 명세서는 `row_key` 형식이 다르고, 같은
+     * 가맹점이라도 공백·괄호 표기가 다르다. 그래서 저장 전에 카드사·승인일·금액·
+     * 정규화한 가맹점명으로 중복을 판정한다. 카드번호·부가세는 출처마다 달라
+     * 키에 넣지 않는다.</p>
+     */
+    static String naturalKey(String cardCompany, String approvedAt, long grossAmount, String merchantName) {
+        String merchant = merchantName == null ? "" : Normalizer.normalize(merchantName, Normalizer.Form.NFKC)
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("[^\\p{L}\\p{N}]", "");
+        return (cardCompany == null ? "" : cardCompany) + "|" + approvedAt + "|" + grossAmount + "|" + merchant;
+    }
 
     /** rowKey 로 한 행을 찾는다 — 카테고리 수정 API 용 (§55.8). */
     Optional<ImportedRow> find(String rowKey);

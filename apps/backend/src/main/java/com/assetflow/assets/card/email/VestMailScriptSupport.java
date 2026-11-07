@@ -94,6 +94,9 @@ final class VestMailScriptSupport {
             // classpath 폴 백에서도 동작하도록 의존성을 설치한다.
             runNpmInstall(tempScriptDir);
             dir = tempScriptDir;
+            log.info("VestMail script-dir not configured — using classpath fallback {}", tempScriptDir);
+        } else {
+            log.info("VestMail extractor {} uses script-dir {}", scriptName, dir);
         }
         return new Prepared(dir, extractContract(), tempScriptDir, log);
     }
