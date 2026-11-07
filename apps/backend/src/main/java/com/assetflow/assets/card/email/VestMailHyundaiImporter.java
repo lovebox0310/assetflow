@@ -18,7 +18,9 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -46,7 +48,7 @@ public class VestMailHyundaiImporter {
                                    CardEmailImportSettingsLedger settingsLedger,
                                    ObjectMapper objectMapper,
                                    CardEmailAttachmentDownloader downloader,
-                                   @Value("${app.vestmail.hyundai.script-dir:}") String scriptDir) {
+                                   @Value("${app.card.vestmail.hyundai.script-dir:}") String scriptDir) {
         this.cipher = cipher;
         this.ledger = ledger;
         this.settingsLedger = settingsLedger;
@@ -137,6 +139,9 @@ public class VestMailHyundaiImporter {
         JsonNode root = objectMapper.readTree(output);
         JsonNode rowsNode = root.path("rows");
         List<CardImportLedger.ImportedRow> rows = new ArrayList<>();
+        // 같은 날 같은 가맹점·금액이 실제로 여러 번 있을 수 있다 — 순번을 붙여
+        // row_key 충돌로 조용히 사라지지 않게 한다(§71).
+        Map<String, Integer> occurrence = new HashMap<>();
         for (JsonNode rowNode : rowsNode) {
             String approvedAt = rowNode.path("approvedAt").asText();
             String merchant = rowNode.path("merchantName").asText();
@@ -146,7 +151,9 @@ public class VestMailHyundaiImporter {
             int installmentCount = rowNode.path("installmentCount").asInt();
             String cardMasked = rowNode.path("cardMasked").asText(null);
 
-            String rowKey = buildRowKey(userId, approvedAt, merchant, grossAmount, cardMasked);
+            String baseKey = buildRowKey(userId, approvedAt, merchant, grossAmount, cardMasked);
+            int n = occurrence.merge(baseKey, 1, Integer::sum);
+            String rowKey = baseKey + "#" + n;
             rows.add(new CardImportLedger.ImportedRow(
                     rowKey,
                     approvedAt,

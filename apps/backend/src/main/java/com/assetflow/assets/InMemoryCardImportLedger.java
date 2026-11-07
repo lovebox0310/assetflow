@@ -50,9 +50,21 @@ public class InMemoryCardImportLedger implements CardImportLedger {
             for (int i = 0; i < rows.size(); i++) {
                 indexByKey.put(rows.get(i).rowKey(), i);
             }
+            // §71 출처가 달라도 같은 거래면 새 행을 만들지 않는다.
+            Map<String, Integer> batchCounts = new LinkedHashMap<>();
             for (ImportedRow r : incoming) {
+                String natural = CardImportLedger.naturalKey(
+                        r.cardCompany(), r.approvedAt(), r.grossAmount(), r.merchantName());
+                int nth = batchCounts.merge(natural, 1, Integer::sum);
                 Integer existing = indexByKey.get(r.rowKey());
                 if (existing == null) {
+                    long existingNatural = rows.stream()
+                            .filter(x -> natural.equals(CardImportLedger.naturalKey(
+                                    x.cardCompany(), x.approvedAt(), x.grossAmount(), x.merchantName())))
+                            .count();
+                    if (existingNatural >= nth) {
+                        continue;
+                    }
                     rows.add(r);
                     indexByKey.put(r.rowKey(), rows.size() - 1);
                     stored++;

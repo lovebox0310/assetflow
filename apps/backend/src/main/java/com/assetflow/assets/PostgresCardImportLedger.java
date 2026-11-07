@@ -6,8 +6,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.sql.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -73,7 +75,19 @@ public class PostgresCardImportLedger implements CardImportLedger {
 
     public int addAll(List<CardImportLedger.ImportedRow> incoming) {
         int stored = 0;
+        // §71 같은 거래가 이미 있으면(다른 출처·다른 row_key) 새 행을 만들지 않는다.
+        // 같은 날 같은 가맹점·금액이 실제로 여러 번 있을 수 있으므로, 배치 안에서의
+        // 발생 순번이 기존 건수를 넘을 때만 추가한다.
+        Map<String, Integer> existingCounts = new HashMap<>();
+        Map<String, Integer> batchCounts = new HashMap<>();
         for (CardImportLedger.ImportedRow r : incoming) {
+            String natural = CardImportLedger.naturalKey(
+                    r.cardCompany(), r.approvedAt(), r.grossAmount(), r.merchantName());
+            int nth = batchCounts.merge(natural, 1, Integer::sum);
+            int existing = existingCounts.computeIfAbsent(natural, k -> countNatural(r));
+            if (existing >= nth) {
+                continue;
+            }
             stored += jdbc.update("""
                     INSERT INTO card_imports (user_id, row_key, approved_at, merchant_name,
                                               supply_ex_vat, vat, gross_amount, card_masked,
@@ -92,6 +106,24 @@ public class PostgresCardImportLedger implements CardImportLedger {
                     r.memberRelation(), r.cardCompany());
         }
         return stored;
+    }
+
+    /** §71 같은 자연키(카드사·승인일·금액·정규화 가맹점명)의 기존 행 수. */
+    private int countNatural(CardImportLedger.ImportedRow r) {
+        String company = r.cardCompany() == null ? "" : r.cardCompany();
+        List<String> names = jdbc.queryForList("""
+                SELECT merchant_name FROM card_imports
+                WHERE user_id = ? AND COALESCE(card_company, '') = ?
+                  AND approved_at = ? AND gross_amount = ?
+                """, String.class, userId, company, Date.valueOf(r.approvedAt()), r.grossAmount());
+        String key = CardImportLedger.naturalKey(company, r.approvedAt(), r.grossAmount(), r.merchantName());
+        int count = 0;
+        for (String name : names) {
+            if (key.equals(CardImportLedger.naturalKey(company, r.approvedAt(), r.grossAmount(), name))) {
+                count++;
+            }
+        }
+        return count;
     }
 
     public Optional<CardImportLedger.ImportedRow> find(String rowKey) {

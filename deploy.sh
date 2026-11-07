@@ -93,6 +93,18 @@ EOF
     systemctl daemon-reload
 fi
 
+# §63/§68 VestMail 추출기는 node 를 실행한다. systemd 기본 PATH 에는 nvm 이 없어
+# "Cannot run program node/npm" 으로 카드 명세서 자동 수집이 실패했다(§71).
+# 서비스 PATH 에 빌드에 쓴 node bin 을 넣어 준다.
+NODE_CONF="/etc/systemd/system/assetflow.service.d/node.conf"
+if [ ! -f "$NODE_CONF" ]; then
+    mkdir -p "$(dirname "$NODE_CONF")"
+    printf '[Service]\nEnvironment="PATH=%s:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/snap/bin"\n' \
+        "$NODE_BIN" > "$NODE_CONF"
+    chmod 644 "$NODE_CONF"
+    systemctl daemon-reload
+fi
+
 # KIS 설정이 누락되었는지 경고만 한다(값은 출력하지 않는다).
 # §62.2: appKey/appSecret 은 DB 에 계좌별로 저장되므로 환경변수에서 제외했다.
 if [ -f "$ENV_FILE" ]; then

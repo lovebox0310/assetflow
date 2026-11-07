@@ -55,7 +55,7 @@ public class VestMailSamsungImporter {
                                    ObjectMapper objectMapper,
                                    CardEmailAttachmentDownloader downloader,
                                    CategoryClassifier categoryClassifier,
-                                   @Value("${app.vestmail.samsung.script-dir:}") String scriptDir) {
+                                   @Value("${app.card.vestmail.samsung.script-dir:}") String scriptDir) {
         this.cipher = cipher;
         this.ledger = ledger;
         this.settingsLedger = settingsLedger;
