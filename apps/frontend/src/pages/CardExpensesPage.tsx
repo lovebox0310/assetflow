@@ -15,12 +15,10 @@ import { clearInflight } from "../api/client";
 import { clearToken } from "../auth/authStore";
 import {
   assignMerchantCategory,
-  listCardCompanyGroups,
   listCardStatements,
   listUnclassifiedGroups,
   reclassifyCardImports,
   updateCardImportCategory,
-  type CardCompanyGroup,
   type CardStatement,
   type UnclassifiedGroup,
 } from "../api/cardImportApi";
@@ -95,18 +93,15 @@ export function CardExpensesPage({
 
   // §72 명세서가 있으면 승인일 기준 합계와 함께 명세서 금액을 보여 준다.
   const [monthStatements, setMonthStatements] = useState<CardStatement[]>([]);
-  const [companyGroups, setCompanyGroups] = useState<CardCompanyGroup[]>([]);
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      listCardStatements(month, month).catch(() => [] as CardStatement[]),
-      listCardCompanyGroups(month, month).catch(() => [] as CardCompanyGroup[]),
-    ]).then(([statements, groups]) => {
-      if (!cancelled) {
-        setMonthStatements(statements);
-        setCompanyGroups(groups);
-      }
-    });
+    listCardStatements(month, month)
+      .then((statements) => {
+        if (!cancelled) setMonthStatements(statements);
+      })
+      .catch(() => {
+        if (!cancelled) setMonthStatements([]);
+      });
     return () => {
       cancelled = true;
     };
@@ -306,14 +301,14 @@ export function CardExpensesPage({
     [cardRows, unclassifiedOnly],
   );
 
-  /** §72.1 카드사별 승인일 합계 + 명세서 금액 비교. */
+  /** §72.1 카드사별 승인일 합계 + 명세서 금액 비교. 승인일 합계는 카드 목록에서 직접 계산한다. */
   const cardCompanySummary = useMemo(() => {
     const map = new Map<string, { company: string; count: number; gross: number; statement?: CardStatement }>();
-    for (const g of companyGroups) {
-      const company = g.cardCompany || "미확인";
+    for (const r of cardRows ?? []) {
+      const company = r.cardCompany || "미확인";
       const row = map.get(company) ?? { company, count: 0, gross: 0 };
-      row.count += g.count;
-      row.gross += g.grossAmount;
+      row.count += 1;
+      row.gross += r.grossAmount;
       map.set(company, row);
     }
     for (const s of monthStatements) {
@@ -324,12 +319,19 @@ export function CardExpensesPage({
       map.set(company, row);
     }
     return [...map.values()].sort((a, b) => b.gross - a.gross || a.company.localeCompare(b.company));
-  }, [companyGroups, monthStatements]);
+  }, [cardRows, monthStatements]);
 
-  const lastApprovedAt = useMemo(
-    () => (cardRows ?? []).reduce((max, r) => (r.approvedAt > max ? r.approvedAt : max), ""),
-    [cardRows],
-  );
+  const lastApprovedByCompany = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of cardRows ?? []) {
+      const company = r.cardCompany || "미확인";
+      const current = map.get(company) ?? "";
+      if (r.approvedAt > current) {
+        map.set(company, r.approvedAt);
+      }
+    }
+    return map;
+  }, [cardRows]);
 
   const TH_STYLE: CSSProperties = {
     textAlign: "left", padding: "8px 8px 8px 0",
@@ -403,7 +405,9 @@ export function CardExpensesPage({
                       <td style={TD_STYLE}>{row.company}</td>
                       <td style={TD_STYLE_RIGHT}>
                         {formatKrwExact(row.gross)}
-                        <div style={MUTED_STYLE}>{row.count}건</div>
+                        <div style={MUTED_STYLE}>
+                          {row.count}건 · 최근 {lastApprovedByCompany.get(row.company) || "-"}
+                        </div>
                       </td>
                       <td style={TD_STYLE_RIGHT}>
                         {row.statement ? formatKrwExact(row.statement.totalAmount) : "-"}
@@ -424,11 +428,6 @@ export function CardExpensesPage({
               </table>
             </div>
           )}
-          {lastApprovedAt ? (
-            <Typography.Text type="secondary" style={{ display: "block", marginTop: 8, fontSize: 12 }}>
-              이 달 수집된 마지막 승인일: {lastApprovedAt}
-            </Typography.Text>
-          ) : null}
           <Typography.Text type="secondary" style={{ display: "block", marginTop: 4, fontSize: 12 }}>
             명세서 금액은 이용기간 시작 월이 {month}인 정기 청구서 기준입니다. 명세서가 없으면 승인일 기준 합계만 표시합니다.
           </Typography.Text>

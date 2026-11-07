@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { CardExpensesPage } from "./CardExpensesPage";
 import { clearInflight } from "../api/client";
 import { clearToken, saveToken } from "../auth/authStore";
@@ -56,7 +56,6 @@ describe("CardExpensesPage (§58 카드내역 탭)", () => {
     stubFetch((path) => {
       if (path.includes("/card-imports/row-keys")) return apiResponse([]);
       if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
-      if (path.includes("/card-imports/by-card")) return apiResponse([]);
       if (path.includes("/card-imports/statements")) return apiResponse([]);
       if (path.includes("/assets/card-imports")) return apiResponse([
         { rowKey: "k1", approvedAt: "2026-10-01", merchantName: "우아한형제들", supplyExVat: 37_273, vat: 3_727, grossAmount: 41_000 },
@@ -76,10 +75,6 @@ describe("CardExpensesPage (§58 카드내역 탭)", () => {
     stubFetch((path) => {
       if (path.includes("/card-imports/row-keys")) return apiResponse([]);
       if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
-      if (path.includes("/card-imports/by-card")) return apiResponse([
-        { month: "2026-10", cardCompany: "현대카드", memberRelation: "본인", count: 2, grossAmount: 3_464_173 },
-        { month: "2026-10", cardCompany: "삼성카드", memberRelation: "본인", count: 21, grossAmount: 362_230 },
-      ]);
       if (path.includes("/card-imports/statements")) return apiResponse([
         {
           id: 1, cardCompany: "현대카드", kind: "billing", usageMonth: "2026-10",
@@ -87,24 +82,32 @@ describe("CardExpensesPage (§58 카드내역 탭)", () => {
         },
       ]);
       if (path.includes("/assets/card-imports")) return apiResponse([
-        { rowKey: "k1", approvedAt: "2026-10-21", merchantName: "우아한형제들", supplyExVat: 373, vat: 37, grossAmount: 410 },
+        {
+          rowKey: "h1", approvedAt: "2026-10-31", merchantName: "현대가맹점",
+          supplyExVat: 3_149_266, vat: 314_907, grossAmount: 3_464_173, cardCompany: "현대카드",
+        },
+        {
+          rowKey: "s1", approvedAt: "2026-10-21", merchantName: "삼성가맹점",
+          supplyExVat: 329_300, vat: 32_930, grossAmount: 362_230, cardCompany: "삼성카드",
+        },
       ]);
       return apiResponse({}, false, 500);
     });
     renderPage();
 
     expect(await screen.findByRole("heading", { name: "카드사별 사용금액" })).toBeDefined();
-    expect(await screen.findByText("3,326,643원")).toBeDefined();
-    expect(await screen.findByText("362,230원")).toBeDefined();
-    expect(screen.getByText("2026-10-02 ~ 2026-11-03")).toBeDefined();
-    expect(screen.getByText(/이 달 수집된 마지막 승인일: 2026-10-21/)).toBeDefined();
+    const table = await screen.findByRole("table", { name: /카드사별 승인일 기준/ });
+    expect(within(table).getByText("3,464,173원")).toBeDefined();
+    expect(within(table).getByText("362,230원")).toBeDefined();
+    expect(within(table).getByText("3,326,643원")).toBeDefined();
+    expect(within(table).getByText("2026-10-02 ~ 2026-11-03")).toBeDefined();
+    expect(within(table).getByText(/최근 2026-10-21/)).toBeDefined();
   });
 
   it("카드 원장이 실패하면 카드 단위 오류와 재시도가 뜬다 (§26 재사용)", async () => {
     stubFetch((path) => {
       if (path.includes("/card-imports/row-keys")) return apiResponse([]);
       if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
-      if (path.includes("/card-imports/by-card")) return apiResponse([]);
       if (path.includes("/card-imports/statements")) return apiResponse([]);
       if (path.includes("/assets/card-imports")) return apiResponse({}, false, 500);
       return apiResponse({}, false, 500);
@@ -122,7 +125,6 @@ describe("CardExpensesPage (§58 카드내역 탭)", () => {
       }
       if (path.includes("/card-imports/row-keys")) return apiResponse([]);
       if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
-      if (path.includes("/card-imports/by-card")) return apiResponse([]);
       if (path.includes("/card-imports/statements")) return apiResponse([]);
       if (path.includes("/assets/card-imports")) {
         return apiResponse([
@@ -161,7 +163,6 @@ describe("CardExpensesPage (§58 카드내역 탭)", () => {
           { merchantName: "네이버페이", count: 2, grossTotal: 30_000, firstApprovedAt: "2026-09-01", lastApprovedAt: "2026-10-01" },
         ]);
       }
-      if (path.includes("/card-imports/by-card")) return apiResponse([]);
       if (path.includes("/card-imports/statements")) return apiResponse([]);
       if (path.includes("/assets/card-imports")) {
         return apiResponse([
@@ -206,7 +207,6 @@ describe("CardExpensesPage (§58 카드내역 탭)", () => {
     stubFetch((path) => {
       if (path.includes("/card-imports/row-keys")) return apiResponse([]);
       if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
-      if (path.includes("/card-imports/by-card")) return apiResponse([]);
       if (path.includes("/card-imports/statements")) return apiResponse([]);
       if (path.includes("/assets/card-imports")) {
         return apiResponse([
@@ -249,7 +249,6 @@ describe("CardExpensesPage (§58 카드내역 탭)", () => {
       }
       if (path.includes("/card-imports/row-keys")) return apiResponse([]);
       if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
-      if (path.includes("/card-imports/by-card")) return apiResponse([]);
       if (path.includes("/card-imports/statements")) return apiResponse([]);
       if (path.includes("/assets/card-imports")) return apiResponse(rows);
       return apiResponse({}, false, 500);
@@ -288,7 +287,6 @@ describe("CardExpensesPage (§58 카드내역 탭)", () => {
     stubFetch((path) => {
       if (path.includes("/card-imports/row-keys")) return apiResponse([]);
       if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
-      if (path.includes("/card-imports/by-card")) return apiResponse([]);
       if (path.includes("/card-imports/statements")) return apiResponse([]);
       if (path.includes("/assets/card-imports")) return apiResponse([]);
       return apiResponse({}, false, 500);
