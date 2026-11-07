@@ -26,8 +26,9 @@ assetflow/
 | Project overview | README.md | Main project description |
 | Decision records | `.ai/project.md` | Canonical numbered decision log |
 | Work log | `.ai/session-log.md` | Chronological what was done / what is left |
-| Agent configs | `.opencode/agent/` | Analyst, architect, developer, reviewer, tester |
-| Pipeline commands | `.opencode/command/` | `/feature`, `/review` entry points |
+| Agent configs | `.opencode/agent/` | Analyst, architect, developer, reviewer, tester + mobile design lane (`ux-auditor`, `design-architect`, `mobile-ui-developer`, `visual-reviewer`) |
+| Pipeline commands | `.opencode/command/` | `/feature`, `/review`, `/design` entry points |
+| Mobile UI skill | `.opencode/skills/mobile-ui/SKILL.md` | 320/375/390/430px overflow·modal·touch·safe-area checklist |
 | Automation workflows | `.github/workflows/` | CI/CD and issue automation |
 | Card statement samples | `samples/card/` | Excel samples and column contract |
 | Design skills | `~/.config/opencode/skills/` | 31 design skills, global (not in this repo). Route with the `design-playbook` skill (§50) |
@@ -45,8 +46,9 @@ assetflow/
 ## CONVENTIONS
 - **Document placement**: A document's path tells you what belongs in it. Records go into existing files rather than new ones (see `.ai/project.md` §32).
 - **AI subagents**: Five roles run as separate subagents, not as prompt text in one session. Permissions enforce most of what each role may do: only `developer` can write files freely; `reviewer` and `tester` are deliberately denied the developer's reasoning.
+- **Mobile design lane**: UI changes run `ux-auditor` → `design-architect` → `mobile-ui-developer` → `visual-reviewer`. The visual reviewer sees only AC, scope, and before/after screenshots — not the developer's rationale. Verify at 320/375/390/430px.
 - **Restart opencode** after changing anything under `.opencode/` – config is read once at startup.
-- **Pipeline commands**: `/feature <requirement>` runs all five roles in order; `/review <range>` reviews the current diff then verifies it.
+- **Pipeline commands**: `/feature <requirement>` runs all five roles in order; `/review <range>` reviews the current diff then verifies it; `/design <scope>` runs the mobile design lane.
 
 ## ANTI-PATTERNS
 - **Never commit a real card statement.** Card numbers, member names, and merchant names are personal financial data. Only anonymized copies under `samples/card/anonymized/` are tracked; `.gitignore` blocks common real-data paths.
@@ -61,9 +63,11 @@ node samples/card/tools/inspect.mjs samples/card/anonymized/synthetic-sample.xls
 # Pipeline commands (via opencode)
 /feature <requirement>
 /review <range>
+/design <screen-or-modal-scope>
 ```
 
 ## NOTES
+- 2026-11-07 확인: 이 환경의 `~/.config/opencode/skills`가 비어 있어, 위 표의 전역 디자인/엔지니어링 스킬은 실제로 로드되지 않는다. 모바일 UI 작업은 프로젝트 로컬 `.opencode/skills/mobile-ui`를 우선 사용한다.
 - Sprint 1 bootstrap checklist: create GitHub labels, register Issues 1-8, verify issue label automation workflow, start implementation from Issue 1 in order.
 - Card statement import parses CSV/plaintext XLSX with SheetJS on the frontend for preview (§60); the server re-validates the normalized rows against the same contract (`samples/card/card-columns.json`). Apache POI re-validation is not implemented yet (§53.1 B2).
 - Bank balance refresh (§61) calls the free quick-inquiry API at `api.bankapi.co.kr` from the server. Only `cash`/`deposit` accounts, only NH/KB/WR/IBK, Korean source IP only. `BANK_API_KEY`/`BANK_SECRET_KEY` are required; `BANK_LINK_KEY` (or `JWT_SECRET`) encrypts stored account numbers. Account passwords and birth dates are never stored.
