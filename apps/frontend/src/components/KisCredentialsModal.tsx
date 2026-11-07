@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import { Button, Form, Input, Modal, Radio, Space, Typography } from "antd";
-import { deleteKisCredentials, getKisCredentials, saveKisCredentials, type KisCredentials } from "../api/investmentsApi";
+import {
+  deleteKisCredentials,
+  getKisCredentials,
+  saveKisCredentials,
+  testKisCredentials,
+  type KisConnectionTest,
+  type KisCredentials,
+} from "../api/investmentsApi";
 
 interface Props {
   accountId: number;
@@ -28,11 +35,15 @@ export function KisCredentialsModal({ accountId, accountName, open, onClose, onS
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [exists, setExists] = useState(false);
+  const [testing, setTesting] = useState(false);
+  /** §69 저장 직후·수동 테스트 결과. 실패 사유를 모달 안에서 바로 보여 준다. */
+  const [testResult, setTestResult] = useState<KisConnectionTest | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setError("");
     setExists(false);
+    setTestResult(null);
     form.resetFields();
     setLoading(true);
     getKisCredentials(accountId)
@@ -55,9 +66,33 @@ export function KisCredentialsModal({ accountId, accountName, open, onClose, onS
       .finally(() => setLoading(false));
   }, [open, accountId, form]);
 
+  /**
+   * §69 저장된 키로 실제 KIS 호출을 한 번 해 본다. 성공하면 예수금까지 보여 주고,
+   * 실패하면 KIS가 준 사유(예: EGW00002)를 그대로 보여 준다 — "변화 없음" 대신 원인.
+   */
+  const runTest = async (): Promise<boolean> => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const result = await testKisCredentials(accountId);
+      setTestResult(result);
+      return result.ok;
+    } catch (e) {
+      setTestResult({
+        ok: false,
+        cash: null,
+        message: e instanceof Error ? e.message : "연결 테스트에 실패했습니다",
+      });
+      return false;
+    } finally {
+      setTesting(false);
+    }
+  };
+
   const handleSave = async (values: KisCredentials) => {
     setSaving(true);
     setError("");
+    setTestResult(null);
     try {
       await saveKisCredentials(accountId, {
         appKey: values.appKey,
@@ -68,10 +103,13 @@ export function KisCredentialsModal({ accountId, accountName, open, onClose, onS
       });
       setExists(true);
       onSaved();
-      onClose();
+      // 저장만 하고 닫으면 키가 틀렸는지 알 수 없다. 실제로 한 번 호출해 보고
+      // 성공했을 때만 닫는다.
+      setSaving(false);
+      const ok = await runTest();
+      if (ok) onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "저장하지 못했습니다");
-    } finally {
       setSaving(false);
     }
   };
@@ -84,6 +122,7 @@ export function KisCredentialsModal({ accountId, accountName, open, onClose, onS
       form.resetFields();
       form.setFieldsValue({ baseUrl: DEFAULT_URL, acntPrdtCd: "01" });
       setExists(false);
+      setTestResult(null);
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : "삭제하지 못했습니다");
@@ -168,6 +207,16 @@ export function KisCredentialsModal({ accountId, accountName, open, onClose, onS
           </Form.Item>
         </Space>
 
+        {testResult && (
+          <Typography.Paragraph
+            role={testResult.ok ? "status" : "alert"}
+            type={testResult.ok ? "success" : "danger"}
+            style={{ marginTop: 8, marginBottom: 0 }}
+          >
+            {testResult.message}
+          </Typography.Paragraph>
+        )}
+
         {error && (
           <Typography.Paragraph type="danger" style={{ marginTop: 8 }}>
             {error}
@@ -178,6 +227,11 @@ export function KisCredentialsModal({ accountId, accountName, open, onClose, onS
           <Button type="primary" htmlType="submit" loading={saving}>
             저장
           </Button>
+          {exists && (
+            <Button onClick={() => void runTest()} loading={testing} disabled={saving}>
+              연결 테스트
+            </Button>
+          )}
           {exists && (
             <Button danger onClick={() => void handleDelete()} loading={saving}>
               삭제

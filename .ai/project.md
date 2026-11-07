@@ -4510,3 +4510,40 @@ public static final String[] PUBLIC_PATHS = {"/api/v1/auth/login", "/api/v1/auth
   (`KisBalanceServiceTest` 5건, `KisSyncCashTest` 4건 신규).
 - FE `npx tsc --noEmit` 통과, `npx vitest run`: **221 tests** 통과
   (`client.test.ts` 2건, InvestmentsPage 경고 표시 1건 신규).
+
+---
+
+## 69.1) KIS 비상금 동기화 — 후속: 토큰 발급 자체가 거부됨 (2026-11-07)
+
+**증상**: 사용자가 실전 앱키로 다시 저장했는데도(`base_url` 실전,
+CANO `43446523`/`64045977`) `비상금`·`ISA` 동기화가 여전히 아무 변화가 없다.
+비상금 예수금은 2,261,716원이어야 한다.
+
+**진단** (운영 DB 복호화 + KIS 실제 호출):
+- 저장된 자격증명은 온전하다(복호화 값이 `KIS_APP_KEY`/`KIS_APP_SECRET` 과 동일).
+- `POST /uapi/hashkey` (헤더 인증, 토큰 불필요) → **200**. 앱키/시크릿 쌍은 유효하다.
+- `POST /oauth2/tokenP` 에 잘못된 시크릿 → `EGW00105 유효하지 않은 AppSecret`.
+  즉 KIS 가 쌍을 실제로 검증하며, 우리 값은 통과한다.
+- 그런데 올바른 쌍으로 `POST /oauth2/tokenP` →
+  **403 `EGW00002 "서버 에러가 발생했습니다."`**. 실전·모의 **두 도메인 모두**,
+  두 앱키 **모두** 동일. 6분 간격 단일 호출로도 재현 → 일시적 제한/레이트리밋 아님
+  (레이트리밋은 `EGW00133`).
+- `POST /oauth2/Approval` 은 approval_key 를 돌려주지만, 이 엔드포인트는
+  잘못된 시크릿으로도 200 을 주므로 시크릿 검증 근거가 되지 않는다.
+
+**결론**: 자격증명·네트워크·코드가 아니라 **KIS 쪽 앱 상태**다. KIS 게이트웨이가
+접근토큰 발급만 거부한다. 코드로 우회할 수 없다 — KIS Developers 포털에서
+Application 의 **상태(정상/승인대기/중지)**, **이용목적(실전/모의)**,
+**API 신청 내역(주식잔고조회 등)**, **계좌 등록**을 확인해야 한다.
+
+**코드 보강** (§69 의 후속):
+- `KisErrorMessages`: 인증 계열(`error_code`/`error_description`)과 업무 계열
+  (`msg_cd`/`msg1`)을 모두 파싱해 **사유 + 코드 + 조치 안내**를 만든다.
+  기존에는 `msg1` 만 읽어 토큰 오류가 `Forbidden` 으로만 보였다.
+- `POST /api/v1/investments/accounts/{id}/kis-credentials/test` 추가 —
+  저장된 키로 토큰 발급 + 잔고 조회를 한 번 수행하고 결과(`ok`, `cash`, `message`)를
+  돌려준다. 잔액은 건드리지 않는다.
+- `KisCredentialsModal`: **연결 테스트** 버튼 추가. 저장 직후 자동으로 테스트하고
+  **성공했을 때만** 모달을 닫는다 — 키가 틀렸으면 KIS 사유가 모달에 남는다.
+
+**검증**: BE 232 tests, FE `tsc --noEmit` 통과.

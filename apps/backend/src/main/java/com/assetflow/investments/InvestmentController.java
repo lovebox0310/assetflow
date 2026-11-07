@@ -7,6 +7,7 @@ import com.assetflow.common.api.NotFoundException;
 import com.assetflow.investments.InvestmentLedger.HoldingRow;
 import com.assetflow.investments.PortfolioService.Portfolio;
 import com.assetflow.investments.kis.KisAccountMappingService;
+import com.assetflow.investments.kis.KisApiException;
 import com.assetflow.investments.kis.KisBalanceResponse;
 import com.assetflow.investments.kis.KisBalanceService;
 import com.assetflow.investments.kis.KisCredentials;
@@ -215,6 +216,38 @@ public class InvestmentController {
                 request.baseUrl(), request.cano(), request.acntPrdtCd());
         KisCredentials saved = kisCredentialsService.save(1L, plain);
         return new ApiResponse<>("OK", "KIS credentials saved", kisCredentialsService.mask(saved));
+    }
+
+    /** §69 연결 테스트 결과. ok=false 여도 HTTP 200 으로 돌려줘 화면이 사유만 보여 준다. */
+    public record KisConnectionTest(boolean ok, Long cash, String message) {}
+
+    /**
+     * §69 저장된 자격증명으로 접근토큰 발급 + 잔고 조회를 한 번 수행한다.
+     * 잔고를 실제로 반영하지는 않는다 — 키·계좌·환경이 맞는지 먼저 확인하는 용도.
+     */
+    @PostMapping("/accounts/{accountId}/kis-credentials/test")
+    public ApiResponse<KisConnectionTest> testKisCredentials(@PathVariable long accountId) {
+        KisCredentials credentials = kisCredentialsService.findDecrypted(accountId);
+        if (credentials == null) {
+            throw new NotFoundException("KIS credentials not found for account " + accountId);
+        }
+        try {
+            KisBalanceResponse balance = kisBalanceService.fetchBalance(credentials);
+            BigDecimal cash = balance.summary() == null ? null : balance.summary().dncaTotAmt();
+            if (cash == null || cash.compareTo(BigDecimal.ZERO) <= 0) {
+                // 연결은 됐지만 예수금을 못 읽은 경우 — 성공으로 보이면 안 된다.
+                return new ApiResponse<>("OK", "KIS connected but cash is unknown",
+                        new KisConnectionTest(false, null,
+                                "KIS 연결은 되었지만 예수금이 0으로 조회됩니다. "
+                                        + "CANO·상품코드가 이 앱키에 등록된 계좌와 맞는지 확인하세요."));
+            }
+            return new ApiResponse<>("OK", "KIS connected",
+                    new KisConnectionTest(true, cash.longValue(),
+                            "KIS 연결 성공 · 예수금 " + cash.longValue() + "원"));
+        } catch (KisApiException e) {
+            return new ApiResponse<>("OK", "KIS not connected",
+                    new KisConnectionTest(false, null, e.getMessage()));
+        }
     }
 
     /**

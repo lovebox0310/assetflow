@@ -79,29 +79,16 @@ public class RestTemplateKisApiClient implements KisApiClient {
             }
             return node;
         } catch (RestClientResponseException e) {
-            // KIS 는 rt_cd!=0 을 HTTP 4xx/5xx 로도 돌려주며, **원인은 body 의 msg1 에만**
+            // KIS 는 rt_cd!=0 을 HTTP 4xx/5xx 로도 돌려주며, **원인은 body 에만**
             // 들어있다. 상태 텍스트("Internal Server Error")만 보내면 사용자는
             // "모의투자 앱키로 실전 도메인 호출" 같은 실제 사유를 볼 수 없다.
-            String reason = reasonFrom(e.getResponseBodyAsString());
-            throw new KisApiException("KIS API request failed: " + e.getStatusText()
-                    + (reason.isBlank() ? "" : " — " + reason), e);
+            String reason = KisErrorMessages.describe(e.getResponseBodyAsString());
+            throw new KisApiException("KIS API request failed: "
+                    + (reason.isEmpty() ? e.getStatusText() : reason), e);
         } catch (KisApiException e) {
             throw e;
         } catch (Exception e) {
             throw new KisApiException("KIS API request failed: " + url, e);
-        }
-    }
-
-    /** 오류 응답 body 에서 KIS 가 준 msg1(사유)만 뽑는다. JSON 이 아니면 빈 문자열. */
-    private String reasonFrom(String body) {
-        if (body == null || body.isBlank()) {
-            return "";
-        }
-        try {
-            String msg1 = mapper.readTree(body).path("msg1").asText("").trim();
-            return msg1.isEmpty() ? "" : msg1;
-        } catch (Exception ignored) {
-            return "";
         }
     }
 }

@@ -118,4 +118,32 @@ class KisSyncCashTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.appKey").value("****"));
     }
+
+    @Test
+    void connectionTestReportsCashWithoutTouchingBalance() throws Exception {
+        when(kisBalanceService.fetchBalance(any())).thenReturn(withCash("2261716"));
+
+        mvc.perform(post("/api/v1/investments/accounts/" + INVEST_ACCOUNT_ID + "/kis-credentials/test")
+                        .header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.ok").value(true))
+                .andExpect(jsonPath("$.data.cash").value(2261716));
+
+        // 테스트는 조회만 한다 — 잔액을 바꾸지 않는다.
+        assertThat(assets.byId(INVEST_ACCOUNT_ID).balance()).isEqualTo(1_300_000L);
+    }
+
+    @Test
+    void connectionTestSurfacesKisReason() throws Exception {
+        when(kisBalanceService.fetchBalance(any()))
+                .thenThrow(new com.assetflow.investments.kis.KisApiException(
+                        "서버 에러가 발생했습니다. (EGW00002)"));
+
+        mvc.perform(post("/api/v1/investments/accounts/" + INVEST_ACCOUNT_ID + "/kis-credentials/test")
+                        .header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.ok").value(false))
+                .andExpect(jsonPath("$.data.message").value(
+                        org.hamcrest.Matchers.containsString("EGW00002")));
+    }
 }

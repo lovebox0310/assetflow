@@ -73,7 +73,13 @@ public class KisTokenClient {
             int expiresIn = node.path("expires_in").asInt(properties.getTokenExpirySeconds());
             return new Token(accessToken, Instant.now().plusSeconds(expiresIn));
         } catch (RestClientResponseException e) {
-            throw new KisApiException("KIS token request failed: " + e.getStatusText(), e);
+            // 상태 텍스트("Forbidden")만 던지면 EGW00002·EGW02004 같은 실제 사유를
+            // 사용자가 알 수 없다. KIS 본문의 error_code/error_description 을 붙인다.
+            String reason = KisErrorMessages.describe(e.getResponseBodyAsString());
+            throw new KisApiException("KIS token request failed: "
+                    + (reason.isEmpty() ? e.getStatusText() : reason), e);
+        } catch (KisApiException e) {
+            throw e;
         } catch (Exception e) {
             throw new KisApiException("KIS token request failed", e);
         }
