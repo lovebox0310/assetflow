@@ -20,7 +20,30 @@ class KisErrorMessagesTest {
 
         assertThat(message).contains("서버 에러가 발생했습니다.");
         assertThat(message).contains("EGW00002");
-        assertThat(message).contains("이용목적");
+    }
+
+    /**
+     * §69.3 EGW00002 는 앱키 오류가 아니다. 게이트웨이가 앱키·시크릿을 먼저 검증하고
+     * (틀리면 EGW00103/EGW00105) 통과한 뒤 토큰 발급에서 실패한 경우라, 사용자에게
+     * "키를 다시 확인하라"고 안내하면 같은 키를 반복 입력하게 만든다.
+     */
+    @Test
+    void genericTokenErrorDoesNotBlameTheKey() {
+        String message = KisErrorMessages.describe(
+                "{\"error_description\":\"서버 에러가 발생했습니다.\",\"error_code\":\"EGW00002\"}");
+
+        assertThat(message).contains("입력 오류가 아닙니다");
+        assertThat(message).doesNotContain("키를 다시 확인하세요");
+        assertThat(message).contains("API 신청 상태");
+    }
+
+    /** 키가 실제로 틀렸을 때는 반대로 키를 확인하라고 안내해야 한다. */
+    @Test
+    void invalidAppKeyStillBlamesTheKey() {
+        String message = KisErrorMessages.describe(
+                "{\"error_code\":\"EGW00103\",\"error_description\":\"유효하지 않은 AppKey입니다.\"}");
+
+        assertThat(message).contains("키를 다시 확인하세요");
     }
 
     @Test
