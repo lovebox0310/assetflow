@@ -7,6 +7,7 @@ import com.assetflow.expenses.ExpenseItemLedger;
 import com.assetflow.expenses.categories.CategoryClassifier;
 import com.assetflow.expenses.categories.CategoryClassifier.Classification;
 import com.assetflow.expenses.categories.CategoryTaxonomy;
+import com.assetflow.expenses.categories.MerchantPatterns;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -45,16 +46,19 @@ public class CardImportController {
 
     private final CardImportLedger ledger;
     private final MerchantRuleLedger ruleLedger;
+    private final MerchantBusinessCategoryLedger businessCategoryLedger;
     private final CategoryClassifier categoryClassifier;
     private final ExpenseItemLedger expenseItemLedger;
     private final CardStatementReader statementReader;
 
     public CardImportController(CardImportLedger ledger,
                                 MerchantRuleLedger ruleLedger,
+                                MerchantBusinessCategoryLedger businessCategoryLedger,
                                 CategoryClassifier categoryClassifier,
                                 ExpenseItemLedger expenseItemLedger) {
         this.ledger = ledger;
         this.ruleLedger = ruleLedger;
+        this.businessCategoryLedger = businessCategoryLedger;
         this.categoryClassifier = categoryClassifier;
         this.expenseItemLedger = expenseItemLedger;
         this.statementReader = new CardStatementReader(CardContract.loadDefault());
@@ -539,6 +543,9 @@ public class CardImportController {
         // 같은 가맹점의 다른 달 행도 함께 맞춘다 — 월별 합계가 서로 어긋나지 않게.
         int updatedRows = ledger.updateClassificationByMerchant(row.merchantName(), category, subCategory);
         ruleLedger.saveAllDetails(Map.of(row.merchantName(), new MerchantRule(category, subCategory)));
+        // §73: 사업자번호가 있으면 사업자번호 규칙도 함께 저장한다.
+        saveBusinessRule(row.merchantName(), row.businessNo(), category, subCategory);
+        categoryClassifier.reload();
         return new ApiResponse<>("OK", "Category updated", Map.of(
                 "rowKey", rowKey,
                 "merchantName", row.merchantName(),
@@ -567,19 +574,99 @@ public class CardImportController {
             subCategory = validSubCategory(subCategory);
         }
         int updatedRows;
+        String businessNo = ledger.businessNoForMerchant(merchantName);
         if (category.isBlank()) {
             updatedRows = ledger.clearClassificationByMerchant(merchantName);
             ruleLedger.delete(merchantName);
+            // §73: 되돌리면 사업자번호 규칙도 지운다 — 다음 분류가 잘못 승계되지 않게.
+            if (businessNo != null && !businessNo.isBlank()) {
+                businessCategoryLedger.deleteUserMapping(businessNo, "");
+                String pattern = businessCategoryLedger.hasPatternMapping(businessNo)
+                        ? MerchantPatterns.derive(merchantName) : "";
+                if (!pattern.isBlank()) {
+                    businessCategoryLedger.deleteUserMapping(businessNo, pattern);
+                }
+            }
+            categoryClassifier.reload();
             subCategory = "";
         } else {
             updatedRows = ledger.updateClassificationByMerchant(merchantName, category, subCategory);
             ruleLedger.saveAllDetails(Map.of(merchantName, new MerchantRule(category, subCategory)));
+            saveBusinessRule(merchantName, businessNo, category, subCategory);
+            categoryClassifier.reload();
         }
         return new ApiResponse<>("OK", "Merchant category updated", Map.of(
                 "merchantName", merchantName,
                 "category", category,
                 "subCategory", subCategory,
                 "updatedRows", updatedRows));
+    }
+
+    /**
+     * §73 기존 사용자 규칙을 사업자번호 규칙으로 한 번에 승격한다.
+     * 전화번호·월별 이름처럼 가맹점명이 자주 바뀌는 항목을 이름 규칙 대신
+     * 사업자번호로 승계하기 위한 1회성 백필이다. 여러 번 실행해도 안전하다.
+     */
+    @PostMapping("/card-imports/backfill-business-rules")
+    public ApiResponse<Map<String, Object>> backfillBusinessRules() {
+        int saved = 0;
+        int skipped = 0;
+        for (Map.Entry<String, MerchantRule> entry : ruleLedger.allRuleDetails().entrySet()) {
+            MerchantRule rule = usableRule(entry.getValue());
+            if (rule == null) {
+                skipped++;
+                continue;
+            }
+            String businessNo = ledger.businessNoForMerchant(entry.getKey());
+            if (businessNo == null || businessNo.isBlank()) {
+                skipped++;
+                continue;
+            }
+            try {
+                saveBusinessRule(entry.getKey(), businessNo, rule.category(), rule.subCategory());
+                saved++;
+            } catch (IllegalArgumentException e) {
+                skipped++;
+            }
+        }
+        categoryClassifier.reload();
+        return new ApiResponse<>("OK", "Business rules backfilled", Map.of(
+                "saved", saved, "skipped", skipped));
+    }
+
+    /**
+     * §73 사용자가 지정한 카테고리를 사업자번호 규칙으로도 저장한다.
+     *
+     * <p>사업자번호가 한 가맹점에만 쓰이면 일반 매핑(pattern 없음)으로 저장한다.
+     * 여러 가맹점이 공유하는 PG 번호는 가맹점명 패턴을 붙여야 오분류가 없다.
+     * 공유 여부는 ① 이미 패턴 매핑이 있는지(시드 포함) ② 같은 사업자번호의
+     * 다른 가맹점 카테고리가 갈리는지로 판단한다.</p>
+     */
+    private void saveBusinessRule(String merchantName, String businessNo,
+                                  String category, String subCategory) {
+        String digits = businessNo == null ? "" : businessNo.replaceAll("\\D", "");
+        if (digits.isEmpty() || isBlank(category) || CategoryTaxonomy.isUnset(category)) {
+            return;
+        }
+        boolean shared = businessCategoryLedger.hasPatternMapping(digits);
+        if (!shared) {
+            Set<String> kinds = new HashSet<>();
+            for (ImportedRow other : ledger.byBusinessNo(digits)) {
+                if (merchantName.equals(other.merchantName())) {
+                    continue;
+                }
+                if (!isBlank(other.expenseKind()) && !CategoryTaxonomy.isUnset(other.expenseKind())) {
+                    kinds.add(other.expenseKind());
+                }
+            }
+            kinds.add(category);
+            shared = kinds.size() > 1;
+        }
+        String pattern = shared ? MerchantPatterns.derive(merchantName) : "";
+        if (shared && pattern.isBlank()) {
+            return; // 패턴을 못 뽑으면 공유 번호에 일반 매핑을 걸지 않는다.
+        }
+        businessCategoryLedger.upsertUser(digits, pattern, category, safe(subCategory));
     }
 
     private String validCategory(String value) {

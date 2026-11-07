@@ -31,13 +31,16 @@ class CardImportApiTest {
     private static final String TOKEN = "Bearer " + new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com");
     private final InMemoryCardImportLedger ledger = new InMemoryCardImportLedger();
     private final InMemoryMerchantRuleLedger ruleLedger = new InMemoryMerchantRuleLedger();
+    private final InMemoryMerchantBusinessCategoryLedger businessCategoryLedger =
+            new InMemoryMerchantBusinessCategoryLedger();
     private final InMemoryCategoryClassifier classifier = new InMemoryCategoryClassifier();
     private final InMemoryExpenseItemLedger expenseItems = new InMemoryExpenseItemLedger();
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
-        mvc = MockMvcBuilders.standaloneSetup(new CardImportController(ledger, ruleLedger, classifier, expenseItems))
+        mvc = MockMvcBuilders.standaloneSetup(
+                        new CardImportController(ledger, ruleLedger, businessCategoryLedger, classifier, expenseItems))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .addInterceptors(new BearerTokenInterceptor(new TokenService("test-secret-0123456789-0123456789-0123456789")))
                 .build();
@@ -574,6 +577,89 @@ class CardImportApiTest {
         mvc.perform(patch("/api/v1/assets/card-imports/category").header("Authorization", TOKEN)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"rowKey\":\"nope\",\"category\":\"식비\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void categoryChangeSavesGenericBusinessRuleForUniqueNumber() throws Exception {
+        ledger.addAll(List.of(new CardImportLedger.ImportedRow(
+                "k1", "2026-10-01", "테스트가맹점A", 9000, 1000, 10000,
+                "", "", "", "9999999911", "", "본인", "현대카드")));
+
+        mvc.perform(patch("/api/v1/assets/card-imports/category").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"rowKey\":\"k1\",\"category\":\"식비\",\"subCategory\":\"외식\"}"))
+                .andExpect(status().isOk());
+
+        List<MerchantBusinessCategoryLedger.Mapping> mappings =
+                businessCategoryLedger.mappingsFor("9999999911");
+        org.assertj.core.api.Assertions.assertThat(mappings).hasSize(1);
+        org.assertj.core.api.Assertions.assertThat(mappings.get(0).source()).isEqualTo("user");
+        org.assertj.core.api.Assertions.assertThat(mappings.get(0).merchantPattern()).isEmpty();
+        org.assertj.core.api.Assertions.assertThat(mappings.get(0).category()).isEqualTo("식비");
+    }
+
+    @Test
+    void categoryChangeUsesMerchantPatternForSharedBusinessNumber() throws Exception {
+        // 같은 사업자번호를 쓰지만 카테고리가 다른 두 가맹점 — 일반 매핑이면 오분류된다.
+        ledger.addAll(List.of(
+                new CardImportLedger.ImportedRow(
+                        "k1", "2026-10-01", "KCP - 테스트A", 9000, 1000, 10000,
+                        "", "", "", "9999999922", "", "본인", "현대카드"),
+                new CardImportLedger.ImportedRow(
+                        "k2", "2026-10-02", "KCP - 테스트B", 9000, 1000, 10000,
+                        "", "쇼핑/생활", "", "9999999922", "", "본인", "현대카드")));
+
+        mvc.perform(patch("/api/v1/assets/card-imports/category").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"rowKey\":\"k1\",\"category\":\"식비\",\"subCategory\":\"외식\"}"))
+                .andExpect(status().isOk());
+
+        List<MerchantBusinessCategoryLedger.Mapping> mappings =
+                businessCategoryLedger.mappingsFor("9999999922");
+        org.assertj.core.api.Assertions.assertThat(mappings).hasSize(1);
+        org.assertj.core.api.Assertions.assertThat(mappings.get(0).merchantPattern()).isEqualTo("테스트a");
+        org.assertj.core.api.Assertions.assertThat(mappings.get(0).category()).isEqualTo("식비");
+    }
+
+    @Test
+    void revertingMerchantCategoryDeletesUserBusinessRule() throws Exception {
+        ledger.addAll(List.of(new CardImportLedger.ImportedRow(
+                "k1", "2026-10-01", "되돌릴가맹점", 9000, 1000, 10000,
+                "", "식비", "외식", "9999999912", "", "본인", "현대카드")));
+        ruleLedger.saveAllDetails(Map.of("되돌릴가맹점", new MerchantRuleLedger.MerchantRule("식비", "외식")));
+        mvc.perform(patch("/api/v1/assets/card-imports/merchant-category").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"merchantName\":\"되돌릴가맹점\",\"category\":\"식비\",\"subCategory\":\"외식\"}"))
+                .andExpect(status().isOk());
+        org.assertj.core.api.Assertions.assertThat(
+                businessCategoryLedger.mappingsFor("9999999912")).hasSize(1);
+
+        mvc.perform(patch("/api/v1/assets/card-imports/merchant-category").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"merchantName\":\"되돌릴가맹점\",\"category\":\"\"}"))
+                .andExpect(status().isOk());
+
+        org.assertj.core.api.Assertions.assertThat(
+                businessCategoryLedger.mappingsFor("9999999912")).isEmpty();
+    }
+
+    @Test
+    void backfillPromotesExistingMerchantRulesToBusinessRules() throws Exception {
+        ledger.addAll(List.of(new CardImportLedger.ImportedRow(
+                "k1", "2026-10-01", "백필가맹점", 9000, 1000, 10000,
+                "", "식비", "외식", "9999999933", "", "본인", "현대카드")));
+        ruleLedger.saveAllDetails(Map.of("백필가맹점",
+                new MerchantRuleLedger.MerchantRule("식비", "외식")));
+
+        mvc.perform(post("/api/v1/assets/card-imports/backfill-business-rules").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.saved").value(1));
+
+        List<MerchantBusinessCategoryLedger.Mapping> mappings =
+                businessCategoryLedger.mappingsFor("9999999933");
+        org.assertj.core.api.Assertions.assertThat(mappings).hasSize(1);
+        org.assertj.core.api.Assertions.assertThat(mappings.get(0).category()).isEqualTo("식비");
+        org.assertj.core.api.Assertions.assertThat(mappings.get(0).merchantPattern()).isEmpty();
     }
 
     @Test

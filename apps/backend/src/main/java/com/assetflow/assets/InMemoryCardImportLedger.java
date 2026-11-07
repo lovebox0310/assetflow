@@ -35,6 +35,30 @@ public class InMemoryCardImportLedger implements CardImportLedger {
         }
     }
 
+    @Override
+    public List<ImportedRow> byBusinessNo(String businessNo) {
+        if (businessNo == null || businessNo.isBlank()) {
+            return List.of();
+        }
+        synchronized (rows) {
+            return rows.stream().filter(r -> businessNo.equals(r.businessNo())).toList();
+        }
+    }
+
+    @Override
+    public String businessNoForMerchant(String merchantName) {
+        if (merchantName == null || merchantName.isBlank()) {
+            return null;
+        }
+        synchronized (rows) {
+            return rows.stream()
+                    .filter(r -> merchantName.equals(r.merchantName()))
+                    .map(ImportedRow::businessNo)
+                    .filter(b -> b != null && !b.isBlank())
+                    .findFirst().orElse(null);
+        }
+    }
+
     public Set<String> existingRowKeys() {
         synchronized (rows) {
             Set<String> keys = new HashSet<>();

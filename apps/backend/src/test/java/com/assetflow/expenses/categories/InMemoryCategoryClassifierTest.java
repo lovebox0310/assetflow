@@ -34,6 +34,32 @@ class InMemoryCategoryClassifierTest {
     }
 
     @Test
+    void userBusinessRuleOverridesSeedPattern() {
+        // §73: 시드 KCP 1138521083 + 넷플릭스 → 문화/여가. 사용자가 바꾸면 사용자 규칙이 이긴다.
+        InMemoryCategoryClassifier classifier = new InMemoryCategoryClassifier();
+        assertEquals("문화/여가",
+                classifier.classifyByBusinessNo("1138521083", "KCP - 넷플릭스서비시스코리아").category());
+
+        classifier.addUserBusinessNoPattern("1138521083", "넷플릭스", "교육", "학원/교육");
+
+        CategoryClassifier.Classification result =
+                classifier.classifyByBusinessNo("1138521083", "KCP - 넷플릭스서비시스코리아");
+        assertEquals("교육", result.category());
+        assertEquals("학원/교육", result.subCategory());
+    }
+
+    @Test
+    void userGenericBusinessRuleBeatsSeedSpecificPattern() {
+        InMemoryCategoryClassifier classifier = new InMemoryCategoryClassifier();
+        classifier.addUserBusinessNoPattern("1138521083", "", "기타/경조사", "기타");
+
+        assertEquals("기타/경조사",
+                classifier.classifyByBusinessNo("1138521083", "KCP - 넷플릭스서비시스코리아").category());
+        assertEquals("기타/경조사",
+                classifier.classifyByBusinessNo("1138521083", "KCP - 쿠팡").category());
+    }
+
+    @Test
     void longerKeywordWins() {
         InMemoryCategoryClassifier classifier = new InMemoryCategoryClassifier();
         classifier.addKeyword("주유", "교통/차량", "차량유지비", 0);
