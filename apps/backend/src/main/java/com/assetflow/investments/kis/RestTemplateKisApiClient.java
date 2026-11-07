@@ -24,6 +24,8 @@ import java.util.Map;
 public class RestTemplateKisApiClient implements KisApiClient {
 
     private static final String CUST_TYPE = "P";
+    /** §69.2 KIS 게이트웨이가 기본 Java UA를 거부하는 사례가 있어 브라우저 형태로 보낸다. */
+    private static final String USER_AGENT = "Mozilla/5.0 (compatible; AssetFlow/1.0)";
 
     private final KisTokenClient tokenClient;
     private final RestTemplate restTemplate;
@@ -61,6 +63,7 @@ public class RestTemplateKisApiClient implements KisApiClient {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(tokenClient.accessToken(credentials));
         headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set(HttpHeaders.USER_AGENT, USER_AGENT);
         headers.set("appkey", credentials.appKey());
         headers.set("appsecret", credentials.appSecret());
         headers.set("tr_id", trId);

@@ -24,6 +24,12 @@ public class KisTokenClient {
 
     private static final String TOKEN_PATH = "/oauth2/tokenP";
     private static final int RENEW_MARGIN_SECONDS = 600;
+    /**
+     * §69.2 KIS 게이트웨이는 기본 Java/Python User-Agent(예: {@code Java/21.0.x})를
+     * 403 EGW00002 로 거부하는 사례가 보고돼 있다. 공식 문서에는 없는 제약이라
+     * 토큰 요청에만 브라우저 형태의 UA를 명시한다.
+     */
+    private static final String USER_AGENT = "Mozilla/5.0 (compatible; AssetFlow/1.0)";
 
     private final KisProperties properties;
     private final RestTemplate restTemplate;
@@ -58,6 +64,7 @@ public class KisTokenClient {
         String url = credentials.effectiveBaseUrl(properties.getBaseUrl()) + TOKEN_PATH;
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set(HttpHeaders.USER_AGENT, USER_AGENT);
         Map<String, String> body = Map.of(
                 "grant_type", "client_credentials",
                 "appkey", credentials.appKey(),
