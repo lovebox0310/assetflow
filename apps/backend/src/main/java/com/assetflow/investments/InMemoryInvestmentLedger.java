@@ -6,7 +6,10 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -20,6 +23,8 @@ public class InMemoryInvestmentLedger implements InvestmentLedger {
 
     private final List<HoldingRow> rows = new ArrayList<>(seed());
     private final AtomicLong nextId = new AtomicLong(100);
+    /** §70 KIS 동기화로 들어온 행 id. deleteKisOnly 가 이것만 정리한다. */
+    private final Set<Long> kisIds = new HashSet<>();
 
     private static List<HoldingRow> seed() {
         // 계좌 id 는 InMemoryAssetLedger 시드 순서(4=키움 투자금, 5=미국주식)를 따른다.
@@ -78,13 +83,95 @@ public class InMemoryInvestmentLedger implements InvestmentLedger {
             if (!rows.removeIf(r -> r.id() == id)) {
                 throw new NotFoundException("holding id " + id);
             }
+            kisIds.remove(id);
         }
     }
 
     @Override
     public void deleteByAccountId(long accountId) {
         synchronized (rows) {
-            rows.removeIf(r -> r.accountId() == accountId);
+            rows.removeIf(r -> {
+                if (r.accountId() == accountId) {
+                    kisIds.remove(r.id());
+                    return true;
+                }
+                return false;
+            });
+        }
+    }
+
+    /** §70 Postgres 구현과 같은 규칙: 같은 심볼 → 심볼 없는 같은 이름 순으로 흡수한다. */
+    @Override
+    public HoldingRow upsertKis(HoldingRow row) {
+        synchronized (rows) {
+            if (row.symbol() != null && !row.symbol().isBlank()) {
+                List<HoldingRow> sameSymbol = rows.stream()
+                        .filter(r -> r.accountId() == row.accountId() && row.symbol().equals(r.symbol()))
+                        .toList();
+                if (!sameSymbol.isEmpty()) {
+                    return applyKis(sameSymbol, row);
+                }
+            }
+
+            String name = row.name() == null ? "" : row.name().trim();
+            List<HoldingRow> sameName = rows.stream()
+                    .filter(r -> r.accountId() == row.accountId() && !kisIds.contains(r.id()))
+                    .filter(r -> r.symbol() == null || r.symbol().isBlank())
+                    .filter(r -> r.name() != null && r.name().trim().equalsIgnoreCase(name))
+                    .toList();
+            if (!sameName.isEmpty()) {
+                return applyKis(sameName, row);
+            }
+
+            HoldingRow saved = new HoldingRow(nextId.getAndIncrement(), row.accountId(), row.assetClass(),
+                    row.symbol(), row.name(), row.currency(), row.quantity(), row.avgPrice(),
+                    row.marketPrice(), row.fxRate(), row.priceAsOf());
+            rows.add(saved);
+            kisIds.add(saved.id());
+            return saved;
+        }
+    }
+
+    /** 첫 행만 갱신하고 나머지는 같은 종목의 중복 행이므로 삭제한다. */
+    private HoldingRow applyKis(List<HoldingRow> matches, HoldingRow row) {
+        long keepId = matches.get(0).id();
+        HoldingRow saved = new HoldingRow(keepId, row.accountId(), row.assetClass(), row.symbol(),
+                row.name(), row.currency(), row.quantity(), row.avgPrice(), row.marketPrice(),
+                row.fxRate(), row.priceAsOf());
+        for (int i = 0; i < rows.size(); i++) {
+            if (rows.get(i).id() == keepId) {
+                rows.set(i, saved);
+                break;
+            }
+        }
+        kisIds.add(keepId);
+        for (int i = 1; i < matches.size(); i++) {
+            long duplicateId = matches.get(i).id();
+            rows.removeIf(r -> r.id() == duplicateId);
+            kisIds.remove(duplicateId);
+        }
+        return saved;
+    }
+
+    @Override
+    public int deleteKisOnly(long accountId, Collection<String> keepSymbols) {
+        Set<String> keep = new HashSet<>();
+        if (keepSymbols != null) {
+            for (String symbol : keepSymbols) {
+                if (symbol != null && !symbol.isBlank()) {
+                    keep.add(symbol);
+                }
+            }
+        }
+        synchronized (rows) {
+            List<Long> removed = rows.stream()
+                    .filter(r -> r.accountId() == accountId && kisIds.contains(r.id()))
+                    .filter(r -> r.symbol() == null || !keep.contains(r.symbol()))
+                    .map(HoldingRow::id)
+                    .toList();
+            rows.removeIf(r -> removed.contains(r.id()));
+            removed.forEach(kisIds::remove);
+            return removed.size();
         }
     }
 }

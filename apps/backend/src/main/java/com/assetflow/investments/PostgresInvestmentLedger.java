@@ -10,6 +10,9 @@ import org.springframework.stereotype.Component;
 import jakarta.annotation.PostConstruct;
 import java.math.BigDecimal;
 import java.sql.Date;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -159,5 +162,91 @@ public class PostgresInvestmentLedger implements InvestmentLedger {
     @Override
     public void deleteByAccountId(long accountId) {
         jdbc.update("DELETE FROM investment_holdings WHERE account_id = ? AND user_id = ?", accountId, userId);
+    }
+
+    /**
+     * §70 같은 종목이 이미 있으면 그 행을 갱신하고(중복 행은 정리) {@code source='kis'} 로 바꾼다.
+     * 심볼이 같은 행을 먼저 찾고, 없으면 심볼 없이 수동 입력한 같은 이름 행을 흡수한다.
+     */
+    @Override
+    public HoldingRow upsertKis(HoldingRow row) {
+        List<Long> sameSymbol = row.symbol() == null || row.symbol().isBlank()
+                ? List.of()
+                : jdbc.queryForList("""
+                        SELECT id FROM investment_holdings
+                        WHERE user_id = ? AND account_id = ? AND symbol = ?
+                        ORDER BY id
+                        """, Long.class, userId, row.accountId(), row.symbol());
+        if (!sameSymbol.isEmpty()) {
+            return applyKis(sameSymbol, row);
+        }
+
+        List<Long> sameName = jdbc.queryForList("""
+                SELECT id FROM investment_holdings
+                WHERE user_id = ? AND account_id = ? AND source = 'manual'
+                  AND (symbol IS NULL OR btrim(symbol) = '')
+                  AND lower(btrim(name)) = lower(btrim(?))
+                ORDER BY id
+                """, Long.class, userId, row.accountId(), row.name());
+        if (!sameName.isEmpty()) {
+            return applyKis(sameName, row);
+        }
+
+        Long id = jdbc.queryForObject("""
+                INSERT INTO investment_holdings (user_id, account_id, asset_class, symbol, name,
+                                                 currency, quantity, avg_price, market_price, fx_rate,
+                                                 price_as_of, source)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'kis')
+                RETURNING id
+                """, Long.class, userId, row.accountId(), row.assetClass(), row.symbol(), row.name(),
+                row.currency(), row.quantity(), row.avgPrice(), row.marketPrice(), row.fxRate(),
+                row.priceAsOf() == null ? null : Date.valueOf(row.priceAsOf()));
+        return withId(id, row);
+    }
+
+    /** 첫 행만 갱신하고 나머지는 같은 종목의 중복 행이므로 삭제한다. */
+    private HoldingRow applyKis(List<Long> ids, HoldingRow row) {
+        long keepId = ids.get(0);
+        int updated = jdbc.update("""
+                UPDATE investment_holdings
+                SET asset_class = ?, symbol = ?, name = ?, currency = ?, quantity = ?, avg_price = ?,
+                    market_price = ?, fx_rate = ?, price_as_of = ?, source = 'kis', updated_at = now()
+                WHERE id = ? AND user_id = ?
+                """, row.assetClass(), row.symbol(), row.name(), row.currency(), row.quantity(),
+                row.avgPrice(), row.marketPrice(), row.fxRate(),
+                row.priceAsOf() == null ? null : Date.valueOf(row.priceAsOf()), keepId, userId);
+        if (updated == 0) {
+            throw new NotFoundException("holding id " + keepId);
+        }
+        for (int i = 1; i < ids.size(); i++) {
+            jdbc.update("DELETE FROM investment_holdings WHERE id = ? AND user_id = ?", ids.get(i), userId);
+        }
+        return withId(keepId, row);
+    }
+
+    private static HoldingRow withId(long id, HoldingRow row) {
+        return new HoldingRow(id, row.accountId(), row.assetClass(), row.symbol(), row.name(),
+                row.currency(), row.quantity(), row.avgPrice(), row.marketPrice(), row.fxRate(),
+                row.priceAsOf());
+    }
+
+    @Override
+    public int deleteKisOnly(long accountId, Collection<String> keepSymbols) {
+        List<String> symbols = keepSymbols == null ? List.of()
+                : keepSymbols.stream().filter(s -> s != null && !s.isBlank()).distinct().toList();
+        if (symbols.isEmpty()) {
+            return jdbc.update(
+                    "DELETE FROM investment_holdings WHERE user_id = ? AND account_id = ? AND source = 'kis'",
+                    userId, accountId);
+        }
+        String placeholders = String.join(", ", Collections.nCopies(symbols.size(), "?"));
+        String sql = "DELETE FROM investment_holdings "
+                + "WHERE user_id = ? AND account_id = ? AND source = 'kis' "
+                + "AND (symbol IS NULL OR symbol NOT IN (" + placeholders + "))";
+        List<Object> args = new ArrayList<>(symbols.size() + 2);
+        args.add(userId);
+        args.add(accountId);
+        args.addAll(symbols);
+        return jdbc.update(sql, args.toArray());
     }
 }
