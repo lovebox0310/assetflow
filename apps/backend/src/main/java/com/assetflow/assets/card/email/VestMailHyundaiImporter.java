@@ -4,6 +4,7 @@ import com.assetflow.assets.CardImportLedger;
 import com.assetflow.assets.CardStatementLedger;
 import com.assetflow.assets.card.CardContract;
 import com.assetflow.assets.card.CardImportCipher;
+import com.assetflow.expenses.categories.CategoryClassifier;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -42,6 +43,7 @@ public class VestMailHyundaiImporter {
     private final CardEmailImportSettingsLedger settingsLedger;
     private final ObjectMapper objectMapper;
     private final CardEmailAttachmentDownloader downloader;
+    private final CategoryClassifier categoryClassifier;
     private final String scriptDir;
     private final String cardCompanyLabel;
 
@@ -51,6 +53,7 @@ public class VestMailHyundaiImporter {
                                    CardEmailImportSettingsLedger settingsLedger,
                                    ObjectMapper objectMapper,
                                    CardEmailAttachmentDownloader downloader,
+                                   CategoryClassifier categoryClassifier,
                                    @Value("${app.card.vestmail.hyundai.script-dir:}") String scriptDir) {
         this.cipher = cipher;
         this.ledger = ledger;
@@ -58,6 +61,7 @@ public class VestMailHyundaiImporter {
         this.settingsLedger = settingsLedger;
         this.objectMapper = objectMapper;
         this.downloader = downloader;
+        this.categoryClassifier = categoryClassifier;
         this.scriptDir = scriptDir;
         // CSV 업로드와 같은 라벨을 써야 화면에서 카드사가 갈라지지 않는다(§29.3 단일 출처).
         this.cardCompanyLabel = CardContract.loadDefault().companyProfile("hyundaicard").cardCompanyLabel();
@@ -160,6 +164,12 @@ public class VestMailHyundaiImporter {
             String baseKey = buildRowKey(userId, approvedAt, merchant, grossAmount, cardMasked);
             int n = occurrence.merge(baseKey, 1, Integer::sum);
             String rowKey = baseKey + "#" + n;
+            // §55.8: 수집 시점에 규칙 → 키워드 순으로 분류한다. 현대 명세서에는
+            // 사업자번호·업종이 없어 키워드/사용자 규칙이 유일한 자동 신호다.
+            CategoryClassifier.Classification classified = categoryClassifier.classify(merchant, "", "");
+            String expenseKind = classified == null || classified.unclassified()
+                    ? null : classified.category();
+            String subCategory = classified == null ? null : classified.subCategory();
             rows.add(new CardImportLedger.ImportedRow(
                     rowKey,
                     approvedAt,
@@ -168,8 +178,8 @@ public class VestMailHyundaiImporter {
                     vat,
                     grossAmount,
                     cardMasked,
-                    null, // expenseKind
-                    null, // subCategory
+                    expenseKind,
+                    subCategory,
                     null, // businessNo
                     null, // businessCategory
                     cardMemberRelation(cardMasked),
