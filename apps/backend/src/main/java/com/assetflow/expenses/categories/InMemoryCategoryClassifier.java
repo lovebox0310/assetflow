@@ -125,22 +125,20 @@ public class InMemoryCategoryClassifier implements CategoryClassifier {
         return best == null ? null : best.classification();
     }
 
-    /** §73: 사용자 매핑 → 시드, 구체 패턴 → 일반, 같은 종류면 긴 패턴. */
+    /** §73: 구체 패턴 → 일반, 같은 종류면 긴 패턴 → 같은 길이면 사용자. */
     private static boolean isBetter(BusinessMapping candidate, BusinessMapping current) {
-        boolean candidateUser = "user".equals(candidate.source());
-        boolean currentUser = "user".equals(current.source());
-        if (candidateUser != currentUser) {
-            return candidateUser;
-        }
         boolean candidateSpecific = !candidate.pattern().isEmpty();
         boolean currentSpecific = !current.pattern().isEmpty();
         if (candidateSpecific != currentSpecific) {
             return candidateSpecific;
         }
         if (candidateSpecific) {
-            return candidate.pattern().length() > current.pattern().length();
+            int length = Integer.compare(candidate.pattern().length(), current.pattern().length());
+            if (length != 0) {
+                return length > 0;
+            }
         }
-        return false;
+        return "user".equals(candidate.source()) && !"user".equals(current.source());
     }
 
     @Override

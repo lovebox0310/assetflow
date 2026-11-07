@@ -151,24 +151,23 @@ public class PostgresCategoryClassifier implements CategoryClassifier {
     }
 
     /**
-     * §73 우선순위: 사용자 매핑 → 시드, 그 안에서는 구체 패턴 → 일반, 같은 종류면 긴 패턴.
-     * 사용자가 직접 고친 사업자번호 규칙이 시드보다 항상 이긴다.
+     * §73 우선순위: 구체 패턴 → 일반, 같은 종류면 긴 패턴 → 같은 길이면 사용자.
+     * 사용자 규칙이라도 시드의 더 긴 패턴(예: 쿠팡이츠)을 짧은 패턴(쿠팡)으로
+     * 덮어쓰지 않는다 — PG 공유 번호의 오분류를 막기 위해서다.
      */
     private static boolean isBetter(BusinessMapping candidate, BusinessMapping current) {
-        boolean candidateUser = "user".equals(candidate.source());
-        boolean currentUser = "user".equals(current.source());
-        if (candidateUser != currentUser) {
-            return candidateUser;
-        }
         boolean candidateSpecific = !candidate.pattern().isEmpty();
         boolean currentSpecific = !current.pattern().isEmpty();
         if (candidateSpecific != currentSpecific) {
             return candidateSpecific;
         }
         if (candidateSpecific) {
-            return candidate.pattern().length() > current.pattern().length();
+            int length = Integer.compare(candidate.pattern().length(), current.pattern().length());
+            if (length != 0) {
+                return length > 0;
+            }
         }
-        return false;
+        return "user".equals(candidate.source()) && !"user".equals(current.source());
     }
 
     @Override

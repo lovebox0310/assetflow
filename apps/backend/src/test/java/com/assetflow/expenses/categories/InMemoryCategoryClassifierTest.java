@@ -49,14 +49,31 @@ class InMemoryCategoryClassifierTest {
     }
 
     @Test
-    void userGenericBusinessRuleBeatsSeedSpecificPattern() {
+    void seedSpecificPatternBeatsUserGenericMapping() {
+        // §73: 공유 PG 번호에 일반 매핑이 잘못 생겨도 시드의 구체 패턴이 이긴다.
         InMemoryCategoryClassifier classifier = new InMemoryCategoryClassifier();
         classifier.addUserBusinessNoPattern("1138521083", "", "기타/경조사", "기타");
 
-        assertEquals("기타/경조사",
+        assertEquals("문화/여가",
                 classifier.classifyByBusinessNo("1138521083", "KCP - 넷플릭스서비시스코리아").category());
-        assertEquals("기타/경조사",
+        assertEquals("식비",
+                classifier.classifyByBusinessNo("1138521083", "KCP - 쿠팡이츠").category());
+    }
+
+    @Test
+    void longerPatternWinsEvenAcrossUserAndSeed() {
+        InMemoryCategoryClassifier classifier = new InMemoryCategoryClassifier();
+        // 시드: 쿠팡이츠(4) → 배달. 사용자: 쿠팡(2) → 쇼핑.
+        classifier.addUserBusinessNoPattern("1138521083", "쿠팡", "쇼핑/생활", "생활용품");
+        assertEquals("식비",
+                classifier.classifyByBusinessNo("1138521083", "KCP - 쿠팡이츠").category());
+        // 같은 길이/같은 패턴이면 사용자 규칙이 이긴다.
+        assertEquals("쇼핑/생활",
                 classifier.classifyByBusinessNo("1138521083", "KCP - 쿠팡").category());
+        // 더 긴 사용자 패턴은 시드 짧은 패턴보다 우선한다.
+        classifier.addUserBusinessNoPattern("1138521083", "넷플릭스서비시스코리아", "교육", "학원/교육");
+        assertEquals("교육",
+                classifier.classifyByBusinessNo("1138521083", "KCP - 넷플릭스서비시스코리아").category());
     }
 
     @Test
