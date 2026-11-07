@@ -155,6 +155,20 @@ export function deleteKisCredentials(accountId: number): Promise<void> {
   });
 }
 
+/** §69 연결 테스트 결과. ok=false 여도 사유를 보여 주기 위해 200 으로 내려온다. */
+export interface KisConnectionTest {
+  ok: boolean;
+  cash: number | null;
+  message: string;
+}
+
+export function testKisCredentials(accountId: number): Promise<KisConnectionTest> {
+  return apiFetch<KisConnectionTest>(
+    `/api/v1/investments/accounts/${accountId}/kis-credentials/test`,
+    { method: "POST" },
+  );
+}
+
 /**
  * §62 한국투자증권 국내주식 잔고를 가져와 보유종목을 동기화한다.
  * KIS 자격증명은 서버 DB에서 계좌별로 조회한다.
