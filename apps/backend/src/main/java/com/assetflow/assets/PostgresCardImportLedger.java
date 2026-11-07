@@ -68,6 +68,33 @@ public class PostgresCardImportLedger implements CardImportLedger {
                 """, PostgresCardImportLedger::map, userId, start, end);
     }
 
+    @Override
+    public List<ImportedRow> byBusinessNo(String businessNo) {
+        if (businessNo == null || businessNo.isBlank()) {
+            return List.of();
+        }
+        return jdbc.query("""
+                SELECT row_key, approved_at, merchant_name, supply_ex_vat, vat, gross_amount,
+                       card_masked, expense_kind, sub_category, business_no, business_category, member_relation, card_company
+                FROM card_imports
+                WHERE user_id = ? AND business_no = ?
+                ORDER BY id
+                """, PostgresCardImportLedger::map, userId, businessNo);
+    }
+
+    @Override
+    public String businessNoForMerchant(String merchantName) {
+        if (merchantName == null || merchantName.isBlank()) {
+            return null;
+        }
+        List<String> values = jdbc.queryForList("""
+                SELECT business_no FROM card_imports
+                WHERE user_id = ? AND merchant_name = ? AND business_no IS NOT NULL AND business_no <> ''
+                ORDER BY id LIMIT 1
+                """, String.class, userId, merchantName);
+        return values.isEmpty() ? null : values.get(0);
+    }
+
     public Set<String> existingRowKeys() {
         return new HashSet<>(jdbc.queryForList(
                 "SELECT row_key FROM card_imports WHERE user_id = ?", String.class, userId));

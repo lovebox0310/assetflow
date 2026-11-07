@@ -64,7 +64,8 @@ public class PostgresCategoryClassifier implements CategoryClassifier {
 
     private List<BusinessMapping> loadBusinessCategories() {
         return jdbc.query("""
-                        SELECT b.business_no, b.merchant_pattern, c.name AS category_name, b.sub_category
+                        SELECT b.business_no, b.merchant_pattern, c.name AS category_name,
+                               b.sub_category, b.source
                         FROM merchant_business_categories b
                         JOIN expense_categories c ON c.id = b.category_id
                         WHERE b.user_id = ?
@@ -73,8 +74,9 @@ public class PostgresCategoryClassifier implements CategoryClassifier {
                 (rs, n) -> new BusinessMapping(
                         rs.getString("business_no"),
                         rs.getString("merchant_pattern") == null ? "" : rs.getString("merchant_pattern"),
-                        rs.getString("category_name"),
-                        rs.getString("sub_category")),
+                        new Classification(rs.getString("category_name"),
+                                rs.getString("sub_category") == null ? "" : rs.getString("sub_category")),
+                        rs.getString("source")),
                 userId);
     }
 
@@ -132,27 +134,41 @@ public class PostgresCategoryClassifier implements CategoryClassifier {
             return null;
         }
         String normalized = normalize(merchantName);
-        BusinessMapping generic = null;
-        BusinessMapping specific = null;
+        BusinessMapping best = null;
         for (BusinessMapping mapping : businessCategories()) {
             if (!mapping.businessNo().equals(digits)) {
                 continue;
             }
-            if (mapping.pattern().isEmpty()) {
-                if (generic == null) {
-                    generic = mapping;
-                }
+            boolean specific = !mapping.pattern().isEmpty();
+            if (specific && !normalized.contains(mapping.pattern())) {
                 continue;
             }
-            // PG 사업자번호는 여러 가맹점이 공유한다 — 가장 긴 패턴이 이긴다.
-            if (normalized.contains(mapping.pattern())) {
-                if (specific == null || mapping.pattern().length() > specific.pattern().length()) {
-                    specific = mapping;
-                }
+            if (best == null || isBetter(mapping, best)) {
+                best = mapping;
             }
         }
-        BusinessMapping matched = specific != null ? specific : generic;
-        return matched == null ? null : new Classification(matched.categoryName(), matched.subCategory());
+        return best == null ? null : best.classification();
+    }
+
+    /**
+     * §73 우선순위: 사용자 매핑 → 시드, 그 안에서는 구체 패턴 → 일반, 같은 종류면 긴 패턴.
+     * 사용자가 직접 고친 사업자번호 규칙이 시드보다 항상 이긴다.
+     */
+    private static boolean isBetter(BusinessMapping candidate, BusinessMapping current) {
+        boolean candidateUser = "user".equals(candidate.source());
+        boolean currentUser = "user".equals(current.source());
+        if (candidateUser != currentUser) {
+            return candidateUser;
+        }
+        boolean candidateSpecific = !candidate.pattern().isEmpty();
+        boolean currentSpecific = !current.pattern().isEmpty();
+        if (candidateSpecific != currentSpecific) {
+            return candidateSpecific;
+        }
+        if (candidateSpecific) {
+            return candidate.pattern().length() > current.pattern().length();
+        }
+        return false;
     }
 
     @Override
@@ -192,5 +208,5 @@ public class PostgresCategoryClassifier implements CategoryClassifier {
     private record RuleMapping(String category, String subCategory) {}
 
     private record BusinessMapping(String businessNo, String pattern,
-                                   String categoryName, String subCategory) {}
+                                   Classification classification, String source) {}
 }

@@ -27,7 +27,8 @@ public class InMemoryCategoryClassifier implements CategoryClassifier {
             businessCategories.add(new BusinessMapping(
                     entry.businessNo(),
                     entry.pattern(),
-                    new Classification(entry.category(), entry.subCategory())));
+                    new Classification(entry.category(), entry.subCategory()),
+                    "seed"));
         }
     }
 
@@ -54,7 +55,8 @@ public class InMemoryCategoryClassifier implements CategoryClassifier {
         businessCategories.add(new BusinessMapping(
                 businessNo.replaceAll("\\D", ""),
                 "",
-                new Classification(categoryName, subCategory == null ? "" : subCategory)));
+                new Classification(categoryName, subCategory == null ? "" : subCategory),
+                "seed"));
     }
 
     /** 테스트용 사업자번호 + 가맹점 패턴 매핑 (§67). */
@@ -62,7 +64,18 @@ public class InMemoryCategoryClassifier implements CategoryClassifier {
         businessCategories.add(new BusinessMapping(
                 businessNo.replaceAll("\\D", ""),
                 BusinessCategorySeed.normalize(pattern),
-                new Classification(categoryName, subCategory == null ? "" : subCategory)));
+                new Classification(categoryName, subCategory == null ? "" : subCategory),
+                "seed"));
+    }
+
+    /** §73 테스트용 사용자 사업자번호 규칙. */
+    public void addUserBusinessNoPattern(String businessNo, String pattern,
+                                         String categoryName, String subCategory) {
+        businessCategories.add(new BusinessMapping(
+                businessNo.replaceAll("\\D", ""),
+                BusinessCategorySeed.normalize(pattern),
+                new Classification(categoryName, subCategory == null ? "" : subCategory),
+                "user"));
     }
 
     @Override
@@ -96,26 +109,38 @@ public class InMemoryCategoryClassifier implements CategoryClassifier {
             return null;
         }
         String normalized = BusinessCategorySeed.normalize(merchantName);
-        BusinessMapping generic = null;
-        BusinessMapping specific = null;
+        BusinessMapping best = null;
         for (BusinessMapping mapping : businessCategories) {
             if (!mapping.businessNo().equals(digits)) {
                 continue;
             }
-            if (mapping.pattern().isEmpty()) {
-                if (generic == null) {
-                    generic = mapping;
-                }
+            boolean specific = !mapping.pattern().isEmpty();
+            if (specific && !normalized.contains(mapping.pattern())) {
                 continue;
             }
-            if (normalized.contains(mapping.pattern())) {
-                if (specific == null || mapping.pattern().length() > specific.pattern().length()) {
-                    specific = mapping;
-                }
+            if (best == null || isBetter(mapping, best)) {
+                best = mapping;
             }
         }
-        BusinessMapping matched = specific != null ? specific : generic;
-        return matched == null ? null : matched.classification();
+        return best == null ? null : best.classification();
+    }
+
+    /** §73: 사용자 매핑 → 시드, 구체 패턴 → 일반, 같은 종류면 긴 패턴. */
+    private static boolean isBetter(BusinessMapping candidate, BusinessMapping current) {
+        boolean candidateUser = "user".equals(candidate.source());
+        boolean currentUser = "user".equals(current.source());
+        if (candidateUser != currentUser) {
+            return candidateUser;
+        }
+        boolean candidateSpecific = !candidate.pattern().isEmpty();
+        boolean currentSpecific = !current.pattern().isEmpty();
+        if (candidateSpecific != currentSpecific) {
+            return candidateSpecific;
+        }
+        if (candidateSpecific) {
+            return candidate.pattern().length() > current.pattern().length();
+        }
+        return false;
     }
 
     @Override
@@ -146,5 +171,6 @@ public class InMemoryCategoryClassifier implements CategoryClassifier {
 
     private record KeywordMapping(String keyword, String categoryName, String subCategory, int priority) {}
 
-    private record BusinessMapping(String businessNo, String pattern, Classification classification) {}
+    private record BusinessMapping(String businessNo, String pattern,
+                                   Classification classification, String source) {}
 }
