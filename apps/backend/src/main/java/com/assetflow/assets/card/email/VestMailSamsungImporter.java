@@ -1,6 +1,7 @@
 package com.assetflow.assets.card.email;
 
 import com.assetflow.assets.CardImportLedger;
+import com.assetflow.assets.CardStatementLedger;
 import com.assetflow.assets.card.CardContract;
 import com.assetflow.assets.card.CardImportCipher;
 import com.assetflow.expenses.categories.CategoryClassifier;
@@ -42,6 +43,7 @@ public class VestMailSamsungImporter {
 
     private final CardImportCipher cipher;
     private final CardImportLedger ledger;
+    private final CardStatementLedger statementLedger;
     private final CardEmailImportSettingsLedger settingsLedger;
     private final ObjectMapper objectMapper;
     private final CardEmailAttachmentDownloader downloader;
@@ -51,6 +53,7 @@ public class VestMailSamsungImporter {
 
     public VestMailSamsungImporter(CardImportCipher cipher,
                                    CardImportLedger ledger,
+                                   CardStatementLedger statementLedger,
                                    CardEmailImportSettingsLedger settingsLedger,
                                    ObjectMapper objectMapper,
                                    CardEmailAttachmentDownloader downloader,
@@ -58,6 +61,7 @@ public class VestMailSamsungImporter {
                                    @Value("${app.card.vestmail.samsung.script-dir:}") String scriptDir) {
         this.cipher = cipher;
         this.ledger = ledger;
+        this.statementLedger = statementLedger;
         this.settingsLedger = settingsLedger;
         this.objectMapper = objectMapper;
         this.downloader = downloader;
@@ -87,13 +91,21 @@ public class VestMailSamsungImporter {
                 return 0;
             }
 
-            List<CardImportLedger.ImportedRow> rows = extractRows(htmlFile, vestmailPassword, settings.userId());
-            if (!rows.isEmpty()) {
-                ledger.addAll(rows);
+            Extraction extraction = extractRows(htmlFile, vestmailPassword, settings.userId());
+            if (!extraction.rows().isEmpty()) {
+                ledger.addAll(extraction.rows());
+            }
+            // §72 정기 청구서는 거래 행이 없어도 기간·총액을 남긴다.
+            if (extraction.totalAmount() > 0
+                    && !extraction.periodStart().isBlank() && !extraction.periodEnd().isBlank()) {
+                statementLedger.upsert(new CardStatementLedger.StatementRow(
+                        0, cardCompanyLabel, extraction.kind(),
+                        extraction.periodStart().substring(0, 7),
+                        extraction.periodStart(), extraction.periodEnd(), extraction.totalAmount()));
             }
             settingsLedger.save(settings.withLastImport("SUCCESS", Instant.now()));
-            log.info("Imported {} SamsungCard rows for user {}", rows.size(), settings.userId());
-            return rows.size();
+            log.info("Imported {} SamsungCard rows for user {}", extraction.rows().size(), settings.userId());
+            return extraction.rows().size();
         } catch (Exception e) {
             log.error("SamsungCard VestMail import failed for user {}", settings.userId(), e);
             settingsLedger.save(settings.withLastImport("FAILED", Instant.now()));
@@ -105,13 +117,17 @@ public class VestMailSamsungImporter {
         }
     }
 
+    /** §72 거래 행과 명세서 요약. 정기 청구서는 rows 가 비고 summary 만 있다. */
+    record Extraction(List<CardImportLedger.ImportedRow> rows, String kind,
+                      String periodStart, String periodEnd, long totalAmount) {}
+
     /**
-     * Node 스크립트를 실행해 VestMail HTML에서 거래 내역을 추출한다.
+     * Node 스크립트를 실행해 VestMail HTML에서 거래 내역·명세서 요약을 추출한다.
      * 테스트에서 override 할 수 있도록 protected 로 열어둔다.
      */
-    protected List<CardImportLedger.ImportedRow> extractRows(Path htmlFile,
-                                                             String vestmailPassword,
-                                                             Long userId) throws Exception {
+    protected Extraction extractRows(Path htmlFile,
+                                     String vestmailPassword,
+                                     Long userId) throws Exception {
         String output;
         try (VestMailScriptSupport.Prepared prepared = VestMailScriptSupport.prepare(
                 scriptDir, "extract-samsung-vestmail.mjs", "scripts/card/vestmail-samsung",
@@ -138,7 +154,36 @@ public class VestMailSamsungImporter {
             }
         }
 
-        return parseRows(objectMapper.readTree(output));
+        JsonNode root = objectMapper.readTree(output);
+        return parseExtraction(root);
+    }
+
+    /** Node 출력 JSON → 거래 행 + 명세서 요약. 테스트에서 직접 호출할 수 있도록 package-private. */
+    Extraction parseExtraction(JsonNode root) {
+        List<CardImportLedger.ImportedRow> rows = parseRows(root);
+        JsonNode summary = root.path("summary");
+        String periodStart = summary.path("periodStart").asText("");
+        String periodEnd = summary.path("periodEnd").asText("");
+        long totalAmount = summary.path("totalAmount").asLong(0);
+
+        if (!rows.isEmpty()) {
+            if (periodStart.isBlank()) {
+                periodStart = rows.stream().map(CardImportLedger.ImportedRow::approvedAt)
+                        .min(String::compareTo).orElse("");
+            }
+            if (periodEnd.isBlank()) {
+                periodEnd = rows.stream().map(CardImportLedger.ImportedRow::approvedAt)
+                        .max(String::compareTo).orElse("");
+            }
+            if (totalAmount <= 0) {
+                totalAmount = rows.stream().mapToLong(CardImportLedger.ImportedRow::grossAmount).sum();
+            }
+        }
+        if (rows.isEmpty() && (periodStart.isBlank() || periodEnd.isBlank() || totalAmount <= 0)) {
+            throw new IllegalStateException("삼성카드 명세서의 이용기간·총액을 읽지 못했습니다.");
+        }
+        String kind = root.path("kind").asText(rows.isEmpty() ? "billing" : "detail");
+        return new Extraction(rows, kind, periodStart, periodEnd, totalAmount);
     }
 
     /** Node 출력 JSON → 원장 행. 테스트에서 직접 호출할 수 있도록 package-private. */

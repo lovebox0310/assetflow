@@ -15,9 +15,11 @@ import { clearInflight } from "../api/client";
 import { clearToken } from "../auth/authStore";
 import {
   assignMerchantCategory,
+  listCardStatements,
   listUnclassifiedGroups,
   reclassifyCardImports,
   updateCardImportCategory,
+  type CardStatement,
   type UnclassifiedGroup,
 } from "../api/cardImportApi";
 import {
@@ -87,6 +89,24 @@ export function CardExpensesPage({
         setCardStatus("error");
         setCardError(e.message);
       });
+  }, [month]);
+
+  // §72 명세서가 있으면 승인일 기준 합계와 함께 명세서 금액을 보여 준다.
+  const [monthStatement, setMonthStatement] = useState<CardStatement | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    listCardStatements(month, month)
+      .then((rows) => {
+        if (!cancelled) {
+          setMonthStatement(rows.find((r) => r.kind === "billing") ?? null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setMonthStatement(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [month]);
 
   /** §55.8 미분류 작업함 — 월과 무관하게 전체 미분류를 가맹점 단위로 읽는다. */
@@ -493,6 +513,12 @@ export function CardExpensesPage({
                   <span>지출 합계 (자산 이동 제외) · {cardSpendingCount}건</span>
                   <span>{formatKrwExact(cardSpendingTotal)}</span>
                 </div>
+                {monthStatement ? (
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, paddingLeft: 12, color: "var(--af-muted-foreground)" }}>
+                    <span>└ 명세서 금액 ({monthStatement.periodStart}~{monthStatement.periodEnd})</span>
+                    <span>{formatKrwExact(monthStatement.totalAmount)}</span>
+                  </div>
+                ) : null}
                 {cardFixedTotal > 0 ? (
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, paddingLeft: 12, color: "var(--af-muted-foreground)" }}>
                     <span>└ 고정비</span>

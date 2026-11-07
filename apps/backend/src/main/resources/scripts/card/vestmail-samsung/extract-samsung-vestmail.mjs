@@ -86,7 +86,12 @@ try {
   let decrypted = false;
   for (let i = 0; i < 100; i++) {
     if (dialogMessage) break;
-    decrypted = await page.evaluate(() => !document.getElementById("decForm"));
+    try {
+      decrypted = await page.evaluate(() => !document.getElementById("decForm"));
+    } catch {
+      // 복호화가 실제 사이트로 이동시키면 평가가 잠시 실패한다 — 다음 폴링에서 다시 본다.
+      decrypted = false;
+    }
     if (decrypted) break;
     await page.waitForTimeout(200);
   }
@@ -97,16 +102,67 @@ try {
     throw new Error("VestMail 복호화가 시간 안에 끝나지 않았습니다.");
   }
 
-  const rows = await page.evaluate(extractSamsungRows, mapping);
-  if (!Array.isArray(rows) || rows.length === 0) {
-    throw new Error("복호화된 문서에서 거래 행을 찾지 못했습니다.");
+  // document.write() 로 문서가 교체되면 실행 컨텍스트가 한 번 더 파괴될 수 있다.
+  // 정기 청구서 레이아웃에서 실제로 발생해, 평가를 재시도한다.
+  await page.waitForLoadState("load").catch(() => {});
+  await page.waitForTimeout(4000);
+  const evaluateWithRetry = async (fn, arg) => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await page.evaluate(fn, arg);
+      } catch (err) {
+        if (attempt >= 9) throw err;
+        await page.waitForTimeout(1000);
+      }
+    }
+  };
+
+  let rows = [];
+  try {
+    rows = await evaluateWithRetry(extractSamsungRows, mapping);
+  } catch (err) {
+    // §72 정기 청구서('이용대금 명세서')는 12컬럼 거래 표가 없다 — 요약만 읽는다.
+    if (!String(err && err.message).includes("거래 테이블 헤더")) {
+      throw err;
+    }
+  }
+
+  // §72 명세서 요약. 정기 청구서('이용대금 명세서')는 거래 표 대신 카드별 요약
+  // 레이아웃이라 rows 가 비어 있다. 그때도 기간·총액은 읽어 월별 카드 금액에 쓴다.
+  const summary = await evaluateWithRetry(() => {
+    const text = document.body.innerText;
+    const out = {};
+    const total = text.match(/총\s*결제금액\s*([\d,]+)\s*원/);
+    if (total) out.totalAmount = Number(total[1].replace(/[^0-9]/g, ""));
+    // 26. 9. 3 ~ 26. 10. 2
+    const dotted = text.match(/(\d{2,4})\.\s*(\d{1,2})\.\s*(\d{1,2})\s*~\s*(\d{2,4})\.\s*(\d{1,2})\.\s*(\d{1,2})/);
+    if (dotted) {
+      const year = (v) => (v.length === 2 ? 2000 + Number(v) : Number(v));
+      out.periodStart = `${year(dotted[1])}-${String(dotted[2]).padStart(2, "0")}-${String(dotted[3]).padStart(2, "0")}`;
+      out.periodEnd = `${year(dotted[4])}-${String(dotted[5]).padStart(2, "0")}-${String(dotted[6]).padStart(2, "0")}`;
+    } else {
+      // 2026-10-01 ~ 2026-10-10
+      const iso = text.match(/(\d{4}-\d{2}-\d{2})\s*~\s*(\d{4}-\d{2}-\d{2})/);
+      if (iso) {
+        out.periodStart = iso[1];
+        out.periodEnd = iso[2];
+      }
+    }
+    return out;
+  });
+
+  const hasRows = Array.isArray(rows) && rows.length > 0;
+  if (!hasRows && !summary.totalAmount) {
+    throw new Error("복호화된 문서에서 거래 행과 명세서 총액을 찾지 못했습니다.");
   }
 
   const output = {
     source: "samsungcard-email",
     extractedAt: new Date().toISOString(),
-    count: rows.length,
-    rows,
+    kind: hasRows ? "detail" : "billing",
+    count: hasRows ? rows.length : 0,
+    summary,
+    rows: hasRows ? rows : [],
   };
   writeFileSync(inputPath.replace(/\.html$/i, "_extracted.json"), JSON.stringify(output, null, 2), "utf-8");
   console.log(JSON.stringify(output));
