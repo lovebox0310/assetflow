@@ -3280,3 +3280,14 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
 - 검증: typecheck/lint/test 227, `pnpm e2e` 156/0/0, 스냅샷 90장(신규 6·갱신 12·불변 72).
 - 미검증: iOS 실기기 safe-area·키보드.
 - 커밋 안 함.
+
+## 2026-11-08 — CI e2e 정상화 (CI-1, §76)
+
+- 원인: CI 러너에 `Noto Sans CJK`가 없어 스냅샷 90장이 전 픽셀 불일치 → 재시도 포함 270회 시도로
+  `timeout-minutes: 10` 초과. `login-smoke`는 CI에 없는 백엔드를 요구했다.
+- 워크플로 `e2e-gate`만 수정: 타임아웃 20분, `pnpm e2e --ignore-snapshots`, 근거 주석 4줄.
+- `login-smoke.spec.ts`: `TEST_URL`이 없을 때만 `mockDashboardApi` + auth login 스텁, 있으면 실서버 호출.
+- 검증: typecheck/lint/test 227 통과, `pnpm e2e --ignore-snapshots` 및 `CI=1` 동일 명령 failed 0,
+  스냅샷 PNG 변경 0장.
+- 미해결: CI에서 스냅샷까지 검증하려면 Playwright Docker 이미지 고정 + 베이스라인 재생성(후속).
+- 커밋 안 함.

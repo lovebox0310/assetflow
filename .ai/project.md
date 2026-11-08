@@ -4868,3 +4868,29 @@ DB 의 10월 합계는 현대 2,609,560 · 삼성 362,230 이었고, 마지막 �
 - iOS 실기기 safe-area·키보드 (`index.html`의 `viewport-fit=cover` 미적용 — 후속)
 - 하단 탭 아이콘 도입 여부
 - 576~991px(태블릿 세로)에서 헤더 내비 유지 vs 하단 탭 전환 재검토
+
+## 76) CI e2e — 스냅샷은 CI에서 비교하지 않는다 (2026-11-08)
+
+**배경**
+- `main`의 필수 체크 `e2e-gate`가 실패했다. 코드 회귀가 아니라 CI 환경 의존이다.
+- 시각 스냅샷 베이스라인 90장은 한국어 폰트(`Noto Sans CJK`)가 설치된 개발 머신에서
+  생성했다. GitHub `ubuntu-latest`에는 그 폰트가 없어 폴백 폰트로 렌더되고, 전 픽셀이
+  어긋난다. design 3개 스펙 × 3프로젝트가 모두 실패해 재시도 2회(총 3회)까지
+  270회를 시도하느라 `timeout-minutes: 10`을 넘겼다.
+- `login-smoke.spec.ts`는 실제 백엔드(`POST /api/v1/auth/login`, Vite proxy → :8080)를
+  요구하는데 CI에는 백엔드가 없다.
+
+**결정**
+- `e2e-gate`는 `pnpm e2e --ignore-snapshots`로 돌린다. `--ignore-snapshots`는
+  `toHaveScreenshot`만 건너뛰고 기능·레이아웃·접근성 단언은 그대로 실행한다.
+- `timeout-minutes: 10` → `20` (CI 와 같은 workers=1·retries=2 로 실측 5.3분 —
+  러너 편차·설치 시간을 감안해 두 배 여유를 둔다).
+- 스냅샷 기준선은 로컬 시각 검증용으로 남긴다: `pnpm e2e:design`,
+  갱신은 `pnpm e2e:update-design`.
+- `login-smoke`는 `TEST_URL`이 없을 때만 API를 스텁한다(`mockDashboardApi` + auth 401/200).
+  `TEST_URL`이 설정된 운영/실서버 스모크는 실제 API를 그대로 호출한다.
+- 다른 잡·다른 step은 건드리지 않았다.
+
+**미해결/후속**
+- CI 환경에서 스냅샷까지 검증하려면 Playwright Docker 이미지를 고정하고 그 이미지
+  안에서 베이스라인을 재생성해야 한다(폰트 포함). 이번 범위가 아니다.
