@@ -973,3 +973,6 @@ button {
   position: absolute;
   inset: -5px;   /* 14 + 10 = 24 */
 }
+
+/* 같은 행 카드가 늘어날 때만 합계 문구를 바닥에 붙인다. */
+.af-cash-note { margin-top: auto; padding-top: 12px; margin-bottom: 0; }
