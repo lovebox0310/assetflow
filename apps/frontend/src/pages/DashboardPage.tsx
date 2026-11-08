@@ -1,6 +1,6 @@
 import { useCallback, Suspense, lazy, useEffect, useRef, useState } from "react";
 import dayjs from "dayjs";
-import { Alert, Button, Card, DatePicker, Skeleton, Space, Switch, Typography } from "antd";
+import { Alert, Button, Card, DatePicker, Skeleton, Switch, Typography } from "antd";
 import { AfListTable, type AfListColumn } from "../components/AfListTable";
 import { AppLayout } from "../layout/AppLayout";
 import { ResponsiveGrid } from "../layout/ResponsiveGrid";
@@ -62,6 +62,20 @@ interface SectionHeaderLink {
   label: string;
   ariaLabel: string;
   onClick: () => void;
+}
+
+/**
+ * 비상금 카드의 "기준 설정" 진입 아이콘(톱니). `@ant-design/icons` 를 쓰지 않고
+ * 인라인 SVG 로 둔다 — 아이콘 패키지를 새 의존성으로 들이지 않는다.
+ */
+function GearIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.14.35.46.6.84.66H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
 }
 
 /**
@@ -132,6 +146,8 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
   const [cardTotals, setCardTotals] = useState<MonthlyCategoryTotal[] | null>(null);
   const [cardTotalsFailed, setCardTotalsFailed] = useState(false);
   const [emergencyModalOpen, setEmergencyModalOpen] = useState(false);
+  // 비상금 카드 상세(월 사용액·계좌·집계 근거) 펼침 — 기본은 1줄 요약만 보여 준다.
+  const [runwayDetailOpen, setRunwayDetailOpen] = useState(false);
 
   const [cashflow, setCashflow] = useState<CashflowRow[] | null>(null);
   const [cashflowStatus, setCashflowStatus] = useState<SurfaceStatus>("loading");
@@ -285,6 +301,39 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
     loadEmergencyBasis();
   };
   const monthlySpendLabel = runway ? formatKrwExact(Math.round(runway.monthlySpend)) : "—";
+  /*
+   * 비상금/투자금 카드 문구: 접힘 = 항상 1줄 요약, 펼침 = 기존 상세 전부.
+   * 요약에 이미 나온 문장은 상세에서 뺀다(중복 제거). 투자금 모드의 상세는
+   * 기존과 같이 월 사용액 한 줄만 둔다 — 없던 정보를 새로 만들지 않는다.
+   */
+  const summaryLine =
+    dataReady && runway
+      ? showInvestMonths
+        ? `${formatKrwExact(investTotal(summary))} ÷ ${monthlySpendLabel}`
+        : !runway.accountSelected
+          ? "비상금 계좌를 지정해 주세요"
+          : `예측 비상금 ${formatKrwExact(runway.predictedFund)} · 목표 ${targetMonths}개월`
+      : "";
+  const detailLines: string[] =
+    dataReady && runway
+      ? [
+          showInvestMonths
+            ? `월 사용액 = 필수 ${formatKrwExact(runway.fixedMonthly)} + 카드 ${formatKrwExact(Math.round(runway.variableMonthly))}`
+            : `월 사용액 ${monthlySpendLabel} = 필수 ${formatKrwExact(runway.fixedMonthly)} + 카드 ${formatKrwExact(Math.round(runway.variableMonthly))}`,
+          !showInvestMonths && runway.accountSelected
+            ? `비상금 계좌 ${runway.accountCount}개 합계 ${formatKrwExact(runway.accountBalance)}`
+            : "",
+          showInvestMonths
+            ? ""
+            : runway.usedCurrentMonthFallback
+              ? "이전 카드 데이터 없음 · 이번 달(진행 중) 기준"
+              : `카드 데이터 ${runway.monthsWithCardData}/${avgMonths}개월 집계`,
+          showInvestMonths || summary.monthly.essentialComplete ? "" : "필수지출 미확정",
+          !showInvestMonths && runway.unclassifiedTotal > 0
+            ? `미분류 ${formatKrwExact(runway.unclassifiedTotal)} 제외`
+            : "",
+        ].filter((line) => line !== "")
+      : [];
   const composition = dataReady ? assetComposition(summary) : [];
   // §62: 대시보드에서는 현금 전체가 아니라 사용자가 지정한 비상금 계좌만 한눈에 본다.
   const emergencyIds = settings?.emergencyAccountIds ?? [];
@@ -342,8 +391,10 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
         <Typography.Title level={2} id="h-core" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>
           핵심 지표
         </Typography.Title>
-        {/* §74: 핵심 지표는 3종. lg 에서 3열(span 8)로 균등 배치한다. */}
-        <ResponsiveGrid spans={{ xs: 24, md: 12, lg: 8 }}>
+        {/* §74: 핵심 지표는 3종. lg 에서 3열(span 8)로 균등 배치한다.
+            align="stretch" — 카드 높이는 가장 큰 내용에 맞춰 세 카드가 같아진다
+            (보조 문구 줄 수가 달라도 높이 차 0). */}
+        <ResponsiveGrid spans={{ xs: 24, md: 12, lg: 8 }} align="stretch">
           <MetricCard
             title="순자산"
             status={summaryStatus}
@@ -365,7 +416,7 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
             status={monthsStatus}
             onRetry={retryMonths}
             extra={
-              <Space size={4}>
+              <div className="af-runway-extra">
                 <Switch
                   size="small"
                   checkedChildren="투자금"
@@ -374,40 +425,42 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
                   onChange={setShowInvestMonths}
                   aria-label="유지 개월 모드 전환"
                 />
-                <Button onClick={() => setEmergencyModalOpen(true)}>
-                  기준 설정
+                <Button
+                  type="text"
+                  size="small"
+                  className="af-icon-btn"
+                  aria-label="기준 설정"
+                  title="기준 설정"
+                  onClick={() => setEmergencyModalOpen(true)}
+                >
+                  <GearIcon />
                 </Button>
-              </Space>
+              </div>
             }
             hint={
               dataReady && runway ? (
-                showInvestMonths ? (
-                  <>
-                    {formatKrwExact(investTotal(summary))} ÷ {monthlySpendLabel}
-                    <br />
-                    월 사용액 = 필수 {formatKrwExact(runway.fixedMonthly)} + 카드{" "}
-                    {formatKrwExact(Math.round(runway.variableMonthly))}
-                  </>
-                ) : (
-                  <>
-                    예측 비상금 {formatKrwExact(runway.predictedFund)} · 목표 {targetMonths}개월
-                    <br />
-                    월 사용액 {monthlySpendLabel} = 필수 {formatKrwExact(runway.fixedMonthly)} + 카드{" "}
-                    {formatKrwExact(Math.round(runway.variableMonthly))}
-                    <br />
-                    {!runway.accountSelected
-                      ? "비상금 계좌를 지정해 주세요"
-                      : `비상금 계좌 ${runway.accountCount}개 합계 ${formatKrwExact(runway.accountBalance)}`}
-                    <br />
-                    {runway.usedCurrentMonthFallback
-                      ? "이전 카드 데이터 없음 · 이번 달(진행 중) 기준"
-                      : `카드 데이터 ${runway.monthsWithCardData}/${avgMonths}개월 집계`}
-                    {summary.monthly.essentialComplete ? "" : " · 필수지출 미확정"}
-                    {runway.unclassifiedTotal > 0
-                      ? ` · 미분류 ${formatKrwExact(runway.unclassifiedTotal)} 제외`
-                      : ""}
-                  </>
-                )
+                <>
+                  <div className="af-runway-line">
+                    <span className="af-runway-summary">{summaryLine}</span>
+                    <Button
+                      type="text"
+                      size="small"
+                      className="af-tap-sm af-runway-more"
+                      aria-expanded={runwayDetailOpen}
+                      aria-controls="runway-detail"
+                      onClick={() => setRunwayDetailOpen((v) => !v)}
+                    >
+                      {runwayDetailOpen ? "접기" : "자세히"}
+                    </Button>
+                  </div>
+                  {runwayDetailOpen ? (
+                    <div id="runway-detail" className="af-runway-detail">
+                      {detailLines.map((line) => (
+                        <span key={line}>{line}</span>
+                      ))}
+                    </div>
+                  ) : null}
+                </>
               ) : undefined
             }
           >
