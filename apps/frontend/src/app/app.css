@@ -976,3 +976,16 @@ button {
 
 /* 같은 행 카드가 늘어날 때만 합계 문구를 바닥에 붙인다. */
 .af-cash-note { margin-top: auto; padding-top: 12px; margin-bottom: 0; }
+
+/* 대표 지표: 단위(억·만·원·개월·%)는 숫자보다 작게. */
+.af-metric-unit { font-size: 0.62em; font-weight: 500; margin-inline-start: 2px; letter-spacing: 0; }
+/* 카드 보조 문구 — 기존 Typography secondary 와 같은 값. */
+.af-metric-hint { margin-top: 4px; font-size: 12px; line-height: 18px; color: var(--af-muted-foreground); }
+/* 비상금 카드 헤더: 모드 스위치 + 기준 설정 아이콘(제목 폭을 먹지 않게 24px). */
+.af-runway-extra { display: flex; align-items: center; gap: 4px; }
+/* 접힘 요약은 1줄 고정 — 넘치면 말줄임, 펼치면 상세가 전부 나온다. */
+.af-runway-line { display: flex; align-items: center; gap: 2px; }
+.af-runway-summary { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 토글은 요약과 같은 줄 — 320px 에서 "목표 6개월"까지 한 줄에 들어가도록 12px·패딩 0. */
+.af-runway-more.ant-btn { flex: none; padding-inline: 0; font-size: 12px; color: var(--af-muted-foreground); }
+.af-runway-detail { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
