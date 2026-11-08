@@ -531,7 +531,7 @@ export function ExpensesPage({
                 />
               ) : null}
               <div style={{ marginTop: recurring.length > 0 ? 12 : 0 }}>
-                <Button type="dashed" onClick={() => setRecForm("new")}>+ 정기 항목 추가</Button>
+                <Button onClick={() => setRecForm("new")}>+ 정기 항목 추가</Button>
               </div>
               {recForm ? (
                 <div style={{ marginTop: 12, borderTop: "1px solid var(--af-border)", paddingTop: 12 }}>
@@ -604,11 +604,13 @@ export function ExpensesPage({
               <label htmlFor="snap-vat" style={{ fontSize: 14, lineHeight: "22px", color: "var(--af-muted-foreground)" }}>부가세통장 이체</label>
               <InputNumber id="snap-vat" min={0} value={vatSetAside} onChange={(v) => setVatSetAside(v)} style={{ width: "100%" }} />
             </div>
+            {/* §31.1: column flex 에서 flex-basis:100% 는 높이 기준으로 해석되어
+                버튼이 22px 로 찌그러진다. flex 는 두지 않고 폭만 준다. */}
             <Button
               type="primary"
               loading={confirming}
               onClick={() => void handleConfirm()}
-              style={{ flex: wide ? "0 0 auto" : "1 1 100%", width: wide ? undefined : "100%" }}
+              style={{ width: wide ? undefined : "100%" }}
             >
               월 확정
             </Button>
