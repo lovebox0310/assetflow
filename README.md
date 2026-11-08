@@ -34,8 +34,11 @@ Both pass the acceptance criteria (AC) to reviewer and tester, but never the
 developer's reasoning: what was asked is shared ground truth, why it was done
 that way is not.
 
-Restart opencode after changing anything under `.opencode/`; config is read once
-at startup.
+Config changes under `.opencode/` and `opencode.json` apply without a restart:
+OpenCode v2 watches those files and reloads agents, commands, skills, MCP
+servers, and plugins. Use `/reload` (or `opencode reload`) to force a reload.
+Restart the background service, with `opencode service restart`, only when it is
+stuck. `opencode -c` continues the last session; it is not a config reload.
 
 ## Card statement import
 
