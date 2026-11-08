@@ -49,7 +49,7 @@ assetflow/
 - **AI subagents**: `lead`가 사람의 말을 해석·진단하고 태스크 패킷으로 쪼개 전문 에이전트에 위임한다. 코드를 쓰는 역할은 `developer`뿐이고, `qa`는 개발자 설명 없이 AC·산출물만으로 독립 검증한다.
 - **Cost tiers**: Lite(`lead`+`developer`, ≤3 calls) / Standard(`+qa`, ≤6) / Full(`+planner`/`designer`, ≤12) / Deep(`+architect`, 병렬 조사, ≤20). `planner`·`designer`·`architect`는 필요할 때만 부른다. QA 재시도는 최대 2회.
 - **Human gates**: 기획 승인 → 외부 접근(은행·증권·이메일·키·권한) 확인 → 최종 QA → 배포. 외부 시스템은 `integration-runbook` 스킬을 따른다.
-- **Restart opencode** after changing anything under `.opencode/` – config is read once at startup.
+- **Config reload**: `.opencode/`·`opencode.json` 변경은 OpenCode v2가 자동 반영한다(설정 파일 watch). 즉시 반영이 필요하면 `/reload` 또는 `opencode reload`. 서비스가 멈췄을 때만 `opencode service restart`. `opencode -c`는 "마지막 세션 이어서 열기"이며 설정 재로딩과 무관하다.
 - **Pipeline commands**: `/feature <requirement>` runs the lead pipeline with cost tiers; `/review <range>` reviews the current diff then verifies it; `/design <scope>` runs the UI lane with `designer` + `qa`.
 
 ## ANTI-PATTERNS
