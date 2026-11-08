@@ -1,11 +1,7 @@
 import { useCallback, Suspense, lazy, useEffect, useRef, useState } from "react";
 import dayjs from "dayjs";
-import { Alert, Button, Card, DatePicker, Grid, Skeleton, Space, Switch, Typography } from "antd";
-import {
-  MobileListCardHeader,
-  MobileListCardItem,
-  MobileListCardMeta,
-} from "../components/MobileListCard";
+import { Alert, Button, Card, DatePicker, Skeleton, Space, Switch, Typography } from "antd";
+import { AfListTable, type AfListColumn } from "../components/AfListTable";
 import { AppLayout } from "../layout/AppLayout";
 import { ResponsiveGrid } from "../layout/ResponsiveGrid";
 import { StandardNav } from "../layout/StandardNav";
@@ -28,6 +24,7 @@ import {
   investTotal,
   monthlyBalance,
   netWorth,
+  type CashflowMonth,
 } from "../dashboard/metrics";
 import { CashAccountCards } from "../dashboard/CashAccountCards";
 import { buildExpenseTrend, lastMonthsRange, monthsBetween } from "../dashboard/expenseTrend";
@@ -124,10 +121,6 @@ interface DashboardPageProps {
  * - 계산은 여전히 metrics.ts 단일 출처(§34.6). 여기선 데이터를 씌우는 것만 한다.
  */
 export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSettings, onOpenCards }: DashboardPageProps) {
-  const screens = Grid.useBreakpoint();
-  // §35 중단점: md 미만은 표 대신 카드형 리스트
-  const wide = Boolean(screens.md);
-
   const [summary, setSummary] = useState<DashboardData | null>(null);
   const [summaryStatus, setSummaryStatus] = useState<SurfaceStatus>("loading");
   const [summaryError, setSummaryError] = useState("");
@@ -302,6 +295,39 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
   const cashflowRows = cashflow ? cashflowWindow(cashflow, CASHFLOW_MONTHS) : [];
   const confirmedMonths = cashflowRows.filter((row) => row.confirmed).length;
   const unconfirmedMonths = cashflowRows.length - confirmedMonths;
+
+  /** 확정 월만 금액을 보여 준다 — 없는 값을 0 으로 메우지 않는다 (§34.6). */
+  type ConfirmedCashflow = CashflowMonth & {
+    income: number;
+    vatSetAside: number;
+    expenses: number;
+    balance: number;
+  };
+  const isConfirmed = (row: CashflowMonth): row is ConfirmedCashflow =>
+    row.confirmed &&
+    row.income !== null &&
+    row.vatSetAside !== null &&
+    row.expenses !== null &&
+    row.balance !== null;
+
+  const cashflowColumns: AfListColumn<CashflowMonth>[] = [
+    { key: "month", header: "월", mobile: "primary", render: (r) => r.month },
+    { key: "income", header: "수입", numeric: true, render: (r) => (isConfirmed(r) ? formatKrwAbbr(r.income) : "—") },
+    {
+      key: "vat",
+      header: "부가세통장",
+      numeric: true,
+      render: (r) => (isConfirmed(r) ? formatKrwAbbr(r.vatSetAside) : "—"),
+    },
+    { key: "expenses", header: "지출", numeric: true, render: (r) => (isConfirmed(r) ? formatKrwAbbr(r.expenses) : "—") },
+    {
+      key: "balance",
+      header: "수지",
+      numeric: true,
+      mobile: "value",
+      render: (r) => (isConfirmed(r) ? formatSignedKrw(r.balance) : "미확정"),
+    },
+  ];
 
   return (
     <AppLayout
@@ -554,8 +580,9 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
                     role="status"
                     style={{ marginTop: 0, marginBottom: 12 }}
                   >
-                    확정 {confirmedMonths}개월 · 미확정 {unconfirmedMonths}개월 — 미확정 월은
-                    스냅샷이 확정되지 않아 금액을 표시하지 않습니다 (§34.6).
+                    확정 {confirmedMonths}개월 · 미확정 {unconfirmedMonths}개월 — 아직 확정하지
+                    않은 달은 금액을 표시하지 않습니다.
+                    {/* §34.6 미확정 월은 금액을 표시하지 않는다 */}
                   </Typography.Paragraph>
                 ) : null}
                 <Typography.Paragraph
@@ -564,69 +591,17 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
                 >
                   수지 = 그 달 수입 − 부가세통장 이체 − 그 달 지출입니다. 이전 달 수지를 더하지 않습니다.
                 </Typography.Paragraph>
-                {wide ? (
-                  <table aria-labelledby="h-cashflow" style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr>
-                        <th scope="col" style={{ textAlign: "left", paddingBottom: 8 }}>월</th>
-                        <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>수입</th>
-                        <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>부가세통장</th>
-                        <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>지출</th>
-                        <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>수지</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {cashflowRows.map((row) =>
-                        row.confirmed && row.income !== null && row.vatSetAside !== null && row.expenses !== null && row.balance !== null ? (
-                          <tr key={row.month}>
-                            <td style={{ paddingBottom: 6 }}>{row.month}</td>
-                            <td style={{ textAlign: "right" }}>{formatKrwAbbr(row.income)}</td>
-                            <td style={{ textAlign: "right" }}>{formatKrwAbbr(row.vatSetAside)}</td>
-                            <td style={{ textAlign: "right" }}>{formatKrwAbbr(row.expenses)}</td>
-                            <td style={{ textAlign: "right" }}>{formatSignedKrw(row.balance)}</td>
-                          </tr>
-                        ) : (
-                          <tr key={row.month}>
-                            <td style={{ paddingBottom: 6 }}>{row.month}</td>
-                            <td
-                              colSpan={4}
-                              style={{ textAlign: "right", color: "var(--af-muted-foreground)" }}
-                            >
-                              미확정
-                            </td>
-                          </tr>
-                        ),
-                      )}
-                    </tbody>
-                  </table>
-                ) : (
-                  <div>
-                    {cashflowRows.map((row) => (
-                      <MobileListCardItem key={row.month}>
-                        {row.confirmed && row.income !== null && row.vatSetAside !== null && row.expenses !== null && row.balance !== null ? (
-                          <>
-                            <MobileListCardHeader
-                              title={row.month}
-                              value={formatSignedKrw(row.balance)}
-                            />
-                            <MobileListCardMeta
-                              style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                              }}
-                            >
-                              <span>수입 {formatKrwAbbr(row.income)}</span>
-                              <span>부가세 {formatKrwAbbr(row.vatSetAside)}</span>
-                              <span>지출 {formatKrwAbbr(row.expenses)}</span>
-                            </MobileListCardMeta>
-                          </>
-                        ) : (
-                          <MobileListCardHeader title={row.month} value="미확정" />
-                        )}
-                      </MobileListCardItem>
-                    ))}
-                  </div>
-                )}
+                <AfListTable
+                  labelledBy="h-cashflow"
+                  rows={cashflowRows}
+                  rowKey={(row) => row.month}
+                  columns={cashflowColumns}
+                  rowSubtitle={(row) =>
+                    isConfirmed(row)
+                      ? `수입 ${formatKrwAbbr(row.income)} · 지출 ${formatKrwAbbr(row.expenses)} · 부가세 ${formatKrwAbbr(row.vatSetAside)}`
+                      : "아직 확정하지 않은 달"
+                  }
+                />
               </>
             ) : (
               <Typography.Text type="secondary">표시할 월 데이터가 없습니다</Typography.Text>

@@ -3,7 +3,6 @@ import {
   Button,
   Card,
   Form,
-  Grid,
   Input,
   InputNumber,
   Popconfirm,
@@ -17,12 +16,7 @@ import { AppLayout } from "../layout/AppLayout";
 import { StandardNav } from "../layout/StandardNav";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
 import { SubNav } from "../components/SubNav";
-import {
-  MobileListCardActions,
-  MobileListCardHeader,
-  MobileListCardItem,
-  MobileListCardMeta,
-} from "../components/MobileListCard";
+import { AfListTable, type AfListColumn, type AfRowAction } from "../components/AfListTable";
 import { KisCredentialsModal } from "../components/KisCredentialsModal";
 import {
   clearKisBalance,
@@ -134,9 +128,6 @@ export function InvestmentsPage({
   onOpenExpenses,
   onOpenSettings,
 }: InvestmentsPageProps) {
-  const screens = Grid.useBreakpoint();
-  const wide = Boolean(screens.md);
-
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [status, setStatus] = useState<SurfaceStatus>("loading");
   const [errorText, setErrorText] = useState("");
@@ -518,6 +509,102 @@ export function InvestmentsPage({
     </Button>
   );
 
+  /**
+   * 보유종목 목록 — 데스크톱 표·모바일 행이 같은 DOM 이다(A안).
+   * 값 계산은 기존 함수(costOf·valueOf·priceText·returnText)를 그대로 쓴다.
+   */
+  const holdingColumns: AfListColumn<HoldingRow>[] = [
+    { key: "name", header: "종목", mobile: "primary", render: (row) => row.name },
+    {
+      key: "quantity",
+      header: "수량",
+      numeric: true,
+      render: (row) => row.quantity.toLocaleString("ko-KR"),
+    },
+    {
+      key: "avgPrice",
+      header: "평단가",
+      numeric: true,
+      render: (row) => priceText(row.avgPrice, row.currency),
+    },
+    {
+      key: "marketPrice",
+      header: "현재가",
+      numeric: true,
+      render: (row) =>
+        priceMode ? (
+          <InputNumber
+            size="small"
+            min={0}
+            precision={4}
+            aria-label={`${row.name} 현재가`}
+            value={priceDrafts[row.id] ?? row.marketPrice}
+            onChange={(v) => setPriceDrafts((prev) => ({ ...prev, [row.id]: v ?? 0 }))}
+            style={{ width: 110 }}
+          />
+        ) : (
+          priceText(row.marketPrice, row.currency)
+        ),
+    },
+    {
+      key: "value",
+      header: "평가액",
+      numeric: true,
+      mobile: "value",
+      render: (row) => {
+        const cost = costOf(row);
+        const value = valueOf(row);
+        return (
+          <>
+            {formatKrwExact(won(value))}
+            {/* 모바일에서만 보인다 — 데스크톱은 옆의 "손익" 열이 같은 값을 이미 보여 준다. */}
+            <div className="af-list__value-sub">
+              {formatSignedKrw(won(value - cost))} ({returnText(cost, value)})
+            </div>
+          </>
+        );
+      },
+    },
+    {
+      key: "pnl",
+      header: "손익",
+      numeric: true,
+      render: (row) => {
+        const cost = costOf(row);
+        const value = valueOf(row);
+        return (
+          <>
+            {formatSignedKrw(won(value - cost))}
+            <Typography.Text type="secondary" style={{ marginLeft: 6, fontSize: 12 }}>
+              {returnText(cost, value)}
+            </Typography.Text>
+          </>
+        );
+      },
+    },
+  ];
+
+  /** 가격 갱신 모드에서는 행 편집·삭제를 주지 않는다(현재가만 고친다). */
+  const holdingActions = (row: HoldingRow): AfRowAction[] =>
+    priceMode
+      ? []
+      : [
+          {
+            key: "delete",
+            label: "삭제",
+            danger: true,
+            confirm: "이 종목을 삭제할까요?",
+            onSelect: () => void remove(row.id),
+          },
+        ];
+
+  /**
+   * 모바일 2행은 짧게 — 손익은 평가액 아래(`.af-list__value-sub`)에 두어
+   * 좁은 폭에서도 잘리지 않고 항상 보이게 한다.
+   */
+  const holdingSubtitle = (row: HoldingRow) =>
+    `${CLASS_LABELS[row.assetClass]} · ${row.quantity.toLocaleString("ko-KR")}주`;
+
   return (
     <AppLayout
       onLogout={handleLogout}
@@ -579,11 +666,11 @@ export function InvestmentsPage({
       </section>
 
       <section aria-labelledby="h-holdings">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
-          <Typography.Title level={2} id="h-holdings" style={{ fontSize: 16, margin: 0 }}>
+        <div className="af-section-head">
+          <Typography.Title level={2} id="h-holdings" className="af-section-head__title" style={{ fontSize: 16, margin: 0 }}>
             보유종목
           </Typography.Title>
-          <Space wrap>
+          <Space wrap className="af-section-head__actions">
             {asOf ? <Typography.Text type="secondary">기준일 {asOf}</Typography.Text> : null}
             {priceMode ? (
               <>
@@ -619,14 +706,7 @@ export function InvestmentsPage({
           </Typography.Paragraph>
         ) : null}
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: wide ? "minmax(0, 1fr) 300px" : "1fr",
-            gap: 24,
-            alignItems: "start",
-          }}
-        >
+        <div className="af-portfolio-grid">
           <Card>
             <StateBlock
               status={editingId !== null ? "ready" : status}
@@ -634,12 +714,13 @@ export function InvestmentsPage({
               errorText={errorText}
               emptyText="보유종목이 없습니다 — '+ 종목 추가'로 시작하세요"
             >
-              {editingId !== null ? (
+              {/* 행 편집은 표의 편집 행(renderEditor)이 맡는다 — 여기는 새 종목 폼만. */}
+              {editingId === "new" ? (
                 <div style={{ marginBottom: 16 }}>
                   <HoldingForm
                     form={form}
                     accounts={accounts}
-                    wide={wide}
+                    wide
                     onFetchQuote={() => void fetchQuoteForForm()}
                     fetchingQuote={quoteBusy}
                   />
@@ -665,23 +746,14 @@ export function InvestmentsPage({
                   const accountHoldings = holdings.filter((h) => h.accountId === account.accountId);
                   const isKisAccount = account.institutionName === "한국투자";
                   return (
-                    <div
-                      key={account.accountId}
-                      style={{
-                        marginBottom: 16,
-                        padding: "12px 16px",
-                        background: "var(--af-card, #fff)",
-                        border: "1px solid var(--af-border, #e5e7eb)",
-                        borderRadius: 8,
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8, alignItems: "baseline" }}>
-                        <Typography.Text strong>
+                    <div key={account.accountId} style={{ marginBottom: 20 }}>
+                      <div className="af-account-head">
+                        <Typography.Text strong className="af-account-head__title">
                           {account.accountName}
                           {account.institutionName ? ` · ${account.institutionName}` : ""}
                         </Typography.Text>
                         {accountEditId === account.accountId ? null : (
-                          <Space size={4} wrap>
+                          <Space size={4} wrap className="af-account-head__meta">
                             <Typography.Text type="secondary">
                               예수금 {formatKrwExact(account.cashBalance)} · 총액 {formatKrwExact(account.totalValue)}
                             </Typography.Text>
@@ -698,7 +770,7 @@ export function InvestmentsPage({
                               <Button
                                 size="small"
                                 type="text"
-                                aria-label={`${account.accountName} KIS 연동 설정`}
+                                aria-label={`${account.accountName} KIS 설정`}
                                 onClick={() => setKisCredentialsAccount({ id: account.accountId, name: account.accountName })}
                                 disabled={editingId !== null || priceMode || accountBusy || kisSyncingAccountId !== null}
                               >
@@ -709,7 +781,7 @@ export function InvestmentsPage({
                               <Button
                                 size="small"
                                 type="text"
-                                aria-label={`${account.accountName} 한국투자증권 동기화`}
+                                aria-label={`${account.accountName} 한투 동기화`}
                                 onClick={() => void doKisSync(account.accountId)}
                                 disabled={editingId !== null || priceMode || accountBusy || kisSyncingAccountId !== null}
                                 loading={kisSyncingAccountId === account.accountId}
@@ -758,7 +830,7 @@ export function InvestmentsPage({
                       </div>
                       {accountEditId === account.accountId ? (
                         <div style={{ marginBottom: 12 }}>
-                          <Form form={accountForm} layout={wide ? "inline" : "vertical"} style={{ rowGap: 8 }}>
+                          <Form form={accountForm} layout="inline" style={{ rowGap: 8 }}>
                             <Form.Item
                               name="name"
                               label="계좌 이름"
@@ -798,112 +870,42 @@ export function InvestmentsPage({
                             ? "보유종목이 없습니다 — '+ 종목 추가'로 시작하세요"
                             : "이 계좌에 해당 자산군 종목이 없습니다."}
                         </Typography.Text>
-                      ) : wide ? (
-                        <table aria-label={`${account.accountName} 보유종목`} style={{ width: "100%", borderCollapse: "collapse" }}>
-                          <thead>
-                            <tr>
-                              <th scope="col" style={{ textAlign: "left", paddingBottom: 8 }}>종목</th>
-                              <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>수량</th>
-                              <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>평단가</th>
-                              <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>현재가</th>
-                              <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>평가액</th>
-                              <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>손익</th>
-                              <th scope="col" style={{ width: 110 }} />
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {rows.map((row) => {
-                              const cost = costOf(row);
-                              const value = valueOf(row);
-                              return (
-                                <tr key={row.id}>
-                                  <td style={{ padding: "6px 0" }}>
-                                    <div style={{ fontWeight: 600 }}>{row.name}</div>
-                                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                                      {CLASS_LABELS[row.assetClass]}
-                                      {row.symbol ? ` · ${row.symbol}` : ""}
-                                      {row.currency !== "KRW" ? ` · ${row.currency}` : ""}
-                                    </Typography.Text>
-                                  </td>
-                                  <td style={{ textAlign: "right" }}>{row.quantity.toLocaleString("ko-KR")}</td>
-                                  <td style={{ textAlign: "right" }}>{priceText(row.avgPrice, row.currency)}</td>
-                                  <td style={{ textAlign: "right" }}>
-                                    {priceMode ? (
-                                      <InputNumber
-                                        size="small"
-                                        min={0}
-                                        precision={4}
-                                        aria-label={`${row.name} 현재가`}
-                                        value={priceDrafts[row.id] ?? row.marketPrice}
-                                        onChange={(v) =>
-                                          setPriceDrafts((prev) => ({ ...prev, [row.id]: v ?? 0 }))
-                                        }
-                                        style={{ width: 110 }}
-                                      />
-                                    ) : (
-                                      priceText(row.marketPrice, row.currency)
-                                    )}
-                                  </td>
-                                  <td style={{ textAlign: "right" }}>{formatKrwExact(won(value))}</td>
-                                  <td style={{ textAlign: "right" }}>
-                                    {formatSignedKrw(won(value - cost))}
-                                    <Typography.Text type="secondary" style={{ marginLeft: 6, fontSize: 12 }}>
-                                      {returnText(cost, value)}
-                                    </Typography.Text>
-                                  </td>
-                                  <td>
-                                    {priceMode ? null : (
-                                      <Space>
-                                        <Button size="small" type="text" onClick={() => beginEdit(row)}>편집</Button>
-                                        <Popconfirm title="이 종목을 삭제할까요?" onConfirm={() => void remove(row.id)}>
-                                          <Button size="small" type="text" danger>삭제</Button>
-                                        </Popconfirm>
-                                      </Space>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
                       ) : (
-                        <div>
-                          {rows.map((row) => {
-                            const cost = costOf(row);
-                            const value = valueOf(row);
-                            return (
-                              <MobileListCardItem key={row.id}>
-                                <MobileListCardHeader title={row.name} value={formatKrwExact(won(value))} />
-                                <MobileListCardMeta>
-                                  {CLASS_LABELS[row.assetClass]} · {row.quantity.toLocaleString("ko-KR")}주 ·
-                                  {" "}손익 {formatSignedKrw(won(value - cost))} ({returnText(cost, value)})
-                                </MobileListCardMeta>
-                                <MobileListCardActions>
-                                  {priceMode ? (
-                                    <InputNumber
-                                      size="small"
-                                      min={0}
-                                      precision={4}
-                                      aria-label={`${row.name} 현재가`}
-                                      value={priceDrafts[row.id] ?? row.marketPrice}
-                                      onChange={(v) =>
-                                        setPriceDrafts((prev) => ({ ...prev, [row.id]: v ?? 0 }))
-                                      }
-                                      style={{ width: 130 }}
-                                    />
-                                  ) : (
-                                    <Space>
-                                      <Button size="small" type="text" onClick={() => beginEdit(row)}>편집</Button>
-                                      <Popconfirm title="이 종목을 삭제할까요?" onConfirm={() => void remove(row.id)}>
-                                        <Button size="small" type="text" danger>삭제</Button>
-                                      </Popconfirm>
-                                    </Space>
-                                  )}
-                                </MobileListCardActions>
-                              </MobileListCardItem>
-                            );
-                          })}
-                        </div>
+                        <AfListTable
+                          ariaLabel={`${account.accountName} 보유종목`}
+                          rows={rows}
+                          rowKey={(row) => row.id}
+                          columns={holdingColumns}
+                          /* 가격 갱신 모드에서는 행 탭 편집을 막는다 — 현재가만 고친다. */
+                          {...(priceMode ? {} : { onActivate: beginEdit })}
+                          activateLabel={(row) => `${row.name} 편집`}
+                          rowSubtitle={holdingSubtitle}
+                          actions={holdingActions}
+                          actionsLabel={(row) => `${row.name} 행 메뉴`}
+                          editingKey={editingId}
+                          density="dense"
+                          renderEditor={() => (
+                            <div>
+                              <HoldingForm
+                                form={form}
+                                accounts={accounts}
+                                wide
+                                onFetchQuote={() => void fetchQuoteForForm()}
+                                fetchingQuote={quoteBusy}
+                              />
+                              <Space style={{ marginTop: 8 }}>
+                                <Button type="primary" onClick={() => void save()} loading={busy}>
+                                  저장
+                                </Button>
+                                <Button onClick={cancelEdit} disabled={busy}>
+                                  취소
+                                </Button>
+                              </Space>
+                            </div>
+                          )}
+                          editorLabel={(row) => `${row.name} 편집`}
+                          onCancelEdit={cancelEdit}
+                        />
                       )}
                     </div>
                   );

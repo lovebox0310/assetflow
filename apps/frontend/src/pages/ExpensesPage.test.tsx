@@ -258,7 +258,9 @@ describe("ExpensesPage (스프린트 3 #36)", () => {
     renderPage();
 
     // 이슈 #70: 행 액션 접근 이름에 항목명이 결합된다 ("편집" 중복 라벨 문제 해소)
-    fireEvent.click(await screen.findByRole("button", { name: "DB손해보험 정기 항목으로 등록" }));
+    // UI-1b: 행 동작은 `⋯` 메뉴로 옮겼다 — 메뉴를 열고 항목을 고른다.
+    fireEvent.click(await screen.findByRole("button", { name: "DB손해보험 행 메뉴" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "정기 항목으로 등록" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v1/expenses/items/9/convert-to-recurring", expect.objectContaining({ method: "POST" })));
   });
 
