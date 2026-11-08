@@ -510,25 +510,33 @@ button {
   inset: -10px;
 }
 
-/* 컨트롤 히트 확장 — 시각 크기는 그대로, 세로로만 넓힌다.
- * 가로 확장은 0 이다(가로로 나란한 버튼끼리 히트가 겹치지 않게).
- * 겹침 금지: 확장값 e 에 대해 같은 축 인접 컨트롤 간격 ≥ 2e.
- * 주의: antd 버튼은 1px 테두리를 가져 ::after(패딩 박스 기준)의 실제 확장은 e-1 이다.
- * 기본 버튼 36 → 히트 42, small 28 → 히트 42. 8px 간격(Space 기본)에서 겹치지 않는
- * 최대값(e=4/8)을 쓴다 — 그래서 44 가 아니라 42 다. */
+/* 컨트롤 히트 확장 — 시각 크기는 그대로, 히트만 44 로 넓힌다.
+ * 기본 버튼은 세로로만 넓히고(가로 확장 0), `.af-tap-sm` 은 폭이 내용에 따라
+ * 달라져 inset 으로는 44 가 안 나오므로 **44×44 고정 박스를 중심에** 둔다.
+ * 겹침 금지: 시각 박스 밖 확장값 x 에 대해 같은 축 인접 컨트롤 간격 ≥ 2x.
+ * 주의: ::after 의 inset 은 패딩 박스 기준이고 antd 버튼은 1px 테두리를 갖는다.
+ * 따라서 시각 박스 밖 확장 = inset - 1 이다.
+ * 기본 버튼: 36 - 2(테두리) + 5×2 = 44 → 4px 씩 넓어진다.
+ * small: 28px 시각 위에 44×44 를 중심 고정 → 위아래 8px, 좌우 (44-시각폭)/2.
+ * 세로 간격 12px(폼 버튼)은 4+4=8 로 4px 여유, 16px(자산군 필터)은 8+8=16 으로
+ * 경계에서 딱 맞닿는다 — 히트 교집합 면적은 두 경우 모두 0 이다.
+ * (가로 간격 8px 는 칩 시각 폭 42 기준 좌우 1px 씩 → 6px 여유.) */
 .ant-btn:not(.ant-btn-sm):not(.ant-btn-lg) { position: relative; }
 .ant-btn:not(.ant-btn-sm):not(.ant-btn-lg)::after {
   content: "";
   position: absolute;
-  inset-block: -4px;
+  inset-block: -5px;
   inset-inline: 0;
 }
 .af-tap-sm { position: relative; }
 .af-tap-sm::after {
   content: "";
   position: absolute;
-  inset-block: -8px;
-  inset-inline: 0;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
 }
 /* small 로 내려가도 표·계좌의 ⋯ 는 24×24 시각을 유지한다(특이도로 고정).
  * border 를 지우는 이유: antd 의 text 버튼은 1px 투명 테두리를 갖고, ::after 의
@@ -543,14 +551,6 @@ button {
   position: relative;
 }
 .af-icon-btn.ant-btn::after { inset: -10px; }
-
-/* antd 6 의 Dropdown 메뉴는 Menu.itemHeight(controlHeightLG)를 쓰지 않는다 —
- * `.ant-dropdown-menu-item` 이 Dropdown.paddingBlock(controlHeight 기반)으로
- * 높이를 정해 36px 가 된다. 항목을 44px 터치 타깃으로 올린다(내용은 flex 중앙). */
-.ant-dropdown-menu-item,
-.ant-dropdown-menu-submenu-title {
-  min-height: var(--af-control-h-lg, 44px);
-}
 
 /* 비밀번호 인풋(affix wrapper)도 기본 컨트롤 높이에 맞춘다. */
 .ant-input-affix-wrapper { min-height: var(--af-control-h, 36px); }
@@ -950,4 +950,26 @@ button {
   .af-list__cell--primary:has(.af-list__extra .ant-tag) .af-list__edit {
     flex: 1 1 0;
   }
+}
+
+/* Switch 트랙은 18~22px 라 WCAG 2.5.8(24×24)·히트 44 에 미달한다.
+ * 트랙·노브 시각은 그대로 두고 ::after 로 세로 히트만 44 로 넓힌다.
+ * 가로는 트랙 폭 그대로(양옆 컨트롤과 겹치지 않게). */
+.ant-switch { position: relative; }
+.ant-switch::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 44px;
+  transform: translateY(-50%);
+}
+
+/* 날짜 입력의 지우기 아이콘은 14×14 다. 시각은 그대로, 히트만 24×24(AA). */
+.ant-picker-clear { position: relative; }
+.ant-picker-clear::after {
+  content: "";
+  position: absolute;
+  inset: -5px;   /* 14 + 10 = 24 */
 }

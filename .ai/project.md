@@ -4984,3 +4984,16 @@ DB 의 10월 합계는 현대 2,609,560 · 삼성 362,230 이었고, 마지막 �
 - 드롭다운 항목 44px 를 CSS `min-height` 로 맞췄다 — antd 업그레이드 시 `paddingBlock`
   토큰으로 옮기는 편이 안전하다.
 - `Popconfirm` 버튼 라벨 로케일(OK/Cancel), 모바일 전체 인풋 16px 는 범위 밖.
+
+**보정 (같은 날, UI-2b~d)**
+- 히트를 실제 44 로: 기본 `::after -5`(테두리 1px 고려), `.af-tap-sm -9`.
+  필터 칩은 시각 폭이 36~42px 라 inset 방식으로는 44 가 안 나와, `left/top 50% +
+  44×44 + translate(-50%,-50%)` 고정 히트 박스로 바꿨다 — 칩 4점 24/24, 인접 히트
+  간격 6px, 교집합 0.
+- 드롭다운 항목 44 를 CSS `min-height` → antd `components.Dropdown.paddingBlock: 11`
+  로 옮겼다.
+- 한국어 로케일: `antd/locale/ko_KR` + `dayjs.locale("ko")` → Popconfirm/Modal 버튼이
+  `확인`/`취소`. 단위 테스트는 `main.tsx` 를 거치지 않아 en_US 이므로 단언을
+  `/^(OK|확인)$/` 로 로케일 비의존하게 바꿨다(2줄).
+- antd `Switch`(18/22px)·`DatePicker` clear(14px)는 시각을 그대로 두고 `::after` 로
+  히트만 44(세로)/24 로 확장했다(WCAG 2.5.8).

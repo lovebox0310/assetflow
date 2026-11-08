@@ -3321,3 +3321,6 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
   test 227, e2e 156, design 102. 스냅샷 48장 갱신.
 - 남은 것: 기본·small 히트 42px(테두리), 드롭다운 min-height 를 토큰으로 옮기기,
   Popconfirm 로케일, 모바일 전체 인풋 16px.
+- 보정(UI-2b~d): 히트 실제 44(기본 -5, 칩 고정 박스), Dropdown 44 를 antd 토큰으로,
+  ko_KR+dayjs ko 로케일(Popconfirm 확인/취소, 테스트 2줄 로케일 비의존),
+  Switch·DatePicker clear 히트 확장. test 227 / e2e 156 / design 102(갱신 0).
