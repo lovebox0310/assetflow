@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
   Card,
+  Dropdown,
   Form,
   Input,
   InputNumber,
@@ -10,6 +11,7 @@ import {
   Space,
   Typography,
   type FormInstance,
+  type MenuProps,
 } from "antd";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { AppLayout } from "../layout/AppLayout";
@@ -150,6 +152,17 @@ export function InvestmentsPage({
   /** §62 한국투자증권 잔고 동기화 상태. */
   const [kisSyncingAccountId, setKisSyncingAccountId] = useState<number | null>(null);
   const [kisCredentialsAccount, setKisCredentialsAccount] = useState<{ id: number; name: string } | null>(null);
+  /** 계좌 헤더의 `⋯` 메뉴는 한 번에 하나만 열린다 — aria-expanded 도 이 값으로 동기화한다. */
+  const [openAccountMenu, setOpenAccountMenu] = useState<number | null>(null);
+  /**
+   * 확인이 필요한 계좌 동작(Popconfirm)의 대상. 메뉴 항목을 누르면 메뉴가 닫히며
+   * 그 안의 앵커가 사라지므로, 헤더에 1×1 앵커를 따로 두고 `open` 을 제어한다
+   * (AfListTable 의 confirmTarget 과 같은 방식).
+   */
+  const [accountConfirm, setAccountConfirm] = useState<{
+    accountId: number;
+    action: "clear" | "delete";
+  } | null>(null);
   const mountedRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -501,6 +514,7 @@ export function InvestmentsPage({
     <Button
       key={key}
       size="small"
+      className="af-tap-sm"
       type={filter === key ? "primary" : "default"}
       aria-pressed={filter === key}
       onClick={() => setFilter(key)}
@@ -735,7 +749,7 @@ export function InvestmentsPage({
                 </div>
               ) : null}
 
-              <Space wrap style={{ marginBottom: 12 }} aria-label="자산군 필터">
+              <Space size={[8, 16]} wrap style={{ marginBottom: 12 }} aria-label="자산군 필터">
                 {filterButton("all", "전체")}
                 {CLASS_ORDER.map((cls) => filterButton(cls, CLASS_LABELS[cls]))}
               </Space>
@@ -745,88 +759,126 @@ export function InvestmentsPage({
                   const rows = visible.filter((h) => h.accountId === account.accountId);
                   const accountHoldings = holdings.filter((h) => h.accountId === account.accountId);
                   const isKisAccount = account.institutionName === "한국투자";
+                  /**
+                   * 계좌 헤더의 동작은 `⋯` 메뉴 하나로 모은다 — 320px 에서 버튼 5개가
+                   * 3+2 로 흩어지던 문제(UI-2a). 확인이 필요한 동작은 메뉴가 닫힌 뒤
+                   * 아래 1×1 앵커의 Popconfirm 으로 이어진다.
+                   */
+                  const accountActionDisabled =
+                    editingId !== null || priceMode || accountBusy || kisSyncingAccountId !== null;
+                  const kisMenuItems: NonNullable<MenuProps["items"]> = isKisAccount
+                    ? [
+                        { key: "kis", label: "KIS 설정", disabled: accountActionDisabled },
+                        { key: "sync", label: "한투 동기화", disabled: accountActionDisabled },
+                        { type: "divider" },
+                        { key: "clear", label: "동기화 해제", danger: true, disabled: accountActionDisabled },
+                      ]
+                    : [];
+                  const accountMenuItems: NonNullable<MenuProps["items"]> = [
+                    { key: "edit", label: "계좌 편집", disabled: accountActionDisabled },
+                    ...kisMenuItems,
+                    {
+                      key: "delete",
+                      label: "계좌 삭제",
+                      danger: true,
+                      disabled: accountBusy || kisSyncingAccountId !== null,
+                    },
+                  ];
+                  const onAccountMenuClick: MenuProps["onClick"] = ({ key }) => {
+                    if (key === "edit") beginAccountEdit(account);
+                    else if (key === "kis")
+                      setKisCredentialsAccount({ id: account.accountId, name: account.accountName });
+                    else if (key === "sync") void doKisSync(account.accountId);
+                    // 확인이 필요한 동작은 앵커 Popconfirm 을 연다(메뉴는 antd 가 닫는다).
+                    else if (key === "clear" || key === "delete")
+                      setAccountConfirm({ accountId: account.accountId, action: key });
+                  };
                   return (
-                    <div key={account.accountId} style={{ marginBottom: 20 }}>
+                    <div key={account.accountId} className="af-account">
                       <div className="af-account-head">
                         <Typography.Text strong className="af-account-head__title">
                           {account.accountName}
                           {account.institutionName ? ` · ${account.institutionName}` : ""}
                         </Typography.Text>
-                        {accountEditId === account.accountId ? null : (
-                          <Space size={4} wrap className="af-account-head__meta">
-                            <Typography.Text type="secondary">
-                              예수금 {formatKrwExact(account.cashBalance)} · 총액 {formatKrwExact(account.totalValue)}
-                            </Typography.Text>
+                        <div
+                          className="af-account-head__amounts"
+                          role="group"
+                          aria-label={`${account.accountName} 계좌 금액`}
+                        >
+                          <span className="af-account-amount">
+                            <span className="af-account-amount__label">예수금</span>
+                            <span className="af-account-amount__value">{formatKrwExact(account.cashBalance)}</span>
+                          </span>
+                          <span className="af-account-amount">
+                            <span className="af-account-amount__label">총액</span>
+                            <span className="af-account-amount__value">{formatKrwExact(account.totalValue)}</span>
+                          </span>
+                        </div>
+                        <div className="af-account-head__menu">
+                          <Dropdown
+                            trigger={["click"]}
+                            open={openAccountMenu === account.accountId}
+                            onOpenChange={(open) => setOpenAccountMenu(open ? account.accountId : null)}
+                            menu={{ items: accountMenuItems, onClick: onAccountMenuClick }}
+                          >
                             <Button
-                              size="small"
                               type="text"
-                              aria-label={`${account.accountName} 계좌 편집`}
-                              onClick={() => beginAccountEdit(account)}
-                              disabled={editingId !== null || priceMode || accountBusy || kisSyncingAccountId !== null}
+                              size="small"
+                              className="af-icon-btn"
+                              aria-haspopup="menu"
+                              aria-expanded={openAccountMenu === account.accountId}
+                              aria-label={`${account.accountName} 계좌 메뉴`}
+                              disabled={accountEditId === account.accountId}
                             >
-                              계좌 편집
+                              <span aria-hidden="true">⋯</span>
                             </Button>
-                            {isKisAccount ? (
-                              <Button
-                                size="small"
-                                type="text"
-                                aria-label={`${account.accountName} KIS 설정`}
-                                onClick={() => setKisCredentialsAccount({ id: account.accountId, name: account.accountName })}
-                                disabled={editingId !== null || priceMode || accountBusy || kisSyncingAccountId !== null}
-                              >
-                                KIS 설정
-                              </Button>
-                            ) : null}
-                            {isKisAccount ? (
-                              <Button
-                                size="small"
-                                type="text"
-                                aria-label={`${account.accountName} 한투 동기화`}
-                                onClick={() => void doKisSync(account.accountId)}
-                                disabled={editingId !== null || priceMode || accountBusy || kisSyncingAccountId !== null}
-                                loading={kisSyncingAccountId === account.accountId}
-                              >
-                                한투 동기화
-                              </Button>
-                            ) : null}
-                            {isKisAccount ? (
-                              <Popconfirm
-                                title="동기화를 해제할까요?"
-                                description="이 계좌의 보유종목과 예수금이 모두 초기화됩니다."
-                                onConfirm={() => void clearKisSync(account.accountId)}
-                              >
-                                <Button
-                                  size="small"
-                                  type="text"
-                                  danger
-                                  aria-label={`${account.accountName} 동기화 해제`}
-                                  disabled={editingId !== null || priceMode || accountBusy || kisSyncingAccountId !== null}
-                                >
-                                  동기화 해제
-                                </Button>
-                              </Popconfirm>
-                            ) : null}
+                          </Dropdown>
+                          {/* Popconfirm 앵커: 메뉴가 닫혀도 살아 있는 1×1 지점 (AfListTable 과 동일) */}
+                          {isKisAccount ? (
                             <Popconfirm
-                              title="이 투자 계좌를 삭제할까요?"
-                              description={
-                                accountHoldings.length > 0
-                                  ? `보유종목 ${accountHoldings.length}건도 함께 삭제됩니다`
-                                  : undefined
+                              title="동기화를 해제할까요?"
+                              description="이 계좌의 보유종목과 예수금이 모두 초기화됩니다."
+                              open={
+                                accountConfirm?.accountId === account.accountId &&
+                                accountConfirm.action === "clear"
                               }
-                              onConfirm={() => void removeAccount(account)}
+                              onConfirm={() => {
+                                setAccountConfirm(null);
+                                void clearKisSync(account.accountId);
+                              }}
+                              onCancel={() => setAccountConfirm(null)}
+                              onOpenChange={(open) => {
+                                if (!open) setAccountConfirm(null);
+                              }}
                             >
-                              <Button
-                                size="small"
-                                type="text"
-                                danger
-                                aria-label={`${account.accountName} 계좌 삭제`}
-                                disabled={accountBusy || kisSyncingAccountId !== null}
-                              >
-                                계좌 삭제
-                              </Button>
+                              <span
+                                style={{ position: "absolute", right: 0, top: "50%", width: 1, height: 1 }}
+                              />
                             </Popconfirm>
-                          </Space>
-                        )}
+                          ) : null}
+                          <Popconfirm
+                            title="이 투자 계좌를 삭제할까요?"
+                            description={
+                              accountHoldings.length > 0
+                                ? `보유종목 ${accountHoldings.length}건도 함께 삭제됩니다`
+                                : undefined
+                            }
+                            open={
+                              accountConfirm?.accountId === account.accountId &&
+                              accountConfirm.action === "delete"
+                            }
+                            onConfirm={() => {
+                              setAccountConfirm(null);
+                              void removeAccount(account);
+                            }}
+                            onCancel={() => setAccountConfirm(null)}
+                            onOpenChange={(open) => {
+                              if (!open) setAccountConfirm(null);
+                            }}
+                          >
+                            <span style={{ position: "absolute", right: 0, top: "50%", width: 1, height: 1 }} />
+                          </Popconfirm>
+                        </div>
                       </div>
                       {accountEditId === account.accountId ? (
                         <div style={{ marginBottom: 12 }}>
@@ -1033,7 +1085,7 @@ function HoldingForm({
         <Input style={{ width: 110 }} placeholder="005930" />
       </Form.Item>
       <Form.Item label=" " colon={false}>
-        <Button size="small" onClick={onFetchQuote} loading={fetchingQuote}>
+        <Button onClick={onFetchQuote} loading={fetchingQuote}>
           현재가 가져오기
         </Button>
       </Form.Item>
