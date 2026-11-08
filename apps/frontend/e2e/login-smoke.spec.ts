@@ -1,4 +1,6 @@
 import { test, expect } from "@playwright/test";
+import { authToken } from "./fixtures";
+import { mockDashboardApi } from "./dashboard-mocks";
 
 /**
  * Sprint 1 스모크 테스트: 로그인 → 대시보드 전환
@@ -8,6 +10,9 @@ import { test, expect } from "@playwright/test";
  * - 시드 사용자로 로그인
  * - 대시보드로 즉시 전환 확인
  * - API 호출 작동 확인
+ *
+ * CI/로컬은 스텁, TEST_URL 지정 시 실서버: 백엔드가 없는 환경에서만 API 를
+ * 모의하고, TEST_URL 이 있으면 실제 서버를 그대로 호출한다.
  */
 
 const BASE_URL = process.env.TEST_URL || "http://localhost:5173";
@@ -15,6 +20,31 @@ const TEST_EMAIL = "redbox9@example.com";
 const TEST_PASSWORD = "AssetFlow@2026!Test";
 
 test.describe("Login & Dashboard Smoke Test", () => {
+  // TEST_URL 이 없으면 로컬 Vite dev(= 백엔드 없음)이므로 API를 스텁한다.
+  // TEST_URL 이 있으면 운영/실서버 스모크이므로 실제 API를 그대로 호출한다.
+  test.beforeEach(async ({ page }) => {
+    if (process.env.TEST_URL) return;
+    // 라우트는 나중에 등록한 것이 우선한다. 대시보드 목을 먼저, auth 를 마지막에 건다.
+    await mockDashboardApi(page);
+    await page.route("**/api/v1/auth/login", async (route) => {
+      const body = route.request().postDataJSON() as { email?: string; password?: string } | null;
+      const ok = body?.email === TEST_EMAIL && body?.password === TEST_PASSWORD;
+      if (!ok) {
+        await route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({ code: "AUTH_FAILED", message: "이메일 또는 비밀번호를 확인해 주세요", details: "", timestamp: new Date().toISOString() }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ code: "OK", message: "로그인 성공", data: { token: authToken() } }),
+      });
+    });
+  });
+
   test("should login and navigate to dashboard immediately", async ({
     page,
   }) => {

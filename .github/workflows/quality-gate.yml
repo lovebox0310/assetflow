@@ -115,7 +115,7 @@ jobs:
         
   e2e-gate:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: apps/frontend
@@ -130,8 +130,12 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Playwright 브라우저 설치
         run: pnpm exec playwright install chromium
+      # 스냅샷 베이스라인은 한국어 폰트(Noto Sans CJK)가 설치된 개발 머신에서
+      # 생성했다. CI 러너에는 그 폰트가 없어 전 픽셀이 어긋나므로 CI 에서는 비교하지
+      # 않는다(§76). --ignore-snapshots 는 toHaveScreenshot 만 건너뛰고 나머지 단언은
+      # 그대로 실행한다. 시각 검증은 로컬에서 pnpm e2e:design 으로 한다.
       - name: E2E 테스트
-        run: pnpm e2e
+        run: pnpm e2e --ignore-snapshots
         
   # BE 앱 게이트. 2026-10-18 부터 백엔드가 실제로 빌드·테스트 가능하다
   # (wrapper + 메인 클래스, §37.6). DB 전 부팅이므로 테스트는 Postgres 없이 돈다.
