@@ -69,7 +69,7 @@ test("내비 이동 후 뒤로가기로 원래 화면·제목으로 돌아온다
   await page.goto("/#/", { waitUntil: "networkidle" });
   await expect(page.getByRole("heading", { level: 1, name: "대시보드" })).toBeVisible();
 
-  await page.getByRole("button", { name: "자산" }).click();
+  await page.locator("header").getByRole("button", { name: "자산", exact: true }).click();
   await expect(page).toHaveURL(/#\/assets$/);
   await expect(page).toHaveTitle("자산 · AssetFlow");
 

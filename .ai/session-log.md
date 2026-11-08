@@ -3223,3 +3223,60 @@ LF 로 쓰면 그렇게 된다. `git checkout` 으로 되돌리고 `edit` 도구
 - [ ] 상품코드 입력 검증(`01`·`03`·`08`·`22`·`29` 외 거부) + CMA 안내 문구
 - [ ] CMA 계좌는 수동 잔액 입력으로 유도
 - [ ] `9a4680c`·`18ddb8e` 미배포 (`sudo ./deploy.sh`)
+
+## 2026-11-07 — 메뉴·설정 IA 정리 (UI-IA-1~3, §74) [✅ FE 통과 · 커밋 안 함]
+
+**파이프라인**: UI-IA-1 디자인 스펙(`designer`, crouton-alpha-free) →
+UI-IA-2 설정 정리·카드메일 이동·SubNav 공통화(T2+T4, deepseek-flash) →
+UI-IA-3 대시보드 지표/링크·브랜드 홈 링크(T3+T5, deepseek-flash).
+
+**변경 파일 (T3+T5, 이 세션)**
+- `apps/frontend/src/pages/DashboardPage.tsx` — 핵심 지표 3종(자산 구성비 카드·import 제거),
+  지표 그리드 lg span 8, `SectionHeader` 헬퍼로 섹션 링크 5개, `onOpenCards` prop 추가
+- `apps/frontend/src/app/App.tsx` — 대시보드에 `onOpenCards={() => navigate("expenseCards")}`
+- `apps/frontend/src/layout/AppLayout.tsx` — 브랜드를 `<a href="#/">` 홈 링크로(접근 이름
+  "AssetFlow 홈 — 대시보드"), 미사용 `Typography` import 제거
+- 테스트: `DashboardPage.test.tsx`(3종·lg-8·링크 5개), `AppA11y.test.tsx`(브랜드 링크),
+  `App.test.tsx`(브랜드 클릭 → `#/`)
+- 기록: `.ai/project.md` §74 추가 + §35.1·§35.2 갱신 주석, `design/prototype/index.html`
+  히어로 안내, `design/prototype/README.md` index.html 행
+
+T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 않았다.
+
+**검증** (`apps/frontend`)
+- `pnpm typecheck` 통과
+- `pnpm lint` 통과
+- `pnpm test` **227 통과** (26 files)
+- `pnpm build` 통과
+
+**블로커**: opencode-go 사용량 한도 초과로 Go 모델을 쓸 수 없어 `deepseek-flash` 로 대체했다.
+모델만 바뀌었고 역할 경계(설계→구현→검증)는 그대로다.
+
+**남은 것**
+- [ ] QA 시각 검증: 320/375/390/430px 에서 대시보드 섹션 링크 줄바꿈·브랜드 44px 터치
+- [ ] Storybook 스냅샷 갱신(지표 4종 → 3종)
+- [ ] 사용자 확인 후 커밋
+
+## 2026-11-07 — UI-IA QA: 모바일 6px 넘침 수정 (A6) [✅ Go]
+
+- QA 1차: 대시보드 320/375/390/430에서 `scrollWidth`가 6px 초과 → No-Go.
+- 원인: 차트의 `<table className="sr-only">`가 `display:table`의 min-content 폭(286~380px)으로
+  1px 박스를 넘어 문서를 넓혔다. 이번 변경 이전부터 있던 §70 접근성 산출물의 결함이다.
+- 수정: `apps/frontend/src/app/app.css` `.sr-only`에 `left:-9999px`, `max-width:1px`,
+  `max-height:1px` 추가. `display`는 table 그대로 유지.
+- QA 2차: 대시보드·설정·카드내역 × 4뷰포트 = 12/12 `scrollWidth === innerWidth` → Go.
+- 접근성: `table.sr-only`가 role=table, name("자산 구성비 데이터")로 노출. 포커스 가능 요소 0.
+- 검증: `pnpm typecheck`·`lint`·`test 227`·`build` 통과.
+- 미검증: 실제 스크린리더(NVDA/VoiceOver/TalkBack) 확인.
+- 커밋 안 함.
+
+## 2026-11-08 — 모바일 하단 탭 + sticky 헤더 (UI-NAV-2, §75) [✅ e2e 156 pass]
+
+- `StandardNav`가 `<576px`에서 하단 탭을 렌더(4개 항목, 44px, safe-area). 데스크톱 헤더
+  내비는 무변경. 하단 탭은 header 안에 렌더해 랜드마크 1개·header 스코프 유지.
+- `AppLayout` sticky 헤더(z 100), 모바일 1줄 56px, 테마/로그아웃 44px, `100dvh`.
+- `app.css` §75 블록. `index.html` viewport-fit은 후속.
+- e2e: 하단 탭·sticky skip 해제, 사이드바 테스트를 헤더 유지 양성 가드로 교체.
+- 검증: typecheck/lint/test 227, `pnpm e2e` 156/0/0, 스냅샷 90장(신규 6·갱신 12·불변 72).
+- 미검증: iOS 실기기 safe-area·키보드.
+- 커밋 안 함.

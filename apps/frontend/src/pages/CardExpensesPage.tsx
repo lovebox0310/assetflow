@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "r
 import { Button, Card, Checkbox, Input, Progress, Select, Space, Tag, Typography } from "antd";
 import { AppLayout } from "../layout/AppLayout";
 import { StandardNav } from "../layout/StandardNav";
-import { ExpenseTabs } from "../components/ExpenseTabs";
+import { SubNav } from "../components/SubNav";
+import { CardEmailImportSettingsSection } from "../components/CardEmailImportSettingsSection";
 import { MonthSelect } from "../components/MonthSelect";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
 import {
@@ -413,7 +414,14 @@ export function CardExpensesPage({
         <MonthSelect value={month} onChange={handleMonthChange} />
       </div>
 
-      <ExpenseTabs current="cards" onOpenExpenses={onOpenExpenses} />
+      <SubNav
+        ariaLabel="지출 하위 화면"
+        current="cards"
+        items={[
+          { key: "expenses", label: "지출", ariaLabel: "지출 탭", onClick: onOpenExpenses },
+          { key: "cards", label: "카드내역", ariaLabel: "카드내역 탭" },
+        ]}
+      />
 
       {/* §72.1: 카드사별 승인일 합계와 명세서 금액을 한 표에서 비교한다. */}
       <section aria-labelledby="h-card-companies" style={{ marginBottom: 32 }}>
@@ -504,6 +512,11 @@ export function CardExpensesPage({
           카드 내역 가져오기
         </Typography.Title>
         <CardImportPanel />
+      </section>
+
+      {/* §63/§68 카드 명세서 자동 수집은 카드내역 화면에 둔다 — h2 는 컴포넌트 안에 1개만. */}
+      <section aria-labelledby="h-card-email-import" style={{ marginBottom: 32 }}>
+        <CardEmailImportSettingsSection />
       </section>
 
       <section aria-labelledby="h-unclassified" style={{ marginBottom: 32 }}>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Button, Form, Input, Radio, Space, Switch, Typography } from "antd";
+import { Alert, Button, Card, Form, Input, Radio, Space, Switch, Typography } from "antd";
 import {
   deleteCardEmailImportSettings,
   getCardEmailImportSettings,
@@ -133,7 +133,7 @@ export function CardEmailImportSettingsSection() {
   };
 
   return (
-    <section aria-labelledby="h-card-email-import" style={{ marginBottom: 24 }}>
+    <Card>
       <Typography.Title level={2} id="h-card-email-import" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>
         카드 명세서 자동 수집
       </Typography.Title>
@@ -232,6 +232,6 @@ export function CardEmailImportSettingsSection() {
           </Space>
         </Form>
       </StateBlock>
-    </section>
+    </Card>
   );
 }

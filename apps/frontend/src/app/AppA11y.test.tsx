@@ -39,6 +39,15 @@ function apiResponse(data: unknown, ok = true, status = 200): Response {
   return { ok, status, json: async () => body } as Response;
 }
 
+/** 카드 명세서 자동 수집은 미설정이 정상 상태다(404 NOT_FOUND) — 500 노이즈를 막는다. */
+function notFound(): Response {
+  return {
+    ok: false,
+    status: 404,
+    json: async () => ({ code: "NOT_FOUND", message: "not found", details: "", timestamp: "" }),
+  } as Response;
+}
+
 /** 표(표 이름 AC)가 렌더되려면 데스크톱 뷰가 필요하다 — jsdom 기본(모바일)은 목록 카드로 대체된다. */
 function setViewport(desktop: boolean) {
   Object.defineProperty(window, "matchMedia", {
@@ -84,6 +93,7 @@ function stubCommon() {
         { id: 2, accountType: "realty", name: "주택대출", institutionName: "", balance: 5_000_000, isDebt: true, openedAt: null },
       ]);
     }
+    if (path.includes("/card-email-import-settings")) return notFound();
     if (path.includes("/settings")) {
       return apiResponse({ id: 1, email: "user@example.com", displayName: "AssetFlow", targetMonths: 6 });
     }
@@ -163,8 +173,11 @@ describe("이슈 #70 접근성 AA 정합성", () => {
     renderCardExpenses();
     await screen.findByRole("heading", { level: 1, name: "카드내역" });
     expect(document.querySelectorAll("h1")).toHaveLength(1);
+    expect(screen.getByRole("heading", { level: 2, name: "카드 명세서 자동 수집" })).toBeDefined();
     expect(screen.getByRole("heading", { level: 2, name: "미분류 정리" })).toBeDefined();
     expect(screen.getByRole("heading", { level: 2, name: "가져온 카드내역" })).toBeDefined();
+    // 카드메일 h2 는 문서에 정확히 1개
+    expect(document.querySelectorAll("#h-card-email-import")).toHaveLength(1);
   });
 
   it("설정: h1 1개(설정), 섹션은 h2", async () => {
@@ -172,10 +185,36 @@ describe("이슈 #70 접근성 AA 정합성", () => {
     await screen.findByRole("heading", { level: 1, name: "설정" });
     expect(document.querySelectorAll("h1")).toHaveLength(1);
     expect(screen.getByRole("heading", { level: 2, name: "프로필" })).toBeDefined();
-    expect(screen.getByRole("heading", { level: 2, name: "비상금 기준" })).toBeDefined();
+    expect(screen.getByRole("heading", { level: 2, name: "비밀번호 변경" })).toBeDefined();
+    // 기능 설정은 기능 화면으로 이동했다 — 설정에는 남기지 않는다
+    expect(screen.queryByRole("heading", { level: 2, name: "비상금 기준" })).toBeNull();
   });
 
   /* ── 현재 페이지 내비: aria-current + 비활성 미사용 ──────────── */
+
+  it("카드내역 하위 nav: 현재 탭만 aria-current=page 이고 disabled 가 아니다", async () => {
+    renderCardExpenses();
+    await screen.findByRole("navigation", { name: "지출 하위 화면" });
+    expect(document.querySelectorAll('nav[aria-label="지출 하위 화면"]')).toHaveLength(1);
+    const current = screen.getByRole("button", { name: "카드내역 탭" });
+    expect(current.getAttribute("aria-current")).toBe("page");
+    expect((current as HTMLButtonElement).disabled).toBe(false);
+    expect(current.style.fontWeight).toBe("700");
+    const other = screen.getByRole("button", { name: "지출 탭" });
+    expect(other.getAttribute("aria-current")).toBeNull();
+    expect((other as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("자산 하위 nav: 현재 탭만 aria-current=page 이고 disabled 가 아니다", async () => {
+    render(<AssetsPage onBack={() => {}} onOpenInvestments={() => {}} onOpenExpenses={() => {}} onOpenSettings={() => {}} />);
+    await screen.findByRole("navigation", { name: "자산 하위 화면" });
+    expect(document.querySelectorAll('nav[aria-label="자산 하위 화면"]')).toHaveLength(1);
+    const current = screen.getByRole("button", { name: "자산 탭" });
+    expect(current.getAttribute("aria-current")).toBe("page");
+    expect((current as HTMLButtonElement).disabled).toBe(false);
+    expect(current.style.fontWeight).toBe("700");
+    expect(screen.getByRole("button", { name: "투자 탭" }).getAttribute("aria-current")).toBeNull();
+  });
 
   it("현재 페이지 내비는 aria-current=page 이고 disabled 가 아니다", async () => {
     renderDashboard();
@@ -232,6 +271,18 @@ describe("이슈 #70 접근성 AA 정합성", () => {
     expect(firstLink?.textContent).toBe("본문으로 건너뛰기");
     const main = document.querySelector("main#main");
     expect(main).not.toBeNull();
+  });
+
+  /* ── 브랜드: 대시보드 홈 링크 (§74) ────────────────────────── */
+
+  it("브랜드는 #/ 로 가는 링크이고 접근 이름이 'AssetFlow 홈 — 대시보드'다", async () => {
+    renderDashboard();
+    await screen.findByRole("heading", { level: 1, name: "대시보드" });
+    const brand = screen.getByRole("link", { name: "AssetFlow 홈 — 대시보드" });
+    expect(brand.getAttribute("href")).toBe("#/");
+    expect(brand.textContent).toBe("AssetFlow");
+    // 스킵 링크가 여전히 문서 첫 링크이고, 브랜드는 그 다음이다.
+    expect(document.querySelector("a")).toBe(screen.getByText("본문으로 건너뛰기"));
   });
 
   /* ── 키보드: 정기 칩 button · 행 액션 이름 결합 ──────────────── */
@@ -298,9 +349,10 @@ describe("이슈 #70 접근성 AA 정합성", () => {
     expect(screen.queryByRole("table", { name: "월 지출 항목" })).toBeNull();
   });
 
-  it("설정 계정 요약 표에 접근 가능한 이름이 있다", async () => {
+  it("설정 화면에는 계정 요약 표가 없다 — 기능 설정은 기능 화면으로 이동", async () => {
     renderSettings();
-    expect(await screen.findByRole("table", { name: "계정 요약" })).toBeDefined();
+    await screen.findByRole("heading", { level: 2, name: "프로필" });
+    expect(screen.queryByRole("table", { name: "계정 요약" })).toBeNull();
   });
 
   it("자산 표(금융자산·부채)에 접근 가능한 이름이 있다", async () => {

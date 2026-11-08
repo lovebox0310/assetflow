@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button, Card, Checkbox, Form, Grid, Input, InputNumber, Popconfirm, Select, Space, Typography } from "antd";
 import { AppLayout } from "../layout/AppLayout";
 import { StandardNav } from "../layout/StandardNav";
-import { ExpenseTabs } from "../components/ExpenseTabs";
+import { SubNav } from "../components/SubNav";
 import { MonthSelect } from "../components/MonthSelect";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
 import {
@@ -320,7 +320,14 @@ export function ExpensesPage({
         <MonthSelect value={month} onChange={onMonthChange} />
       </div>
 
-      <ExpenseTabs current="expenses" onOpenCards={onOpenCards} />
+      <SubNav
+        ariaLabel="지출 하위 화면"
+        current="expenses"
+        items={[
+          { key: "expenses", label: "지출", ariaLabel: "지출 탭" },
+          { key: "cards", label: "카드내역", ariaLabel: "카드내역 탭", onClick: onOpenCards },
+        ]}
+      />
 
       {/* 이슈 #70: 변경 알림을 role=status + aria-live=polite 로 — 스크린리더가
           화면 전환 없이도 안내를 읽는다. (notice 는 주로 실패·중복 안내다) */}

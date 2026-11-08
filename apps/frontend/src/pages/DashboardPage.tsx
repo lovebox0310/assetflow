@@ -29,7 +29,6 @@ import {
   monthlyBalance,
   netWorth,
 } from "../dashboard/metrics";
-import { AssetCompositionList } from "../dashboard/AssetCompositionList";
 import { CashAccountCards } from "../dashboard/CashAccountCards";
 import { buildExpenseTrend, lastMonthsRange, monthsBetween } from "../dashboard/expenseTrend";
 import { listCardCompanyGroups, listMonthlyCategoryTotals, type CardCompanyGroup, type MonthlyCategoryTotal } from "../api/cardImportApi";
@@ -62,6 +61,47 @@ const EMERGENCY_CARD_RANGE = lastMonthsRange(13);
 /** §35.1: 월별 현금흐름은 최근 6개월. 서버는 months 1..12 만 받는다. */
 const CASHFLOW_MONTHS = 6;
 
+interface SectionHeaderLink {
+  label: string;
+  ariaLabel: string;
+  onClick: () => void;
+}
+
+/**
+ * §74: 섹션 제목 행 — h2 와 그 화면으로 가는 링크를 한 줄에 둔다.
+ * h2 의 id 는 바꾸지 않는다(영역 순서·aria-labelledby 계약, §35.1).
+ * 링크는 `<a href>` 가 아니라 Button + navigate 콜백이다(pushState 일관성).
+ */
+function SectionHeader({ id, title, link }: { id: string; title: string; link?: SectionHeaderLink }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        marginBottom: 16,
+        flexWrap: "wrap",
+      }}
+    >
+      <Typography.Title level={2} id={id} style={{ fontSize: 16, margin: 0 }}>
+        {title}
+      </Typography.Title>
+      {link ? (
+        <Button
+          type="link"
+          size="small"
+          aria-label={link.ariaLabel}
+          onClick={link.onClick}
+          style={{ paddingInline: 8, minHeight: 44 }}
+        >
+          {link.label}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 interface DashboardPageProps {
   /** 로그아웃 후 로그인 화면으로 전환한다 (§21 로그아웃 처리). */
   onLogout: () => void;
@@ -71,6 +111,8 @@ interface DashboardPageProps {
   onOpenExpenses?: () => void;
   /** 헤더에서 설정 화면으로 이동한다 (§46). */
   onOpenSettings?: () => void;
+  /** §74: 카드내역 화면으로 이동한다(자식 탭 — 카드별 사용 내역). */
+  onOpenCards?: () => void;
 }
 
 /**
@@ -81,7 +123,7 @@ interface DashboardPageProps {
  * - 오류 문구는 ApiError 의 사용자 친화 메시지(네트워크/인증 구분)를 그대로 보여 준다.
  * - 계산은 여전히 metrics.ts 단일 출처(§34.6). 여기선 데이터를 씌우는 것만 한다.
  */
-export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSettings }: DashboardPageProps) {
+export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSettings, onOpenCards }: DashboardPageProps) {
   const screens = Grid.useBreakpoint();
   // §35 중단점: md 미만은 표 대신 카드형 리스트
   const wide = Boolean(screens.md);
@@ -274,7 +316,8 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
         <Typography.Title level={2} id="h-core" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>
           핵심 지표
         </Typography.Title>
-        <ResponsiveGrid>
+        {/* §74: 핵심 지표는 3종. lg 에서 3열(span 8)로 균등 배치한다. */}
+        <ResponsiveGrid spans={{ xs: 24, md: 12, lg: 8 }}>
           <MetricCard
             title="순자산"
             status={summaryStatus}
@@ -346,17 +389,16 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
               ? formatMonths(showInvestMonths ? investMonths(summary, runway.monthlySpend) : runway.runwayMonths)
               : "—"}
           </MetricCard>
-          <MetricCard title="자산 구성비" status={summaryStatus} onRetry={load}>
-            <AssetCompositionList slices={composition} />
-          </MetricCard>
         </ResponsiveGrid>
       </section>
 
       <ResponsiveGrid spans={{ xs: 24, md: 12 }}>
         <section aria-labelledby="h-composition" style={{ marginBottom: 32 }}>
-          <Typography.Title level={2} id="h-composition" style={{ fontSize: 16 }}>
-            자산 구성비
-          </Typography.Title>
+          <SectionHeader
+            id="h-composition"
+            title="자산 구성비"
+            link={{ label: "자산 화면 보기", ariaLabel: "자산 화면 보기 — 자산 구성비", onClick: () => onOpenAssets?.() }}
+          />
           <Card>
             <StateBlock status={summaryStatus} onRetry={load} errorText={summaryError}>
               {dataReady ? (
@@ -370,9 +412,11 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
         </section>
 
         <section aria-labelledby="h-emergency-accounts" style={{ marginBottom: 32 }}>
-          <Typography.Title level={2} id="h-emergency-accounts" style={{ fontSize: 16 }}>
-            비상금 계좌
-          </Typography.Title>
+          <SectionHeader
+            id="h-emergency-accounts"
+            title="비상금 계좌"
+            link={{ label: "자산 화면 보기", ariaLabel: "자산 화면 보기 — 비상금 계좌", onClick: () => onOpenAssets?.() }}
+          />
           <Card>
             <StateBlock status={summaryStatus} onRetry={load} errorText={summaryError}>
               {dataReady ? (
@@ -387,9 +431,11 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
       </ResponsiveGrid>
 
 <section aria-labelledby="h-card-groups" style={{ marginBottom: 32 }}>
-        <Typography.Title level={2} id="h-card-groups" style={{ fontSize: 16 }}>
-          카드별 본인·가족 사용 내역
-        </Typography.Title>
+        <SectionHeader
+          id="h-card-groups"
+          title="카드별 본인·가족 사용 내역"
+          link={{ label: "카드내역 보기", ariaLabel: "카드내역 보기 — 카드별 사용 내역", onClick: () => onOpenCards?.() }}
+        />
         <Card>
           <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <Typography.Text style={{ fontWeight: 600, whiteSpace: "nowrap" }}>조회 범위</Typography.Text>
@@ -437,9 +483,11 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
       </section>
 
 <section aria-labelledby="h-trend" style={{ marginBottom: 32 }}>
-        <Typography.Title level={2} id="h-trend" style={{ fontSize: 16 }}>
-          지출 추이
-        </Typography.Title>
+        <SectionHeader
+          id="h-trend"
+          title="지출 추이"
+          link={{ label: "지출 화면 보기", ariaLabel: "지출 화면 보기 — 지출 추이", onClick: () => onOpenExpenses?.() }}
+        />
         <Typography.Text type="secondary" style={{ display: "block", marginTop: -8, marginBottom: 16, fontSize: 13 }}>
           카드내역 + 고정/정기 항목 · 자산 이동(저축/투자) 제외 · 수입은 확정된 달만
         </Typography.Text>
@@ -491,9 +539,11 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
       </section>
 
 <section aria-labelledby="h-cashflow">
-        <Typography.Title level={2} id="h-cashflow" style={{ fontSize: 16 }}>
-          월별 현금흐름
-        </Typography.Title>
+        <SectionHeader
+          id="h-cashflow"
+          title="월별 현금흐름"
+          link={{ label: "지출 화면 보기", ariaLabel: "지출 화면 보기 — 월별 현금흐름", onClick: () => onOpenExpenses?.() }}
+        />
         <Card>
           <StateBlock status={cashflowStatus} onRetry={load}>
             {cashflowRows.length > 0 ? (

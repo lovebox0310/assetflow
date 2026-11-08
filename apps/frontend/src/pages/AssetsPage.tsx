@@ -9,6 +9,7 @@ import {
 import { AppLayout } from "../layout/AppLayout";
 import { StandardNav } from "../layout/StandardNav";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
+import { SubNav } from "../components/SubNav";
 import {
   createAccount,
   deleteAccount,
@@ -278,21 +279,14 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
         자산
       </Typography.Title>
       {/* §54.1: 자산의 하위 화면 탭 — 전역 nav 는 4개를 유지한다. */}
-      <nav aria-label="자산 하위 화면" style={{ marginBottom: 16 }}>
-        <Space size={4}>
-          <Button
-            type="link"
-            aria-label="자산 탭"
-            aria-current="page"
-            style={{ paddingInline: 8, fontWeight: 700, color: "var(--af-foreground)" }}
-          >
-            자산
-          </Button>
-          <Button type="link" aria-label="투자 탭" onClick={onOpenInvestments} style={{ paddingInline: 8 }}>
-            투자
-          </Button>
-        </Space>
-      </nav>
+      <SubNav
+        ariaLabel="자산 하위 화면"
+        current="assets"
+        items={[
+          { key: "assets", label: "자산", ariaLabel: "자산 탭" },
+          { key: "investments", label: "투자", ariaLabel: "투자 탭", onClick: onOpenInvestments },
+        ]}
+      />
       <section aria-labelledby="h-assets" style={{ marginBottom: 24 }}>
         {/*
          * #69: 저장/삭제 실패를 화면에 알린다. role="alert" 로 두어 스크린리더가

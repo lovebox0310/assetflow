@@ -94,14 +94,15 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     saveToken("tok", Date.now() + 60_000);
   });
 
-  it("핵심 카드 4종을 첫 화면에 배치한다 (§22 설계 기준)", () => {
+  it("핵심 카드 3종을 첫 화면에 배치한다 (§74 — 자산 구성비 카드 제거)", () => {
     stubFetch(route);
     render(<DashboardPage onLogout={() => {}} />);
     expect(screen.getByRole("heading", { name: "핵심 지표" })).toBeDefined();
-    // "자산 구성비"는 카드 제목과 하위 섹션 제목에 모두 나오므로 존재 자체를 검사한다.
-    for (const title of ["순자산", "월 수지", "비상금 유지 개월", "자산 구성비"]) {
+    for (const title of ["순자산", "월 수지", "비상금 유지 개월"]) {
       expect(screen.getAllByText(title).length).toBeGreaterThan(0);
     }
+    // 구성비는 지표 카드가 아니라 도넛 섹션에만 있다.
+    expect(document.querySelectorAll(".ant-col-lg-8")).toHaveLength(3);
   });
 
   it("영역 순서가 정보구조와 일치한다 (지표→구성비→현금→카드→지출추이→현금흐름)", async () => {
@@ -130,11 +131,44 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     expect(onLogout).toHaveBeenCalledTimes(1);
   });
 
-  it("핵심 카드는 §35.2 분할(span 24/12/6)을 antd Col 계약대로 입힌다", () => {
+  it("핵심 카드는 §74 분할(span 24/12/8)을 antd Col 계약대로 입힌다", () => {
     stubFetch(route);
     render(<DashboardPage onLogout={() => {}} />);
-    const cols = document.querySelectorAll(".ant-col-xs-24.ant-col-md-12.ant-col-lg-6");
-    expect(cols.length).toBe(4);
+    const cols = document.querySelectorAll(".ant-col-xs-24.ant-col-md-12.ant-col-lg-8");
+    expect(cols.length).toBe(3);
+  });
+
+  it("§74: 섹션마다 해당 화면으로 가는 링크 5개가 있고 클릭 시 콜백을 부른다", async () => {
+    stubFetch(route);
+    const onOpenAssets = vi.fn();
+    const onOpenExpenses = vi.fn();
+    const onOpenCards = vi.fn();
+    render(
+      <DashboardPage
+        onLogout={() => {}}
+        onOpenAssets={onOpenAssets}
+        onOpenExpenses={onOpenExpenses}
+        onOpenCards={onOpenCards}
+      />,
+    );
+    await screen.findByText("6.9억");
+
+    fireEvent.click(screen.getByRole("button", { name: "자산 화면 보기 — 자산 구성비" }));
+    expect(onOpenAssets).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "자산 화면 보기 — 비상금 계좌" }));
+    expect(onOpenAssets).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "카드내역 보기 — 카드별 사용 내역" }));
+    expect(onOpenCards).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "지출 화면 보기 — 지출 추이" }));
+    fireEvent.click(screen.getByRole("button", { name: "지출 화면 보기 — 월별 현금흐름" }));
+    expect(onOpenExpenses).toHaveBeenCalledTimes(2);
+
+    // 화면에 보이는 라벨은 표 그대로다.
+    expect(screen.getAllByText("자산 화면 보기")).toHaveLength(2);
+    expect(screen.getAllByText("지출 화면 보기")).toHaveLength(2);
+    expect(screen.getByText("카드내역 보기")).toBeDefined();
   });
 
   it("정상 응답 시 카드에 계산·포맷된 값과 비상금 계좌가 노출된다 (§26 AC)", async () => {
@@ -150,9 +184,12 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     expect(screen.getByText(/예측 비상금 19,303,080원/)).toBeDefined();
     expect(screen.getByText(/목표 6개월/)).toBeDefined();
     expect(screen.getByRole("heading", { name: "비상금 유지 개월" })).toBeDefined();
-    // 구성비 카드와 도넛 범례가 같은 유형명을 보일 수 있어 getAll 로 존재를 검사한다.
-    expect(screen.getAllByText("부동산·기타").length).toBeGreaterThan(0);
-    expect(screen.getByText("84.1% · 6.4억")).toBeDefined();
+    // §74: 구성비는 도넛 범례에만 남는다 — 지표 카드의 "비중 · 금액" 목록은 제거됐다.
+    const compositionLegend = await screen.findByLabelText("자산 구성비 범례");
+    expect(within(compositionLegend).getAllByText("부동산·기타").length).toBeGreaterThan(0);
+    expect(within(compositionLegend).getByText("84.1%")).toBeDefined();
+    expect(screen.queryByText("84.1% · 6.4억")).toBeNull();
+    expect(document.querySelector(".af-composition")).toBeNull();
     // 비상금 계좌 섹션: 지정된 계좌가 카드형으로 이름·금액·비중과 함께 렌더
     expect(screen.getByText("우리 파킹통장")).toBeDefined();
     expect(screen.getByText("비상금의 100.0%")).toBeDefined();

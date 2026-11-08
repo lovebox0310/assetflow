@@ -19,7 +19,7 @@ test.beforeEach(async ({ page }) => {
     expect(headings).toEqual([
       "핵심 지표",
       "자산 구성비",
-      expect.stringMatching(/^현금/),
+      "비상금 계좌",
       "카드별 본인·가족 사용 내역",
       "지출 추이",
       "월별 현금흐름",
@@ -29,7 +29,7 @@ test.beforeEach(async ({ page }) => {
   test("핵심 지표 카드가 렌더된다", async ({ page }) => {
     await expect(page.getByRole("heading", { name: "순자산" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "월 수지" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: /비상금|투자금 유지 개월/ })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 3, name: /비상금|투자금 유지 개월/ })).toBeVisible();
   });
 
   test("비상금 계좌가 카드형으로 렌더된다", async ({ page }) => {
@@ -86,7 +86,7 @@ test.beforeEach(async ({ page }) => {
     const main = await page.locator("main#main").ariaSnapshot();
     expect(main).toContain('heading "대시보드" [level=1]');
     expect(main).toContain('heading "핵심 지표" [level=2]');
-    expect(main).toContain('heading "현금 2계좌" [level=2]');
+    expect(main).toContain('heading "비상금 계좌" [level=2]');
     // 현금 계좌는 목록 의미로 노출된다 (카드형이어도 ul/li 유지).
     expect(main).toContain("list");
     expect(main).toContain('listitem');

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Button, Grid, Layout, Space, Typography } from "antd";
+import { Button, Grid, Layout, Space } from "antd";
 import { useTheme } from "../theme/themeStore";
 
 const { Header, Content } = Layout;
@@ -58,6 +58,10 @@ function SunIcon() {
  * 모바일 거터 16px / 데스크톱 24px).
  * §35 모바일: 좁은 폭에서 브랜드·내비·로그아웃이 한 줄에 들어가도록 축약한다(늘어짐 방지).
  * §28.4(D1): 다크 토글 버튼이 로그아웃 옆에 있다.
+ * §75: 헤더는 sticky — 긴 화면에서도 내비게이션이 보인다. 모바일에서는 내비가
+ * 하단 탭(StandardNav)으로 빠지므로 헤더는 브랜드·테마·로그아웃만 남는다.
+ * 주의: Header 에 transform/filter/backdrop-filter/contain 을 주면 fixed 인
+ * 하단 탭의 containing block 이 되어 탭이 뷰포트 아래에 붙지 않는다.
  */
 export function AppLayout({ onLogout, nav, children }: AppLayoutProps) {
   const screens = Grid.useBreakpoint();
@@ -66,7 +70,7 @@ export function AppLayout({ onLogout, nav, children }: AppLayoutProps) {
   const dark = resolved === "dark";
 
   return (
-    <Layout style={{ minHeight: "100vh" }}>
+    <Layout style={{ minHeight: "100dvh" }}>
       {/*
         이슈 #70: 스킵 링크 — 첫 Tab 으로 헤더 내비를 건너뛰고 본문(#main)으로
         직행한다. 포커스 전에는 화면 밖(-9999px)에 있다가 포커스 시 좌상단에
@@ -80,22 +84,47 @@ export function AppLayout({ onLogout, nav, children }: AppLayoutProps) {
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
+          /* §75 sticky: 문서 스크롤에도 헤더가 상단에 남는다.
+             transform/filter/backdrop-filter/contain 은 넣지 않는다(fixed 탭이 깨진다). */
+          position: "sticky",
+          top: 0,
+          zIndex: 100,
           /* 모바일: 좁은 폭에서 두 번째 줄로 넘어가도록 허용한다(화면 밖 잘림 방지). */
           flexWrap: mobile ? "wrap" : "nowrap",
           rowGap: mobile ? 4 : 0,
+          /* antd Header 의 line-height:64 를 물려받으면 Space 아이템이 64px 이 되어
+             모바일 헤더가 77px 로 부푼다. 모바일만 line-height 를 풀어 56px 을 지킨다. */
+          lineHeight: mobile ? 1 : undefined,
           overflow: "visible",
           background: "var(--af-card)",
-          paddingInline: mobile ? 10 : 16,
-          paddingBlock: mobile ? 8 : 0,
+          paddingInline: mobile ? 12 : 16,
+          paddingBlock: mobile ? 6 : 0,
           borderBottom: "1px solid var(--af-border)",
           height: mobile ? "auto" : 64,
-          minHeight: mobile ? 48 : 64,
+          minHeight: mobile ? 56 : 64,
         }}
       >
         <Space size={mobile ? 6 : 16} style={{ minWidth: 0 }}>
-          <Typography.Text strong style={{ fontSize: mobile ? 14 : 18, whiteSpace: "nowrap" }}>
+          {/* §74: 브랜드는 대시보드 홈 링크다(해시 라우팅과 그대로 맞물린다). */}
+          <a
+            href="#/"
+            aria-label="AssetFlow 홈 — 대시보드"
+            style={{
+              color: "var(--af-foreground)",
+              fontWeight: 700,
+              fontSize: mobile ? 14 : 18,
+              whiteSpace: "nowrap",
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              minHeight: 44,
+              minWidth: 44,
+              justifyContent: "center",
+              paddingInline: 8,
+            }}
+          >
             AssetFlow
-          </Typography.Text>
+          </a>
           {nav}
         </Space>
         <Space size={mobile ? 4 : 8}>
@@ -106,9 +135,9 @@ export function AppLayout({ onLogout, nav, children }: AppLayoutProps) {
             aria-label={dark ? "라이트 모드로 전환" : "다크 모드로 전환"}
             aria-pressed={dark}
             style={{
-              width: mobile ? 28 : 32,
-              height: mobile ? 28 : 32,
-              minWidth: mobile ? 28 : 32,
+              width: mobile ? 44 : 32,
+              height: mobile ? 44 : 32,
+              minWidth: mobile ? 44 : 32,
               padding: 0,
               display: "inline-flex",
               alignItems: "center",
@@ -118,7 +147,12 @@ export function AppLayout({ onLogout, nav, children }: AppLayoutProps) {
             {dark ? <SunIcon /> : <MoonIcon />}
           </Button>
           {onLogout ? (
-            <Button type="text" size={mobile ? "small" : "middle"} onClick={onLogout}>
+            <Button
+              type="text"
+              size={mobile ? "small" : "middle"}
+              onClick={onLogout}
+              style={mobile ? { minHeight: 44, paddingInline: 12 } : undefined}
+            >
               로그아웃
             </Button>
           ) : null}

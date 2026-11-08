@@ -16,6 +16,7 @@ import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { AppLayout } from "../layout/AppLayout";
 import { StandardNav } from "../layout/StandardNav";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
+import { SubNav } from "../components/SubNav";
 import {
   MobileListCardActions,
   MobileListCardHeader,
@@ -534,21 +535,14 @@ export function InvestmentsPage({
         투자
       </Typography.Title>
       {/* §54.1: 자산의 하위 화면 탭 */}
-      <nav aria-label="자산 하위 화면" style={{ marginBottom: 16 }}>
-        <Space size={4}>
-          <Button type="link" aria-label="자산 탭" onClick={onOpenAssets} style={{ paddingInline: 8 }}>
-            자산
-          </Button>
-          <Button
-            type="link"
-            aria-label="투자 탭"
-            aria-current="page"
-            style={{ paddingInline: 8, fontWeight: 700, color: "var(--af-foreground)" }}
-          >
-            투자
-          </Button>
-        </Space>
-      </nav>
+      <SubNav
+        ariaLabel="자산 하위 화면"
+        current="investments"
+        items={[
+          { key: "assets", label: "자산", ariaLabel: "자산 탭", onClick: onOpenAssets },
+          { key: "investments", label: "투자", ariaLabel: "투자 탭" },
+        ]}
+      />
 
       {actionError ? (
         <Typography.Paragraph role="alert" type="danger" style={{ marginBottom: 16 }}>
