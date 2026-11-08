@@ -195,6 +195,8 @@ describe("CardExpensesPage (§58 카드내역 탭)", () => {
     expect(await screen.findByText("남은 가맹점 1개")).toBeDefined();
     expect(screen.getAllByText("30,000원").length).toBeGreaterThan(0);
 
+    // 분류 Select 는 행 탭으로 여는 편집 행에만 있다(모바일에서 clip 되는 meta 열에 두지 않는다).
+    fireEvent.click(await screen.findByRole("button", { name: "네이버페이 분류 편집" }));
     const combo = await screen.findByRole("combobox", { name: "네이버페이 카테고리 지정" });
     fireEvent.mouseDown(combo);
     fireEvent.click(await screen.findByTitle("쇼핑/생활"));
@@ -278,6 +280,8 @@ describe("CardExpensesPage (§58 카드내역 탭)", () => {
     expect(screen.getAllByText("가족").length).toBeGreaterThan(0);
 
     // 첫 번째 가맹점을 분류하면 PATCH 만 날아가고 카드 내역 GET 은 다시 일어나지 않는다
+    // 분류 Select 는 행 탭으로 여는 편집 행에만 있다.
+    fireEvent.click(await screen.findByRole("button", { name: "가맹점1 분류 편집" }));
     const combo = await screen.findByRole("combobox", { name: "가맹점1 카테고리" });
     fireEvent.mouseDown(combo);
     fireEvent.click(await screen.findByTitle("식비"));

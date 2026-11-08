@@ -3291,3 +3291,20 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
   스냅샷 PNG 변경 0장.
 - 미해결: CI에서 스냅샷까지 검증하려면 Playwright Docker 이미지 고정 + 베이스라인 재생성(후속).
 - 커밋 안 함.
+
+## 2026-11-08 — 표·카드 목록을 단일 행 목록으로 통일 (UI-1, §77) [✅ e2e 156 pass]
+
+- 새 공용 컴포넌트 `AfListTable.tsx`: `<table role="table">` 하나를 데스크톱·모바일이
+  공유하고 폭 분기는 CSS 로만 한다(`wide`·`Grid.useBreakpoint` 제거). 모바일 2행
+  (이름+값 / 보조줄 전체 폭), 행 탭 편집, `⋯` 메뉴, 편집 행 `Esc` 취소.
+- 5화면 전환: 자산·부채, 투자 보유종목, 지출(월 항목·정기 항목), 대시보드 현금흐름,
+  카드내역(카드사별·미분류·카테고리 합계·상세). `MobileListCard.tsx` 삭제.
+- 정리: 카드사별 표 `overflowX` 제거(axe `scrollable-region-focusable` 해소),
+  중복 제목 3중→1, 화면 노출 `§` 0, KIS 버튼 `label-content-name-mismatch` 해소,
+  `AppLayout` 중복 `<main>` 제거.
+- 320 지출 보조줄이 배지와 16px 겹치던 문제를 보조줄을 별도 `td` 로 옮겨 해결.
+- 검증: 36조합 넘침 0, axe(best-practice 포함) 0, 겹침 0, 잘림 0, test 227, e2e 156/0.
+- 스냅샷 42장 갱신(design-dashboard·design-responsive), 로그인 24장 불변.
+- QA No-Go 5건 중 2건(중복 main·편집 Esc)은 실제 결함으로 수정, 3건(⋯ Esc·Tab 도달·
+  e2e 플래그)은 재현 결과 오진으로 판정.
+- 미검증: 스크린리더 실낭독, iOS `viewport-fit=cover` 실기기.

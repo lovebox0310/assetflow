@@ -275,10 +275,9 @@ describe("InvestmentsPage (§54 E2)", () => {
     render(<InvestmentsPage />);
     await screen.findByText("삼성전자");
 
-    const deleteButtons = screen.getAllByRole("button", { name: "삭제" });
-    const firstDelete = deleteButtons[0];
-    if (!firstDelete) throw new Error("삭제 버튼 없음");
-    fireEvent.click(firstDelete);
+    // 행 동작은 ⋯ 메뉴 → 삭제 → Popconfirm 확인 순서다.
+    fireEvent.click(screen.getByRole("button", { name: "삼성전자 행 메뉴" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "삭제" }));
     // Popconfirm 확인 버튼 — 기본 로케일 OK
     fireEvent.click(await screen.findByRole("button", { name: "OK" }));
 
@@ -396,7 +395,7 @@ describe("InvestmentsPage (§54 E2)", () => {
     }));
 
     render(<InvestmentsPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "비상금 한국투자증권 동기화" }));
+    fireEvent.click(await screen.findByRole("button", { name: "비상금 한투 동기화" }));
 
     expect(await screen.findByText(warning)).toBeDefined();
   });

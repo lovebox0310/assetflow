@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Card, Form, Grid, Input, InputNumber, Popconfirm, Select, Space, Tag, Typography, type FormInstance } from "antd";
-import {
-  MobileListCardActions,
-  MobileListCardHeader,
-  MobileListCardItem,
-  MobileListCardMeta,
-} from "../components/MobileListCard";
+import { Button, Card, Form, Input, InputNumber, Select, Space, Tag, Typography, type FormInstance } from "antd";
+import { AfListTable, type AfListColumn, type AfRowAction } from "../components/AfListTable";
 import { AppLayout } from "../layout/AppLayout";
 import { StandardNav } from "../layout/StandardNav";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
@@ -65,6 +60,12 @@ const TYPE_OPTIONS = (Object.keys(TYPE_LABELS) as AssetAccountRow["accountType"]
 const TYPE_ORDER: AssetAccountRow["accountType"][] = ["cash", "deposit", "invest", "realty"];
 
 /**
+ * D5: 화면 문구에서 스펙 번호를 걷어낸다 — 사용자는 `§31.4` 를 읽을 이유가 없다.
+ * 부채가 빈 상태는 "오류"가 아니라 정상이라는 사실만 남긴다(§31.4).
+ */
+const DEBT_EMPTY_TEXT = "등록된 부채가 없습니다. 빌린 돈이 없다면 그대로 두세요.";
+
+/**
  * 스프린트 2 #21: §31 자산 화면의 React 이관.
  * - §31.1: 합계·구성비는 저장하지 않는다 — 행에서 매번 계산한다.
  * - §31.2: 금융자산·부채·투자금 행은 편집 가능. 자동이체·부가세는 지출 도메인의
@@ -72,10 +73,6 @@ const TYPE_ORDER: AssetAccountRow["accountType"][] = ["cash", "deposit", "invest
  * - 상태 4종은 StateBlock 단일 구현체를 재사용한다(§35 화면마다 다른 스피너 금지).
  */
 export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSettings }: AssetsPageProps) {
-  const screens = Grid.useBreakpoint();
-  // §35 중단점: md 미만은 표 대신 카드형 리스트 — 4열 표는 좁은 폭에서 읽을 수 없다
-  const wide = Boolean(screens.md);
-
   const [rows, setRows] = useState<AssetAccountRow[] | null>(null);
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [status, setStatus] = useState<SurfaceStatus>("loading");
@@ -189,76 +186,68 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
       load();
     });
 
-  const renderRow = (row: AssetAccountRow, debt: boolean) => {
-    if (editingId === row.id) {
-      return wide ? (
-        <tr key={row.id}>
-          {/* 열이 5개다(이름·유형·기관·잔액·액션) — 4 로 두면 표가 어긋난다. */}
-          <td colSpan={5}>
-            <EditForm form={form} isDebt={debt} wide={wide} />
-            <Space style={{ marginTop: 8 }}>
-              <Button type="primary" onClick={saveEdit} loading={busy}>저장</Button>
-              <Button onClick={cancelEdit} disabled={busy}>취소</Button>
-            </Space>
-          </td>
-        </tr>
-      ) : (
-        <MobileListCardItem key={row.id}>
-          <EditForm form={form} isDebt={debt} wide={wide} />
-          <MobileListCardActions>
-            <Button type="primary" onClick={saveEdit} loading={busy}>저장</Button>
-            <Button onClick={cancelEdit} disabled={busy}>취소</Button>
-          </MobileListCardActions>
-        </MobileListCardItem>
-      );
+  /** 두 표가 같은 편집 폼을 쓴다 — 편집 행은 셀 하나(colSpan)다. */
+  const renderEditor = (row: AssetAccountRow, isDebt: boolean) => (
+    <>
+      <EditForm form={form} isDebt={isDebt} wide />
+      <Space style={{ marginTop: 8 }}>
+        <Button type="primary" onClick={saveEdit} loading={busy}>저장</Button>
+        <Button onClick={cancelEdit} disabled={busy}>취소</Button>
+      </Space>
+    </>
+  );
+
+  /**
+   * 투자 행은 이 화면에서 편집하지 않는다(§54.3): balance 가 예수금이라
+   * 총액을 여기서 저장하면 이중 계상된다. 그래서 동작 메뉴도 주지 않는다.
+   */
+  const assetActions = (row: AssetAccountRow): AfRowAction[] =>
+    row.accountType === "invest"
+      ? []
+      : [{ key: "delete", label: "삭제", danger: true, confirm: "이 행을 삭제할까요?", onSelect: () => void removeRow(row.id) }];
+
+  const activateRow = (row: AssetAccountRow) => {
+    if (row.accountType === "invest") {
+      // §54.3: invest 행의 총액은 투자 화면에서 관리한다.
+      onOpenInvestments?.();
+      return;
     }
-    return wide ? (
-      <tr key={row.id}>
-        <td>{row.name}</td>
-        <td>
-          <Tag>{TYPE_LABELS[row.accountType]}</Tag>
-        </td>
-        <td>{row.institutionName || "—"}</td>
-        <td style={{ textAlign: "right" }}>{formatKrwExact(displayValue(row))}</td>
-        <td>
-          {row.accountType === "invest" ? (
-            <Button size="small" type="text" onClick={onOpenInvestments}>
-              투자 화면에서 관리
-            </Button>
-          ) : (
-            <Space>
-              <Button size="small" type="text" onClick={() => beginEdit(row)}>편집</Button>
-              <Popconfirm title="이 행을 삭제할까요?" onConfirm={() => void removeRow(row.id)}>
-                <Button size="small" type="text" danger>삭제</Button>
-              </Popconfirm>
-            </Space>
-          )}
-        </td>
-      </tr>
-    ) : (
-      <MobileListCardItem key={row.id}>
-        <MobileListCardHeader title={row.name} value={`${formatKrwExact(displayValue(row))}`} />
-        <MobileListCardMeta>
-          {TYPE_LABELS[row.accountType]}
-          {row.institutionName ? ` · ${row.institutionName}` : ""}
-        </MobileListCardMeta>
-        <MobileListCardActions>
-          {row.accountType === "invest" ? (
-            <Button size="small" type="text" onClick={onOpenInvestments}>
-              투자 화면에서 관리
-            </Button>
-          ) : (
-            <Space>
-              <Button size="small" type="text" onClick={() => beginEdit(row)}>편집</Button>
-              <Popconfirm title="이 행을 삭제할까요?" onConfirm={() => void removeRow(row.id)}>
-                <Button size="small" type="text" danger>삭제</Button>
-              </Popconfirm>
-            </Space>
-          )}
-        </MobileListCardActions>
-      </MobileListCardItem>
-    );
+    beginEdit(row);
   };
+
+  const rowSubtitle = (r: AssetAccountRow) =>
+    `${TYPE_LABELS[r.accountType]}${r.institutionName ? " · " + r.institutionName : ""}`;
+
+  const assetColumns: AfListColumn<AssetAccountRow>[] = [
+    { key: "name", header: "이름", mobile: "primary", render: (r) => r.name },
+    {
+      key: "accountType",
+      header: "계정 유형",
+      width: 110,
+      mobile: "meta",
+      render: (r) => <Tag>{TYPE_LABELS[r.accountType]}</Tag>,
+    },
+    { key: "institution", header: "기관", mobile: "meta", render: (r) => r.institutionName || "—" },
+    {
+      key: "balance",
+      header: "잔액",
+      numeric: true,
+      mobile: "value",
+      render: (r) => formatKrwExact(displayValue(r)),
+    },
+  ];
+
+  const liabilityColumns: AfListColumn<AssetAccountRow>[] = [
+    { key: "name", header: "이름", mobile: "primary", render: (r) => r.name },
+    { key: "institution", header: "기관", mobile: "meta", render: (r) => r.institutionName || "—" },
+    {
+      key: "balance",
+      header: "잔액",
+      numeric: true,
+      mobile: "value",
+      render: (r) => formatKrwExact(displayValue(r)),
+    },
+  ];
 
   const handleLogout = () => {
     clearToken();
@@ -306,30 +295,31 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
           <StateBlock status={status} onRetry={() => load()} errorText={errorText} emptyText="자산 행이 없습니다 — '+ 자산 추가'로 시작하세요">
             {editingId === "new" && debtFormOpen === false ? (
               <div style={{ marginBottom: 12 }}>
-                <EditForm form={form} isDebt={false} wide={wide} />
+                <EditForm form={form} isDebt={false} wide />
                 <Space style={{ marginTop: 8 }}>
                   <Button type="primary" onClick={saveEdit} loading={busy}>저장</Button>
                   <Button onClick={cancelEdit} disabled={busy}>취소</Button>
                 </Space>
               </div>
             ) : null}
-            {wide ? (
-              <table aria-labelledby="h-assets" style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    <th scope="col" style={{ textAlign: "left", paddingBottom: 8 }}>이름</th>
-                    <th scope="col" style={{ textAlign: "left", paddingBottom: 8, width: 110 }}>계정 유형</th>
-                    <th scope="col" style={{ textAlign: "left", paddingBottom: 8 }}>기관</th>
-                    <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>잔액</th>
-                    <th scope="col" style={{ width: 120 }} />
-                  </tr>
-                </thead>
-                <tbody>{assets.map((r) => renderRow(r, false))}</tbody>
-              </table>
-            ) : (
-              <div>{assets.map((r) => renderRow(r, false))}</div>
-            )}
-            <AssetTotals assets={assets} total={totalAssets} valueOf={displayValue} />
+            <AfListTable
+              labelledBy="h-assets"
+              rows={assets}
+              rowKey={(r) => r.id}
+              columns={assetColumns}
+              onActivate={activateRow}
+              activateLabel={(r) =>
+                r.accountType === "invest" ? `${r.name} 투자 화면에서 관리` : `${r.name} 편집`
+              }
+              rowSubtitle={rowSubtitle}
+              actions={assetActions}
+              actionsLabel={(r) => `${r.name} 행 메뉴`}
+              editingKey={editingId}
+              renderEditor={(r) => renderEditor(r, r.isDebt)}
+              onCancelEdit={cancelEdit}
+              editorLabel={(r) => `${r.name} 편집`}
+              footer={<AssetTotals assets={assets} total={totalAssets} valueOf={displayValue} />}
+            />
           </StateBlock>
         </Card>
       </section>
@@ -351,10 +341,10 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
           </Button>
         </div>
         <Card>
-          <StateBlock status={status} onRetry={() => load()} errorText={errorText} emptyText="부채가 비어 있는 것은 정상이다 (§31.4)">
+          <StateBlock status={status} onRetry={() => load()} errorText={errorText} emptyText={DEBT_EMPTY_TEXT}>
             {editingId === "new" && debtFormOpen ? (
               <div style={{ marginBottom: 12 }}>
-                <EditForm form={form} isDebt wide={wide} />
+                <EditForm form={form} isDebt wide />
                 <Space style={{ marginTop: 8 }}>
                   <Button type="primary" onClick={saveEdit} loading={busy}>저장</Button>
                   <Button onClick={cancelEdit} disabled={busy}>취소</Button>
@@ -362,25 +352,30 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
               </div>
             ) : null}
             {liabilities.length === 0 ? (
-              <Typography.Text type="secondary">부채가 비어 있는 것은 정상이다 (§31.4)</Typography.Text>
-            ) : wide ? (
-              <table aria-labelledby="h-liab" style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    <th scope="col" style={{ textAlign: "left", paddingBottom: 8 }}>이름</th>
-                    <th scope="col" style={{ textAlign: "left", paddingBottom: 8 }}>기관</th>
-                    <th scope="col" style={{ textAlign: "right", paddingBottom: 8 }}>잔액</th>
-                    <th scope="col" style={{ width: 120 }} />
-                  </tr>
-                </thead>
-                <tbody>{liabilities.map((r) => renderRow(r, true))}</tbody>
-              </table>
+              /* D5: 스펙 번호 대신 사용자가 할 일을 적는다 (§31.4 — 빈 부채는 정상). */
+              <Typography.Text type="secondary">{DEBT_EMPTY_TEXT}</Typography.Text>
             ) : (
-              <div>{liabilities.map((r) => renderRow(r, true))}</div>
+              <AfListTable
+                labelledBy="h-liab"
+                rows={liabilities}
+                rowKey={(r) => r.id}
+                columns={liabilityColumns}
+                onActivate={activateRow}
+                activateLabel={(r) => `${r.name} 편집`}
+                rowSubtitle={rowSubtitle}
+                actions={assetActions}
+                actionsLabel={(r) => `${r.name} 행 메뉴`}
+                editingKey={editingId}
+                renderEditor={(r) => renderEditor(r, true)}
+                onCancelEdit={cancelEdit}
+                editorLabel={(r) => `${r.name} 편집`}
+                footer={
+                  <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                    합계 {formatKrwExact(totalLiabilities)}
+                  </Typography.Paragraph>
+                }
+              />
             )}
-            <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
-              합계 {formatKrwExact(totalLiabilities)}
-            </Typography.Paragraph>
           </StateBlock>
         </Card>
       </section>
@@ -390,9 +385,10 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
           다른 화면이 읽는 값
         </Typography.Title>
         <Card>
+          {/* D5: 스펙 번호 대신 어디서 관리하는지 적는다 (§31.2 — 자동이체·부가세의 단일 출처는 지출 화면). */}
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            자동이체 잔액·부가가치세 잔액은 지출 화면의 단일 출처 값이다(§31.2) — 이 화면에서
-            편집하지 않는다. 지출 화면 연계 후 표시된다.
+            자동이체와 부가가치세 잔액은 지출 화면에서 관리합니다. 지출 화면과 연결되면 여기에
+            표시됩니다.
           </Typography.Paragraph>
         </Card>
       </section>
@@ -434,7 +430,8 @@ function AssetTotals({
         })}
       </Space>
       <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
-        합계 {formatKrwExact(total)} — 저장하지 않고 행에서 재계산한다 (§31.1)
+        {/* D5: 스펙 번호 대신 계산 방식을 적는다 (§31.1 — 합계는 저장하지 않는다). */}
+        합계 {formatKrwExact(total)} — 위 행들의 금액을 더한 값입니다
       </Typography.Paragraph>
     </div>
   );

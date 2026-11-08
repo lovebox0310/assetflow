@@ -1,16 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { Button, Card, Checkbox, Form, Grid, Input, InputNumber, Popconfirm, Select, Space, Typography } from "antd";
+import { Button, Card, Checkbox, Form, Grid, Input, InputNumber, Select, Space, Typography } from "antd";
 import { AppLayout } from "../layout/AppLayout";
 import { StandardNav } from "../layout/StandardNav";
 import { SubNav } from "../components/SubNav";
 import { MonthSelect } from "../components/MonthSelect";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
-import {
-  MobileListCardActions,
-  MobileListCardHeader,
-  MobileListCardItem,
-  MobileListCardMeta,
-} from "../components/MobileListCard";
+import { AfListTable, type AfListColumn, type AfRowAction } from "../components/AfListTable";
 import { clearInflight } from "../api/client";
 import { clearToken } from "../auth/authStore";
 import { CATEGORY_GROUP_OPTIONS } from "../data/expenseCategories";
@@ -48,31 +43,13 @@ interface ExpensesPageProps {
   onOpenSettings: () => void;
 }
 
-/**
- * §28.4 — 배지 스타일.
+/*
+ * §28.4 — 배지 스타일은 `app.css` 의 `.af-badge` 로 옮겼다.
  * 라벨이 한국어라 letter-spacing·uppercase·모노는 쓰지 않는다(§28.2/D5).
  * 높낮이(크기)·굵기·배경색만으로 구분한다.
+ * 옮긴 이유: 모바일에서만 배지 폭을 줄여야 한다(인라인 style 은 CSS 로 덮을 수
+ * 없다). 데스크톱 값은 기존과 같다.
  */
-const badgeBase: React.CSSProperties = {
-  borderRadius: 20,
-  fontSize: 11,
-  fontWeight: 600,
-  padding: "2px 9px",
-  lineHeight: "16px",
-  display: "inline-block",
-};
-
-const recurringBadgeStyle: React.CSSProperties = {
-  ...badgeBase,
-  background: "var(--af-badge-signal-bg)",
-  color: "var(--af-badge-signal-fg)",
-};
-
-const essentialBadgeStyle: React.CSSProperties = {
-  ...badgeBase,
-  background: "var(--af-badge-grove-bg)",
-  color: "var(--af-badge-grove-fg)",
-};
 
 /**
  * 스프린트 3 #36: §31 지출 화면의 React 이관.
@@ -160,6 +137,15 @@ export function ExpensesPage({
     void loadSnapshot();
     void loadRecurring();
   }, [loadItems, loadSnapshot, loadRecurring]);
+
+  /**
+   * 월을 바꾸면 편집 중이던 행은 그 달 목록에 없다. 편집 행이 사라진 채
+   * 추가 폼까지 숨으면 입력할 곳이 없으므로 편집 상태를 닫는다.
+   */
+  useEffect(() => {
+    setEditing(null);
+    form.resetFields();
+  }, [month, form]);
 
   // 빈 월에만 지난달 복사 배너를 제안한다 — 지난달 항목 수를 조용히 조회
   useEffect(() => {
@@ -310,6 +296,140 @@ export function ExpensesPage({
   const totalVat = (items ?? []).reduce((acc, r) => acc + r.purchaseVat, 0);
   const essentialTotal = (items ?? []).filter((r) => r.isEssential).reduce((acc, r) => acc + r.amount, 0);
 
+  /**
+   * 정기 정의를 못 읽었으면(로드 실패) "이 달만 수정" 을 판단하지 않는다 —
+   * 비교 대상이 없는데 태그를 붙이면 없는 차이를 만들어 낸다(§34.6).
+   */
+  const recurringDefinition = (it: ExpenseItemRow) =>
+    it.recurringId ? (recurring ?? []).find((d) => d.id === it.recurringId) : undefined;
+  const isMonthOnlyEdit = (it: ExpenseItemRow) => {
+    const def = recurringDefinition(it);
+    return Boolean(def && def.amount !== it.amount);
+  };
+
+  /**
+   * 행 배지는 행 탭 버튼 **밖**(primaryExtra)에 둔다 — 버튼 안에 넣으면
+   * 접근 이름과 보이는 텍스트가 어긋나 `label-content-name-mismatch` 가 난다.
+   *
+   * "이 달만 수정" 태그는 여기 두지 않는다. 320px 에서 이름·필수·정기·태그를
+   * 한 줄에 넣으면 배지가 3~4줄로 접혀 행이 90px 를 넘는다(측정). 금액이
+   * 바뀐 달이라는 뜻이므로 금액 옆/아래에 붙인다 — `amount` 열 render 참고.
+   */
+  const itemPrimaryExtra = (it: ExpenseItemRow) => (
+    <>
+      {it.isEssential ? <span className="af-badge af-badge--essential">필수</span> : null}
+      <span className="af-badge af-badge--recurring">{it.recurringId ? "정기" : "수동"}</span>
+    </>
+  );
+
+  const itemColumns: AfListColumn<ExpenseItemRow>[] = [
+    { key: "label", header: "항목", mobile: "primary", render: (it) => <span>{it.label}</span> },
+    {
+      key: "amount",
+      header: "금액",
+      numeric: true,
+      mobile: "value",
+      render: (it) => (
+        <>
+          {formatKrwExact(it.amount)}
+          {isMonthOnlyEdit(it) ? <span className="af-list__amount-note">이 달만 수정</span> : null}
+        </>
+      ),
+    },
+    { key: "category", header: "대분류", mobile: "meta", render: (it) => it.category ?? "추이 제외" },
+    {
+      key: "purchaseVat",
+      header: "매입세액",
+      numeric: true,
+      mobile: "meta",
+      render: (it) => (it.purchaseVat > 0 ? formatKrwExact(it.purchaseVat) : "—"),
+    },
+  ];
+
+  const itemActions = (it: ExpenseItemRow): AfRowAction[] => [
+    it.recurringId
+      ? {
+          key: "edit-recurring",
+          label: "정기 항목 수정",
+          onSelect: () => openRecurringEdit(it.recurringId),
+        }
+      : {
+          key: "convert-recurring",
+          label: "정기 항목으로 등록",
+          onSelect: () => void convertToRecurring(it),
+        },
+    {
+      key: "delete",
+      label: "삭제",
+      danger: true,
+      confirm: "이 항목을 삭제할까요?",
+      onSelect: () => void removeItem(it.id),
+    },
+  ];
+
+  /**
+   * 모바일 2행은 대분류만 쓴다. 매입세액까지 붙이면 320px 에서 배지와 줄을
+   * 나눠 쓰다가 폭 31px 로 잘려 아무 정보도 남지 않는다(F1, 실측).
+   * 매입세액은 meta 셀(접근성 트리)과 합계 줄이 계속 갖고 있다.
+   */
+  const itemRowSubtitle = (it: ExpenseItemRow) => it.category ?? "추이 제외";
+
+  /**
+   * 항목 폼은 한 번에 하나만 마운트한다 — Form 인스턴스 하나에 Form 요소 둘을
+   * 연결하면 antd 가 값을 잃는다. 편집 중에는 편집 행, 그 외에는 목록 아래 추가 폼.
+   */
+  const renderItemForm = (mode: "add" | "edit") => (
+    <Form form={form} layout="inline" style={{ display: "flex", flexWrap: "wrap", gap: wide ? "10px 12px" : "12px" }}>
+      <Form.Item name="label" rules={[{ required: true, message: "항목명을 입력하세요" }]}
+        style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}
+      >
+        <Input placeholder={mode === "edit" ? "항목명(편집 중)" : "항목명"} style={{ width: wide ? 160 : "100%" }}
+          aria-label="항목 이름" />
+      </Form.Item>
+      <Form.Item name="amount" rules={[{ required: true, message: "월 금액을 입력하세요" }]}
+        style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}
+      >
+        <InputNumber placeholder="월 금액" min={0} style={{ width: wide ? 140 : "100%" }} aria-label="월 금액" />
+      </Form.Item>
+      <Form.Item name="category" style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}>
+        <Select
+          placeholder="대분류(추이 제외)"
+          allowClear
+          options={CATEGORY_GROUP_OPTIONS}
+          style={{ width: wide ? 150 : "100%" }}
+          aria-label="대분류"
+        />
+      </Form.Item>
+      <Form.Item name="purchaseVat" style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}>
+        <InputNumber placeholder="매입세액" min={0} style={{ width: wide ? 120 : "100%" }} aria-label="매입세액" />
+      </Form.Item>
+      <Form.Item name="isEssential" valuePropName="checked">
+        <Checkbox>필수</Checkbox>
+      </Form.Item>
+      <Button type="primary" onClick={() => void saveItem()}>
+        {mode === "edit" ? "저장" : "추가"}
+      </Button>
+      {mode === "edit" ? <Button onClick={cancelEdit}>취소</Button> : null}
+    </Form>
+  );
+
+  /**
+   * 정기 항목 표. `기간` 은 폭과 무관하게 항상 셀에 렌더한다 — meta 셀이 clip
+   * 되어 있어도 스크린리더는 셀 값을 읽는다(모바일에서 빈 셀이 되면 정보 손실).
+   * 그래서 rowSubtitle 은 대분류만 쓴다(같은 기간 문구를 두 곳에 두면 중복된다).
+   */
+  const recurringColumns: AfListColumn<RecurringRow>[] = [
+    { key: "label", header: "항목", mobile: "primary", render: (r) => <span>{r.label}</span> },
+    { key: "amount", header: "금액", numeric: true, mobile: "value", render: (r) => formatKrwExact(r.amount) },
+    { key: "category", header: "대분류", mobile: "meta", render: (r) => r.category ?? "추이 제외" },
+    {
+      key: "period",
+      header: "기간",
+      mobile: "meta",
+      render: (r) => (r.endMonth ? `~${r.endMonth}` : "무기한"),
+    },
+  ];
+
   return (
     <AppLayout
       onLogout={handleLogout}
@@ -348,83 +468,36 @@ export function ExpensesPage({
           ) : null}
           <StateBlock status={itemStatus} onRetry={loadItems} errorText={itemError} emptyText="항목이 없습니다 — 아래 양식에서 추가하세요">
             {items ? (
-              <div>
-                {items.map((it) => (
-                  <MobileListCardItem key={it.id}>
-                    <MobileListCardHeader
-                      title={
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                          <span>{it.label}</span>
-                          {it.isEssential ? (
-                            <span style={essentialBadgeStyle}>필수</span>
-                          ) : null}
-                          <span style={recurringBadgeStyle}>{it.recurringId ? "정기" : "수동"}</span>
-                        </span>
-                      }
-                      value={formatKrwExact(it.amount)}
-                    />
-                    <MobileListCardMeta>
-                      {it.category ?? "추이 제외"} · 매입세액 {it.purchaseVat > 0 ? formatKrwExact(it.purchaseVat) : "—"}
-                      {it.recurringId && recurring
-                        ? (() => {
-                            const def = recurring.find((d) => d.id === it.recurringId);
-                            return def && def.amount !== it.amount ? " · 이 달만 수정" : "";
-                          })()
-                        : ""}
-                    </MobileListCardMeta>
-                    <MobileListCardActions>
-                      <Button size="small" type="text" onClick={() => beginEdit(it)} aria-label={`${it.label} 이 달만 수정`}>이 달만 수정</Button>
-                      {it.recurringId ? <Button size="small" type="text" onClick={() => openRecurringEdit(it.recurringId)} aria-label={`${it.label} 정기 항목 수정`}>정기 항목 수정</Button> : <Button size="small" type="text" onClick={() => convertToRecurring(it)} aria-label={`${it.label} 정기 항목으로 등록`}>정기 항목으로 등록</Button>}
-                      <Popconfirm title="이 항목을 삭제할까요?" onConfirm={() => void removeItem(it.id)}>
-                        <Button size="small" type="text" danger aria-label={`${it.label} 삭제`}>삭제</Button>
-                      </Popconfirm>
-                    </MobileListCardActions>
-                  </MobileListCardItem>
-                ))}
-                <div style={{ fontWeight: 600, padding: "4px 2px" }}>
-                  <span>합계 ({itemCount}항목)</span>
-                  <span> {formatKrwExact(totalAmount)}</span>
-                  <span> · 필수 {formatKrwExact(essentialTotal)}</span>
-                  {totalVat > 0 ? <span> · 매입세액 {formatKrwExact(totalVat)}</span> : null}
-                </div>
-              </div>
+              <AfListTable
+                labelledBy="h-items"
+                rows={items}
+                rowKey={(it) => it.id}
+                columns={itemColumns}
+                onActivate={beginEdit}
+                activateLabel={(it) => `${it.label} 이 달만 수정`}
+                primaryExtra={itemPrimaryExtra}
+                rowSubtitle={itemRowSubtitle}
+                actions={itemActions}
+                actionsLabel={(it) => `${it.label} 행 메뉴`}
+                editingKey={editing ? editing.id : null}
+                renderEditor={() => renderItemForm("edit")}
+                editorLabel={(r) => `${r.label} 편집`}
+                onCancelEdit={cancelEdit}
+                footer={
+                  /* 단일 flex item — span 4개를 그대로 넘기면 320px 에서 3줄로 쪼개진다(F3). */
+                  <span>
+                    <span>합계 ({itemCount}항목)</span>
+                    <span> {formatKrwExact(totalAmount)}</span>
+                    <span> · 필수 {formatKrwExact(essentialTotal)}</span>
+                    {totalVat > 0 ? <span> · 매입세액 {formatKrwExact(totalVat)}</span> : null}
+                  </span>
+                }
+              />
             ) : null}
           </StateBlock>
 
-          <div style={{ marginTop: 16 }}>
-            <Form form={form} layout="inline" style={{ display: "flex", flexWrap: "wrap", gap: wide ? "10px 12px" : "12px" }}>
-              <Form.Item name="label" rules={[{ required: true, message: "항목명을 입력하세요" }]}
-                style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}
-              >
-                <Input placeholder={editing ? "항목명(편집 중)" : "항목명"} style={{ width: wide ? 160 : "100%" }}
-                  aria-label="항목 이름" />
-              </Form.Item>
-              <Form.Item name="amount" rules={[{ required: true, message: "월 금액을 입력하세요" }]}
-                style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}
-              >
-                <InputNumber placeholder="월 금액" min={0} style={{ width: wide ? 140 : "100%" }} aria-label="월 금액" />
-              </Form.Item>
-              <Form.Item name="category" style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}>
-                <Select
-                  placeholder="대분류(추이 제외)"
-                  allowClear
-                  options={CATEGORY_GROUP_OPTIONS}
-                  style={{ width: wide ? 150 : "100%" }}
-                  aria-label="대분류"
-                />
-              </Form.Item>
-              <Form.Item name="purchaseVat" style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}>
-                <InputNumber placeholder="매입세액" min={0} style={{ width: wide ? 120 : "100%" }} aria-label="매입세액" />
-              </Form.Item>
-              <Form.Item name="isEssential" valuePropName="checked">
-                <Checkbox>필수</Checkbox>
-              </Form.Item>
-              <Button type="primary" onClick={() => void saveItem()}>
-                {editing ? "저장" : "추가"}
-              </Button>
-              {editing ? <Button onClick={cancelEdit}>취소</Button> : null}
-            </Form>
-          </div>
+          {/* 편집 중에는 편집 행이 같은 폼을 들고 있으므로 추가 폼을 숨긴다(중복 라벨 금지). */}
+          {editing ? null : <div style={{ marginTop: 16 }}>{renderItemForm("add")}</div>}
         </Card>
       </section>
 
@@ -435,30 +508,29 @@ export function ExpensesPage({
             <Typography.Text type="secondary">정기 항목을 불러올 수 없습니다</Typography.Text>
           ) : (
             <>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {recurring.map((r) => (
-                  /*
-                    이슈 #70: span onClick 대신 실제 button — 키보드 포커스·Enter/Space
-                    동작이 브라우저가 책임진다. ✕(중지) 버튼은 중첩 버튼(잘못된 HTML)을
-                    피하기 위해 형제로 분리했다.
-                  */
-                  <div
-                    key={r.id}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--af-secondary)", border: "1px solid var(--af-border)", borderRadius: 20, padding: "5px 6px 5px 12px", fontSize: 12.5 }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setRecForm(r)}
-                      aria-label={`${r.label} 정기 항목 편집`}
-                      style={{ background: "none", border: "none", padding: 0, margin: 0, font: "inherit", display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer", color: "inherit", textAlign: "left" }}
-                    >
-                      <span><b>{r.label}</b> {formatKrwExact(r.amount)}{r.category ? ` · ${r.category}` : " · 추이 제외"}{r.isEssential ? " · 필수" : ""} · {r.endMonth ? <span className="af-mono">~{r.endMonth}</span> : "무기한"}</span>
-                    </button>
-                    <Popconfirm title="정기 항목을 중지할까요? (이미 만들어진 월 표 행은 유지됩니다)" onConfirm={() => void removeRecurring(r.id)}>
-                      <Button type="text" size="small" aria-label={`${r.label} 정기 중지`}>✕</Button>
-                    </Popconfirm>
-                  </div>
-                ))}
+              {recurring.length > 0 ? (
+                <AfListTable
+                  labelledBy="h-recurring"
+                  rows={recurring}
+                  rowKey={(r) => r.id}
+                  columns={recurringColumns}
+                  onActivate={(r) => setRecForm(r)}
+                  activateLabel={(r) => `${r.label} 정기 항목 편집`}
+                  primaryExtra={(r) => (r.isEssential ? <span className="af-badge af-badge--essential">필수</span> : null)}
+                  rowSubtitle={(r) => r.category ?? "추이 제외"}
+                  actions={(r) => [
+                    {
+                      key: "stop",
+                      label: "중지",
+                      danger: true,
+                      confirm: "정기 항목을 중지할까요? (이미 만들어진 월 표 행은 유지됩니다)",
+                      onSelect: () => void removeRecurring(r.id),
+                    },
+                  ]}
+                  actionsLabel={(r) => `${r.label} 행 메뉴`}
+                />
+              ) : null}
+              <div style={{ marginTop: recurring.length > 0 ? 12 : 0 }}>
                 <Button type="dashed" onClick={() => setRecForm("new")}>+ 정기 항목 추가</Button>
               </div>
               {recForm ? (

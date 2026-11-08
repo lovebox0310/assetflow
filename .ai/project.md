@@ -4894,3 +4894,52 @@ DB 의 10월 합계는 현대 2,609,560 · 삼성 362,230 이었고, 마지막 �
 **미해결/후속**
 - CI 환경에서 스냅샷까지 검증하려면 Playwright Docker 이미지를 고정하고 그 이미지
   안에서 베이스라인을 재생성해야 한다(폰트 포함). 이번 범위가 아니다.
+
+## 77) 표·카드 목록을 단일 행 목록(AfListTable)으로 통일 (2026-11-08)
+
+**배경**
+- 같은 앱에서 목록 표현이 두 규칙으로 갈라져 있었다. 자산·투자·대시보드 현금흐름은
+  데스크톱 표 + 모바일 카드, 지출·카드내역은 폭과 무관하게 카드 목록이었다.
+- 그 결과 1280px 지출 화면이 1,160px 폭의 카드 10장을 세로로 쌓아 약 950px 를 썼다
+  (표였다면 같은 데이터가 약 350px). antd `Card` 안에 테두리 박스를 또 그리는
+  이중 테두리, 행마다 액션 3개 반복, 금액과 액션 사이 거터 없음, 중복 제목,
+  화면에 노출된 내부 스펙 번호(§)도 함께 확인됐다.
+- 카드사별 비교 표만 `overflowX:auto` 로 가로 스크롤을 썼고, 이는 axe
+  `scrollable-region-focusable` 위반이었다(모바일 전용).
+
+**결정**
+- 단일 `<table role="table">` 하나를 데스크톱·모바일에서 공유한다
+  (`apps/frontend/src/components/AfListTable.tsx`). 폭 분기는 JS(`Grid.useBreakpoint`,
+  `wide`)가 아니라 CSS 미디어쿼리로만 한다. `thead` 는 `display:none` 이 아니라
+  clip 으로 숨겨 열 연결을 접근성 트리에 남긴다.
+- 모바일(<768px)은 같은 DOM 을 행 grid 로 재배치한다: 1행 = 이름 + 값 + `⋯`,
+  2행 = 보조줄(행 전체 폭). 보조줄은 primary 셀이 아니라 **별도 `td`** 로 렌더한다
+  (`grid-column:1/-1; grid-row:2`). primary 셀 안에 두면 열 폭에 갇혀 430px 에서도
+  잘리고, 절대배치하면 배지와 16px 겹친다(둘 다 실측).
+- 행 탭 = 편집 진입, 파괴적/희귀 동작은 `⋯` 메뉴 + `Popconfirm`. 편집 행에서
+  `Esc` 는 취소이며 `onKeyDownCapture` 로 잡는다 — antd `Select` 내부 input 이
+  Escape 전파를 막기 때문이다. 열린 Select/Dropdown 이 있으면 그 팝업을 먼저 닫는다.
+- 터치 타깃은 시각 크기(24×24)를 유지하고 `::after` 로 히트만 44×44 로 넓힌다
+  (`min-height:44` 는 행 높이를 늘려 배제).
+- 다축 표(카드사별 비교)는 데스크톱 표를 유지하고 모바일은 열 우선순위를 줄인다.
+  모바일에서 시각적으로 사라지는 `meta` 열은 `rowSubtitle` 로 핵심 값만 보완한다.
+- `MobileListCard.tsx` 는 삭제했다. 남기면 "두 규칙"이 재발한다.
+- 내부 스펙 번호(`§`)는 화면에서 제거하고 JSX 주석으로만 남긴다.
+- `<main>` 은 antd `Layout.Content` 가 이미 렌더하므로 `AppLayout` 의 안쪽은
+  `<div id="main" tabIndex={-1}>` 로 두었다(중복 main 랜드마크 제거).
+
+**검증**
+- 화면 6 × 폭 6(320/375/390/430/768/1280) = 36조합: 가로 넘침 0, 요소 겹침 0,
+  보조줄 잘림 0.
+- axe `wcag2a/aa·21a/aa·best-practice` 위반 0, `landmark-*` 0.
+- 행 높이: 모바일 56~80px(콘텐츠에 따라 65/77/79), 데스크톱 `td` 44±1px
+  (카드사별 표만 2줄 셀이라 57±1 — `건수 · 최근` 줄).
+- `pnpm typecheck`·`lint` 0, `pnpm test` 227, `pnpm e2e --ignore-snapshots` 156 passed.
+- 스냅샷: design-dashboard·design-responsive 42장 갱신(로그인 24장 불변).
+  CI 는 §76 대로 `--ignore-snapshots` 라 초록 유지.
+
+**미해결/후속**
+- `Popconfirm` 기본 버튼 라벨이 영어(OK/Cancel)다 — 로케일 설정은 범위 밖.
+- 스크린리더 실낭독(NVDA/VoiceOver), iOS `viewport-fit=cover` 실기기 확인은 사람 대기.
+- 320px 에서 이름이 길고 배지가 2개인 행은 79px 로 다른 행(65)보다 높다.
+  이름 가독성을 우선한 결과이며 겹침은 없다.
