@@ -105,9 +105,8 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
     render(<AssetsPage onBack={() => {}} />);
     await screen.findByText("우리 파킹통장");
 
-    const editBtn = screen.getAllByRole("button", { name: "편집" })[0];
-    if (!editBtn) throw new Error("편집 버튼 없음");
-    fireEvent.click(editBtn);
+    // 행 탭 = 행 이름이 붙은 편집 버튼
+    fireEvent.click(screen.getByRole("button", { name: "우리 파킹통장 편집" }));
     const balanceEl = await screen.findByPlaceholderText("잔액(원)");
     fireEvent.change(findInnerInput(balanceEl), { target: { value: "19000000" } });
     fireEvent.click(screen.getByRole("button", { name: "저장" }));
@@ -124,19 +123,11 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
     render(<AssetsPage onBack={() => {}} />);
     await screen.findByText("우리 파킹통장");
 
-    const nameEl = screen.getByText("우리 파킹통장");
-    // 테스트 환경의 matchMedia 는 모바일 경로를 타므로 tr 대신 카드 래퍼를 찾는다.
-    // 모바일 카드에서 이름은 날 것의 div 안에 있고, 카드 래퍼는 그 부모다.
-    const firstRow = nameEl.closest("tr") ?? nameEl.closest("div")?.parentElement;
-    if (!firstRow) throw new Error("행 없음");
-    const dangerBtn = Array.from(firstRow.querySelectorAll("button")).find((b) =>
-      b.textContent?.includes("삭제"),
-    );
-    if (!dangerBtn) throw new Error("삭제 버튼 없음");
-    fireEvent.click(dangerBtn);
-    // Popconfirm 확인 버튼 (기본 로케일 OK) — 행의 '삭제' 들과 구분된다
-    const confirm = await screen.findByRole("button", { name: /OK/i });
-    fireEvent.click(confirm);
+    // 행 동작은 ⋯ 메뉴 → 삭제 → Popconfirm 확인 순서다.
+    fireEvent.click(screen.getByRole("button", { name: "우리 파킹통장 행 메뉴" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "삭제" }));
+    // Popconfirm 확인 버튼 (기본 로케일 OK)
+    fireEvent.click(await screen.findByRole("button", { name: /OK/i }));
 
     await waitFor(() => {
       const del = fetchMock.mock.calls.find((c) => (c[1]?.method ?? "GET") === "DELETE");
@@ -172,9 +163,7 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
       render(<AssetsPage onBack={() => {}} />);
       await screen.findByText("우리 파킹통장");
 
-      const editBtn = screen.getAllByRole("button", { name: "편집" })[0];
-      if (!editBtn) throw new Error("편집 버튼 없음");
-      fireEvent.click(editBtn);
+      fireEvent.click(screen.getByRole("button", { name: "우리 파킹통장 편집" }));
       await screen.findByRole("combobox", { name: "계정 유형" });
 
       fireEvent.click(screen.getByRole("button", { name: "저장" }));
@@ -195,12 +184,10 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
       render(<AssetsPage onBack={() => {}} />);
       await screen.findByText("우리 파킹통장");
 
-      const delBtn = screen.getAllByRole("button", { name: "삭제" })[0];
-      if (!delBtn) throw new Error("삭제 버튼 없음");
-      fireEvent.click(delBtn);
+      fireEvent.click(screen.getByRole("button", { name: "우리 파킹통장 행 메뉴" }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "삭제" }));
       // Popconfirm 확인 버튼 — 기본 로케일이 OK 다(koKR 미설정, 기존 테스트와 동일)
-      const confirm = await screen.findByRole("button", { name: /OK/i });
-      fireEvent.click(confirm);
+      fireEvent.click(await screen.findByRole("button", { name: /OK/i }));
 
       const alert = await screen.findByRole("alert");
       expect(alert.textContent).toBeTruthy();
@@ -214,7 +201,7 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(apiResponse(seed))));
     render(<AssetsPage onBack={() => {}} />);
     await screen.findByText("우리 파킹통장");
-    expect(screen.getByText("부채가 비어 있는 것은 정상이다 (§31.4)")).toBeDefined();
+    expect(screen.getByText("등록된 부채가 없습니다. 빌린 돈이 없다면 그대로 두세요.")).toBeDefined();
   });
 
   /**
@@ -228,12 +215,11 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
       render(<AssetsPage onBack={() => {}} />);
       await screen.findByText("우리 파킹통장");
 
-      const editBtn = screen.getAllByRole("button", { name: "편집" })[0];
-      if (!editBtn) throw new Error("편집 버튼 없음");
-      fireEvent.click(editBtn);
+      fireEvent.click(screen.getByRole("button", { name: "우리 파킹통장 편집" }));
 
       // 라벨이 붙어 있어야 화면에서 읽을 수 있다 (숨은 필드였던 것이 핵심 결함)
-      expect(await screen.findByText("계정 유형")).toBeDefined();
+      // 표 헤더("계정 유형")와 폼 라벨이 함께 있으므로 둘 다 존재만 확인한다.
+      expect((await screen.findAllByText("계정 유형")).length).toBeGreaterThan(0);
       const combo = await screen.findByRole("combobox", { name: "계정 유형" });
       expect(combo).toBeDefined();
       // antd Select 의 combobox role/값은 입력용 <input> 에 붙고 그 input 은 항상
@@ -252,9 +238,7 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
       render(<AssetsPage onBack={() => {}} />);
       await screen.findByText("우리 파킹통장");
 
-      const editBtn = screen.getAllByRole("button", { name: "편집" })[0];
-      if (!editBtn) throw new Error("편집 버튼 없음");
-      fireEvent.click(editBtn);
+      fireEvent.click(screen.getByRole("button", { name: "우리 파킹통장 편집" }));
 
       const combo = await screen.findByRole("combobox", { name: "계정 유형" });
       fireEvent.mouseDown(combo);
@@ -320,11 +304,13 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
       expect(screen.getByText("31,000,000원")).toBeDefined();
       // 합계 = 31,000,000 + 2,000,000
       expect(screen.getAllByText(/합계 33,000,000원/).length).toBeGreaterThan(0);
-      // invest 행에는 직접 편집/삭제 버튼이 없다 — 총액을 balance 로 저장하면 이중 계상
-      expect(screen.getAllByRole("button", { name: "삭제" }).length).toBe(1); // 현금 행만
-      expect(screen.getAllByRole("button", { name: "편집" }).length).toBe(1);
+      // invest 행에는 편집 탭도 동작 메뉴(⋯)도 없다 — 총액을 여기서 저장하면 이중 계상
+      expect(screen.queryByRole("button", { name: "키움 투자금 편집" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "키움 투자금 행 메뉴" })).toBeNull();
+      // 현금 행에는 동작 메뉴가 남는다
+      expect(screen.getByRole("button", { name: "생활비 행 메뉴" })).toBeDefined();
 
-      fireEvent.click(screen.getByRole("button", { name: "투자 화면에서 관리" }));
+      fireEvent.click(screen.getByRole("button", { name: "키움 투자금 투자 화면에서 관리" }));
       expect(onOpenInvestments).toHaveBeenCalled();
     });
   });

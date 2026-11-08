@@ -269,8 +269,10 @@ describe("이슈 #70 접근성 AA 정합성", () => {
     expect(firstLink?.getAttribute("href")).toBe("#main");
     expect(firstLink?.className).toContain("af-skip-link");
     expect(firstLink?.textContent).toBe("본문으로 건너뛰기");
-    const main = document.querySelector("main#main");
+    const main = document.getElementById("main");
     expect(main).not.toBeNull();
+    // main 랜드마크는 문서에 정확히 1개(antd Layout.Content) — #main 은 그 안의 div 다.
+    expect(document.querySelectorAll("main").length).toBe(1);
   });
 
   /* ── 브랜드: 대시보드 홈 링크 (§74) ────────────────────────── */
@@ -342,11 +344,11 @@ describe("이슈 #70 접근성 AA 정합성", () => {
 
   /* ── 표: 접근 가능한 이름 ────────────────────────────────────── */
 
-  it("지출 항목 목록은 표 대신 카드로 보여 주고 섹션 제목이 있다", async () => {
+  it("지출 항목 목록은 '월 지출 항목' 표 하나로 렌더된다", async () => {
     renderExpenses();
-    expect(await screen.findByRole("heading", { name: "월 지출 항목" })).toBeDefined();
-    // 카드형 목록으로 통일했다 — 같은 내용의 표가 같이 있으면 안 된다
-    expect(screen.queryByRole("table", { name: "월 지출 항목" })).toBeNull();
+    expect(await screen.findByRole("table", { name: "월 지출 항목" })).toBeDefined();
+    // 같은 이름의 표가 둘이면 접근 이름이 중복된다 — 정확히 1개다.
+    expect(screen.getAllByRole("table", { name: "월 지출 항목" })).toHaveLength(1);
   });
 
   it("설정 화면에는 계정 요약 표가 없다 — 기능 설정은 기능 화면으로 이동", async () => {

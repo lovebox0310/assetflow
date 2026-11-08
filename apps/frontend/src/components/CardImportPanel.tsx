@@ -203,10 +203,10 @@ export function CardImportPanel() {
     );
   }
 
+  // 섹션 h2("카드 내역 가져오기")가 이 영역의 제목이다 — 여기서 같은 문구를 또 쓰지 않는다.
   return (
-    <Card aria-label="카드 내역 가져오기">
+    <Card>
       <Space direction="vertical" style={{ width: "100%" }} size={12}>
-        <Typography.Text strong>카드 내역 가져오기</Typography.Text>
         {notice ? <Alert type="warning" showIcon title={notice} role="status" aria-live="polite" /> : null}
         {errorText ? <Alert type="error" showIcon title={errorText} aria-live="assertive" /> : null}
 
@@ -310,8 +310,10 @@ export function CardImportPanel() {
             />
             <Typography.Text type="secondary">
               분류된 가맹점 {classified.length}곳 · 합계 {formatKrwExact(totalGross)} ·
-              미분류 {groups.length - classified.length}곳은 어느 합계에도 들어가지 않습니다 (§29.7)
-              {skipped > 0 ? ` · 이미 임포트된 행 ${skipped}건은 서버가 걸너뜁니다 (§29.6)` : ""}
+              미분류 {groups.length - classified.length}곳은 어느 합계에도 들어가지 않습니다
+              {/* §29.7 미분류 가맹점은 어떤 합계에도 넣지 않는다 */}
+              {skipped > 0 ? ` · 이미 임포트된 행 ${skipped}건은 서버가 걸러냅니다` : ""}
+              {/* §29.6 이미 임포트된 행은 서버가 중복으로 걸러낸다 */}
             </Typography.Text>
             <Space>
               <Button type="primary" onClick={confirm}>서버에 반영</Button>

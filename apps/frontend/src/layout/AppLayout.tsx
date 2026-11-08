@@ -159,11 +159,12 @@ export function AppLayout({ onLogout, nav, children }: AppLayoutProps) {
         </Space>
       </Header>
       <Content className="af-container">
-        {/* 이슈 #70: main 랜드마크 — 스킵 링크의 이동 대상. tabIndex=-1 로 선택
-            시 포커스가 들어오지만 탭 순서에는 참여하지 않는다. */}
-        <main id="main" tabIndex={-1}>
+        {/* antd Layout.Content 가 이미 <main> 을 렌더하므로 여기서는 <div> 로 두고
+            id/tabIndex 만 유지한다 — main 랜드마크 중복 방지(스킵 링크의 이동 대상).
+            tabIndex=-1 로 선택 시 포커스가 들어오지만 탭 순서에는 참여하지 않는다. */}
+        <div id="main" tabIndex={-1}>
           {children}
-        </main>
+        </div>
       </Content>
     </Layout>
   );
