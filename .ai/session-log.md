@@ -3335,3 +3335,11 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
 - 스냅샷 재생성 필요(대시보드 768~1280 레이아웃 변경).
 - 보정(UI-3b): `월 확정` 22px → 36px(column flex 의 flex-basis:100% 가 높이로 해석된 버그),
   `+ 정기 항목 추가` dashed → default. 버튼 감사: 앱 내부 동작 36 단일, compact 28/아이콘 24(히트 44).
+
+## 2026-11-09 — 대표카드·범례 정리 (UI-4, §80) [✅ Herdr 검증 GO]
+
+- 지표 값의 단위(억·원·개월)를 0.62em 으로 축소, `MetricCard` hint 를 div 로.
+- 비상금 카드: 기준 설정 36px 버튼 → 24px 기어 아이콘, 4줄 힌트 → 1줄 요약 + `자세히` 확장.
+- 구성비 범례의 110px 빈 공간 제거(column flex 의 flex-basis 높이 해석 버그).
+- 검증은 Herdr pane `impl`(opencode)에 위임해 10분, 17/17 PASS·GO. 비용 $0.03.
+- test 227, e2e 156, axe 0.

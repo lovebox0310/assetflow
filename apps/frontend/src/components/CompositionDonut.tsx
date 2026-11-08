@@ -34,8 +34,10 @@ function LegendInline({ slices, wide }: { slices: CompositionSlice[]; wide: bool
     <ul
       aria-label="자산 구성비 범례"
       style={{
-        listStyle: "none", margin: 0, padding: 0, flex: "1 1 200px", minWidth: 200,
-        display: "flex", flexDirection: "column", justifyContent: "center", gap: 12,
+        // 세로 스택(좁은 화면)에서는 flex-basis 200px 가 "높이"로 해석돼
+        // 범례 아래 빈 공간이 생긴다 — 좁을 때는 내용 높이만 차지하게 둔다.
+        listStyle: "none", margin: 0, padding: 0, flex: wide ? "1 1 200px" : "0 0 auto", minWidth: 200,
+        display: "flex", flexDirection: "column", justifyContent: wide ? "center" : "flex-start", gap: 12,
       }}
     >
       {slices.map((s, i) => (
