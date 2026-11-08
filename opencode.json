@@ -3,39 +3,39 @@
 
   "agent": {
     "lead": {
-      "model": "opencode-go/step-5-preview-free",
+      "model": "deepseek/deepseek-flash",
       "temperature": 0.2
     },
     "planner": {
-      "model": "opencode-go/step-5-preview-free",
+      "model": "deepseek/deepseek-flash",
       "temperature": 0.2
     },
     "designer": {
-      "model": "opencode-go/step-5-preview-free",
+      "model": "deepseek/deepseek-flash",
       "temperature": 0.2
     },
     "qa": {
-      "model": "opencode-go/beam-free",
+      "model": "opencode/nemotron-3.5-super-vl-free",
       "temperature": 0.1
     },
     "analyst": {
-      "model": "opencode-go/cat-jam-free",
+      "model": "deepseek/deepseek-flash",
       "temperature": 0.2
     },
     "architect": {
-      "model": "opencode-go/step-5-preview-free",
+      "model": "deepseek/deepseek-flash",
       "temperature": 0.2
     },
     "developer": {
-      "model": "opencode-go/kimi-k2.7-code",
+      "model": "deepseek/deepseek-flash",
       "temperature": 0.1
     },
     "reviewer": {
-      "model": "opencode-go/beam-free",
+      "model": "opencode/nemotron-3.5-super-vl-free",
       "temperature": 0.1
     },
     "tester": {
-      "model": "opencode-go/longcat-2.5-preview-free",
+      "model": "deepseek/deepseek-flash",
       "temperature": 0.0
     }
   }
