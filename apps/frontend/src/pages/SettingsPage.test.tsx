@@ -5,7 +5,8 @@ import { clearInflight } from "../api/client";
 import { clearToken, saveToken } from "../auth/authStore";
 
 /**
- * #37 AC: 설정 화면 — 프로필(me 실검증)·비상금 목표 개월 저장·계정 요약·401.
+ * #37 AC: 설정 화면 — 프로필(me 실검증)·비밀번호 변경·401.
+ * 기능 설정(비상금 기준·카드 명세서 자동 수집)은 기능 화면으로 이동했다(UI-IA-2).
  */
 
 type Handler = (path: string, init?: RequestInit) => Response | Promise<Response>;
@@ -37,45 +38,32 @@ describe("SettingsPage (스프린트 3 #37)", () => {
     saveToken("tok", Date.now() + 60_000);
   });
 
-  it("프로필과 목표 개월이 me 실검증 값으로 렌더된다", async () => {
+  it("프로필이 me 실검증 값으로 렌더된다", async () => {
     stubFetch((path) => {
       if (path.includes("/settings")) return apiResponse({ id: 1, email: "user@example.com", displayName: "AssetFlow", targetMonths: 6 });
-      if (path.includes("/dashboard/summary")) return apiResponse({
-        asOf: "2026-10",
-        assets: [{ id: "1", type: "cash", name: "현금", value: 24_700_000 }],
-        liabilities: [{ id: "9", name: "대출", balance: 69_355_560 }],
-        monthly: { income: 8_200_000, expenses: 1_303_300, essentialExpenses: 1_200_000, essentialComplete: true },
-      });
-      if (path.includes("/dashboard/cashflow")) return apiResponse([]);
       return apiResponse({}, false, 500);
     });
     render(<SettingsPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenExpenses={() => {}} />);
 
     expect(await screen.findByText("AssetFlow")).toBeDefined();
     expect(await screen.findByText("user@example.com")).toBeDefined();
-    const target = await screen.findByLabelText("비상금 목표 개월") as HTMLInputElement;
-    expect(target.value).toBe("6");
-    // 계정 요약: 순자산 24,700,000 - 69,355,560 = -44,655,560
-    expect(await screen.findByText("-44,655,560원")).toBeDefined();
   });
 
-  it("목표 개월 저장은 PUT settings로 반영된다", async () => {
-    const fetchMock = stubFetch((path, init) => {
-      if (path.includes("/settings") && init?.method === "PUT") {
-        return apiResponse({ id: 1, email: "user@example.com", displayName: "AssetFlow", targetMonths: 12 });
-      }
+  it("계정·보안 섹션만 남는다 — 비상금 기준·계정 요약·카드메일 폼이 없다", async () => {
+    stubFetch((path) => {
       if (path.includes("/settings")) return apiResponse({ id: 1, email: "user@example.com", displayName: "AssetFlow", targetMonths: 6 });
-      if (path.includes("/dashboard/summary")) return apiResponse({ asOf: "2026-10", assets: [], liabilities: [], monthly: { income: 0, expenses: 0, essentialExpenses: 0, essentialComplete: false } });
-      if (path.includes("/dashboard/cashflow")) return apiResponse([]);
       return apiResponse({}, false, 500);
     });
     render(<SettingsPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenExpenses={() => {}} />);
 
     await screen.findByText("AssetFlow");
-    const target = screen.getByLabelText("비상금 목표 개월") as HTMLInputElement;
-    fireEvent.change(target, { target: { value: "12" } });
-    fireEvent.click(screen.getByRole("button", { name: "저장" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v1/settings", expect.objectContaining({ method: "PUT" })));
+    expect(screen.getByRole("heading", { level: 2, name: "프로필" })).toBeDefined();
+    expect(screen.getByRole("heading", { level: 2, name: "비밀번호 변경" })).toBeDefined();
+    expect(screen.queryByRole("heading", { level: 2, name: "비상금 기준" })).toBeNull();
+    expect(screen.queryByRole("heading", { level: 2, name: "계정 요약" })).toBeNull();
+    expect(screen.queryByLabelText("비상금 목표 개월")).toBeNull();
+    expect(screen.queryByRole("table", { name: "계정 요약" })).toBeNull();
+    expect(screen.queryByRole("heading", { level: 2, name: "카드 명세서 자동 수집" })).toBeNull();
   });
 
   it("미인증 401은 인증 오류 문구로 구분된다", async () => {
@@ -83,7 +71,6 @@ describe("SettingsPage (스프린트 3 #37)", () => {
       if (path.includes("/settings")) {
         return { ok: false, status: 401, json: async () => ({ code: "AUTH_REQUIRED", message: "Authentication required", details: "", timestamp: "" }) } as Response;
       }
-      if (path.includes("/dashboard")) return apiResponse([]);
       return apiResponse({}, false, 500);
     });
     render(<SettingsPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenExpenses={() => {}} />);
@@ -97,8 +84,6 @@ describe("SettingsPage (스프린트 3 #37)", () => {
         return apiResponse(null);
       }
       if (path.includes("/settings")) return apiResponse({ id: 1, email: "user@example.com", displayName: "AssetFlow", targetMonths: 6 });
-      if (path.includes("/dashboard/summary")) return apiResponse({ asOf: "2026-10", assets: [], liabilities: [], monthly: { income: 0, expenses: 0, essentialExpenses: 0, essentialComplete: false } });
-      if (path.includes("/dashboard/cashflow")) return apiResponse([]);
       return apiResponse({}, false, 500);
     });
     render(<SettingsPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenExpenses={() => {}} />);
@@ -119,7 +104,6 @@ describe("SettingsPage (스프린트 3 #37)", () => {
   it("비밀번호 변경 시 새 비밀번호와 확인이 일치하지 않으면 검증 에러가 표시된다", async () => {
     stubFetch((path) => {
       if (path.includes("/settings")) return apiResponse({ id: 1, email: "user@example.com", displayName: "AssetFlow", targetMonths: 6 });
-      if (path.includes("/dashboard")) return apiResponse([]);
       return apiResponse({}, false, 500);
     });
     render(<SettingsPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenExpenses={() => {}} />);

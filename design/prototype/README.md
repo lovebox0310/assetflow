@@ -16,11 +16,11 @@ design/prototype/index.html
 
 | 파일 | 내용 | 대응 이슈 |
 |---|---|---|
-| `index.html` | 전체 MVP 정보구조(IA) 맵, 9개 화면 | Issue 3 |
+| `index.html` | 전체 MVP 정보구조(IA) 맵, 9개 화면 (2026-10-24 기준, 현행은 §74) | Issue 3 |
 | `login.html` | 이메일 로그인, 오류 상태 | Issue 2 |
-| `dashboard.html` | 핵심 카드 4종 + 현금흐름 차트 | Issue 3, Issue 4 |
+| `dashboard.html` | 핵심 카드 4종 + 현금흐름 차트 (프로토타입 기준, 현행 §74는 3종) | Issue 3, Issue 4 |
 | `assets.html` | 금융자산·부채 입력, 투자금, 구성비 | §31 |
-| `settings.html` | 프로필 + 비상금 계산 기준 | Issue 2 |
+| `settings.html` | 프로필 + 비상금 계산 기준 (프로토타입 기준, 현행 §74는 프로필·비밀번호만) | Issue 2 |
 | `expenses.html` | 지출 항목 + 카드내역 가져오기 | Issue 3, §29 |
 | `common/tokens.css` | 디자인 토큰 (원시 색상값은 이 파일에만 존재) | §28.2 |
 | `common/base.css` | 레이아웃, 공통 컴포넌트 | §28.1 |

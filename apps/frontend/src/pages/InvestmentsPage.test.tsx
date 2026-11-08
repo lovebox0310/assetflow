@@ -381,9 +381,8 @@ describe("InvestmentsPage (§54 E2)", () => {
         },
       ],
     };
-    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
       const path = String(input);
-      const method = init?.method ?? "GET";
       if (path.includes("/investments/holdings/sync-kis")) {
         return Promise.resolve(apiResponse({ ...kisPortfolio, warning }));
       }

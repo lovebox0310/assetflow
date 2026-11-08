@@ -25,6 +25,42 @@ export function StandardNav({
 }) {
   const screens = Grid.useBreakpoint();
   const compact = !screens.sm;
+
+  /*
+   * §75 모바일: 전역 내비 4개를 엄지 접근 가능한 하단 탭으로 내린다.
+   * 헤더 안에서 그대로 렌더한다(portal/이중 렌더 금지) — 스크린리더의 내비
+   * 랜드마크가 하나로 유지되고, `navigation.spec` 의 header 스코프도 그대로 산다.
+   * 네이티브 button 을 쓴다 — antd Button 은 모바일에서 min-width/padding 을
+   * 끌고 와 44px 터치 타깃과 탭 분할(flex:1)이 어긋난다.
+   * 현재 항목 굵기는 inline 으로도 준다 — 단위 테스트(jsdom)가
+   * `style.fontWeight === "700"` 을 읽고, jsdom 은 CSS 클래스 계산값을 모른다.
+   */
+  if (!screens.sm) {
+    const tab = (label: string, page: AppNavPage, onClick?: () => void) => {
+      const isCurrent = current === page;
+      return (
+        <button
+          key={page}
+          type="button"
+          className="af-tabbar__item"
+          {...(isCurrent ? { "aria-current": "page" as const } : {})}
+          {...(!isCurrent && onClick ? { onClick } : {})}
+          style={isCurrent ? { fontWeight: 700 } : undefined}
+        >
+          {label}
+        </button>
+      );
+    };
+    return (
+      <nav className="af-tabbar" aria-label="주 메뉴">
+        {tab("대시보드", "dashboard", onOpenDashboard)}
+        {tab("자산", "assets", onOpenAssets)}
+        {tab("지출", "expenses", onOpenExpenses)}
+        {tab("설정", "settings", onOpenSettings)}
+      </nav>
+    );
+  }
+
   const item = (label: string, page: AppNavPage, onClick?: () => void) => {
     const isCurrent = current === page;
     return (

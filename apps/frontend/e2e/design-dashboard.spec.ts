@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { authToken } from "./fixtures";
-import { mockDashboardApi } from "./dashboard-mocks";
+import { mockDashboardApi, waitForDashboardCharts } from "./dashboard-mocks";
 
 /**
  * 대시보드 페이지 디자인 검증
@@ -13,6 +13,15 @@ import { mockDashboardApi } from "./dashboard-mocks";
  * - 반응형 디자인 (모바일 360px → 태블릿 768px → 데스크톱 1280px)
  */
 
+/** 대시보드 진입 + 차트 애니메이션 종료까지 기다린 뒤 스냅샷을 찍는다. */
+async function openDashboard(page: import("@playwright/test").Page) {
+  // recharts 는 `prefers-reduced-motion` 이면 애니메이션을 끈다(Pie default 'auto').
+  // 애니메이션 프레임에 따라 마지막 각도가 미세하게 달라져 스냅샷이 흔들리므로 끈다.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/", { waitUntil: "networkidle" });
+  await waitForDashboardCharts(page);
+}
+
 test.describe("대시보드 페이지 디자인", () => {
   test.beforeEach(async ({ page }) => {
     await mockDashboardApi(page);
@@ -23,7 +32,7 @@ test.describe("대시보드 페이지 디자인", () => {
 
   test("데스크톱 기본 상태 (1280x720)", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto("/", { waitUntil: "networkidle" });
+    await openDashboard(page);
     
     await page.locator("text=핵심 지표").waitFor({ state: "visible" });
     
@@ -35,7 +44,7 @@ test.describe("대시보드 페이지 디자인", () => {
 
   test("헤더 영역", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto("/", { waitUntil: "networkidle" });
+    await openDashboard(page);
     
     const header = page.locator("header");
     await header.waitFor({ state: "visible" });
@@ -47,9 +56,9 @@ test.describe("대시보드 페이지 디자인", () => {
 
   test("핵심 지표 카드 영역", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto("/", { waitUntil: "networkidle" });
+    await openDashboard(page);
     
-    const metricsSection = page.locator("[aria-labelledby*='metrics'], .metrics-section").first();
+    const metricsSection = page.locator('section[aria-labelledby="h-core"]');
     await metricsSection.waitFor({ state: "visible" });
     
     await expect(metricsSection).toHaveScreenshot(
@@ -60,12 +69,11 @@ test.describe("대시보드 페이지 디자인", () => {
 
   test("차트 영역 (자산 구성비)", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
-    await page.goto("/", { waitUntil: "networkidle" });
+    await openDashboard(page);
     
-    await page.locator("canvas").first().waitFor({ state: "attached" });
+    const chartSection = page.locator('section[aria-labelledby="h-composition"]');
+    await chartSection.locator("svg").first().waitFor({ state: "attached" });
     await page.waitForTimeout(500);
-    
-    const chartSection = page.locator("text=자산 구성비").first();
     await expect(chartSection).toHaveScreenshot(
       "dashboard-chart-composition-1280x900.png",
       { maxDiffPixels: 150 }
@@ -74,7 +82,7 @@ test.describe("대시보드 페이지 디자인", () => {
 
   test("모바일 세로 (393x851)", async ({ page }) => {
     await page.setViewportSize({ width: 393, height: 851 });
-    await page.goto("/", { waitUntil: "networkidle" });
+    await openDashboard(page);
     
     await expect(page).toHaveScreenshot(
       "dashboard-mobile-portrait-393x851.png",
@@ -87,7 +95,7 @@ test.describe("대시보드 페이지 디자인", () => {
 
   test("태블릿 (768x1024)", async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 });
-    await page.goto("/", { waitUntil: "networkidle" });
+    await openDashboard(page);
     
     await expect(page).toHaveScreenshot(
       "dashboard-tablet-768x1024.png",
@@ -100,7 +108,7 @@ test.describe("대시보드 페이지 디자인", () => {
 
   test("스크롤 시 헤더 고정", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto("/", { waitUntil: "networkidle" });
+    await openDashboard(page);
     
     const headerBefore = await page.locator("header").boundingBox();
     
@@ -119,7 +127,7 @@ test.describe("대시보드 페이지 디자인", () => {
 
   test("다크 모드", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto("/", { waitUntil: "networkidle" });
+    await openDashboard(page);
     
     await page.evaluate(() => {
       document.documentElement.setAttribute("data-theme", "dark");
@@ -137,9 +145,9 @@ test.describe("대시보드 페이지 디자인", () => {
 
   test("인쇄 모드", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto("/", { waitUntil: "networkidle" });
+    await openDashboard(page);
     
-    await page.emulateMedia({ media: "print" });
+    await page.emulateMedia({ media: "print", reducedMotion: "reduce" });
     await page.waitForTimeout(300);
     
     await expect(page).toHaveScreenshot(

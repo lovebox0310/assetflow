@@ -22,6 +22,10 @@ beforeEach(() => {
     if (path.includes("/expenses/snapshots")) return Promise.resolve(apiResponse({ month: "2026-10", income: 0, vatSetAside: 0, expenses: 0, essentialExpenses: 0, essentialComplete: true, balance: 0 }));
     if (path.includes("/expenses/items")) return Promise.resolve(apiResponse([]));
     if (path.includes("/expenses/recurring")) return Promise.resolve(apiResponse([]));
+    if (path.includes("/card-email-import-settings")) {
+      // 카드 명세서 자동 수집은 미설정(404 NOT_FOUND)이 정상 상태다.
+      return Promise.resolve({ ok: false, status: 404, json: async () => ({ code: "NOT_FOUND", message: "not found", details: "", timestamp: "" }) } as Response);
+    }
     if (path.includes("/settings")) return Promise.resolve(apiResponse({ id: 1, email: "a@b.com", displayName: "사용자", targetMonths: 6, emergencyAccountIds: [], emergencyAvgMonths: 3, emergencyCategories: ["식비"] }));
     return Promise.resolve(apiResponse({}, false, 500));
   }));
@@ -116,6 +120,20 @@ describe("URL 상태 동기화 (이슈 #72)", () => {
     expect(document.title).toBe("자산 · AssetFlow");
     expect(screen.getByRole("button", { name: "자산" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("button", { name: "대시보드" }).getAttribute("aria-current")).toBeNull();
+  });
+
+  it("브랜드를 클릭하면 대시보드 홈(#/)으로 돌아간다 (§74)", async () => {
+    render(<App />);
+    await screen.findByText("핵심 지표");
+    fireEvent.click(screen.getByRole("button", { name: "설정" }));
+    await screen.findByRole("heading", { name: "설정" });
+    expect(window.location.hash).toBe("#/settings");
+
+    fireEvent.click(screen.getByRole("link", { name: "AssetFlow 홈 — 대시보드" }));
+
+    expect(await screen.findByText("핵심 지표")).toBeDefined();
+    expect(window.location.hash).toBe("#/");
+    expect(document.title).toBe("대시보드 · AssetFlow");
   });
 
   it("자산 하위의 투자 화면으로 들어가도 URL·제목이 바뀌고 전역 nav 는 자산이 현재다", async () => {

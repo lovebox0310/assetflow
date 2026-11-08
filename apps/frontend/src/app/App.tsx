@@ -128,6 +128,7 @@ export function App() {
         onLogout={() => setAuthed(false)}
         onOpenAssets={() => navigate("assets")}
         onOpenExpenses={() => navigate("expenses")}
+        onOpenCards={() => navigate("expenseCards")}
         onOpenSettings={() => navigate("settings")}
       />
     );

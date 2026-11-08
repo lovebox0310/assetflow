@@ -12,9 +12,12 @@ import { clearToken, saveToken } from "../auth/authStore";
 type Handler = (path: string, init?: RequestInit) => Response | Promise<Response>;
 
 function stubFetch(handler: Handler) {
-  const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
-    Promise.resolve(handler(String(input), init)),
-  );
+  const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    const path = String(input);
+    // 카드내역 화면은 카드메일 설정을 1회 읽는다 — 미설정(404 NOT_FOUND)이 정상이라 고정 응답한다.
+    if (path.includes("/card-email-import-settings")) return Promise.resolve(notFound());
+    return Promise.resolve(handler(path, init));
+  });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
@@ -24,6 +27,15 @@ function apiResponse(data: unknown, ok = true, status = 200): Response {
     ? { code: "OK", message: "loaded", data }
     : { code: "INVALID_REQUEST", message: "Invalid request", details: "", timestamp: "" };
   return { ok, status, json: async () => body } as Response;
+}
+
+/** 카드 명세서 자동 수집 설정이 아직 없을 때의 응답(404 NOT_FOUND). */
+function notFound(): Response {
+  return {
+    ok: false,
+    status: 404,
+    json: async () => ({ code: "NOT_FOUND", message: "not found", details: "", timestamp: "" }),
+  } as Response;
 }
 
 function renderPage(overrides: Partial<Parameters<typeof CardExpensesPage>[0]> = {}) {
