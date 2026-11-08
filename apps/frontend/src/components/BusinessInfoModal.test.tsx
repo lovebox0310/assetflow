@@ -56,14 +56,19 @@ describe("BusinessInfoModal", () => {
 
     render(<BusinessInfoModal open businessNo="2208155597" onClose={() => {}} />);
 
-    await waitFor(() => {
-      expect(screen.getByText(/bizno\.net 접속이 지연/)).toBeTruthy();
-    });
+    await waitFor(
+      () => {
+        expect(screen.getByText(/bizno\.net 접속이 지연/)).toBeTruthy();
+      },
+      { timeout: 3000 },
+    );
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole("button", { name: /다시\s*조회/ }));
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-    });
+    // setError(.catch) → setLoading(false)(.finally) 사이에 버튼은 아직 로딩 상태다.
+    // antd Button 은 로딩 중 클릭을 무시하므로, 로딩 클래스가 사라진 뒤에 누른다.
+    const retry = screen.getByRole("button", { name: /다시\s*조회/ });
+    await waitFor(() => expect(retry.classList.contains("ant-btn-loading")).toBe(false));
+    fireEvent.click(retry);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2), { timeout: 3000 });
   });
 });
