@@ -3343,3 +3343,54 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
 - 구성비 범례의 110px 빈 공간 제거(column flex 의 flex-basis 높이 해석 버그).
 - 검증은 Herdr pane `impl`(opencode)에 위임해 10분, 17/17 PASS·GO. 비용 $0.03.
 - test 227, e2e 156, axe 0.
+
+## 2026-11-09 — 세션 마감: 현재 상태와 다음 작업 인계
+
+**현재 기준선**
+- `main` = `4a5ed75`, CI 4개 게이트 success(frontend/backend/e2e/quality).
+- `pnpm typecheck`·`lint` 0, `pnpm test` 227, `pnpm e2e --ignore-snapshots` 156,
+  `pnpm e2e design-` 102.
+- 스냅샷 베이스라인: design-dashboard 27 + design-responsive 39 + design-login 24
+  (로컬 폰트 기준 생성, CI 는 §76 대로 `--ignore-snapshots`).
+- 로컬 dev 서버 `:5173`, 백엔드 `:8080` 전제. 실계정 없이 `page.route` 목으로 검증한다.
+
+**이번 세션에 끝낸 것**
+- §77 표·카드 목록 → 단일 행 목록(`AfListTable`). 5화면 전환, `MobileListCard` 삭제,
+  `overflowX` 0, 화면 노출 `§` 0, 중복 `<main>` 제거.
+- §78 투자 계좌 헤더 `⋯` 메뉴(파괴 동작은 구분선 아래) + 컨트롤 3단(36/28/44),
+  히트 44(세로 확장), 한국어 로케일(`확인`/`취소`), Switch·날짜 지우기 히트 보정.
+- §79 대시보드 구성비 범례 잘림(900px 92px)·카드 높이, 설정 720 중앙 컬럼 반응형,
+  지출 월 기준 입력 라벨·전폭, `월 확정` 22→36px 복구.
+- §80 대표 지표 단위 축소(0.62em), 비상금 카드 1줄 요약+`자세히` 확장, 구성비 범례
+  110px 빈 공간 제거(column flex 의 flex-basis 높이 해석 버그).
+
+**사람 확인 대기**
+- 스크린리더 실낭독(NVDA/VoiceOver): 목록 2행 구조, 계좌 `⋯` 메뉴, 지출 라벨,
+  지표 값 `.sr-only`+`aria-hidden` 조합이 1회만 읽히는지.
+- iOS 실기기: `viewport-fit=cover` 미적용(§75 후속), 하단 탭 safe-area, 키보드 가림.
+- 배포: CI 초록 상태이며 실제 배포는 사용자가 수행.
+
+**알려진 잔여(문제 아님·의도된 값)**
+- 카드사별 표 데스크톱 57px(2줄 셀), 320에서 배지 2개 행 79px.
+- 날짜 지우기 히트 24px 중 좌우 5px가 입력 텍스트를 흡수(hover로 X가 보일 때만).
+- 스위치와 기어가 같은 헤더 줄(24px 아이콘으로 경감).
+- `aria-controls="runway-detail"` 대상이 접힘 상태엔 DOM 에 없다 — `hidden` 컨테이너로
+  바꾸면 항상 유효(후속).
+- 320 핵심 지표 카드 높이 차 18px(예산 20px, `월 수지` hint 2줄 때문).
+
+**다음 후보 작업**
+1. 접근성: `e2e/a11y.spec.ts` 를 지출·자산·투자·설정까지 확대 — `expenses/*`,
+   `assets/card-imports` 목록 목 추가 필요(현재 목은 대시보드·자산·투자·설정만).
+2. 단위 테스트 렌더 헬퍼(`ConfigProvider + koKR`) 도입 → 로케일 의존 단언 정리.
+3. 런웨이 카드 `aria-controls` hidden 컨테이너화 + 접힘/펼침·카드 높이 e2e 회귀.
+4. iOS `viewport-fit=cover` 실기기 대응.
+
+**작업 방식(Herdr)**
+- 이 OpenCode 세션은 Herdr 안에서 실행된다(workspace `w5`, tab `w5:t1`).
+  위임용 pane `impl` = `w5:p7`, kind `opencode`, idle. 설치된 에이전트 CLI 는 opencode 뿐이다.
+- 위임: `herdr agent prompt impl "<태스크 패킷>" --wait --timeout 900000`
+  결과: `herdr agent read impl --source recent-unwrapped --lines 200`
+  상태: `herdr agent get impl` (`blocked` 면 승인 UI 를 먼저 확인).
+- 에이전트는 같은 워킹트리를 보므로 **동시에 같은 파일을 편집하지 않는다**.
+  리드는 검증·조사·문서를 병행한다.
+- 예: UI-4 검증을 `impl` 에 위임(10분, $0.03), 리드는 diff 검토 병행 → 17/17 PASS.
