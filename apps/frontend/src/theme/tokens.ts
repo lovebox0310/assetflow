@@ -298,7 +298,7 @@ export function createAfTheme(mode: ResolvedTheme): ThemeConfig {
       /* 컨트롤 높이 3단 — Menu 의 itemHeight 가 controlHeightLG 를 쓴다.
        * 단, antd 6 의 Dropdown 메뉴(`.ant-dropdown-menu-item`)는 이 값이 아니라
        * Dropdown.paddingBlock(controlHeight 기반)으로 높이를 정한다 —
-       * 44px 항목은 app.css 의 `.ant-dropdown-menu-item` 규칙이 맡는다. */
+       * 44px 항목은 아래 components.Dropdown 이 맡는다. */
       controlHeight: CONTROL_HEIGHT.md,
       controlHeightSM: CONTROL_HEIGHT.sm,
       controlHeightLG: CONTROL_HEIGHT.lg,
@@ -427,6 +427,14 @@ export function createAfTheme(mode: ResolvedTheme): ThemeConfig {
       boxShadow: c("boxShadow"),
       boxShadowSecondary: c("boxShadowSecondary"),
       boxShadowTertiary: c("boxShadowTertiary"),
+    },
+    components: {
+      Dropdown: {
+        /* 항목 높이 = paddingBlock×2 + lineHeight(22). 44 가 되도록 11.
+         * (기본값 (controlHeight - fontSize×lineHeight)/2 = 7 → 36px)
+         * app.css 의 `.ant-dropdown-menu-item { min-height }` 해킹을 대체한다. */
+        paddingBlock: 11,
+      },
     },
   };
 }

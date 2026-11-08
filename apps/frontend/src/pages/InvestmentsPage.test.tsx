@@ -281,7 +281,7 @@ describe("InvestmentsPage (§54 E2)", () => {
     fireEvent.click(screen.getByRole("button", { name: "삼성전자 행 메뉴" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "삭제" }));
     // Popconfirm 확인 버튼 — 기본 로케일 OK
-    fireEvent.click(await screen.findByRole("button", { name: "OK" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^(OK|확인)$/ }));
 
     await waitFor(() => {
       const del = fetchMock.mock.calls.find(
@@ -325,7 +325,7 @@ describe("InvestmentsPage (§54 E2)", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "계좌 삭제" }));
     expect(await screen.findByText("보유종목 3건도 함께 삭제됩니다")).toBeDefined();
 
-    fireEvent.click(await screen.findByRole("button", { name: "OK" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^(OK|확인)$/ }));
 
     await waitFor(() => {
       const del = fetchMock.mock.calls.find(
