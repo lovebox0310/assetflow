@@ -374,7 +374,7 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
                   onChange={setShowInvestMonths}
                   aria-label="유지 개월 모드 전환"
                 />
-                <Button size="small" onClick={() => setEmergencyModalOpen(true)}>
+                <Button onClick={() => setEmergencyModalOpen(true)}>
                   기준 설정
                 </Button>
               </Space>

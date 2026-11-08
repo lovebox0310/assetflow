@@ -30,6 +30,9 @@ export const SPACE = { s1: 4, s2: 8, s3: 12, s4: 16, s6: 24, s8: 32, s12: 48 } a
 export const CONTAINER_MAX_WIDTH = 1200;
 export const GUTTER = { mobile: SPACE.s4, desktop: SPACE.s6 } as const;
 
+/** 컨트롤 높이 3단 — 히트 44 확장을 전제로 한 값(§78). */
+export const CONTROL_HEIGHT = { sm: 28, md: 36, lg: 44 } as const;
+
 /** 테마 모드 — 라이트/다크 2상태 (D1). "system" 해석은 themeStore 가 담당한다. */
 export type ResolvedTheme = "light" | "dark";
 
@@ -256,6 +259,9 @@ export function afCssVars(mode: ResolvedTheme): Record<string, string> {
   // sans: 본문 전체 · mono: 숫자·코드 전용
   out["--af-font-sans"] = FONT_FAMILY;
   out["--af-font-mono"] = MONO_FAMILY;
+  out["--af-control-h-sm"] = `${CONTROL_HEIGHT.sm}px`;
+  out["--af-control-h"] = `${CONTROL_HEIGHT.md}px`;
+  out["--af-control-h-lg"] = `${CONTROL_HEIGHT.lg}px`;
   return out;
 }
 
@@ -287,7 +293,15 @@ export function createAfTheme(mode: ResolvedTheme): ThemeConfig {
       fontFamilyCode: MONO_FAMILY,
       borderRadius: 8,
       borderRadiusLG: 10,
-      borderRadiusSM: 6,
+      borderRadiusSM: 8,
+
+      /* 컨트롤 높이 3단 — Menu 의 itemHeight 가 controlHeightLG 를 쓴다.
+       * 단, antd 6 의 Dropdown 메뉴(`.ant-dropdown-menu-item`)는 이 값이 아니라
+       * Dropdown.paddingBlock(controlHeight 기반)으로 높이를 정한다 —
+       * 44px 항목은 app.css 의 `.ant-dropdown-menu-item` 규칙이 맡는다. */
+      controlHeight: CONTROL_HEIGHT.md,
+      controlHeightSM: CONTROL_HEIGHT.sm,
+      controlHeightLG: CONTROL_HEIGHT.lg,
 
       /* 시드 — 알고리즘이 파생할 수 있는 기준값 */
       colorBgBase: c("card"),
