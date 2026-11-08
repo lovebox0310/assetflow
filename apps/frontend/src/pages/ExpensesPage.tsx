@@ -379,7 +379,7 @@ export function ExpensesPage({
    * 연결하면 antd 가 값을 잃는다. 편집 중에는 편집 행, 그 외에는 목록 아래 추가 폼.
    */
   const renderItemForm = (mode: "add" | "edit") => (
-    <Form form={form} layout="inline" style={{ display: "flex", flexWrap: "wrap", gap: wide ? "10px 12px" : "12px" }}>
+    <Form form={form} layout="inline" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: wide ? "10px 12px" : "12px" }}>
       <Form.Item name="label" rules={[{ required: true, message: "항목명을 입력하세요" }]}
         style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}
       >
@@ -463,7 +463,7 @@ export function ExpensesPage({
           {prevCount !== null && prevCount > 0 && itemStatus === "empty" ? (
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "var(--af-secondary)", border: "1px dashed var(--af-border)", borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
               <span style={{ fontSize: 13 }}>이 월은 항목이 비어 있어요 — 지난달({prevMonth}) 항목 <b>{prevCount}건</b>을 가져올까요?</span>
-              <Button size="small" type="primary" onClick={() => void copyPrev()}>지난달 항목 가져오기</Button>
+              <Button type="primary" onClick={() => void copyPrev()}>지난달 항목 가져오기</Button>
             </div>
           ) : null}
           <StateBlock status={itemStatus} onRetry={loadItems} errorText={itemError} emptyText="항목이 없습니다 — 아래 양식에서 추가하세요">

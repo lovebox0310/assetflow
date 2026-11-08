@@ -681,9 +681,8 @@ export function CardExpensesPage({
         <div className="af-section-head" style={{ marginBottom: 16 }}>
           <Typography.Title level={2} id="h-card-imports" className="af-section-head__title" style={{ fontSize: 16, margin: 0 }}>가져온 카드내역</Typography.Title>
           <Space className="af-section-head__actions">
-            <Button size="small" onClick={downloadCsv}>CSV 다운로드</Button>
+            <Button onClick={downloadCsv}>CSV 다운로드</Button>
             <Button
-              size="small"
               loading={reclassifying}
               onClick={() => void handleReclassify()}
               title="저장된 카드 내역을 가맹점 규칙·키워드로 다시 분류합니다"
