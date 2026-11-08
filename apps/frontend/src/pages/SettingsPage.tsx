@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Button, Card, Form, Input, Space, Typography } from "antd";
+import { Alert, Button, Card, Form, Input, Typography } from "antd";
 import { AppLayout } from "../layout/AppLayout";
 import { StandardNav } from "../layout/StandardNav";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
@@ -83,25 +83,30 @@ export function SettingsPage({ onOpenDashboard, onOpenAssets, onOpenExpenses }: 
       onLogout={handleLogout}
       nav={<StandardNav current="settings" onOpenDashboard={onOpenDashboard} onOpenAssets={onOpenAssets} onOpenExpenses={onOpenExpenses} />}
     >
-      {/* 이슈 #70: 페이지 h1 은 정확히 1개. 섹션은 h2. */}
-      <Typography.Title level={1} id="h-settings" style={{ fontSize: 24, margin: 0, marginBottom: 16 }}>설정</Typography.Title>
+      <div style={{ maxWidth: 720, width: "100%", marginInline: "auto", minWidth: 0 }}>
+        {/* 이슈 #70: 페이지 h1 은 정확히 1개. 섹션은 h2. */}
+        <Typography.Title level={1} id="h-settings" style={{ fontSize: 24, margin: 0, marginBottom: 8 }}>설정</Typography.Title>
+        <p style={{ fontSize: 13, color: "var(--af-muted-foreground)", margin: "0 0 24px" }}>
+          계정과 보안 설정입니다. 비상금 목표·카드 명세서 수집은 각 기능 화면에서 바꿉니다.
+        </p>
 
-      <div style={{ maxWidth: 640, minWidth: 0 }}>
-        <section aria-labelledby="h-profile" style={{ marginBottom: 24 }}>
+        <section aria-labelledby="h-profile" style={{ marginBottom: 32 }}>
           <Typography.Title level={2} id="h-profile" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>프로필</Typography.Title>
           <Card>
             <StateBlock status={status} onRetry={load} errorText={errorText}>
               {settings ? (
-                <Space direction="vertical" size={4}>
-                  <Typography.Text><b>{settings.displayName}</b></Typography.Text>
-                  <Typography.Text type="secondary">{settings.email}</Typography.Text>
-                </Space>
+                <dl style={{ display: "grid", gridTemplateColumns: "64px minmax(0,1fr)", rowGap: 12, columnGap: 16, margin: 0 }}>
+                  <dt style={{ fontSize: 13, color: "var(--af-muted-foreground)" }}>이름</dt>
+                  <dd style={{ margin: 0, fontWeight: 700 }}>{settings.displayName}</dd>
+                  <dt style={{ fontSize: 13, color: "var(--af-muted-foreground)" }}>이메일</dt>
+                  <dd style={{ margin: 0, color: "var(--af-muted-foreground)", overflowWrap: "anywhere" }}>{settings.email}</dd>
+                </dl>
               ) : null}
             </StateBlock>
           </Card>
         </section>
 
-        <section aria-labelledby="h-password" style={{ marginBottom: 24 }}>
+        <section aria-labelledby="h-password" style={{ marginBottom: 32 }}>
           <Typography.Title level={2} id="h-password" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>비밀번호 변경</Typography.Title>
           <Card>
             {passwordStatus === "error" && (
@@ -123,7 +128,7 @@ export function SettingsPage({ onOpenDashboard, onOpenAssets, onOpenExpenses }: 
                 aria-live="polite"
               />
             )}
-            <Form form={passwordForm} layout="vertical" style={{ maxWidth: 320, width: "100%" }}>
+            <Form form={passwordForm} layout="vertical" style={{ maxWidth: 520, width: "100%" }}>
               <Form.Item name="currentPassword" label="현재 비밀번호"
                 rules={[{ required: true, message: "현재 비밀번호를 입력하세요" }]}>
                 <Input.Password aria-label="현재 비밀번호" autoComplete="current-password" style={{ fontSize: 16 }} />

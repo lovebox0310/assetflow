@@ -418,14 +418,20 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
         </ResponsiveGrid>
       </section>
 
-      <ResponsiveGrid spans={{ xs: 24, md: 12 }}>
-        <section aria-labelledby="h-composition" style={{ marginBottom: 32 }}>
+      <ResponsiveGrid spans={{ xs: 24, md: 24, xl: 12 }} align="stretch">
+        <section
+          aria-labelledby="h-composition"
+          style={{ marginBottom: 32, height: "100%", display: "flex", flexDirection: "column" }}
+        >
           <SectionHeader
             id="h-composition"
             title="자산 구성비"
             link={{ label: "자산 화면 보기", ariaLabel: "자산 화면 보기 — 자산 구성비", onClick: () => onOpenAssets?.() }}
           />
-          <Card>
+          <Card
+            style={{ flex: 1, display: "flex", flexDirection: "column" }}
+            styles={{ body: { flex: 1, display: "flex", flexDirection: "column" } }}
+          >
             <StateBlock status={summaryStatus} onRetry={load} errorText={summaryError}>
               {dataReady ? (
                 <Suspense fallback={<Skeleton active paragraph={{ rows: 3 }} />}>
@@ -437,13 +443,19 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
           </Card>
         </section>
 
-        <section aria-labelledby="h-emergency-accounts" style={{ marginBottom: 32 }}>
+        <section
+          aria-labelledby="h-emergency-accounts"
+          style={{ marginBottom: 32, height: "100%", display: "flex", flexDirection: "column" }}
+        >
           <SectionHeader
             id="h-emergency-accounts"
             title="비상금 계좌"
             link={{ label: "자산 화면 보기", ariaLabel: "자산 화면 보기 — 비상금 계좌", onClick: () => onOpenAssets?.() }}
           />
-          <Card>
+          <Card
+            style={{ flex: 1, display: "flex", flexDirection: "column" }}
+            styles={{ body: { flex: 1, display: "flex", flexDirection: "column" } }}
+          >
             <StateBlock status={summaryStatus} onRetry={load} errorText={summaryError}>
               {dataReady ? (
                 <CashAccountCards

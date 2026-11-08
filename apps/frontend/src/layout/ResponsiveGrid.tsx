@@ -13,16 +13,18 @@ export const CARD_SPANS = { xs: 24, md: 12, lg: 6 } as const;
 
 interface ResponsiveGridProps {
   /** Col span 맵. 기본값은 핵심 카드 4종. */
-  spans?: { xs: number; md?: number; lg?: number };
+  spans?: { xs: number; md?: number; lg?: number; xl?: number };
+  /** 같은 행 카드의 세로 정렬. 기본 "top" — 기존 호출부 동작은 그대로다. */
+  align?: "top" | "middle" | "bottom" | "stretch";
   children: ReactNode[];
 }
 
-export function ResponsiveGrid({ spans = CARD_SPANS, children }: ResponsiveGridProps) {
+export function ResponsiveGrid({ spans = CARD_SPANS, align = "top", children }: ResponsiveGridProps) {
   const screens = Grid.useBreakpoint();
   const wide = Boolean(screens.lg);
   const gap = wide ? GUTTER.desktop : GUTTER.mobile;
   return (
-    <Row gutter={[gap, gap]}>
+    <Row gutter={[gap, gap]} align={align}>
       {children.map((child, i) => (
         <Col key={i} {...spans}>
           {child}

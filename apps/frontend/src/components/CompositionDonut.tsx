@@ -34,16 +34,21 @@ function LegendInline({ slices, wide }: { slices: CompositionSlice[]; wide: bool
     <ul
       aria-label="자산 구성비 범례"
       style={{
-        listStyle: "none", margin: 0, padding: 0, flex: 1, minWidth: 200,
+        listStyle: "none", margin: 0, padding: 0, flex: "1 1 200px", minWidth: 200,
         display: "flex", flexDirection: "column", justifyContent: "center", gap: 12,
       }}
     >
       {slices.map((s, i) => (
-        <li key={s.type} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <li
+          key={s.type}
+          style={{ display: "flex", alignItems: "center", flexWrap: "wrap", rowGap: 2, gap: 10 }}
+        >
           <span aria-hidden style={dotStyle(colorFor(i))} />
-          <span style={{ fontWeight: 600 }}>{s.label}</span>
+          <span style={{ fontWeight: 600, minWidth: 0 }}>{s.label}</span>
           <span style={amountStyle}>{formatKrwExact(s.value)}</span>
-          <span style={{ fontWeight: 600 }}>{s.percent.toFixed(1)}%</span>
+          <span style={{ fontWeight: 600, marginLeft: wide ? "auto" : undefined }}>
+            {s.percent.toFixed(1)}%
+          </span>
         </li>
       ))}
     </ul>
@@ -163,7 +168,18 @@ export function CompositionDonut({
   );
 
   const chart = (
-    <figure style={{ margin: 0, width: wide ? 260 : "100%", maxWidth: 320, flexShrink: 0 }}>
+    <figure
+      style={{
+        margin: "0 auto",
+        flex: "0 1 240px",
+        minWidth: 0,
+        maxWidth: "100%",
+        // width:"auto" 는 margin auto 와 만나면 stretch 가 꺼져(shrink-to-fit)
+        // 내부 width:100% 가 순환해 차트 폭이 0 이 된다. 도넛 지름을 240px 로
+        // 고정해 320~1280 에서 같은 크기를 유지한다(maxWidth 로 좁은 화면에서만 줄어든다).
+        width: 240,
+      }}
+    >
       <figcaption className="sr-only" style={{ marginBottom: 8 }}>
         자산 구성 도넛 차트 — {slices.map((s) => `${s.label} ${s.percent.toFixed(1)}%`).join(", ")}
       </figcaption>
@@ -203,9 +219,11 @@ export function CompositionDonut({
         style={{
           display: "flex",
           flexDirection: wide ? "row" : "column",
+          flexWrap: "wrap",
           alignItems: wide ? "center" : "stretch",
-          gap: wide ? 32 : 16,
+          gap: wide ? 24 : 16,
           width: "100%",
+          minWidth: 0,
         }}
       >
         {chart}
