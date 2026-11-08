@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Button, Card, Checkbox, Form, Grid, Input, InputNumber, Select, Space, Typography } from "antd";
+import { Button, Card, Checkbox, Form, Grid, Input, InputNumber, Select, Typography } from "antd";
 import { AppLayout } from "../layout/AppLayout";
 import { StandardNav } from "../layout/StandardNav";
 import { SubNav } from "../components/SubNav";
@@ -379,7 +379,7 @@ export function ExpensesPage({
    * 연결하면 antd 가 값을 잃는다. 편집 중에는 편집 행, 그 외에는 목록 아래 추가 폼.
    */
   const renderItemForm = (mode: "add" | "edit") => (
-    <Form form={form} layout="inline" style={{ display: "flex", flexWrap: "wrap", gap: wide ? "10px 12px" : "12px" }}>
+    <Form form={form} layout="inline" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: wide ? "10px 12px" : "12px" }}>
       <Form.Item name="label" rules={[{ required: true, message: "항목명을 입력하세요" }]}
         style={wide ? {} : { flex: "1 1 100%", minWidth: 0 }}
       >
@@ -463,7 +463,7 @@ export function ExpensesPage({
           {prevCount !== null && prevCount > 0 && itemStatus === "empty" ? (
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "var(--af-secondary)", border: "1px dashed var(--af-border)", borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
               <span style={{ fontSize: 13 }}>이 월은 항목이 비어 있어요 — 지난달({prevMonth}) 항목 <b>{prevCount}건</b>을 가져올까요?</span>
-              <Button size="small" type="primary" onClick={() => void copyPrev()}>지난달 항목 가져오기</Button>
+              <Button type="primary" onClick={() => void copyPrev()}>지난달 항목 가져오기</Button>
             </div>
           ) : null}
           <StateBlock status={itemStatus} onRetry={loadItems} errorText={itemError} emptyText="항목이 없습니다 — 아래 양식에서 추가하세요">
@@ -531,7 +531,7 @@ export function ExpensesPage({
                 />
               ) : null}
               <div style={{ marginTop: recurring.length > 0 ? 12 : 0 }}>
-                <Button type="dashed" onClick={() => setRecForm("new")}>+ 정기 항목 추가</Button>
+                <Button onClick={() => setRecForm("new")}>+ 정기 항목 추가</Button>
               </div>
               {recForm ? (
                 <div style={{ marginTop: 12, borderTop: "1px solid var(--af-border)", paddingTop: 12 }}>
@@ -581,27 +581,41 @@ export function ExpensesPage({
       <section aria-labelledby="h-snapshot" style={{ marginBottom: 32 }}>
         <Typography.Title level={2} id="h-snapshot" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>월 기준 입력</Typography.Title>
         <Card>
-          <Space direction="vertical" style={{ width: "100%" }} size={8}>
-            <Space wrap>
-              <Typography.Text>이번 달 수입</Typography.Text>
-              <InputNumber
-                aria-label="이번 달 수입"
-                min={0}
-                value={income}
-                onChange={(v) => setIncome(v)}
-                style={{ width: 160 }}
-              />
-              <InputNumber
-                aria-label="부가세통장 이체"
-                min={0}
-                value={vatSetAside}
-                onChange={(v) => setVatSetAside(v)}
-                style={{ width: 160 }}
-              />
-              <Button type="primary" loading={confirming} onClick={() => void handleConfirm()}>
-                월 확정
-              </Button>
-            </Space>
+          <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--af-muted-foreground)" }}>
+            이번 달 수입과 부가세통장 이체액으로 확정합니다. 부가세통장 이체는 부가세 납부를 위해
+            따로 남겨 둘 금액이며 월 수지에서 차감됩니다.
+          </p>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: wide ? "row" : "column",
+              flexWrap: wide ? "wrap" : "nowrap",
+              // 좁은 화면은 column — flex-end 로 두면 자식의 교차축 폭이
+              // 줄어들어(min-content) 입력이 카드 폭을 못 채운다. 세로는 stretch.
+              alignItems: wide ? "flex-end" : "stretch",
+              gap: 16,
+            }}
+          >
+            <div style={{ flex: wide ? "0 1 280px" : "1 1 auto", minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+              <label htmlFor="snap-income" style={{ fontSize: 14, lineHeight: "22px", color: "var(--af-muted-foreground)" }}>이번 달 수입</label>
+              <InputNumber id="snap-income" min={0} value={income} onChange={(v) => setIncome(v)} style={{ width: "100%" }} />
+            </div>
+            <div style={{ flex: wide ? "0 1 280px" : "1 1 auto", minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+              <label htmlFor="snap-vat" style={{ fontSize: 14, lineHeight: "22px", color: "var(--af-muted-foreground)" }}>부가세통장 이체</label>
+              <InputNumber id="snap-vat" min={0} value={vatSetAside} onChange={(v) => setVatSetAside(v)} style={{ width: "100%" }} />
+            </div>
+            {/* §31.1: column flex 에서 flex-basis:100% 는 높이 기준으로 해석되어
+                버튼이 22px 로 찌그러진다. flex 는 두지 않고 폭만 준다. */}
+            <Button
+              type="primary"
+              loading={confirming}
+              onClick={() => void handleConfirm()}
+              style={{ width: wide ? undefined : "100%" }}
+            >
+              월 확정
+            </Button>
+          </div>
+          <div style={{ marginTop: 12 }}>
             {snapshot ? (
               <Typography.Text type="secondary">
                 확정됨 {snapshot.month} — 부가세통장 {formatKrwExact(snapshot.vatSetAside)} ·
@@ -613,7 +627,7 @@ export function ExpensesPage({
             ) : (
               <Typography.Text type="secondary">아직 이 월은 확정되지 않았습니다 — 수입 입력 후 '월 확정'을 누르면 스냅샷이 갱신됩니다</Typography.Text>
             )}
-          </Space>
+          </div>
         </Card>
       </section>
     </AppLayout>

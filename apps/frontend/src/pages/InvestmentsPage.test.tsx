@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { InvestmentsPage } from "./InvestmentsPage";
 import { clearInflight } from "../api/client";
 import { clearToken, saveToken } from "../auth/authStore";
@@ -136,7 +136,9 @@ describe("InvestmentsPage (§54 E2)", () => {
     // 예수금 합계 1,300,000 + 100,000
     expect(screen.getByText("1,400,000원")).toBeDefined();
     expect(screen.getByText("키움 투자금 · 키움증권")).toBeDefined();
-    expect(screen.getByText("예수금 1,300,000원 · 총액 31,000,000원")).toBeDefined();
+    const amounts = screen.getByRole("group", { name: "키움 투자금 계좌 금액" });
+    expect(within(amounts).getByText("1,300,000원")).toBeDefined();
+    expect(within(amounts).getByText("31,000,000원")).toBeDefined();
     // 기준일은 보유종목의 최신값
     expect(screen.getByText("기준일 2026-10-24")).toBeDefined();
   });
@@ -279,7 +281,7 @@ describe("InvestmentsPage (§54 E2)", () => {
     fireEvent.click(screen.getByRole("button", { name: "삼성전자 행 메뉴" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "삭제" }));
     // Popconfirm 확인 버튼 — 기본 로케일 OK
-    fireEvent.click(await screen.findByRole("button", { name: "OK" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^(OK|확인)$/ }));
 
     await waitFor(() => {
       const del = fetchMock.mock.calls.find(
@@ -294,7 +296,8 @@ describe("InvestmentsPage (§54 E2)", () => {
     render(<InvestmentsPage />);
     await screen.findByText("키움 투자금 · 키움증권");
 
-    fireEvent.click(screen.getByRole("button", { name: "키움 투자금 계좌 편집" }));
+    fireEvent.click(screen.getByRole("button", { name: "키움 투자금 계좌 메뉴" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "계좌 편집" }));
     fireEvent.change(await screen.findByLabelText("예수금"), { target: { value: "2000000" } });
     fireEvent.click(screen.getByRole("button", { name: "저장" }));
 
@@ -318,10 +321,11 @@ describe("InvestmentsPage (§54 E2)", () => {
     render(<InvestmentsPage />);
     await screen.findByText("키움 투자금 · 키움증권");
 
-    fireEvent.click(screen.getByRole("button", { name: "키움 투자금 계좌 삭제" }));
+    fireEvent.click(screen.getByRole("button", { name: "키움 투자금 계좌 메뉴" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "계좌 삭제" }));
     expect(await screen.findByText("보유종목 3건도 함께 삭제됩니다")).toBeDefined();
 
-    fireEvent.click(await screen.findByRole("button", { name: "OK" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^(OK|확인)$/ }));
 
     await waitFor(() => {
       const del = fetchMock.mock.calls.find(
@@ -395,7 +399,8 @@ describe("InvestmentsPage (§54 E2)", () => {
     }));
 
     render(<InvestmentsPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "비상금 한투 동기화" }));
+    fireEvent.click(await screen.findByRole("button", { name: "비상금 계좌 메뉴" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "한투 동기화" }));
 
     expect(await screen.findByText(warning)).toBeDefined();
   });
