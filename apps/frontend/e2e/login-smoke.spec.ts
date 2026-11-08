@@ -68,7 +68,7 @@ test.describe("Login & Dashboard Smoke Test", () => {
     
     // 6. 대시보드로 즉시 전환 (새로고침 불필요)
     // dashboard page의 main ID 요소를 대상으로 함
-    const dashboardMain = page.locator('main#main');
+    const dashboardMain = page.locator('#main');
     await dashboardMain.waitFor({ state: "visible", timeout: 10000 });
     
     // 대시보드 콘텐츠 확인: "핵심 지표" 섹션이 보여야 함

@@ -73,17 +73,19 @@ test.beforeEach(async ({ page }) => {
    * 접근성 트리(역할·이름)와 포커스 이동을 여기서 확인한다.
    */
   test("스킵 링크가 첫 Tab 대상이고 Enter 로 본문에 포커스가 이동한다", async ({ page }) => {
+    // main 랜드마크는 antd Layout.Content 하나뿐이다(#main 은 그 안의 div).
+    await expect(page.locator("main")).toHaveCount(1);
     await page.keyboard.press("Tab");
     const skip = page.getByRole("link", { name: "본문으로 건너뛰기" });
     await expect(skip).toBeFocused();
     await page.keyboard.press("Enter");
-    await expect(page.locator("main#main")).toBeFocused();
+    await expect(page.locator("#main")).toBeFocused();
   });
 
   test("접근성 트리에 랜드마크·제목·목록 의미가 노출된다", async ({ page }) => {
     await expect(page.getByRole("heading", { level: 1, name: "대시보드" })).toBeVisible();
 
-    const main = await page.locator("main#main").ariaSnapshot();
+    const main = await page.locator("#main").ariaSnapshot();
     expect(main).toContain('heading "대시보드" [level=1]');
     expect(main).toContain('heading "핵심 지표" [level=2]');
     expect(main).toContain('heading "비상금 계좌" [level=2]');

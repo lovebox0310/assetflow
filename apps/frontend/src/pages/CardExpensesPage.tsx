@@ -6,12 +6,7 @@ import { SubNav } from "../components/SubNav";
 import { CardEmailImportSettingsSection } from "../components/CardEmailImportSettingsSection";
 import { MonthSelect } from "../components/MonthSelect";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
-import {
-  MobileListCardActions,
-  MobileListCardHeader,
-  MobileListCardItem,
-  MobileListCardMeta,
-} from "../components/MobileListCard";
+import { AfListTable, type AfListColumn } from "../components/AfListTable";
 import { clearInflight } from "../api/client";
 import { clearToken } from "../auth/authStore";
 import {
@@ -55,6 +50,15 @@ interface CardExpensesPageProps {
   onOpenSettings: () => void;
 }
 
+/** §72.1 카드사별 승인일 합계 + 이 달/최근 명세서 비교 행. */
+interface CardCompanyRow {
+  company: string;
+  count: number;
+  gross: number;
+  statement?: CardStatement;
+  recentStatement?: CardStatement;
+}
+
 /**
  * §58 — 지출 화면에서 분리한 카드내역 탭.
  * - 카드 원장 소비(§41), 미분류 정리(§55.8), 자동 분류(§55.8), CSV 내보내기(§55.10).
@@ -84,6 +88,10 @@ export function CardExpensesPage({
   const [unclassifiedOnly, setUnclassifiedOnly] = useState(false);
   /** 사업자번호 클릭 → 사업자 정보 모달 (화면 이동 없음). */
   const [businessInfoTarget, setBusinessInfoTarget] = useState<{ businessNo: string; merchantName: string } | null>(null);
+  /** 미분류 작업함: 분류 편집 행(가맹점명) — Select 는 이 행 안에만 둔다. */
+  const [editingMerchant, setEditingMerchant] = useState<string | null>(null);
+  /** 가져온 카드내역: 분류 편집 행(rowKey). */
+  const [editingCardRowKey, setEditingCardRowKey] = useState<string | null>(null);
 
   const loadCard = useCallback(() => {
     clearInflight();
@@ -331,13 +339,7 @@ export function CardExpensesPage({
 
   /** §72.1 카드사별 승인일 합계 + 명세서 금액 비교. 승인일 합계는 카드 목록에서 직접 계산한다. */
   const cardCompanySummary = useMemo(() => {
-    const map = new Map<string, {
-      company: string;
-      count: number;
-      gross: number;
-      statement?: CardStatement;
-      recentStatement?: CardStatement;
-    }>();
+    const map = new Map<string, CardCompanyRow>();
     for (const r of cardRows ?? []) {
       const company = r.cardCompany || "미확인";
       const row = map.get(company) ?? { company, count: 0, gross: 0 };
@@ -373,16 +375,98 @@ export function CardExpensesPage({
     return map;
   }, [cardRows]);
 
-  const TH_STYLE: CSSProperties = {
-    textAlign: "left", padding: "8px 8px 8px 0",
-    borderBottom: "1px solid var(--af-border)", fontWeight: 600, whiteSpace: "nowrap",
-  };
-  const TH_STYLE_RIGHT: CSSProperties = { ...TH_STYLE, textAlign: "right" };
-  const TD_STYLE: CSSProperties = {
-    padding: "8px 8px 8px 0", borderBottom: "1px solid var(--af-border)", verticalAlign: "top",
-  };
-  const TD_STYLE_RIGHT: CSSProperties = { ...TD_STYLE, textAlign: "right", whiteSpace: "nowrap" };
   const MUTED_STYLE: CSSProperties = { color: "var(--af-muted-foreground)", fontSize: 12 };
+
+  /** §72.1 카드사별 표 — 승인일 합계 아래에 건수·최근 승인일을 붙인다. */
+  const companyColumns: AfListColumn<CardCompanyRow>[] = [
+    { key: "company", header: "카드사", mobile: "primary", render: (row) => row.company },
+    {
+      key: "gross",
+      header: "승인일 기준",
+      numeric: true,
+      mobile: "value",
+      render: (row) => (
+        <>
+          {formatKrwExact(row.gross)}
+          <div style={MUTED_STYLE}>
+            {row.count}건 · 최근 {lastApprovedByCompany.get(row.company) || "-"}
+          </div>
+        </>
+      ),
+    },
+    {
+      key: "statement",
+      header: "명세서 금액",
+      numeric: true,
+      mobile: "meta",
+      /* 한 줄만 쓴다 — 금액 + <br/> + 기간으로 3줄이 되면 행이 76px 까지 커진다(F3). */
+      render: (row) => (
+        <>
+          {row.statement ? formatKrwExact(row.statement.totalAmount) : "-"}
+          {!row.statement && row.recentStatement ? (
+            <div style={MUTED_STYLE}>최근 수집 {formatKrwExact(row.recentStatement.totalAmount)}</div>
+          ) : null}
+        </>
+      ),
+    },
+    {
+      key: "period",
+      header: "명세서 이용기간",
+      mobile: "meta",
+      render: (row) => {
+        if (row.statement) return `${row.statement.periodStart} ~ ${row.statement.periodEnd}`;
+        // 이 달 명세서가 없으면 최근 수집 명세서의 기간을 참고용으로 보여 준다.
+        if (row.recentStatement) return `최근 ${row.recentStatement.periodStart} ~ ${row.recentStatement.periodEnd}`;
+        return "-";
+      },
+    },
+    {
+      key: "diff",
+      header: "차이 (명세서−승인일)",
+      numeric: true,
+      mobile: "meta",
+      render: (row) => (row.statement ? formatKrwExact(row.statement.totalAmount - row.gross) : "-"),
+    },
+  ];
+
+  /** §55.8 미분류 작업함 — 가맹점 단위 묶음. */
+  const unclassifiedColumns: AfListColumn<UnclassifiedGroup>[] = [
+    { key: "merchant", header: "가맹점", mobile: "primary", render: (g) => g.merchantName },
+    { key: "gross", header: "금액", numeric: true, mobile: "value", render: (g) => formatKrwExact(g.grossTotal) },
+    { key: "category", header: "업종", mobile: "meta", render: (g) => g.businessCategory?.trim() || "업종 미확인" },
+    { key: "count", header: "건수·최근", mobile: "meta", render: (g) => `${g.count}건 · 최근 ${g.lastApprovedAt}` },
+  ];
+
+  /** §55.10 카테고리별 합계 — 대분류·세부 묶음. */
+  const categoryTotalColumns: AfListColumn<(typeof cardSubTotals)[number]>[] = [
+    { key: "category", header: "카테고리", mobile: "primary", render: (r) => r.category },
+    { key: "gross", header: "금액", numeric: true, mobile: "value", render: (r) => formatKrwExact(r.gross) },
+    {
+      key: "count",
+      header: "세부·건수",
+      mobile: "meta",
+      render: (r) => `${r.subCategory ? `${r.subCategory} · ` : ""}${r.count}건`,
+    },
+  ];
+
+  /**
+   * 가져온 카드내역은 같은 가맹점 행이 여러 개다 — 행 탭 접근 이름이 겹치면
+   * 스크린리더·테스트가 어느 행인지 고를 수 없다. 반복 가맹점만 승인일을 붙인다.
+   */
+  const merchantRowCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const r of visibleCardRows) map.set(r.merchantName, (map.get(r.merchantName) ?? 0) + 1);
+    return map;
+  }, [visibleCardRows]);
+
+  /** §55.10 가져온 카드내역 상세 — 행 탭에서 분류를 고친다(D7: Select 상시 노출 제거). */
+  const cardRowColumns: AfListColumn<CardImportRowFull>[] = [
+    { key: "merchant", header: "가맹점", mobile: "primary", render: (r) => r.merchantName },
+    { key: "gross", header: "금액", numeric: true, mobile: "value", render: (r) => formatKrwExact(r.grossAmount) },
+    { key: "approvedAt", header: "승인일", mobile: "meta", render: (r) => <span className="af-mono">{r.approvedAt}</span> },
+    { key: "businessCategory", header: "업종", mobile: "meta", render: (r) => r.businessCategory?.trim() || "—" },
+    { key: "card", header: "카드", mobile: "meta", render: (r) => r.cardMasked || "—" },
+  ];
 
   /** §55.10: CSV 내보내기 [날짜 | 사용처(가맹점) | 금액 | 카테고리 | 세부 분류]. */
   const downloadCsv = useCallback(() => {
@@ -432,55 +516,22 @@ export function CardExpensesPage({
           {cardCompanySummary.length === 0 ? (
             <Typography.Text type="secondary">이 달 카드 사용 내역이 없습니다.</Typography.Text>
           ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <caption className="sr-only">
-                  {month} 카드사별 승인일 기준 합계와 명세서 금액 비교
-                </caption>
-                <thead>
-                  <tr>
-                    <th style={TH_STYLE}>카드사</th>
-                    <th style={TH_STYLE_RIGHT}>승인일 기준</th>
-                    <th style={TH_STYLE_RIGHT}>명세서 금액</th>
-                    <th style={TH_STYLE}>명세서 이용기간</th>
-                    <th style={TH_STYLE_RIGHT}>차이 (명세서−승인일)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cardCompanySummary.map((row) => (
-                    <tr key={row.company}>
-                      <td style={TD_STYLE}>{row.company}</td>
-                      <td style={TD_STYLE_RIGHT}>
-                        {formatKrwExact(row.gross)}
-                        <div style={MUTED_STYLE}>
-                          {row.count}건 · 최근 {lastApprovedByCompany.get(row.company) || "-"}
-                        </div>
-                      </td>
-                      <td style={TD_STYLE_RIGHT}>
-                        {row.statement ? formatKrwExact(row.statement.totalAmount) : "-"}
-                        {!row.statement && row.recentStatement ? (
-                          <div style={MUTED_STYLE}>
-                            최근 수집 {formatKrwExact(row.recentStatement.totalAmount)}
-                            <br />
-                            ({row.recentStatement.periodStart} ~ {row.recentStatement.periodEnd})
-                          </div>
-                        ) : null}
-                      </td>
-                      <td style={TD_STYLE}>
-                        {row.statement
-                          ? `${row.statement.periodStart} ~ ${row.statement.periodEnd}`
-                          : "-"}
-                      </td>
-                      <td style={TD_STYLE_RIGHT}>
-                        {row.statement
-                          ? formatKrwExact(row.statement.totalAmount - row.gross)
-                          : "-"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <AfListTable
+              /* caption 문구 그대로 — 표의 접근 이름이다. */
+              ariaLabel={`${month} 카드사별 승인일 기준 합계와 명세서 금액 비교`}
+              rows={cardCompanySummary}
+              rowKey={(row) => row.company}
+              columns={companyColumns}
+              /* 모바일에서는 명세서 금액·차이가 meta 로 clip 된다 — 2행이 비교를 보여 준다.
+               * "최근 수집" 이 아니라 "최근" 을 쓴다: 금액 셀의 문구와 겹치지 않게(테스트 :120). */
+              rowSubtitle={(row) =>
+                row.statement
+                  ? `명세서 ${formatKrwExact(row.statement.totalAmount)} · 차이 ${formatKrwExact(row.statement.totalAmount - row.gross)}`
+                  : row.recentStatement
+                    ? `명세서 없음 · 최근 ${formatKrwExact(row.recentStatement.totalAmount)}`
+                    : "명세서 없음"
+              }
+            />
           )}
           <Typography.Text type="secondary" style={{ display: "block", marginTop: 4, fontSize: 12 }}>
             명세서 금액은 이용기간 시작 월이 {month}인 정기 청구서 기준입니다. 해당 월 명세서가 없으면 가장 최근에 수집한 명세서를 참고용으로 표시합니다.
@@ -520,9 +571,11 @@ export function CardExpensesPage({
       </section>
 
       <section aria-labelledby="h-unclassified" style={{ marginBottom: 32 }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
-          <Typography.Title level={2} id="h-unclassified" style={{ fontSize: 16, margin: 0 }}>미분류 정리</Typography.Title>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        {/* 공용 섹션 헤더 — 좁은 폭에서 제목이 글자 단위로 쪼개지지 않고,
+            설명은 다음 줄로 내려간다(InvestmentsPage 와 같은 패턴). */}
+        <div className="af-section-head" style={{ marginBottom: 16 }}>
+          <Typography.Title level={2} id="h-unclassified" className="af-section-head__title" style={{ fontSize: 16, margin: 0 }}>미분류 정리</Typography.Title>
+          <Typography.Text type="secondary" className="af-section-head__actions" style={{ fontSize: 12 }}>
             가맹점 하나를 고르면 같은 가맹점 내역 전체에 한 번에 적용됩니다
           </Typography.Text>
         </div>
@@ -544,6 +597,7 @@ export function CardExpensesPage({
             <Space direction="vertical" style={{ width: "100%" }} size={12}>
               <div>
                 <Progress
+                  aria-label="미분류 정리 진행률"
                   percent={unclassifiedProgress}
                   format={() => `${unclassifiedCleared}/${unclassifiedInitialCount}`}
                   style={{ marginBottom: 4 }}
@@ -563,53 +617,56 @@ export function CardExpensesPage({
                 onChange={(e) => { setUnclassifiedSearch(e.target.value); setUnclassifiedLimit(10); }}
                 style={{ maxWidth: 320 }}
               />
-              <div role="list">
-                {visibleUnclassifiedGroups.slice(0, unclassifiedLimit).map((g) => {
+              <AfListTable
+                labelledBy="h-unclassified"
+                rows={visibleUnclassifiedGroups.slice(0, unclassifiedLimit)}
+                rowKey={(g) => g.merchantName}
+                columns={unclassifiedColumns}
+                onActivate={(g) => setEditingMerchant(g.merchantName)}
+                activateLabel={(g) => `${g.merchantName} 분류 편집`}
+                rowSubtitle={(g) =>
+                  `${g.businessCategory?.trim() || "업종 미확인"} · ${g.count}건 · 최근 ${g.lastApprovedAt}`
+                }
+                editingKey={editingMerchant}
+                renderEditor={(g) => {
+                  // 사업자번호는 1열 폭을 넘어 금액 열을 침범했다(fix 실측 8px) — 편집 행으로 옮긴다.
                   const numbers = (g.businessNo ?? "")
                     .split(",")
                     .map((n) => n.trim())
                     .filter((n) => n.length > 0);
                   return (
-                    <div role="listitem" key={g.merchantName}>
-                      <MobileListCardItem>
-                        <MobileListCardHeader title={g.merchantName} value={formatKrwExact(g.grossTotal)} />
-                        <MobileListCardMeta>
-                          {g.businessCategory?.trim() || "업종 미확인"} · {g.count}건 · 최근 {g.lastApprovedAt}
-                        </MobileListCardMeta>
-                        <MobileListCardActions>
-                          <Space wrap>
-                            {numbers.length === 0 ? (
-                              <Typography.Text type="secondary" style={{ fontSize: 12 }}>사업자번호 없음</Typography.Text>
-                            ) : (
-                              numbers.map((businessNo) => (
-                                <Button
-                                  key={businessNo}
-                                  type="link"
-                                  size="small"
-                                  style={{ padding: 0, height: "auto" }}
-                                  onClick={() => setBusinessInfoTarget({ businessNo, merchantName: g.merchantName })}
-                                  aria-label={`${g.merchantName} ${businessNo} 사업자 정보 보기`}
-                                >
-                                  {formatBusinessNo(businessNo)}
-                                </Button>
-                              ))
-                            )}
-                            <Select
-                              size="small"
-                              style={{ width: 140 }}
-                              placeholder="대분류 지정"
-                              value={null}
-                              options={CATEGORY_GROUP_OPTIONS}
-                              onChange={(category: string) => void handleAssignMerchant(g, category)}
-                              aria-label={`${g.merchantName} 카테고리 지정`}
-                            />
-                          </Space>
-                        </MobileListCardActions>
-                      </MobileListCardItem>
-                    </div>
+                    <Space wrap>
+                      <Select
+                        size="small"
+                        style={{ width: 180, maxWidth: "100%" }}
+                        placeholder="대분류 지정"
+                        value={null}
+                        options={CATEGORY_GROUP_OPTIONS}
+                        onChange={(category: string) => {
+                          setEditingMerchant(null);
+                          void handleAssignMerchant(g, category);
+                        }}
+                        aria-label={`${g.merchantName} 카테고리 지정`}
+                      />
+                      {numbers.map((businessNo) => (
+                        <Button
+                          key={businessNo}
+                          type="link"
+                          size="small"
+                          style={{ padding: 0, height: "auto" }}
+                          onClick={() => setBusinessInfoTarget({ businessNo, merchantName: g.merchantName })}
+                          aria-label={`${g.merchantName} ${formatBusinessNo(businessNo)} 사업자 정보 보기`}
+                        >
+                          {formatBusinessNo(businessNo)}
+                        </Button>
+                      ))}
+                      <Button size="small" onClick={() => setEditingMerchant(null)}>취소</Button>
+                    </Space>
                   );
-                })}
-              </div>
+                }}
+                editorLabel={(g) => `${g.merchantName} 분류 편집`}
+                onCancelEdit={() => setEditingMerchant(null)}
+              />
               {visibleUnclassifiedGroups.length > unclassifiedLimit ? (
                 <Button block type="text" onClick={() => setUnclassifiedLimit((n) => n + 10)}>
                   나머지 {visibleUnclassifiedGroups.length - unclassifiedLimit}개 가맹점 더 보기
@@ -621,9 +678,9 @@ export function CardExpensesPage({
       </section>
 
       <section aria-labelledby="h-card-imports" style={{ marginBottom: 32 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
-          <Typography.Title level={2} id="h-card-imports" style={{ fontSize: 16, margin: 0 }}>가져온 카드내역</Typography.Title>
-          <Space>
+        <div className="af-section-head" style={{ marginBottom: 16 }}>
+          <Typography.Title level={2} id="h-card-imports" className="af-section-head__title" style={{ fontSize: 16, margin: 0 }}>가져온 카드내역</Typography.Title>
+          <Space className="af-section-head__actions">
             <Button size="small" onClick={downloadCsv}>CSV 다운로드</Button>
             <Button
               size="small"
@@ -648,25 +705,21 @@ export function CardExpensesPage({
             </Typography.Text>
           </div>
           {cardStatus === "ready" && cardSubTotals.length > 0 ? (
-            <div style={{ marginBottom: 20 }} aria-label="이 달 카드 카테고리별 합계">
-              <Typography.Text strong style={{ display: "block", marginBottom: 8 }}>카테고리별 합계</Typography.Text>
+            <div style={{ marginBottom: 20 }}>
+              <Typography.Text strong id="h-category-sums" style={{ display: "block", marginBottom: 8 }}>카테고리별 합계</Typography.Text>
+              <AfListTable
+                labelledBy="h-category-sums"
+                rows={cardSubTotals}
+                rowKey={(r) => `${r.category}|${r.subCategory}`}
+                columns={categoryTotalColumns}
+                /* 모바일에서는 세부·건수 열이 clip 된다 — 2행이 대신 보여 준다. */
+                rowSubtitle={(r) => `${r.subCategory?.trim() || "미지정"} · ${r.count}건`}
+              />
               {/*
-               * 표 대신 카드로 통일한다 — 좁은 화면에서 열 4개가 뭉개지고, 다른 목록과
-               * 표현 방식이 달라 같은 데이터를 두 번 읽는 느낌을 준다.
+               * 하단 총계 블록은 여러 줄 구조라 표 footer 로 옮기지 않는다.
+               * aria-label 은 이 블록이 갖는다(테스트 :166 이 "표 없는" 요소를 찾는다).
                */}
-              <div role="list">
-                {cardSubTotals.map((r) => (
-                  <div role="listitem" key={`${r.category}|${r.subCategory}`}>
-                    <MobileListCardItem>
-                      <MobileListCardHeader title={r.category} value={formatKrwExact(r.gross)} />
-                      <MobileListCardMeta>
-                        {r.subCategory ? `${r.subCategory} · ` : ""}{r.count}건
-                      </MobileListCardMeta>
-                    </MobileListCardItem>
-                  </div>
-                ))}
-              </div>
-              <div style={{ marginTop: 4, padding: "8px 12px", borderTop: "1px solid var(--af-border)", fontSize: 13 }}>
+              <div role="group" aria-label="이 달 카드 카테고리별 합계" style={{ marginTop: 4, padding: "8px 12px", borderTop: "1px solid var(--af-border)", fontSize: 13 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontWeight: 600 }}>
                   <span>지출 합계 (자산 이동 제외) · {cardSpendingCount}건</span>
                   <span>{formatKrwExact(cardSpendingTotal)}</span>
@@ -704,58 +757,74 @@ export function CardExpensesPage({
                 {visibleCardRows.length > 0 ? (
                   <Typography.Text strong style={{ display: "block", marginBottom: 8 }}>상세 내역</Typography.Text>
                 ) : null}
-                {visibleCardRows.slice(0, cardLimit).map((r) => (
-                  <MobileListCardItem key={r.rowKey}>
-                    <MobileListCardHeader title={r.merchantName} value={formatKrwExact(r.grossAmount)} />
-                    <MobileListCardMeta>
-                      <span className="af-mono">{r.approvedAt}</span>
-                      {r.businessCategory?.trim() ? ` · ${r.businessCategory.trim()}` : ""}
-                      {r.cardMasked ? ` · ${r.cardMasked}` : ""}
-                      {r.memberRelation ? (
+                {visibleCardRows.length > 0 ? (
+                  <AfListTable
+                    labelledBy="h-card-imports"
+                    rows={visibleCardRows.slice(0, cardLimit)}
+                    rowKey={(r) => r.rowKey}
+                    columns={cardRowColumns}
+                    onActivate={(r) => setEditingCardRowKey(r.rowKey)}
+                    rowSubtitle={(r) =>
+                      `${r.approvedAt} · ${r.businessCategory?.trim() || "업종 미확인"}${r.cardMasked ? ` · ${r.cardMasked}` : ""}`
+                    }
+                    activateLabel={(r) =>
+                      (merchantRowCounts.get(r.merchantName) ?? 0) > 1
+                        ? `${r.merchantName} ${r.approvedAt} 분류 편집`
+                        : `${r.merchantName} 분류 편집`
+                    }
+                    primaryExtra={(r) =>
+                      r.memberRelation ? (
                         <Tag color={r.memberRelation === "본인" ? "blue" : "purple"} style={{ marginLeft: 4, fontSize: 12 }}>
                           {r.memberRelation}
                         </Tag>
-                      ) : null}
-                    </MobileListCardMeta>
-                    <MobileListCardActions>
-                      <Space wrap>
-                        <Select
-                          size="small"
-                          style={{ width: 130 }}
-                          placeholder="대분류"
-                          value={r.expenseKind?.trim() || null}
-                          options={CATEGORY_GROUP_OPTIONS}
-                          onChange={(category: string) => void handleCardCategory(r, category)}
-                          aria-label={`${r.merchantName} 카테고리`}
-                        />
-                        <Select
-                          size="small"
-                          style={{ width: 120 }}
-                          placeholder="세부 분류"
-                          value={r.subCategory?.trim() || null}
-                          options={subCategoryOptions(r.expenseKind)}
-                          onChange={(subCategory: string) => void handleCardSubCategory(r, subCategory)}
-                          disabled={isUnclassified(r.expenseKind)}
-                          aria-label={`${r.merchantName} 세부 분류`}
-                        />
-                        {(() => {
-                          const businessNo = (r.businessNo ?? "").trim();
-                          return businessNo ? (
+                      ) : null
+                    }
+                    editingKey={editingCardRowKey}
+                    renderEditor={(r) => {
+                      const businessNo = (r.businessNo ?? "").trim();
+                      return (
+                        <Space wrap>
+                          <Select
+                            size="small"
+                            style={{ width: 130 }}
+                            placeholder="대분류"
+                            value={r.expenseKind?.trim() || null}
+                            options={CATEGORY_GROUP_OPTIONS}
+                            onChange={(category: string) => {
+                              setEditingCardRowKey(null);
+                              void handleCardCategory(r, category);
+                            }}
+                            aria-label={`${r.merchantName} 카테고리`}
+                          />
+                          <Select
+                            size="small"
+                            style={{ width: 120 }}
+                            placeholder="세부 분류"
+                            value={r.subCategory?.trim() || null}
+                            options={subCategoryOptions(r.expenseKind)}
+                            onChange={(subCategory: string) => void handleCardSubCategory(r, subCategory)}
+                            disabled={isUnclassified(r.expenseKind)}
+                            aria-label={`${r.merchantName} 세부 분류`}
+                          />
+                          {businessNo ? (
                             <Button
                               type="link"
                               size="small"
                               style={{ padding: 0, height: "auto" }}
                               onClick={() => setBusinessInfoTarget({ businessNo, merchantName: r.merchantName })}
-                              aria-label={`${r.merchantName} ${businessNo} 사업자 정보 보기`}
+                              aria-label={`${r.merchantName} ${formatBusinessNo(businessNo)} 사업자 정보 보기`}
                             >
                               {formatBusinessNo(businessNo)}
                             </Button>
-                          ) : null;
-                        })()}
-                      </Space>
-                    </MobileListCardActions>
-                  </MobileListCardItem>
-                ))}
+                          ) : null}
+                          <Button size="small" onClick={() => setEditingCardRowKey(null)}>취소</Button>
+                        </Space>
+                      );
+                    }}
+                    editorLabel={(r) => `${r.merchantName} 분류 편집`}
+                    onCancelEdit={() => setEditingCardRowKey(null)}
+                  />
+                ) : null}
                 {visibleCardRows.length > cardLimit ? (
                   <Button block type="text" onClick={() => setCardLimit((n) => n + 30)}>
                     나머지 {visibleCardRows.length - cardLimit}건 더 보기
