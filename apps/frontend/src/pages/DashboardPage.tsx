@@ -1,4 +1,4 @@
-import { useCallback, Suspense, lazy, useEffect, useRef, useState } from "react";
+import { useCallback, Suspense, lazy, useEffect, useRef, useState, type ReactNode } from "react";
 import dayjs from "dayjs";
 import { Alert, Button, Card, DatePicker, Skeleton, Switch, Typography } from "antd";
 import { AfListTable, type AfListColumn } from "../components/AfListTable";
@@ -8,6 +8,7 @@ import { StandardNav } from "../layout/StandardNav";
 import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
 import { MetricCard } from "../components/MetricCard";
 import { EmergencyFundSettingsModal } from "../components/EmergencyFundSettingsModal";
+import { CompositionBasisModal } from "../components/CompositionBasisModal";
 import type { DashboardData } from "../data/dashboardMock";
 import {
   fetchCashflow,
@@ -83,7 +84,18 @@ function GearIcon() {
  * h2 의 id 는 바꾸지 않는다(영역 순서·aria-labelledby 계약, §35.1).
  * 링크는 `<a href>` 가 아니라 Button + navigate 콜백이다(pushState 일관성).
  */
-function SectionHeader({ id, title, link }: { id: string; title: string; link?: SectionHeaderLink }) {
+function SectionHeader({
+  id,
+  title,
+  link,
+  actions,
+}: {
+  id: string;
+  title: string;
+  link?: SectionHeaderLink;
+  /** 제목 오른쪽 보조 액션(설정 진입 등). h2 id/aria 계약은 그대로다. */
+  actions?: ReactNode;
+}) {
   return (
     <div
       style={{
@@ -98,16 +110,21 @@ function SectionHeader({ id, title, link }: { id: string; title: string; link?: 
       <Typography.Title level={2} id={id} style={{ fontSize: 16, margin: 0 }}>
         {title}
       </Typography.Title>
-      {link ? (
-        <Button
-          type="link"
-          size="small"
-          aria-label={link.ariaLabel}
-          onClick={link.onClick}
-          style={{ paddingInline: 8, minHeight: 44 }}
-        >
-          {link.label}
-        </Button>
+      {actions || link ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          {actions}
+          {link ? (
+            <Button
+              type="link"
+              size="small"
+              aria-label={link.ariaLabel}
+              onClick={link.onClick}
+              style={{ paddingInline: 8, minHeight: 44 }}
+            >
+              {link.label}
+            </Button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
@@ -146,6 +163,8 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
   const [cardTotals, setCardTotals] = useState<MonthlyCategoryTotal[] | null>(null);
   const [cardTotalsFailed, setCardTotalsFailed] = useState(false);
   const [emergencyModalOpen, setEmergencyModalOpen] = useState(false);
+  // §89 구성비에서 전액 현금성으로 볼 계좌 지정 모달.
+  const [compositionModalOpen, setCompositionModalOpen] = useState(false);
   // 비상금 카드 상세(월 사용액·계좌·집계 근거) 펼침 — 기본은 1줄 요약만 보여 준다.
   const [runwayDetailOpen, setRunwayDetailOpen] = useState(false);
 
@@ -334,7 +353,11 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
             : "",
         ].filter((line) => line !== "")
       : [];
-  const composition = dataReady ? assetComposition(summary) : [];
+  // §89: 체크한 계좌는 전액 현금성. 비어 있으면 §88 기본 규칙 그대로다.
+  const compositionIds = settings?.compositionCashAccountIds ?? [];
+  const composition = dataReady
+    ? assetComposition(summary, { cashAccountIds: compositionIds })
+    : [];
   // §62: 대시보드에서는 현금 전체가 아니라 사용자가 지정한 비상금 계좌만 한눈에 본다.
   const emergencyIds = settings?.emergencyAccountIds ?? [];
   const emergencyRows = dataReady
@@ -479,6 +502,17 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
           <SectionHeader
             id="h-composition"
             title="자산 구성비"
+            actions={
+              <Button
+                type="text"
+                aria-label="자산 구성비 기준 설정"
+                title="자산 구성비 기준 설정"
+                onClick={() => setCompositionModalOpen(true)}
+                style={{ minHeight: 44 }}
+              >
+                <GearIcon />
+              </Button>
+            }
             link={{ label: "자산 화면 보기", ariaLabel: "자산 화면 보기 — 자산 구성비", onClick: () => onOpenAssets?.() }}
           />
           <Card
@@ -491,6 +525,13 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
                   {/* 번들 분리: recharts 를 대시보드 본체에서 떼어 lazy 로딩한다 (§39 리스크 3) */}
                   <CompositionDonut slices={composition} />
                 </Suspense>
+              ) : null}
+              {dataReady ? (
+                <Typography.Paragraph className="af-comp-caption">
+                  {compositionIds.length > 0
+                    ? `현금성 = 통장 + 증권 예수금 + 체크한 계좌 ${compositionIds.length}개`
+                    : "현금성 = 통장 + 증권 예수금"}
+                </Typography.Paragraph>
               ) : null}
             </StateBlock>
           </Card>
@@ -683,6 +724,14 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
         cardTotalsError={cardTotalsFailed}
         essentialExpenses={summary?.monthly.essentialExpenses ?? 0}
         onClose={() => setEmergencyModalOpen(false)}
+        onSaved={(updated) => setSettings(updated)}
+      />
+
+      <CompositionBasisModal
+        open={compositionModalOpen}
+        settings={settings}
+        data={summary}
+        onClose={() => setCompositionModalOpen(false)}
         onSaved={(updated) => setSettings(updated)}
       />
     </AppLayout>

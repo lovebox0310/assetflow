@@ -64,6 +64,21 @@ CREATE TABLE user_emergency_accounts (
 CREATE INDEX ix_user_emergency_accounts_user ON user_emergency_accounts (user_id);
 
 -- ---------------------------------------------------------------------------
+-- user_composition_cash_accounts: §89 자산 구성비에서 "전액 현금성"으로 볼 계좌.
+-- 비상금(user_emergency_accounts)과 독립이며 유형 제한은 없다(부채만 제외).
+-- 비어 있으면 §88 기본 규칙(증권 예수금만 현금성)을 따른다.
+-- 계좌가 삭제되면 그 지정만 함께 사라진다.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS user_composition_cash_accounts (
+    user_id    BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    account_id BIGINT NOT NULL REFERENCES asset_accounts (id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, account_id)
+);
+CREATE INDEX IF NOT EXISTS ix_user_composition_cash_accounts_user
+    ON user_composition_cash_accounts (user_id);
+
+-- ---------------------------------------------------------------------------
 -- expense_categories: 기본 카테고리는 user_id NULL. 사용자 커스텀은 user_id NOT NULL
 -- ---------------------------------------------------------------------------
 CREATE TABLE expense_categories (

@@ -34,7 +34,7 @@ class CardEmailImportSettingsControllerTest {
     void setUp() {
         when(emailResolver.currentEmail()).thenReturn("user@example.com");
         when(userSettingsLedger.get("user@example.com")).thenReturn(new UserSettingsLedger.UserSettings(
-                1L, "user@example.com", "user", 6, List.of(), 3, List.of()));
+                1L, "user@example.com", "user", 6, List.of(), 3, List.of(), List.of()));
         controller = new CardEmailImportSettingsController(
                 ledger, cipher, emailResolver, userSettingsLedger, hyundaiImporter, samsungImporter);
     }
