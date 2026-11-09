@@ -5231,3 +5231,46 @@ DB 의 10월 합계는 현대 2,609,560 · 삼성 362,230 이었고, 마지막 �
 - 가드를 추가할 때 "통과함"만 보지 말고 **한 번 깨뜨려 실패를 확인**한다. 비용은 1분 18초.
 - 음성 단언(`toBeNull`)은 특히 위험하다 — 값이 사라져서 null 인지, 셀렉터가 안 맞아서
   null 인지 구분되지 않는다. §84 의 4건이 그 예다.
+
+## 86) 접근성 감사를 6화면 × 3뷰포트 × 2테마로 확대 (2026-11-09)
+
+**배경**
+- §85 까지 저장소의 axe 가드는 `e2e/a11y.spec.ts` **2건**뿐이었다: 대시보드·로그인,
+  데스크톱 1뷰포트, 라이트, `wcag2a/2aa/21a/21aa` 태그만. 자산·투자·지출·카드내역·설정은
+  자동 접근성 가드가 없었고, §80 의 "axe 0" 은 저장소 밖 `/tmp` 스크립트 결과였다.
+
+**실측 인벤토리 (브라우저에서 확인한 화면별 호출)**
+- `#/assets`: `assets/accounts`, `assets/bank-links`, `assets/bank/banks`, `investments/holdings`
+- `#/investments`: `investments/holdings`, POST `investments/quotes/refresh`
+- `#/expenses`: `expenses/items`, `expenses/recurring`, `expenses/snapshots`
+- `#/expenses/cards`: `assets/card-imports`, `card-imports/row-keys`, `card-imports/statements`,
+  `card-imports/unclassified`, `card-email-import-settings/{company}`
+- `#/settings`: `settings`
+- 대시보드는 기존 `mockDashboardApi` 6종 재사용.
+
+**결정**
+- 신규 `e2e/a11y-screens.spec.ts` + `e2e/screens-mocks.ts`. 기존 스펙·목은 건드리지 않았다.
+- 6화면 × 2테마 = **12 테스트**, 각 테스트가 320/390/1280 을 순회 → **36 조합**.
+- 태그에 **`best-practice` 추가** (규칙 30개 로드 확인).
+- 프로젝트 3배 실행 방지: `chromium-desktop` 에서만 실행, tablet/mobile 24건 skip.
+- 목은 빈 배열이 아니라 **행이 렌더되는 가명 데이터**. axe 전에 화면별 픽스처 문구
+  (`예측 비상금`·`파킹통장`·`삼성전자`·`주말 장보기`·`한마음식당`·`김가명`)가 실제로 보이는지
+  먼저 단언한다 — 목 형태가 틀리면 접근성 위반이 아니라 **렌더 실패**로 즉시 드러난다.
+- 조합별로 `scrollWidth - clientWidth === 0` 도 함께 단언한다.
+
+**결과**
+- axe 위반 **0** (36 조합, wcag + best-practice), 가로 넘침 **0**.
+- `a11y-screens` 단독 **58.5s** (12 passed / 24 skipped). 전체 `pnpm e2e` **186 passed** 4.1분
+  — CI `timeout-minutes: 20` 대비 충분.
+- 변이 검증: 설정 화면 `h1 → h2` 로 깨뜨리니 테스트가 **실패**했고, axe 가
+  `page-has-heading-one` 을 실제로 발화함도 확인(규칙 30개 로드). 원복 후 1 passed.
+
+**한계 (자동 감사가 대체하지 못하는 것)**
+- axe 는 **규칙 위반만** 잡는다. 낭독 순서·문맥·의미의 적절성은 검사하지 못한다 —
+  스크린리더 실낭독(NVDA/VoiceOver)은 여전히 사람 확인 항목이다.
+- 목 데이터는 가명 픽스처다. 실제 데이터(긴 상호명·0원·누락값)에서의 표·배지 접근성은
+  보장하지 않는다.
+- 스펙의 준비 조건이 `h1` 존재라, 제목 단계 회귀는 **스펙 조건에서 먼저 실패**한다
+  (기능적으로는 잡히지만 axe 메시지가 아니라 조건 실패로 보인다).
+- 다크 테마는 `localStorage` 주입 후 새 문서 로드로만 적용된다(같은 해시 재사용 시 갱신
+  안 됨) — 그래서 각 조합이 쿼리를 붙여 새 문서로 로드한다.
