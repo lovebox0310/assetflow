@@ -168,6 +168,12 @@ export function investTotal(data: DashboardData): number {
   return sum(data.assets.filter((a) => a.type === "invest").map((a) => a.value));
 }
 
+/** §89 구성비 개인화 옵션. */
+export interface AssetCompositionOptions {
+  /** 구성비에서 **전액 현금성**으로 볼 계좌 id — 유형과 무관하게 cash 슬라이스에 합산한다. */
+  cashAccountIds?: readonly string[];
+}
+
 /**
  * 자산 구성비 = 유형별 비율, 합계 100.0 (§23)
  *
@@ -177,12 +183,22 @@ export function investTotal(data: DashboardData): number {
  * (원장 잔액)이며, 없으면 0 으로 보고(value 전체가 평가액 = 구 응답·mock 호환)
  * `min(balance, value)` 로 클램프한다. 따라서
  * `cash + 예수금 + (value−예수금) + deposit + realty = Σ(value)` 가 보존된다.
+ *
+ * §89: `options.cashAccountIds` 에 지정된 계좌는 유형을 무시하고 **전액 현금성**으로
+ * 합산한다(사용자가 구성비에서 직접 고른 계좌). 목록이 비어 있으면 위 기본 규칙 그대로다.
  */
-export function assetComposition(data: DashboardData): CompositionSlice[] {
+export function assetComposition(
+  data: DashboardData,
+  options?: AssetCompositionOptions,
+): CompositionSlice[] {
   const total = sum(data.assets.map((a) => a.value));
+  const overrides = new Set(options?.cashAccountIds ?? []);
   const valueByType = new Map<AssetType, number>();
   for (const asset of data.assets) {
-    if (asset.type === "invest") {
+    if (overrides.has(asset.id)) {
+      // §89 사용자 지정: 유형과 무관하게 전액 현금성.
+      valueByType.set("cash", (valueByType.get("cash") ?? 0) + asset.value);
+    } else if (asset.type === "invest") {
       // 예수금(원장 잔액). 없는 구 응답은 0 → value 전체가 보유종목 평가액이다.
       const deposit = Math.max(0, Math.min(asset.balance ?? 0, asset.value));
       valueByType.set("cash", (valueByType.get("cash") ?? 0) + deposit);

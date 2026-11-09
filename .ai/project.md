@@ -5352,3 +5352,40 @@ DB 의 10월 합계는 현대 2,609,560 · 삼성 362,230 이었고, 마지막 �
 - 변이(예수금 분리 이전으로 되돌림) → 신규 3 테스트 실패, 원복 후 22 passed.
 - typecheck·lint 0, `pnpm e2e` 199 passed 유지. 기존 mock 기준선 `3.2/5.5/7.2/84.1` 유지
   (mock 의 invest 에 `balance` 가 없어 전액 평가액으로 계산).
+
+## 89) 자산 구성비 — 사용자별 "전액 현금성" 계좌 지정 (2026-11-10)
+
+**배경**
+- §88 은 구성비를 계좌 유형으로 고정 분류한다(현금성 = cash + 증권 예수금, 투자 = 평가액).
+  그러나 "현금성/투자"의 정의는 사람마다 다르다 — 예적금이나 CMA를 현금성으로 보는 사용자가 있다.
+  고정 규칙만 두면 사용자가 자기 정의와 다른 차트를 보게 된다.
+
+**결정 (사용자 승인)**
+- 구성비 카드의 톱니 → "자산 구성비 기준" 모달에서 **계좌별 "현금성으로 보기" 체크**.
+- 체크된 계좌는 **유형과 무관하게 전액 현금성**(부채 제외). 미체크는 §88 자동 규칙.
+- **기본 빈 목록 = §88 과 100% 동일** → 기존 사용자 영향 0.
+- 비상금(`emergencyAccountIds`, §62)과 **완전 분리** — 저장 테이블·검증·계산 모두 독립.
+- 저장은 서버: `user_composition_cash_accounts(user_id, account_id)` 조인 테이블(ON DELETE CASCADE),
+  `GET/PUT /api/v1/settings` 의 `compositionCashAccountIds: string[]`.
+  생략=기존 유지, `[]`=해제, 부채/없는 계좌는 400. 유형 제한 없음.
+- UI: cash 유형 행은 이미 현금성이므로 **체크·비활성("항상 현금성")** + payload 제외.
+  체크 즉시 `AssetCompositionList` 미리보기, 구성비 카드에 현재 정의 캡션 1줄.
+- `index.html` viewport 에 `viewport-fit=cover` 추가(모달 footer safe-area 전제).
+
+**검증**
+- 백엔드: `./gradlew compileJava test` BUILD SUCCESSFUL. `SettingsApiTest` 신규 7종
+  (기본 [], 비부채 아무 유형 허용, 중복 제거·순서 유지, [] 해제, 부채/없는 id/빈값 400,
+  emergency 와 독립, 생략 시 유지).
+- 프론트 단위: **241 passed**(기존 231 + 10: metrics 6 + 모달 4). typecheck·lint 0.
+- e2e: **199 passed** 유지.
+- 브라우저 독립 실측(summary: cash 24.7M + deposit 42M + invest 31M(예수금 1.3M) + realty 640M,
+  settings.compositionCashAccountIds=["d1"]): 범례 현금성 **68M** · 투자 **29.7M** · 부동산 640M,
+  **예적금 슬라이스 사라짐**, 캡션 "체크한 계좌 1개", 톱니 1개. FLOW_OK.
+- 모달 모바일(320/375/390/430): 가로 넘침 0, footer 항상 뷰포트 안, body만 스크롤, 행 ≥55px.
+
+**한계 / 후속**
+- 기존 `EmergencyFundSettingsModal` 은 모바일에서 footer 가 화면 밖으로 밀린다(실측 320 footer 815px 아래).
+  이번 범위 밖 — 별도 작업에서 새 모달 셸로 통일 권장.
+- 모달 목록은 v1에서 기관명 없이 계좌명·유형·금액만 표시.
+- 설정에 남은 삭제 계좌 id 는 계산에서 무시되고, 모달에서 저장하면 payload 에서 정리된다(별도 안내 없음).
+- `100dvh` 미지원 구형 브라우저에서는 모달 max-height 가 무시될 수 있다(iOS 15.4+ 지원).

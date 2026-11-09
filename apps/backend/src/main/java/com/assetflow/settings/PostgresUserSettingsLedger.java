@@ -36,7 +36,8 @@ public class PostgresUserSettingsLedger implements UserSettingsLedger {
                 rs.getInt("target_months"),
                 List.of(),
                 rs.getInt("emergency_avg_months"),
-                readCategories(rs.getString("emergency_categories")));
+                readCategories(rs.getString("emergency_categories")),
+                List.of());
     }
 
     private List<String> readCategories(String json) {
@@ -57,6 +58,14 @@ public class PostgresUserSettingsLedger implements UserSettingsLedger {
                 """, (rs, n) -> String.valueOf(rs.getLong("account_id")), userId);
     }
 
+    /** §89 구성비 전액 현금성 지정 계좌 — 비상금과 별도 테이블. */
+    private List<String> readCompositionAccountIds(long userId) {
+        return jdbc.query("""
+                SELECT account_id FROM user_composition_cash_accounts
+                 WHERE user_id = ? ORDER BY account_id
+                """, (rs, n) -> String.valueOf(rs.getLong("account_id")), userId);
+    }
+
     public UserSettingsLedger.UserSettings get(String email) {
         var rows = jdbc.query("""
                 SELECT id, email, display_name, target_months,
@@ -69,7 +78,8 @@ public class PostgresUserSettingsLedger implements UserSettingsLedger {
         UserSettingsLedger.UserSettings base = rows.get(0);
         return new UserSettingsLedger.UserSettings(
                 base.id(), base.email(), base.displayName(), base.targetMonths(),
-                readAccountIds(base.id()), base.emergencyAvgMonths(), base.emergencyCategories());
+                readAccountIds(base.id()), base.emergencyAvgMonths(), base.emergencyCategories(),
+                readCompositionAccountIds(base.id()));
     }
 
     /**
@@ -80,7 +90,8 @@ public class PostgresUserSettingsLedger implements UserSettingsLedger {
     public UserSettingsLedger.UserSettings update(String email, int targetMonths,
                                                   List<String> emergencyAccountIds,
                                                   int emergencyAvgMonths,
-                                                  List<String> emergencyCategories) {
+                                                  List<String> emergencyCategories,
+                                                  List<String> compositionCashAccountIds) {
         String categoriesJson;
         try {
             categoriesJson = objectMapper.writeValueAsString(emergencyCategories);
@@ -105,6 +116,15 @@ public class PostgresUserSettingsLedger implements UserSettingsLedger {
         for (String accountId : emergencyAccountIds) {
             jdbc.update("""
                     INSERT INTO user_emergency_accounts (user_id, account_id)
+                    VALUES (?, ?)
+                    """, userId, Long.valueOf(accountId));
+        }
+
+        // §89 구성비 "전액 현금성" 지정도 통째로 교체한다 — 비상금과 독립된 테이블.
+        jdbc.update("DELETE FROM user_composition_cash_accounts WHERE user_id = ?", userId);
+        for (String accountId : compositionCashAccountIds) {
+            jdbc.update("""
+                    INSERT INTO user_composition_cash_accounts (user_id, account_id)
                     VALUES (?, ?)
                     """, userId, Long.valueOf(accountId));
         }

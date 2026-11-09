@@ -12,6 +12,11 @@ export interface UserSettings {
   emergencyAvgMonths?: number;
   /** 변동지출로 볼 9개 대분류. */
   emergencyCategories?: string[];
+  /**
+   * §89 구성비에서 전액 현금성으로 볼 계좌 id. 비상금과 별개다.
+   * 미지정/구응답이면 빈 배열로 본다.
+   */
+  compositionCashAccountIds?: string[];
 }
 
 /**
@@ -23,6 +28,8 @@ export interface SettingsUpdateInput {
   emergencyAccountIds?: string[];
   emergencyAvgMonths?: number;
   emergencyCategories?: string[];
+  /** §89 구성비 전액 현금성 계좌. [] 를 보내면 해제. */
+  compositionCashAccountIds?: string[];
 }
 
 export function getSettings(): Promise<UserSettings> {
