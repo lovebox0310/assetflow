@@ -3437,3 +3437,8 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
   변이(CSS 삭제) → 실패 확인 후 원복.
 - 전체 e2e **199 passed** / typecheck 0 / lint 0.
 - 남은 사람 확인: 실기기에서 달력 두 달 패널이 잘림 없이 보이는지(특히 320·360 세로 스크롤).
+
+### CI 확인 (2026-11-09)
+- `53cf673` merge(iOS 입력 확대 방지 + 휴대폰 달력 잘림): frontend / backend / e2e / quality
+  **success ×4** (run 42636298960).
+- 로컬 브랜치 `fix/mobile-input-and-calendar` 정리, 작업 트리 clean.
