@@ -3427,3 +3427,13 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
   (run 42617303476).
 - 브랜치 `test/dashboard-guards`·`test/a11y-screens` 정리, 작업 트리 clean.
 - Herdr: `tests` pane(w5:p8) 닫음. 리드 w5:p1 + `impl` w5:p7(idle) 유지.
+
+## 2026-11-09 — 모바일 입력 확대 방지 + 달력 잘림 해결 (UI-5/UI-6, §87) [✅ 검증 완료]
+
+- UI-5: `app.css` `@media (pointer: coarse)` 폼 컨트롤 16px(line-height 22px). 신규
+  `e2e/mobile-input-zoom.spec.ts`. 터치 16px·데스크톱 14px·320~430 넘침 0. 사용자 실기기 확인.
+- UI-6: 달력 팝업 660px 고정폭이 320에서 x=-381 로 잘림. `@media (pointer: coarse) and
+  (max-width: 659px)` 에서 두 패널 유지 + 폭 `(100vw-16)/2` 축소. 신규 `e2e/mobile-picker.spec.ts`.
+  변이(CSS 삭제) → 실패 확인 후 원복.
+- 전체 e2e **199 passed** / typecheck 0 / lint 0.
+- 남은 사람 확인: 실기기에서 달력 두 달 패널이 잘림 없이 보이는지(특히 320·360 세로 스크롤).
