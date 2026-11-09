@@ -3442,3 +3442,11 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
 - `53cf673` merge(iOS 입력 확대 방지 + 휴대폰 달력 잘림): frontend / backend / e2e / quality
   **success ×4** (run 42636298960).
 - 로컬 브랜치 `fix/mobile-input-and-calendar` 정리, 작업 트리 clean.
+
+## 2026-11-10 — 자산 구성비 분류 정정 (§88) [✅ 검증 완료]
+
+- 문제: 증권계좌 `value`가 예수금+평가액이라, CMA·예수금이 "투자" 슬라이스에 섞였다.
+- 변경(`metrics.ts` `assetComposition`만): 현금성 = cash + 증권 예수금, 투자 = 보유종목 평가액만.
+  예적금·부동산 별도, `investTotal`/`investMonths` 불변.
+- 단위 22 passed(신규 4), 브라우저 실측 현금성 19.9M·투자 53.1M, 변이 시 3 실패 확인 후 원복.
+- typecheck·lint 0, e2e 199 passed 유지.
