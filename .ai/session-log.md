@@ -3419,3 +3419,11 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
 - 변이: 설정 h1→h2 → 테스트 실패, axe `page-has-heading-one` 발화 확인, 원복 후 1 passed.
 - 제품 코드 변경 0. 기존 스펙·목·스냅샷 무수정.
 - 남은 사람 확인: 실제 데이터(긴 상호명·0원)·스크린리더 실낭독. axe 는 규칙 위반만 잡는다.
+
+### CI 확인 (2026-11-09)
+- `860e05e` merge(회귀 계약·sr-only 제거): frontend / backend / e2e / quality **success ×4**
+  (run 42605584622).
+- `4a6f889` merge(접근성 6화면 확대): frontend / backend / e2e / quality **success ×4**
+  (run 42617303476).
+- 브랜치 `test/dashboard-guards`·`test/a11y-screens` 정리, 작업 트리 clean.
+- Herdr: `tests` pane(w5:p8) 닫음. 리드 w5:p1 + `impl` w5:p7(idle) 유지.
