@@ -3409,3 +3409,13 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
 - 검증: typecheck 0, lint 0, test 227(수정 후 skip/only 0), e2e **174 passed**(156+18),
   변이 3종 fail→원복→3 passed.
 - 작업 방식: Herdr 두 pane 병렬(`impl` = e2e, `tests` = src) → 파일 범위 분리로 충돌 0.
+
+## 2026-11-09 — 접근성 감사 6화면 확대 (P0-B1/P0-B2, §86) [✅ 검증 완료]
+
+- 신규 `e2e/a11y-screens.spec.ts`(112줄) + `e2e/screens-mocks.ts`(202줄).
+  6화면 × 2테마 × 3뷰포트 = 36 조합, `best-practice` 태그 포함, desktop 프로젝트 전용.
+- 목은 행이 렌더되는 가명 데이터. axe 전에 화면별 문구 가시성을 먼저 단언 → "빈 화면 0"이 아님.
+- 결과: axe 위반 0, 넘침 0, 58.5s. 전체 e2e **186 passed**(기존 174 + 12) 4.1분.
+- 변이: 설정 h1→h2 → 테스트 실패, axe `page-has-heading-one` 발화 확인, 원복 후 1 passed.
+- 제품 코드 변경 0. 기존 스펙·목·스냅샷 무수정.
+- 남은 사람 확인: 실제 데이터(긴 상호명·0원)·스크린리더 실낭독. axe 는 규칙 위반만 잡는다.
