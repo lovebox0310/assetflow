@@ -231,6 +231,68 @@ describe("metrics (§23 표시 규칙)", () => {
     expect(comp.map((c) => c.percent)).toEqual([3.2, 5.5, 7.2, 84.1]);
     expect(Math.round(comp.reduce((a, c) => a + c.percent, 0) * 10)).toBe(1000);
   });
+
+  it("구성비: 증권 예수금은 현금성으로, 투자는 보유종목 평가액만 (§23)", () => {
+    const slices = assetComposition({
+      ...base,
+      assets: [
+        { id: "c1", type: "cash", name: "파킹", value: 10_000_000 },
+        { id: "d1", type: "deposit", name: "예적금", value: 10_000_000 },
+        { id: "i1", type: "invest", name: "주식계좌", value: 30_000_000, balance: 10_000_000 },
+      ],
+    });
+
+    expect(slices.map((s) => s.type)).toEqual(["cash", "deposit", "invest"]);
+    expect(slices.map((s) => s.value)).toEqual([20_000_000, 10_000_000, 20_000_000]);
+    expect(slices.map((s) => s.percent)).toEqual([40, 20, 40]);
+  });
+
+  it("구성비: CMA(예수금=총액)만 있으면 현금성 하나로 합쳐진다", () => {
+    const slices = assetComposition({
+      ...base,
+      assets: [
+        { id: "c1", type: "cash", name: "파킹", value: 5_000_000 },
+        { id: "i1", type: "invest", name: "CMA", value: 8_800_000, balance: 8_800_000 },
+      ],
+    });
+
+    expect(slices).toHaveLength(1);
+    expect(slices[0]).toMatchObject({ type: "cash", value: 13_800_000, percent: 100 });
+    expect(slices.some((s) => s.type === "invest")).toBe(false);
+  });
+
+  it("구성비: 예수금 분리 전후 슬라이스 합계가 Σ(value) 로 보존된다", () => {
+    const assets: DashboardData["assets"] = [
+      { id: "c1", type: "cash", name: "파킹", value: 10_000_000 },
+      { id: "d1", type: "deposit", name: "예적금", value: 10_000_000 },
+      { id: "i1", type: "invest", name: "주식계좌", value: 30_000_000, balance: 10_000_000 },
+      { id: "r1", type: "realty", name: "부동산", value: 50_000_000 },
+    ];
+    const slices = assetComposition({ ...base, assets });
+    const total = assets.reduce((acc, asset) => acc + asset.value, 0);
+
+    expect(slices.reduce((acc, slice) => acc + slice.value, 0)).toBe(total);
+    // 예수금은 min(balance, value) 로 클램프 — 초과분은 평가액으로 새지 않는다.
+    const clamped = assetComposition({
+      ...base,
+      assets: [{ id: "i1", type: "invest", name: "이상 응답", value: 30_000_000, balance: 99_000_000 }],
+    });
+    expect(clamped).toEqual([{ type: "cash", label: "현금성", value: 30_000_000, percent: 100 }]);
+    // 음수 예수금은 0 으로 본다 — 전액이 보유종목 평가액.
+    const negative = assetComposition({
+      ...base,
+      assets: [{ id: "i1", type: "invest", name: "음수 예수금", value: 30_000_000, balance: -5_000_000 }],
+    });
+    expect(negative).toEqual([{ type: "invest", label: "투자", value: 30_000_000, percent: 100 }]);
+  });
+
+  it("구성비: balance 없는 invest 는 전액이 보유종목 평가액(기존 기준선 유지)", () => {
+    const slices = assetComposition(base);
+
+    expect(slices.map((s) => s.type)).toEqual(["cash", "deposit", "invest"]);
+    expect(slices.map((s) => s.value)).toEqual([10_000_000, 20_000_000, 30_000_000]);
+    expect(slices.map((s) => s.percent)).toEqual([16.7, 33.3, 50]);
+  });
 });
 
 describe("cashflowWindow — 최근 6개월 창 (#73, §35.1)", () => {

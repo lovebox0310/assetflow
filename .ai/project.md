@@ -2274,7 +2274,8 @@ Node 버전은 **22(LTS)** 로 고정한다. 저장소 문서에 정해진 최�
   분자에 넣지 않는다. 분모는 지출 화면 단일 출처(§28.10). 필수지출 ≤ 0 이면 계산 불가(null),
   미확정(`essentialComplete:false`)이면 0원 투입으로 메우지 않고 경고를 노출한다
 - 구성비 = 유형별 비율. 소수 1자리 반올림 합이 100.0 과 어긋나면 최댓값 조각에 잔차를
-  흡수시킨다(부채 마지막 회차와 같은 계약)
+  흡수시킨다(부채 마지막 회차와 같은 계약). **§88 갱신**: 현금성 = cash + 증권 예수금,
+  투자 = 증권 보유종목 평가액만(예수금 제외)
 
 ### 36.2 mock 기준선 (테스트로 고정)
 총자산 761,200,000 · 부채 69,355,560 · 순자산 **6.9억**(691,844,440) · 월 수지
@@ -5322,3 +5323,32 @@ DB 의 10월 합계는 현대 2,609,560 · 삼성 362,230 이었고, 마지막 �
   세로까지 바텀시트로 바꾸려면 별도 작업.
 - `.ant-picker-*` antd 6 DOM 구조에 의존. antd 메이저 업그레이드 시 셀렉터 재확인 필요.
 - 달력 축소 규칙은 dropdown 하위로 한정되지만 `!important` 를 쓴다(antd 인라인 위치 override).
+
+## 88) 자산 구성비 — 증권 예수금·CMA를 현금성으로, 투자는 보유종목 평가액만 (2026-11-10)
+
+**배경**
+- §36.1 구성비는 계좌 유형(cash/deposit/invest/realty)별 단순 합산이었다. 그런데
+  `PortfolioService` 는 증권계좌 `value = 예수금(balance) + 평가액(holdings)` 을 내려주고
+  (`DashboardService.valueOf`), CMA 처럼 예수금만 있는 계좌도 `invest` 유형으로 등록된다.
+  그래서 비상금(§62: cash + invest 예수금)의 일부가 "투자" 슬라이스에 섞였다.
+
+**결정 (사용자 승인)**
+- 현금성 = Σ(cash.value) + Σ(invest 의 예수금)
+- 투자 = Σ(invest.value − 예수금) = **보유종목 평가액만**
+- 예적금 = Σ(deposit.value), 부동산·기타 = Σ(realty.value) 는 그대로 별도.
+- 예수금 = `asset.balance`. 없으면 0(구 응답·mock 호환 → value 전체가 평가액),
+  `min(balance, value)`·음수 클램프로 합계 보존:
+  `cash + 예수금 + (value − 예수금) + deposit + realty = Σ(value)`.
+- `investTotal()`·`investMonths()`('투자금 유지 개월')는 **불변** — 예수금+평가액 그대로
+  (사용자 결정: 차트만 변경).
+- 구현: `apps/frontend/src/dashboard/metrics.ts` `assetComposition()` 하나만 변경.
+
+**검증**
+- 단위 `metrics.test.ts` **22 passed** (신규 4: 예수금 분리 / CMA 단독 / 합계 보존·클램프 /
+  balance 없는 invest 기준선 유지). 기존 기준선 테스트는 무수정 통과.
+- 브라우저 실측(summary: cash 18.5M + invest 31M(예수금 1.3M) + invest 23.5M(예수금 0.1M)
+  + deposit 42M + realty 640M): 현금성 19.9M · 예적금 42M · 투자 53.1M · 부동산 640M
+  = 2.6 / 5.6 / 7.0 / 84.8% (합 100.0).
+- 변이(예수금 분리 이전으로 되돌림) → 신규 3 테스트 실패, 원복 후 22 passed.
+- typecheck·lint 0, `pnpm e2e` 199 passed 유지. 기존 mock 기준선 `3.2/5.5/7.2/84.1` 유지
+  (mock 의 invest 에 `balance` 가 없어 전액 평가액으로 계산).
