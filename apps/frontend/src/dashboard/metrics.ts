@@ -168,13 +168,33 @@ export function investTotal(data: DashboardData): number {
   return sum(data.assets.filter((a) => a.type === "invest").map((a) => a.value));
 }
 
-/** 자산 구성비 = 유형별 비율, 합계 100.0 (§23) */
+/**
+ * 자산 구성비 = 유형별 비율, 합계 100.0 (§23)
+ *
+ * 현금성에는 증권계좌 예수금(CMA 포함)을 합치고, 투자는 보유종목 평가액만 센다.
+ * 증권 계좌의 `value` 는 서버에서 예수금 + 평가액의 합이므로, 그대로 invest 에
+ * 넣으면 아직 주식을 사지 않은 예수금까지 "투자"가 된다. 예수금은 `balance`
+ * (원장 잔액)이며, 없으면 0 으로 보고(value 전체가 평가액 = 구 응답·mock 호환)
+ * `min(balance, value)` 로 클램프한다. 따라서
+ * `cash + 예수금 + (value−예수금) + deposit + realty = Σ(value)` 가 보존된다.
+ */
 export function assetComposition(data: DashboardData): CompositionSlice[] {
   const total = sum(data.assets.map((a) => a.value));
+  const valueByType = new Map<AssetType, number>();
+  for (const asset of data.assets) {
+    if (asset.type === "invest") {
+      // 예수금(원장 잔액). 없는 구 응답은 0 → value 전체가 보유종목 평가액이다.
+      const deposit = Math.max(0, Math.min(asset.balance ?? 0, asset.value));
+      valueByType.set("cash", (valueByType.get("cash") ?? 0) + deposit);
+      valueByType.set("invest", (valueByType.get("invest") ?? 0) + (asset.value - deposit));
+    } else {
+      valueByType.set(asset.type, (valueByType.get(asset.type) ?? 0) + asset.value);
+    }
+  }
   const types = Object.keys(ASSET_TYPE_LABELS) as AssetType[];
   const slices = types
     .map((type) => {
-      const value = sum(data.assets.filter((a) => a.type === type).map((a) => a.value));
+      const value = valueByType.get(type) ?? 0;
       return { type, label: ASSET_TYPE_LABELS[type], value, percent: total > 0 ? (value / total) * 100 : 0 };
     })
     .filter((s) => s.value > 0);
