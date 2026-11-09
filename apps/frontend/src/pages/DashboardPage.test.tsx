@@ -4,6 +4,7 @@ import { DashboardPage } from "./DashboardPage";
 import { clearInflight } from "../api/client";
 import { clearToken, isAuthenticated, saveToken } from "../auth/authStore";
 import { dashboardMock } from "../data/dashboardMock";
+import { findAllByTextContent, findByTextContent, getByTextContent, queryByTextContent } from "../test/query";
 
 /**
  * Issue 7 AC: 정상/지연(로딩)/실패(오류+재시도) 시나리오를 실제 fetch 교체로 검증한다.
@@ -109,7 +110,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     stubFetch(route);
     render(<DashboardPage onLogout={() => {}} />);
     // 로딩이 끝나야 컨테이너에 실측 가능한 콘텐츠가 채워진다.
-    await screen.findByText("6.9억");
+    await findByTextContent(document.body, "6.9억");
     const headings = screen.getAllByRole("heading", { level: 2 });
     const titles = headings.map((h) => h.textContent);
     expect(titles).toEqual([
@@ -151,7 +152,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
         onOpenCards={onOpenCards}
       />,
     );
-    await screen.findByText("6.9억");
+    await findByTextContent(document.body, "6.9억");
 
     fireEvent.click(screen.getByRole("button", { name: "자산 화면 보기 — 자산 구성비" }));
     expect(onOpenAssets).toHaveBeenCalledTimes(1);
@@ -177,10 +178,11 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
 
     // 순자산 691,844,440 → 6.9억 / 월 수지 +3,240,000원
     // 비상금: 통장 18,500,000 ÷ (필수 2,317,180 + 식비 평균 900,000) = 5.75 → 5.8개월
-    expect(await screen.findByText("6.9억")).toBeDefined();
-    // 카드와 현금흐름 표가 같은 금액을 보일 수 있어 getAll 로 존재를 검사한다.
-    expect((await screen.findAllByText("+3,240,000원")).length).toBeGreaterThan(0);
-    expect(await screen.findByText("5.75개월")).toBeDefined();
+    expect(await findByTextContent(document.body, "6.9억")).toBeDefined();
+    // 카드와 현금흐름 표가 같은 금액을 보인다 — 두 인스턴스 모두 잡혀야 한다.
+    const balanceMatches = await findAllByTextContent(document.body, "+3,240,000원");
+    expect(balanceMatches.length).toBeGreaterThanOrEqual(2);
+    expect(await findByTextContent(document.body, "5.75개월")).toBeDefined();
     expect(screen.getByText(/예측 비상금 19,303,080원/)).toBeDefined();
     expect(screen.getByText(/목표 6개월/)).toBeDefined();
     expect(screen.getByRole("heading", { name: "비상금 유지 개월" })).toBeDefined();
@@ -213,16 +215,17 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     // 스위치를 켜면 같은 월 사용액 기준의 투자금 유지 개월(16.9개월)로 전환된다.
     const toggle = screen.getByRole("switch", { name: "유지 개월 모드 전환" });
     fireEvent.click(toggle);
-    expect(await screen.findByText("16.94개월")).toBeDefined();
+    expect(await findByTextContent(document.body, "16.94개월")).toBeDefined();
     expect(screen.getByRole("heading", { name: "투자금 유지 개월" })).toBeDefined();
-    expect(screen.queryByText("5.8개월")).toBeNull();
+    // 토글 전에는 비상금 값이 실제로 렌더된다(위 findByTextContent 확인). 토글 후 그 값이 사라져야 한다.
+    expect(queryByTextContent(document.body, "5.75개월")).toBeNull();
   });
 
   it("기준 설정 버튼으로 비상금 설정 모달을 연다 (§59)", async () => {
     stubFetch(route);
     render(<DashboardPage onLogout={() => {}} />);
 
-    await screen.findByText("6.9억");
+    await findByTextContent(document.body, "6.9억");
     fireEvent.click(screen.getByRole("button", { name: "기준 설정" }));
     const modal = await screen.findByRole("dialog");
     expect(within(modal).getByText("비상금 유지 개월 기준")).toBeDefined();
@@ -236,7 +239,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     render(<DashboardPage onLogout={() => {}} />);
     expect(document.querySelectorAll(".ant-skeleton").length).toBeGreaterThan(0);
     // 아직 값은 없다
-    expect(screen.queryByText("6.9억")).toBeNull();
+    expect(queryByTextContent(document.body, "6.9억")).toBeNull();
   });
 
   it("API 실패 시 카드 단위 오류 UI와 재시도가 뜬다 (§26 AC)", async () => {
@@ -246,7 +249,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
 
     // summary 만 실패: 오류 UI 표시 (카드+섹션 6개 동시 오류 → findAll)
     await screen.findAllByText("데이터를 불러오지 못했습니다");
-    expect(screen.queryByText("6.9억")).toBeNull();
+    expect(queryByTextContent(document.body, "6.9억")).toBeNull();
     // cashflow 는 summary 실패와 무관하게 복구된다 (카드 단위 복구 우선)
     const cashflowSection2 = await screen.findByRole("region", { name: "월별 현금흐름" });
     expect(within(cashflowSection2).getByText(monthKey(0))).toBeDefined();
@@ -256,7 +259,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     const retry = screen.getAllByRole("button", { name: /재시도/ })[0];
     if (!retry) throw new Error("재시도 버튼 없음");
     fireEvent.click(retry);
-    await waitFor(() => expect(screen.getByText("6.9억")).toBeDefined());
+    await waitFor(() => expect(getByTextContent(document.body, "6.9억")).toBeDefined());
   });
 
   it("인증 실패(401)는 네트워크 오류와 구분된 문구를 보여 준다 (§26 연동 기준)", async () => {
@@ -279,7 +282,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     );
     render(<DashboardPage onLogout={() => {}} />);
     expect((await screen.findAllByText("데이터가 없습니다")).length).toBeGreaterThan(0);
-    expect(screen.queryByText("6.9억")).toBeNull();
+    expect(queryByTextContent(document.body, "6.9억")).toBeNull();
   });
 
   it("현금흐름은 6개월 창을 보여 주고 미확정 월을 명시한다 (#73 AC)", async () => {
@@ -316,7 +319,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
   it("재요청 시 진행 중 요청은 중복으로 나가지 않는다 (§26 연동 기준)", async () => {
     const fetchMock = stubFetch(route);
     render(<DashboardPage onLogout={() => {}} />);
-    await screen.findByText("6.9억");
+    await findByTextContent(document.body, "6.9억");
     // mount 1회 로딩에서 summary 1회 + cashflow 1회
     const summaryCalls = fetchMock.mock.calls.filter((c) => String(c[0]).includes("/dashboard/summary")).length;
     expect(summaryCalls).toBe(1);
@@ -325,7 +328,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
   it("지출 추이는 기본 최근 12개월 범위로 1회 조회한다 (§57)", async () => {
     const fetchMock = stubFetch(route);
     render(<DashboardPage onLogout={() => {}} />);
-    await screen.findByText("6.9억");
+    await findByTextContent(document.body, "6.9억");
 
     const trendCalls = fetchMock.mock.calls.filter((c) =>
       String(c[0]).includes("/card-imports/monthly-categories") &&

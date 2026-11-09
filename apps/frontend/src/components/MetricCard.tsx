@@ -17,22 +17,19 @@ interface MetricCardProps {
 /**
  * "6.9억" → 6.9 + 작은 "억". 단위가 없으면 그대로.
  *
- * 숫자부와 단위부를 나눠 단위만 작게 그린다. 다만 화면 텍스트를 문자열로
- * 그대로 읽는 곳(스크린리더·정확 문자열 조회)이 있으므로 전체 값은 `.sr-only`
- * 로 한 번 더 두고, 시각부는 `aria-hidden` 으로 중복 낭독을 막는다.
+ * 숫자부와 단위부를 나눠 단위만 작게 그린다. 두 조각은 DOM 에서 이어지므로
+ * textContent 는 "6.9억" 그대로이고, 값을 가리거나 중복 낭독시키는 요소는
+ * 두지 않는다.
  */
 function splitUnit(node: ReactNode): ReactNode {
   if (typeof node !== "string") return node;
   const m = node.match(/^(.+?)(\s*)(억|만|개월|원|%)$/);
   if (!m) return node;
   return (
-    <>
-      <span className="sr-only">{node}</span>
-      <span aria-hidden="true">
-        {m[1]}
-        <span className="af-metric-unit">{m[3]}</span>
-      </span>
-    </>
+    <span>
+      {m[1]}
+      <span className="af-metric-unit">{m[3]}</span>
+    </span>
   );
 }
 
