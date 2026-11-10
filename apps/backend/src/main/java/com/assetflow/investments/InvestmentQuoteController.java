@@ -23,18 +23,22 @@ import java.util.Optional;
  *
  * 조회 실패는 404 로 돌려준다 — 화면은 저장된 현재가를 그대로 두고 안내만 한다.
  * 갱신은 통화가 일치하는 종목만 반영한다(원화 종목에 달러 시세를 넣으면 평가액이 깨진다).
+ * 코인은 업비트 공개 시세(ticker)로 갱신한다 — 네이버에는 코인 시세가 없다(UPBIT-1).
  */
 @RestController
 @RequestMapping("/api/v1/investments")
 public class InvestmentQuoteController {
 
     private final QuoteService quotes;
+    private final CryptoQuoteService cryptoQuotes;
     private final InvestmentLedger ledger;
     private final PortfolioService portfolioService;
 
-    public InvestmentQuoteController(QuoteService quotes, InvestmentLedger ledger,
+    public InvestmentQuoteController(QuoteService quotes, CryptoQuoteService cryptoQuotes,
+                                     InvestmentLedger ledger,
                                      PortfolioService portfolioService) {
         this.quotes = quotes;
+        this.cryptoQuotes = cryptoQuotes;
         this.ledger = ledger;
         this.portfolioService = portfolioService;
     }
@@ -68,8 +72,11 @@ public class InvestmentQuoteController {
 
     private Optional<HoldingRow> withQuote(HoldingRow holding) {
         if (holding.symbol() == null || holding.symbol().isBlank()) return Optional.empty();
-        if ("crypto".equals(holding.assetClass())) return Optional.empty(); // 네이버에 코인 시세가 없다
-        return quotes.quote(holding.symbol())
+        // 코인은 업비트 공개 시세(네이버에는 코인 시세가 없다). 통화 불일치는 아래에서 거른다.
+        Optional<QuoteService.Quote> quote = "crypto".equals(holding.assetClass())
+                ? cryptoQuotes.quote(holding.symbol(), holding.currency())
+                : quotes.quote(holding.symbol());
+        return quote
                 .filter(q -> q.price() != null && q.price().signum() > 0)
                 .filter(q -> q.currency() != null
                         && q.currency().equalsIgnoreCase(holding.currency()))
