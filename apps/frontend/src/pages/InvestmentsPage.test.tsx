@@ -143,6 +143,36 @@ describe("InvestmentsPage (§54 E2)", () => {
     expect(screen.getByText("기준일 2026-10-24")).toBeDefined();
   });
 
+  it("'업비트' 계좌가 있으면 상단 버튼 대신 계좌 메뉴에 설정·동기화가 보인다", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.includes("/integrations/upbit")) {
+        return Promise.resolve(apiResponse({ configured: true, accessKeyMasked: "abcd****efgh" }));
+      }
+      const fixture = portfolioFixture();
+      return Promise.resolve(apiResponse({
+        holdings: fixture.holdings,
+        accounts: [
+          ...fixture.accounts,
+          {
+            accountId: 6, accountName: "업비트", institutionName: "업비트",
+            cashBalance: 0, holdingsValue: 0, totalValue: 0,
+          },
+        ],
+      }));
+    }));
+    render(<InvestmentsPage />);
+    await screen.findByText("삼성전자");
+
+    // '업비트' 계좌가 생기면 부트스트랩 상단 버튼은 사라진다.
+    expect(screen.queryByRole("button", { name: "업비트 연동" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "업비트에서 가져오기" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "업비트 계좌 메뉴" }));
+    expect(await screen.findByText("업비트 설정")).toBeDefined();
+    expect(screen.getByText("업비트 동기화")).toBeDefined();
+  });
+
   it("보유종목이 없으면 빈 상태를 보여 주고, 추가 폼을 열 수 있다", async () => {
     vi.stubGlobal("fetch", vi.fn(() =>
       Promise.resolve(apiResponse({
