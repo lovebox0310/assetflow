@@ -5414,3 +5414,21 @@ DB 의 10월 합계는 현대 2,609,560 · 삼성 362,230 이었고, 마지막 �
 - 320/375/390/430 가로 넘침 0. 두 톱니 모두 24×24 시각 + `::after` 44px 히트,
   비상금 카드·구성비 카드에서 동일. 접근 이름 유지(`기준 설정`, `자산 구성비 기준 설정`,
   `유지 개월 모드 전환`, `자산 화면 보기 — 자산 구성비`).
+
+## 91) UI UX Pro Max 스킬 도입 (2026-11-10)
+
+- **출처**: `nextlevelbuilder/ui-ux-pro-max-skill` (MIT, v2.15.0). 프로젝트 로컬
+  `.opencode/skills/ui-ux-pro-max/` 에 설치했다(SKILL.md + data + scripts, 3.6MB/71 files).
+- **구성**: 검색 DB(스타일·팔레트·폰트·UX 가이드·아이콘·차트·22 스택) + Python 표준 라이브러리
+  검색 스크립트. 런타임 네트워크 없음, 자동 실행 훅·MCP·전역 설정 추가 없음.
+- **설치**: `npx -y ui-ux-pro-max-cli@2.15.0 init --ai opencode`. 설치 프로그램이 함께 넣는
+  다른 6개 스킬(`brand`·`design-system`·`design`·`ui-styling`·`slides`·`banner-design`)은
+  제거하고 **ui-ux-pro-max만** 유지한다(사용자 결정: UI UX Pro Max만 파일럿).
+- **우선순위(중요)**: `theme/tokens.ts`·§28 디자인 토큰과 `mobile-ui` 스킬이 **항상 우선**한다.
+  이 스킬은 참고용이며, 색·간격·타이포를 프로젝트 규칙과 대조 없이 바꾸지 않는다.
+- **검색 예**: `python3 .opencode/skills/ui-ux-pro-max/scripts/search.py "<query>" --domain ux|style|chart|...`
+  (프로젝트 루트 기준).
+- **세션 반영**: OpenCode 스킬 목록은 세션 시작 시 고정된다 → `/reload` 또는 재시작 후 보인다.
+- **갱신**: 새 버전은 같은 명령으로 재설치하고, `scripts/` 변경 diff를 검토한 뒤 커밋한다.
+- **검증**: 링크·라이선스·버전 확인, 설치 파일이 `.opencode/skills/ui-ux-pro-max/**` 뿐임을 확인,
+  검색 2회 실행 정상, 추적 파일(에이전트·설정) 변경 0.
