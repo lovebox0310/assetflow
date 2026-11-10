@@ -25,14 +25,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * §54.4 시세 API: 네이버 호출은 {@link QuoteService} 뒤에 있으므로 테스트는 대역으로
- * 검증한다 — 갱신 규칙(통화 일치·코인 제외)과 실패 시 404 가 계약이다.
+ * §54.4 시세 API: 외부 호출은 {@link QuoteService}·{@link CryptoQuoteService} 뒤에 있으므로
+ * 테스트는 대역으로 검증한다 — 갱신 규칙(통화 일치·코인은 업비트)과 실패 시 404 가 계약이다.
  */
 class InvestmentQuoteApiTest {
 
     private static final String SECRET = "test-secret-0123456789-0123456789-0123456789";
     private static final String TOKEN = "Bearer " + new TokenService(SECRET).issue("user@example.com");
 
+    /** 테스트마다 새 인스턴스(JUnit) — 시드 4종목 기준선이 유지된다. */
+    private final InvestmentLedger ledger = new InMemoryInvestmentLedger();
     private MockMvc mvc;
 
     /** 시드 4종목 중 삼성전자(국내)·애플(해외)만 시세가 있고 코인·ETF 는 없는 상황. */
@@ -56,17 +58,28 @@ class InvestmentQuoteApiTest {
         }
     }
 
+    /** 업비트 대역 — BTC/KRW 만 시세가 있고 나머지는 실패(empty)로 둔다. */
+    private static final class FakeCryptoQuotes implements CryptoQuoteService {
+        @Override
+        public Optional<QuoteService.Quote> quote(String symbol, String currency) {
+            if ("BTC".equalsIgnoreCase(symbol) && "KRW".equalsIgnoreCase(currency)) {
+                return Optional.of(new QuoteService.Quote("BTC", "KRW-BTC", "BTC", "KRW",
+                        new BigDecimal("100642000"), "2026-11-10"));
+            }
+            return Optional.empty();
+        }
+    }
+
     @BeforeEach
     void setUp() {
         AssetLedger assets = new InMemoryAssetLedger();
-        InvestmentLedger ledger = new InMemoryInvestmentLedger();
         KisCredentialsService kisCredentialsService = new KisCredentialsService(
                 new InMemoryKisCredentialsLedger(), new CardImportCipher("test", null));
         mvc = MockMvcBuilders
                 .standaloneSetup(new InvestmentController(ledger, assets,
                                 new PortfolioService(assets, ledger), null,
                                 new KisAccountMappingService(assets, kisCredentialsService), kisCredentialsService),
-                        new InvestmentQuoteController(new FakeQuotes(), ledger,
+                        new InvestmentQuoteController(new FakeQuotes(), new FakeCryptoQuotes(), ledger,
                                 new PortfolioService(assets, ledger)))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .addInterceptors(new BearerTokenInterceptor(new TokenService(SECRET)))
@@ -113,6 +126,34 @@ class InvestmentQuoteApiTest {
                 .andExpect(jsonPath("$.data.holdings[3].priceAsOf").value("2026-10-27"))
                 // 키움: 1,300,000 + 48,800,000 + 9,600,000 + 5,100,000
                 .andExpect(jsonPath("$.data.accounts[0].totalValue").value(64_800_000));
+    }
+
+    @Test
+    void refreshUpdatesCryptoHoldingWithUpbitQuote() throws Exception {
+        ledger.create(new InvestmentLedger.HoldingRow(0, 4, "crypto", "BTC", "비트코인", "KRW",
+                new BigDecimal("0.5"), new BigDecimal("90000000"), new BigDecimal("90000000"),
+                BigDecimal.ONE, "2026-10-24"));
+
+        mvc.perform(post("/api/v1/investments/quotes/refresh").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.holdings.length()").value(5))
+                .andExpect(jsonPath("$.data.holdings[4].symbol").value("BTC"))
+                .andExpect(jsonPath("$.data.holdings[4].marketPrice").value(100642000))
+                .andExpect(jsonPath("$.data.holdings[4].priceAsOf").value("2026-11-10"));
+    }
+
+    @Test
+    void cryptoWithNonKrwCurrencyIsSkipped() throws Exception {
+        // 업비트는 KRW 마켓만 조회한다 — USD 보유는 USDT 페어로 오매핑하지 않고 건너뛴다.
+        ledger.create(new InvestmentLedger.HoldingRow(0, 5, "crypto", "ETH", "이더리움", "USD",
+                new BigDecimal("2"), new BigDecimal("3000"), new BigDecimal("3500"),
+                new BigDecimal("1300"), "2026-10-24"));
+
+        mvc.perform(post("/api/v1/investments/quotes/refresh").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.holdings[4].symbol").value("ETH"))
+                .andExpect(jsonPath("$.data.holdings[4].marketPrice").value(3500))
+                .andExpect(jsonPath("$.data.holdings[4].priceAsOf").value("2026-10-24"));
     }
 
     @Test
