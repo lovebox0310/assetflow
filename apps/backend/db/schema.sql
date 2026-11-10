@@ -425,3 +425,18 @@ CREATE TABLE kis_account_credentials (
 );
 
 CREATE INDEX ix_kis_credentials_user ON kis_account_credentials (user_id);
+
+-- ---------------------------------------------------------------------------
+-- upbit_credentials: 업비트 Open API 자격증명 (UPBIT-2 — 2026-11-10).
+-- access/secret 키는 AES/GCM 암호화 문자열로 저장한다. 사용자당 1행.
+-- 자산조회(View Account) 권한 + 등록 IP 만 사용하며 주문 권한은 쓰지 않는다.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS upbit_credentials (
+    id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id        BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    access_key_enc TEXT NOT NULL,
+    secret_key_enc TEXT NOT NULL,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_upbit_credentials_user UNIQUE (user_id)
+);

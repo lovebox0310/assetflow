@@ -3485,3 +3485,14 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
 ### CI 확인 (2026-11-10)
 - `2ec0e6a` merge(UI UX Pro Max 스킬 도입, §91): frontend / backend / e2e / quality **success ×4**
   (run 42812735667). 스킬 데이터만 추가 — 빌드 영향 없음. 세션에서 `ui-ux-pro-max` 인식 확인.
+
+## 2026-11-10 — 업비트 코인 시세·보유 잔고 연동 (§92) [✅ 검증 완료]
+
+- UPBIT-1: crypto 시세 새로고침에 업비트 공개 ticker 포함(KRW만, 캐시 10/2분).
+- UPBIT-2: `upbit_credentials` 암호화 저장(AES/GCM), JWT HS256, `GET /v1/accounts`,
+  '업비트' invest 계좌 자동 생성/재사용, 심볼 upsert(중복 0), 삭제 없음. API/예외 매핑.
+- UPBIT-3: 투자 화면 업비트 연동 모달(키 저장·테스트·해제) + '업비트에서 가져오기'.
+- 검증: 백엔드 283 passed / 프론트 245 passed / typecheck·lint 0 / e2e 199 passed.
+  모바일 320/390 넘침 0, 모달 footer 보임.
+- 사람 조치: 업비트 자산조회 키 발급 + IP 221.165.129.232 등록, 백엔드 재배포.
+- 남은 것: ISA·카카오페이는 수동/CSV, 키 회전·IP 변경 시 갱신.

@@ -95,12 +95,63 @@ export function deleteHolding(id: number): Promise<number> {
 /**
  * §54.4 로그인·화면 진입 시 현재가 일괄 갱신.
  * 서버가 네이버 시세를 조회해 보유종목의 market_price 를 갱신하고 포트폴리오를 돌려준다.
- * 시세가 없는 종목(코인·일부 채권)은 저장된 현재가를 그대로 둔다.
+ * 시세가 없는 종목(일부 채권)은 저장된 현재가를 그대로 둔다. 코인은 업비트 공개
+ * 시세로 별도 갱신한다(UPBIT-1).
  */
 export function refreshHoldingPrices(): Promise<Portfolio> {
   return dedupe("investments.refresh", () =>
     apiFetch<Portfolio>("/api/v1/investments/quotes/refresh", { method: "POST" }),
   );
+}
+
+/** UPBIT-2 업비트 연동 상태. accessKeyMasked 만 노출되고 secret 은 내려오지 않는다. */
+export interface UpbitStatus {
+  configured: boolean;
+  accessKeyMasked: string | null;
+}
+
+export interface UpbitKeysInput {
+  accessKey: string;
+  secretKey: string;
+}
+
+export interface UpbitTestResult {
+  ok: boolean;
+  accounts: number;
+}
+
+export interface UpbitSyncResult {
+  portfolio: Portfolio;
+  accountId: number;
+  created: number;
+  updated: number;
+  skipped: number;
+}
+
+export function getUpbitStatus(): Promise<UpbitStatus> {
+  return apiFetch<UpbitStatus>("/api/v1/integrations/upbit");
+}
+
+export function saveUpbitKeys(input: UpbitKeysInput): Promise<UpbitStatus> {
+  return apiFetch<UpbitStatus>("/api/v1/integrations/upbit", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteUpbitKeys(): Promise<UpbitStatus> {
+  return apiFetch<UpbitStatus>("/api/v1/integrations/upbit", { method: "DELETE" });
+}
+
+/** 저장된 키로 실제 /v1/accounts 를 호출해 본다. 실패는 502/503 ApiError. */
+export function testUpbit(): Promise<UpbitTestResult> {
+  return apiFetch<UpbitTestResult>("/api/v1/integrations/upbit/test", { method: "POST" });
+}
+
+/** 업비트 보유 코인을 '업비트' 계좌로 동기화한다. */
+export function syncUpbit(): Promise<UpbitSyncResult> {
+  return apiFetch<UpbitSyncResult>("/api/v1/investments/upbit/sync", { method: "POST" });
 }
 
 /** 종목 1건 시세 — 종목 추가 폼의 "현재가 가져오기". 없으면 404 로 실패한다. */
