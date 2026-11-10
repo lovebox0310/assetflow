@@ -3477,3 +3477,7 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
   (44px 히트 잘림 방지).
 - 대상: 비상금 유지 개월, 자산 구성비.
 - 검증: 단위 241 passed, typecheck·lint 0, e2e 199 passed, 320~430 넘침 0.
+
+### CI 확인 (2026-11-10)
+- `b59b17c` merge(헤더 액션 규칙 통일, §90): frontend / backend / e2e / quality **success ×4**
+  (run 42809763863). 프론트 전용 변경 — 백엔드 재배포 불필요.
