@@ -3481,3 +3481,7 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
 ### CI 확인 (2026-11-10)
 - `b59b17c` merge(헤더 액션 규칙 통일, §90): frontend / backend / e2e / quality **success ×4**
   (run 42809763863). 프론트 전용 변경 — 백엔드 재배포 불필요.
+
+### CI 확인 (2026-11-10)
+- `2ec0e6a` merge(UI UX Pro Max 스킬 도입, §91): frontend / backend / e2e / quality **success ×4**
+  (run 42812735667). 스킬 데이터만 추가 — 빌드 영향 없음. 세션에서 `ui-ux-pro-max` 인식 확인.
