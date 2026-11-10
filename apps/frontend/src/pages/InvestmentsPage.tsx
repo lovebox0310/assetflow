@@ -258,6 +258,10 @@ export function InvestmentsPage({
 
   const holdings = portfolio?.holdings ?? [];
   const accounts = portfolio?.accounts ?? [];
+  /** '업비트' 계좌가 생기면 상단 부트스트랩 버튼 대신 계좌 ⋯ 메뉴로 진입한다(KIS 와 동일). */
+  const hasUpbitAccount = accounts.some(
+    (account) => account.institutionName === "업비트" || account.accountName === "업비트",
+  );
 
   const visible = filter === "all" ? holdings : holdings.filter((h) => h.assetClass === filter);
 
@@ -753,14 +757,19 @@ export function InvestmentsPage({
               </>
             ) : (
               <>
-                <Button onClick={() => setUpbitOpen(true)}>업비트 연동</Button>
-                <Button
-                  onClick={() => void handleUpbitSync()}
-                  loading={upbitSyncing}
-                  disabled={editingId !== null || priceMode || accountEditId !== null}
-                >
-                  업비트에서 가져오기
-                </Button>
+                {/* 부트스트랩: '업비트' 계좌가 없을 때만 상단 버튼. 계좌가 생기면 ⋯ 메뉴를 쓴다. */}
+                {!hasUpbitAccount ? (
+                  <>
+                    <Button onClick={() => setUpbitOpen(true)}>업비트 연동</Button>
+                    <Button
+                      onClick={() => void handleUpbitSync()}
+                      loading={upbitSyncing}
+                      disabled={editingId !== null || priceMode || accountEditId !== null}
+                    >
+                      업비트에서 가져오기
+                    </Button>
+                  </>
+                ) : null}
                 <Button
                   onClick={() => void refreshPrices()}
                   loading={refreshingQuotes}
@@ -823,13 +832,16 @@ export function InvestmentsPage({
                   const rows = visible.filter((h) => h.accountId === account.accountId);
                   const accountHoldings = holdings.filter((h) => h.accountId === account.accountId);
                   const isKisAccount = account.institutionName === "한국투자";
+                  const isUpbitAccount =
+                    account.institutionName === "업비트" || account.accountName === "업비트";
                   /**
                    * 계좌 헤더의 동작은 `⋯` 메뉴 하나로 모은다 — 320px 에서 버튼 5개가
                    * 3+2 로 흩어지던 문제(UI-2a). 확인이 필요한 동작은 메뉴가 닫힌 뒤
                    * 아래 1×1 앵커의 Popconfirm 으로 이어진다.
                    */
                   const accountActionDisabled =
-                    editingId !== null || priceMode || accountBusy || kisSyncingAccountId !== null;
+                    editingId !== null || priceMode || accountBusy
+                    || kisSyncingAccountId !== null || upbitSyncing;
                   const kisMenuItems: NonNullable<MenuProps["items"]> = isKisAccount
                     ? [
                         { key: "kis", label: "KIS 설정", disabled: accountActionDisabled },
@@ -838,14 +850,25 @@ export function InvestmentsPage({
                         { key: "clear", label: "동기화 해제", danger: true, disabled: accountActionDisabled },
                       ]
                     : [];
+                  const upbitMenuItems: NonNullable<MenuProps["items"]> = isUpbitAccount
+                    ? [
+                        { key: "upbit-settings", label: "업비트 설정", disabled: accountActionDisabled },
+                        {
+                          key: "upbit-sync",
+                          label: "업비트 동기화",
+                          disabled: accountActionDisabled || upbitSyncing,
+                        },
+                      ]
+                    : [];
                   const accountMenuItems: NonNullable<MenuProps["items"]> = [
                     { key: "edit", label: "계좌 편집", disabled: accountActionDisabled },
                     ...kisMenuItems,
+                    ...upbitMenuItems,
                     {
                       key: "delete",
                       label: "계좌 삭제",
                       danger: true,
-                      disabled: accountBusy || kisSyncingAccountId !== null,
+                      disabled: accountBusy || kisSyncingAccountId !== null || upbitSyncing,
                     },
                   ];
                   const onAccountMenuClick: MenuProps["onClick"] = ({ key }) => {
@@ -853,6 +876,8 @@ export function InvestmentsPage({
                     else if (key === "kis")
                       setKisCredentialsAccount({ id: account.accountId, name: account.accountName });
                     else if (key === "sync") void doKisSync(account.accountId);
+                    else if (key === "upbit-settings") setUpbitOpen(true);
+                    else if (key === "upbit-sync") void handleUpbitSync();
                     // 확인이 필요한 동작은 앵커 Popconfirm 을 연다(메뉴는 antd 가 닫는다).
                     else if (key === "clear" || key === "delete")
                       setAccountConfirm({ accountId: account.accountId, action: key });
