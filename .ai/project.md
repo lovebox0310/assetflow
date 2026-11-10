@@ -5432,3 +5432,48 @@ DB 의 10월 합계는 현대 2,609,560 · 삼성 362,230 이었고, 마지막 �
 - **갱신**: 새 버전은 같은 명령으로 재설치하고, `scripts/` 변경 diff를 검토한 뒤 커밋한다.
 - **검증**: 링크·라이선스·버전 확인, 설치 파일이 `.opencode/skills/ui-ux-pro-max/**` 뿐임을 확인,
   검색 2회 실행 정상, 추적 파일(에이전트·설정) 변경 0.
+
+## 92) 업비트 연동 — 코인 시세·보유 잔고 (2026-11-10)
+
+**배경**
+- 투자 화면은 주식·ETF·채권 시세를 네이버에서 갱신하지만 crypto 는 제외했다
+  (`InvestmentQuoteController` "네이버에 코인 시세가 없다").
+- 사용자는 업비트 Open API 키(자산조회 권한, 서버 IP 등록)로 보유 코인을 가져오길 원했다.
+
+**결정**
+- **UPBIT-1 (시세)**: 공개 `GET https://api.upbit.com/v1/ticker?markets=KRW-{symbol}` — 키 불필요.
+  `trade_price`, `trade_date_kst` 파싱, 캐시 10분/2분, **KRW 보유만**(USD는 USDT 오매핑 방지로 skip).
+- **UPBIT-2 (잔고)**:
+  - 자격증명은 앱 설정에서 입력 → `upbit_credentials(user_id UNIQUE, access_key_enc, secret_key_enc)`에
+    AES/GCM 암호화 저장. 평문·secret 은 API 응답/로그에 남기지 않는다.
+  - JWT HS256(`{access_key, nonce}`) → `Authorization: Bearer {jwt}` → `GET /v1/accounts`.
+    `balance + locked` → 수량, `avg_buy_price` → 평단, `unit_currency=KRW`만.
+  - **'업비트' invest 계좌 자동 생성/재사용**, 심볼(대문자) 기준 **upsert**(중복 0), **삭제 없음**.
+  - 현재가: 공개 시세 우선 → 기존 저장가 → 평단. 기준일도 같은 우선순위.
+  - API: `GET/PUT/DELETE /api/v1/integrations/upbit`, `POST /api/v1/integrations/upbit/test`,
+    `POST /api/v1/investments/upbit/sync`. 예외는 미설정 503, 업비트 오류 502(코드 포함).
+- **UPBIT-3 (UI)**: 투자 화면에 `업비트 연동` 모달(Access/Secret, 연결 테스트, 연동 해제)과
+  `업비트에서 가져오기` 버튼. 설정된 키는 마스킹만 표시하고 secret 입력은 빈 값.
+- **보안**: 키 권한은 **자산조회만**(주문·출금 금지). 서버 공인 IP `221.165.129.232`를 업비트
+  허용 IP에 등록. 키·JWT·Authorization 헤더는 로그 금지.
+
+**검증**
+- 백엔드 전체 **283 passed**: JWT 서명 재계산, `/v1/accounts` 파싱, 동기화(계좌 생성·upsert·skip),
+  연동 API(마스킹·암호문 저장·503/502·sync).
+- 프론트 단위 **245 passed**(모달 4건 포함), typecheck·lint 0, **e2e 199 passed**.
+- 모바일 320/390: 액션 버튼 wrap 정상, 모달 footer 보임, 가로 넘침 0.
+
+**한계 / 사람 조치**
+- 운영 백엔드 jar를 **재배포**해야 새 엔드포인트·`upbit_credentials` 테이블이 생긴다
+  (`schema.sql` IF NOT EXISTS, 재시작 시 적용).
+- 업비트 키 재발급/서버 공인 IP 변경 시 `no_authorization_ip`·`jwt_verification` → 모달에서 갱신.
+- KRW 마켓만 지원. 업비트에서 사라진 종목은 자동 삭제하지 않는다(기록 보존).
+- ISA(토스·카카오페이)와 카카오페이 해외주식은 공식 API가 없어 **수동/CSV** 유지.
+
+**진입점 정리 (2026-11-10 사용자 피드백)**
+- KIS와 동일하게 `업비트` 계좌 행의 `⋯` 메뉴에 **업비트 설정 / 업비트 동기화**를 둔다.
+- `업비트` 계좌가 이미 있으면 상단 부트스트랩 버튼은 숨긴다. 계좌가 없을 때만 상단
+  `업비트 연동` / `업비트에서 가져오기`로 첫 계좌를 만든다(첫 동기화가 계좌를 생성).
+- 연동 해제는 모달 안에만 둔다 — 자격증명 삭제는 계좌 단위가 아닌 전역 동작이다.
+- 계좌 식별은 `institutionName`/`accountName`이 "업비트"인지로 판단한다. 이름을 바꾸면
+  메뉴가 사라지고 상단 부트스트랩 버튼이 돌아온다(안정적 식별자가 필요하면 브로커 코드 도입).
