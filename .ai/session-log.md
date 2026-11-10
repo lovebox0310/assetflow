@@ -3462,3 +3462,8 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
   독립 브라우저 실측(d1 체크): 현금성 68M·투자 29.7M·부동산 640M, 예적금 슬라이스 제거. FLOW_OK.
 - 모달 320/375/390/430 가로 넘침 0, footer 보임, body 스크롤, 행 ≥55px.
 - 남은 것: EmergencyFundSettingsModal 모바일 footer(별도), 실제 DB 마이그레이션 적용 확인.
+
+### CI 확인 (2026-11-10)
+- `b3e2d81` merge(구성비 전액 현금성 계좌 지정, §89): frontend / backend / e2e / quality
+  **success ×4** (run 42749186605). backend-gate가 신규 SettingsApiTest 7종 포함 통과.
+- 운영 반영은 `/opt/assetflow/app.jar` 재배포 + `assetflow.service` 재시작 후에 유효(사람 실행).
