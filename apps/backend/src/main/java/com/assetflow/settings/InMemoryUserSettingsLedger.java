@@ -17,20 +17,22 @@ public class InMemoryUserSettingsLedger implements UserSettingsLedger {
             "식비", "주거/통신", "건강/의료", "금융/세금", "교육");
 
     private volatile UserSettings seed = new UserSettings(
-            1, "user@example.com", "사용자", 6, List.of("1"), 3, DEFAULT_EMERGENCY_CATEGORIES);
+            1, "user@example.com", "사용자", 6, List.of("1"), 3, DEFAULT_EMERGENCY_CATEGORIES,
+            List.of());
 
     public UserSettings get(String email) {
         return seed.email().equals(email) ? seed : null;
     }
 
     public UserSettings update(String email, int targetMonths, List<String> emergencyAccountIds,
-                               int emergencyAvgMonths, List<String> emergencyCategories) {
+                               int emergencyAvgMonths, List<String> emergencyCategories,
+                               List<String> compositionCashAccountIds) {
         if (!seed.email().equals(email)) {
             return null;
         }
         seed = new UserSettings(seed.id(), seed.email(), seed.displayName(), targetMonths,
                 List.copyOf(emergencyAccountIds), emergencyAvgMonths,
-                List.copyOf(emergencyCategories));
+                List.copyOf(emergencyCategories), List.copyOf(compositionCashAccountIds));
         return seed;
     }
 }

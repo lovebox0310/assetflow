@@ -13,13 +13,19 @@ public interface UserSettingsLedger {
      * 분자는 이 계좌들의 **예수금(balance) 합계**다(§62 — invest 평가액은 제외).
      * 용도가 정해진 계좌(자동이체·부가세 등)는 지정하지 않는 방식으로 제외한다.
      */
+    /**
+     * §89 compositionCashAccountIds: 자산 구성비에서 **전액 현금성**으로 볼 계좌 id 목록.
+     * 비상금(emergencyAccountIds)과 독립이다. 유형 제한은 없고 부채만 제외하며,
+     * 빈 목록이면 §88 기본 규칙(증권 예수금만 현금성, 투자는 보유종목 평가액)을 따른다.
+     */
     record UserSettings(long id, String email, String displayName, int targetMonths,
                         List<String> emergencyAccountIds, int emergencyAvgMonths,
-                        List<String> emergencyCategories) {}
+                        List<String> emergencyCategories, List<String> compositionCashAccountIds) {}
 
     UserSettings get(String email);
 
     /** 설정 전체 갱신 — 갱신 후 값을 돌려준다. 없는 사용자면 null. */
     UserSettings update(String email, int targetMonths, List<String> emergencyAccountIds,
-                        int emergencyAvgMonths, List<String> emergencyCategories);
+                        int emergencyAvgMonths, List<String> emergencyCategories,
+                        List<String> compositionCashAccountIds);
 }
