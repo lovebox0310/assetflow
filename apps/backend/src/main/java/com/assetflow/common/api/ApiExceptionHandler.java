@@ -72,6 +72,22 @@ public class ApiExceptionHandler {
                 .body(ErrorResponse.of("KIS_API_ERROR", "KIS API request failed", e.getMessage()));
     }
 
+    /** UPBIT-2 업비트 연동: 키 미설정은 503, 업비트 서버/권한/IP 오류는 502. 키·JWT 는 노출하지 않는다. */
+    @ExceptionHandler(com.assetflow.investments.upbit.UpbitNotConfiguredException.class)
+    public ResponseEntity<ErrorResponse> upbitNotConfigured(
+            com.assetflow.investments.upbit.UpbitNotConfiguredException e) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ErrorResponse.of("UPBIT_NOT_CONFIGURED", "Upbit is not configured", e.getMessage()));
+    }
+
+    @ExceptionHandler(com.assetflow.investments.upbit.UpbitApiException.class)
+    public ResponseEntity<ErrorResponse> upbitApi(com.assetflow.investments.upbit.UpbitApiException e) {
+        String code = e.code() == null || e.code().isBlank() ? "UPBIT_API_ERROR" : e.code();
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(ErrorResponse.of("UPBIT_API_ERROR", "Upbit API request failed",
+                        "code=" + code + "; " + e.getMessage()));
+    }
+
     /** GET 으로 POST 전용 API 를 호출하는 경우(브라우저 주소창 접속 등) — 500 이 아니라 405 다. */
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<ErrorResponse> methodNotSupported(HttpRequestMethodNotSupportedException e) {
