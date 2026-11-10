@@ -20,6 +20,7 @@ import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
 import { SubNav } from "../components/SubNav";
 import { AfListTable, type AfListColumn, type AfRowAction } from "../components/AfListTable";
 import { KisCredentialsModal } from "../components/KisCredentialsModal";
+import { UpbitCredentialsModal } from "../components/UpbitCredentialsModal";
 import {
   clearKisBalance,
   createHolding,
@@ -27,8 +28,10 @@ import {
   fetchFxRate,
   fetchQuote,
   getPortfolio,
+  getUpbitStatus,
   refreshHoldingPrices,
   syncKisBalance,
+  syncUpbit,
   updateHolding,
   type AssetClass,
   type HoldingPayload,
@@ -135,6 +138,11 @@ export function InvestmentsPage({
   const [errorText, setErrorText] = useState("");
   const [actionError, setActionError] = useState("");
   const [actionWarning, setActionWarning] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
+  // UPBIT-3 업비트 연동: 설정 여부(null=아직 모름)와 모달/동기화 상태.
+  const [upbitOpen, setUpbitOpen] = useState(false);
+  const [upbitSyncing, setUpbitSyncing] = useState(false);
+  const [upbitConfigured, setUpbitConfigured] = useState<boolean | null>(null);
   const [filter, setFilter] = useState<AssetClass | "all">("all");
   const [editingId, setEditingId] = useState<number | "new" | null>(null);
   const [busy, setBusy] = useState(false);
@@ -205,6 +213,48 @@ export function InvestmentsPage({
     mountedRef.current = true;
     void load().then(() => refreshPrices(true));
   }, [load, refreshPrices]);
+
+  // 업비트 설정 여부는 화면을 막지 않는다 — 실패해도 '미설정'으로 두고 조용히 넘어간다.
+  useEffect(() => {
+    let cancelled = false;
+    getUpbitStatus()
+      .then((status) => {
+        if (!cancelled) setUpbitConfigured(status.configured);
+      })
+      .catch(() => {
+        if (!cancelled) setUpbitConfigured(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleUpbitSync = async () => {
+    if (upbitConfigured === false) {
+      setActionError("업비트 연동을 먼저 설정해 주세요.");
+      setUpbitOpen(true);
+      return;
+    }
+    setUpbitSyncing(true);
+    setActionError("");
+    setActionMessage("");
+    try {
+      const result = await syncUpbit();
+      setPortfolio(result.portfolio);
+      setStatus(result.portfolio.holdings.length === 0 && result.portfolio.accounts.length === 0
+        ? "empty"
+        : "ready");
+      setUpbitConfigured(true);
+      setActionMessage(
+        `업비트에서 가져왔습니다 — 새로 ${result.created}개, 갱신 ${result.updated}개` +
+          (result.skipped ? `, 건너뜀 ${result.skipped}개` : ""),
+      );
+    } catch (e) {
+      setActionError(describeError(e, "업비트 잔고를 가져오지 못했습니다"));
+    } finally {
+      setUpbitSyncing(false);
+    }
+  };
 
   const holdings = portfolio?.holdings ?? [];
   const accounts = portfolio?.accounts ?? [];
@@ -657,6 +707,12 @@ export function InvestmentsPage({
         </Typography.Paragraph>
       ) : null}
 
+      {actionMessage ? (
+        <Typography.Paragraph role="status" type="success" style={{ marginBottom: 16 }}>
+          {actionMessage}
+        </Typography.Paragraph>
+      ) : null}
+
       <section aria-labelledby="h-portfolio-summary" style={{ marginBottom: 24 }}>
         <Typography.Title level={2} id="h-portfolio-summary" style={{ fontSize: 16, margin: 0, marginBottom: 12 }}>
           포트폴리오 요약
@@ -697,6 +753,14 @@ export function InvestmentsPage({
               </>
             ) : (
               <>
+                <Button onClick={() => setUpbitOpen(true)}>업비트 연동</Button>
+                <Button
+                  onClick={() => void handleUpbitSync()}
+                  loading={upbitSyncing}
+                  disabled={editingId !== null || priceMode || accountEditId !== null}
+                >
+                  업비트에서 가져오기
+                </Button>
                 <Button
                   onClick={() => void refreshPrices()}
                   loading={refreshingQuotes}
@@ -1016,6 +1080,15 @@ export function InvestmentsPage({
           onSaved={() => void load()}
         />
       )}
+
+      <UpbitCredentialsModal
+        open={upbitOpen}
+        onClose={() => setUpbitOpen(false)}
+        onSaved={() => {
+          setUpbitConfigured(true);
+          void load();
+        }}
+      />
     </AppLayout>
   );
 }
