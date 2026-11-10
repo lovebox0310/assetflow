@@ -3502,3 +3502,8 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
 - `업비트` 계좌 `⋯` 메뉴에 `업비트 설정`/`업비트 동기화` 추가, 계좌가 있으면 상단 버튼 숨김.
 - 계좌가 없을 때만 상단 부트스트랩 버튼 유지. 연동 해제는 모달 안.
 - 검증: 단위 246 passed, typecheck/lint 0, e2e 199 passed, 320/390 넘침 0.
+
+### CI 확인 (2026-11-10)
+- `3edb7d0` merge(업비트 코인 시세·보유 잔고 연동 + KIS식 진입점): frontend / backend / e2e / quality
+  **success ×4** (run 42830718264).
+- 브랜치 `feature/upbit-balance-sync`·`feature/upbit-crypto-quotes` 정리, 작업 트리 clean.
