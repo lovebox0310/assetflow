@@ -3507,3 +3507,27 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
 - `3edb7d0` merge(업비트 코인 시세·보유 잔고 연동 + KIS식 진입점): frontend / backend / e2e / quality
   **success ×4** (run 42830718264).
 - 브랜치 `feature/upbit-balance-sync`·`feature/upbit-crypto-quotes` 정리, 작업 트리 clean.
+
+## 2026-11-10 세션 마감
+
+### 오늘 완료 (모두 main 머지 + CI 4게이트 success)
+- **§87** iOS 입력 확대 방지 + 휴대폰 달력 잘림 — `53cf673`
+- **§88** 자산 구성비: 증권 예수금·CMA→현금성, 투자=보유종목 평가액만 — `e1c104d`
+- **§89** 구성비 "전액 현금성" 계좌 사용자 지정 + 설정 모달 — `b3e2d81`
+- **§90** 카드·섹션 헤더 액션 규칙 통일(제목 옆 톱니, 우측 스위치/링크) — `b59b17c`
+- **§91** UI UX Pro Max 스킬 도입(프로젝트 로컬, §28·mobile-ui 우선) — `2ec0e6a`
+- **§92** 업비트 코인 시세(공개 ticker)·보유 잔고(자산조회 키+IP, AES/GCM, JWT, `/v1/accounts`)
+  + KIS식 계좌 `⋯` 메뉴 진입 — `3edb7d0`
+
+### 내일 이어서
+1. **프론트 배포**: 업비트 진입점 변경은 프론트 — `sudo /home/redbox9/assetflow-dev/deploy.sh` 후 운영 반영.
+2. **ISA·카카오페이**: 토스증권 API는 `BROKERAGE`만 노출(ISA 미지원), 카카오페이증권은 공식 API 없음.
+   → ISA·카카오페이 해외주식은 **CSV/Excel 임포트** 설계.
+3. **업비트 후속**: USD 마켓 미지원(USDT 오매핑 방지), 시세 실패 시 `priceAsOf` 정책,
+   계좌 식별이 이름 기반 → 브로커 코드 도입 검토.
+4. **기존 `EmergencyFundSettingsModal` 모바일 footer 잘림** — 별도 작업(새 모달 셸로 통일 권장).
+5. **UI UX Pro Max**: `designer` 작업에서 참고용. `theme/tokens.ts`·§28·`mobile-ui`가 항상 우선.
+
+### 참고 (환경)
+- 업비트 서버 공인 IP: `221.165.129.232` (허용 IP 등록, 고정 IP 권장)
+- 업비트 키 권한: 자산조회만(주문·출금 금지)
