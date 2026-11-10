@@ -89,12 +89,15 @@ function SectionHeader({
   title,
   link,
   actions,
+  titleAction,
 }: {
   id: string;
   title: string;
   link?: SectionHeaderLink;
-  /** 제목 오른쪽 보조 액션(설정 진입 등). h2 id/aria 계약은 그대로다. */
+  /** 우측 정렬 액션(스위치 등). */
   actions?: ReactNode;
+  /** 제목 **바로 오른쪽** 액션(설정 톱니 등). h2 id/aria 계약은 그대로다. */
+  titleAction?: ReactNode;
 }) {
   return (
     <div
@@ -102,16 +105,19 @@ function SectionHeader({
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        gap: 12,
+        gap: 8,
         marginBottom: 16,
         flexWrap: "wrap",
       }}
     >
-      <Typography.Title level={2} id={id} style={{ fontSize: 16, margin: 0 }}>
-        {title}
-      </Typography.Title>
+      <div className="af-header__title-group">
+        <Typography.Title level={2} id={id} style={{ fontSize: 16, margin: 0 }}>
+          {title}
+        </Typography.Title>
+        {titleAction}
+      </div>
       {actions || link ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div className="af-header__actions">
           {actions}
           {link ? (
             <Button
@@ -438,8 +444,20 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
             title={showInvestMonths ? "투자금 유지 개월" : "비상금 유지 개월"}
             status={monthsStatus}
             onRetry={retryMonths}
+            titleAction={
+              <Button
+                type="text"
+                size="small"
+                className="af-icon-btn"
+                aria-label="기준 설정"
+                title="기준 설정"
+                onClick={() => setEmergencyModalOpen(true)}
+              >
+                <GearIcon />
+              </Button>
+            }
             extra={
-              <div className="af-runway-extra">
+              <div className="af-header__actions">
                 <Switch
                   size="small"
                   checkedChildren="투자금"
@@ -448,16 +466,6 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
                   onChange={setShowInvestMonths}
                   aria-label="유지 개월 모드 전환"
                 />
-                <Button
-                  type="text"
-                  size="small"
-                  className="af-icon-btn"
-                  aria-label="기준 설정"
-                  title="기준 설정"
-                  onClick={() => setEmergencyModalOpen(true)}
-                >
-                  <GearIcon />
-                </Button>
               </div>
             }
             hint={
@@ -502,13 +510,14 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
           <SectionHeader
             id="h-composition"
             title="자산 구성비"
-            actions={
+            titleAction={
               <Button
                 type="text"
+                size="small"
+                className="af-icon-btn"
                 aria-label="자산 구성비 기준 설정"
                 title="자산 구성비 기준 설정"
                 onClick={() => setCompositionModalOpen(true)}
-                style={{ minHeight: 44 }}
               >
                 <GearIcon />
               </Button>
