@@ -3450,3 +3450,15 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
   예적금·부동산 별도, `investTotal`/`investMonths` 불변.
 - 단위 22 passed(신규 4), 브라우저 실측 현금성 19.9M·투자 53.1M, 변이 시 3 실패 확인 후 원복.
 - typecheck·lint 0, e2e 199 passed 유지.
+
+## 2026-11-10 — 자산 구성비 사용자별 "전액 현금성" 계좌 지정 (§89) [✅ 검증 완료]
+
+- 백엔드: `user_composition_cash_accounts` 조인 테이블 + 마이그레이션, `UserSettingsLedger`/
+  InMemory/Postgres, `GET/PUT /settings` 의 `compositionCashAccountIds`(생략 유지·[] 해제·
+  부채/없는 id 400). `./gradlew compileJava test` BUILD SUCCESSFUL, SettingsApiTest 신규 7종.
+- 프론트: `assetComposition(data,{cashAccountIds})`, `CompositionBasisModal`(계좌별 체크,
+  cash 항상 체크·비활성, 미리보기, 저장은 한 필드만), 구성비 카드 톱니+캡션, viewport-fit=cover.
+- 검증: 단위 241 passed, typecheck/lint 0, e2e 199 passed.
+  독립 브라우저 실측(d1 체크): 현금성 68M·투자 29.7M·부동산 640M, 예적금 슬라이스 제거. FLOW_OK.
+- 모달 320/375/390/430 가로 넘침 0, footer 보임, body 스크롤, 행 ≥55px.
+- 남은 것: EmergencyFundSettingsModal 모바일 footer(별도), 실제 DB 마이그레이션 적용 확인.

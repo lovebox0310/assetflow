@@ -10,7 +10,7 @@ import {
   netWorth,
 } from "./metrics";
 import { DEFAULT_EMERGENCY_CATEGORIES } from "../data/expenseCategories";
-import type { DashboardData } from "../data/dashboardMock";
+import { dashboardMock, type DashboardData } from "../data/dashboardMock";
 
 const today = new Date(2026, 9, 15); // 2026-10-15
 
@@ -292,6 +292,84 @@ describe("metrics (§23 표시 규칙)", () => {
     expect(slices.map((s) => s.type)).toEqual(["cash", "deposit", "invest"]);
     expect(slices.map((s) => s.value)).toEqual([10_000_000, 20_000_000, 30_000_000]);
     expect(slices.map((s) => s.percent)).toEqual([16.7, 33.3, 50]);
+  });
+
+  // ── §89 구성비 "전액 현금성" 계좌 지정 ────────────────────────────────────
+
+  it("§89: 체크한 예적금 계좌는 전액 현금성으로 합산된다", () => {
+    const slices = assetComposition(
+      {
+        ...base,
+        assets: [
+          { id: "c1", type: "cash", name: "파킹", value: 10_000_000 },
+          { id: "d1", type: "deposit", name: "예적금", value: 10_000_000 },
+          { id: "i1", type: "invest", name: "주식계좌", value: 30_000_000, balance: 10_000_000 },
+        ],
+      },
+      { cashAccountIds: ["d1"] },
+    );
+
+    // deposit 슬라이스는 0 이 되어 사라지고, 그 금액이 현금성으로 이동한다.
+    expect(slices.map((s) => s.type)).toEqual(["cash", "invest"]);
+    expect(slices.map((s) => s.value)).toEqual([30_000_000, 20_000_000]);
+    expect(slices.map((s) => s.percent)).toEqual([60, 40]);
+  });
+
+  it("§89: 미체크 invest 는 옵션이 없을 때와 완전히 같다(§88 유지)", () => {
+    const plain = assetComposition(base);
+    const withEmpty = assetComposition(base, { cashAccountIds: [] });
+
+    expect(withEmpty).toEqual(plain);
+  });
+
+  it("§89: 목록에 없는 id 는 무시한다", () => {
+    const plain = assetComposition(base);
+    const ghost = assetComposition(base, { cashAccountIds: ["ghost", "9999"] });
+
+    expect(ghost).toEqual(plain);
+  });
+
+  it("§89: 기본 빈 목록은 기존 dashboardMock 기준선과 같다", () => {
+    expect(assetComposition(dashboardMock)).toEqual(
+      assetComposition(dashboardMock, { cashAccountIds: [] }),
+    );
+    expect(assetComposition(dashboardMock).map((s) => s.percent)).toEqual([3.2, 5.5, 7.2, 84.1]);
+  });
+
+  it("§89: 부동산을 체크하면 부동산 슬라이스가 사라지고 현금성으로 이동한다", () => {
+    const slices = assetComposition(
+      {
+        ...base,
+        assets: [
+          { id: "c1", type: "cash", name: "파킹", value: 10_000_000 },
+          { id: "r1", type: "realty", name: "보증금", value: 10_000_000 },
+          { id: "i1", type: "invest", name: "주식계좌", value: 20_000_000, balance: 5_000_000 },
+        ],
+      },
+      { cashAccountIds: ["r1"] },
+    );
+
+    expect(slices.map((s) => s.type)).toEqual(["cash", "invest"]);
+    expect(slices.map((s) => s.value)).toEqual([25_000_000, 15_000_000]);
+    expect(slices.some((s) => s.type === "realty")).toBe(false);
+    expect(Math.round(slices.reduce((a, s) => a + s.percent, 0) * 10)).toBe(1000);
+  });
+
+  it("§89: 체크 후에도 percent 합은 100.0 이다", () => {
+    const slices = assetComposition(
+      {
+        ...base,
+        assets: [
+          { id: "c1", type: "cash", name: "파킹", value: 100 },
+          { id: "d1", type: "deposit", name: "예적금", value: 100 },
+          { id: "i1", type: "invest", name: "주식계좌", value: 100, balance: 0 },
+        ],
+      },
+      { cashAccountIds: ["d1"] },
+    );
+
+    expect(slices.map((s) => s.percent)).toEqual([66.7, 33.3]);
+    expect(Math.round(slices.reduce((a, s) => a + s.percent, 0) * 10)).toBe(1000);
   });
 });
 

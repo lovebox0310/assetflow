@@ -191,4 +191,134 @@ class SettingsApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.emergencyCategories.length()").value(0));
     }
+
+    // ── §89 구성비 "전액 현금성" 계좌 (비상금과 독립) ─────────────────────────
+
+    @Test
+    void compositionCashAccountIdsDefaultsToEmpty() throws Exception {
+        mvc.perform(get("/api/v1/settings").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.compositionCashAccountIds").isArray())
+                .andExpect(jsonPath("$.data.compositionCashAccountIds.length()").value(0));
+    }
+
+    @Test
+    void compositionCashAcceptsAnyNonDebtType() throws Exception {
+        // id 3 = deposit, id 6 = realty — 비상금과 달리 유형 제한이 없다.
+        mvc.perform(put("/api/v1/settings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"compositionCashAccountIds\":[\"3\",\"6\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.compositionCashAccountIds.length()").value(2))
+                .andExpect(jsonPath("$.data.compositionCashAccountIds[0]").value("3"))
+                .andExpect(jsonPath("$.data.compositionCashAccountIds[1]").value("6"));
+
+        mvc.perform(get("/api/v1/settings").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.compositionCashAccountIds.length()").value(2))
+                .andExpect(jsonPath("$.data.compositionCashAccountIds[0]").value("3"));
+    }
+
+    @Test
+    void compositionCashDuplicatesAreCollapsedButOrderIsKept() throws Exception {
+        mvc.perform(put("/api/v1/settings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"compositionCashAccountIds\":[\"3\",\"1\",\"3\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.compositionCashAccountIds.length()").value(2))
+                .andExpect(jsonPath("$.data.compositionCashAccountIds[0]").value("3"))
+                .andExpect(jsonPath("$.data.compositionCashAccountIds[1]").value("1"));
+    }
+
+    @Test
+    void compositionCashEmptyListClearsDesignation() throws Exception {
+        mvc.perform(put("/api/v1/settings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"compositionCashAccountIds\":[\"3\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.compositionCashAccountIds.length()").value(1));
+
+        mvc.perform(put("/api/v1/settings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"compositionCashAccountIds\":[]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.compositionCashAccountIds.length()").value(0));
+
+        mvc.perform(get("/api/v1/settings").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.compositionCashAccountIds.length()").value(0));
+    }
+
+    @Test
+    void compositionCashRejectsDebtUnknownBlankAndNonNumericIds() throws Exception {
+        // id 7 = 주택담보대출(is_debt)
+        mvc.perform(put("/api/v1/settings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"compositionCashAccountIds\":[\"7\"]}"))
+                .andExpect(status().isBadRequest());
+
+        mvc.perform(put("/api/v1/settings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"compositionCashAccountIds\":[\"9999\"]}"))
+                .andExpect(status().isBadRequest());
+
+        mvc.perform(put("/api/v1/settings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"compositionCashAccountIds\":[\"3\",\"\"]}"))
+                .andExpect(status().isBadRequest());
+
+        mvc.perform(put("/api/v1/settings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"compositionCashAccountIds\":[\"abc\"]}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void compositionCashAndEmergencyAccountsAreIndependent() throws Exception {
+        mvc.perform(put("/api/v1/settings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"emergencyAccountIds":["1","2"],
+                                 "compositionCashAccountIds":["3"]}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.emergencyAccountIds.length()").value(2))
+                .andExpect(jsonPath("$.data.compositionCashAccountIds.length()").value(1));
+
+        // 구성비 지정만 바꿔도 비상금은 유지된다.
+        mvc.perform(put("/api/v1/settings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"compositionCashAccountIds\":[\"6\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.emergencyAccountIds.length()").value(2))
+                .andExpect(jsonPath("$.data.emergencyAccountIds[0]").value("1"))
+                .andExpect(jsonPath("$.data.emergencyAccountIds[1]").value("2"))
+                .andExpect(jsonPath("$.data.compositionCashAccountIds[0]").value("6"));
+
+        // 비상금만 바꿔도 구성비 지정은 유지된다.
+        mvc.perform(put("/api/v1/settings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"emergencyAccountIds\":[\"2\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.emergencyAccountIds.length()").value(1))
+                .andExpect(jsonPath("$.data.compositionCashAccountIds[0]").value("6"));
+    }
+
+    @Test
+    void compositionCashIsKeptWhenFieldIsOmitted() throws Exception {
+        mvc.perform(put("/api/v1/settings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"compositionCashAccountIds\":[\"3\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.compositionCashAccountIds.length()").value(1));
+
+        // 다른 필드만 보낸다 — compositionCashAccountIds 생략.
+        mvc.perform(put("/api/v1/settings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"targetMonths\":8}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.targetMonths").value(8))
+                .andExpect(jsonPath("$.data.compositionCashAccountIds.length()").value(1))
+                .andExpect(jsonPath("$.data.compositionCashAccountIds[0]").value("3"));
+    }
 }

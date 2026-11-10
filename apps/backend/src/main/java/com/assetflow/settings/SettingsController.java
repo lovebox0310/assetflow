@@ -45,9 +45,12 @@ public class SettingsController {
     /**
      * 모든 필드는 선택이다 — 빠진 필드는 기존 값을 유지한다.
      * emergencyAccountIds 는 비상금 계좌(현금성·증권 예수금) id 목록이다. 빈 배열이면 지정 해제.
+     * compositionCashAccountIds(§89)는 구성비에서 전액 현금성으로 볼 계좌 id 목록이며
+     * 비상금과 독립이다. 생략하면 기존 값 유지, 빈 배열이면 해제.
      */
     public record SettingsBody(Integer targetMonths, List<String> emergencyAccountIds,
-                               Integer emergencyAvgMonths, List<String> emergencyCategories) {}
+                               Integer emergencyAvgMonths, List<String> emergencyCategories,
+                               List<String> compositionCashAccountIds) {}
 
     @GetMapping
     public ApiResponse<UserSettingsLedger.UserSettings> get() {
@@ -83,8 +86,13 @@ public class SettingsController {
         List<String> categories = body.emergencyCategories() == null
                 ? current.emergencyCategories() : validateCategories(body.emergencyCategories());
 
+        // §89: 비상금과 독립. 생략(null)이면 기존 값 유지, []면 해제.
+        List<String> compositionIds = body.compositionCashAccountIds() == null
+                ? current.compositionCashAccountIds()
+                : validateCompositionAccountIds(body.compositionCashAccountIds());
+
         return new ApiResponse<>("OK", "Settings updated",
-                ledger.update(current.email(), targetMonths, accountIds, avgMonths, categories));
+                ledger.update(current.email(), targetMonths, accountIds, avgMonths, categories, compositionIds));
     }
 
     /**
@@ -102,7 +110,7 @@ public class SettingsController {
     private List<String> validateAccountIds(List<String> raw) {
         Set<String> unique = new LinkedHashSet<>();
         for (String value : raw) {
-            Long id = parseAccountId(value);
+            Long id = parseAccountId(value, "emergencyAccountIds");
             AssetLedger.AssetRow row = assets.byId(id);
             if (row == null) {
                 throw new IllegalArgumentException("emergencyAccountIds does not exist: " + value);
@@ -118,14 +126,37 @@ public class SettingsController {
         return new ArrayList<>(unique);
     }
 
-    private static Long parseAccountId(String raw) {
+    /**
+     * §89 자산 구성비에서 전액 현금성으로 볼 계좌.
+     *
+     * 비상금과 달리 **유형 제한이 없다** — 예적금·부동산·증권 계좌 모두 지정할 수 있다.
+     * 유일한 제약은 부채(is_debt) 제외다. 지정한 계좌는 프론트 구성비에서 전액 현금성으로
+     * 합산되고, 지정이 없으면 §88 기본 규칙을 따른다. 중복 id 는 순서를 유지한 채 합친다.
+     */
+    private List<String> validateCompositionAccountIds(List<String> raw) {
+        Set<String> unique = new LinkedHashSet<>();
+        for (String value : raw) {
+            Long id = parseAccountId(value, "compositionCashAccountIds");
+            AssetLedger.AssetRow row = assets.byId(id);
+            if (row == null) {
+                throw new IllegalArgumentException("compositionCashAccountIds does not exist: " + value);
+            }
+            if (row.isDebt()) {
+                throw new IllegalArgumentException("compositionCashAccountIds must not include a debt account");
+            }
+            unique.add(String.valueOf(row.id()));
+        }
+        return new ArrayList<>(unique);
+    }
+
+    private static Long parseAccountId(String raw, String field) {
         if (raw == null || raw.isBlank()) {
-            throw new IllegalArgumentException("emergencyAccountIds must not contain blank ids");
+            throw new IllegalArgumentException(field + " must not contain blank ids");
         }
         try {
             return Long.valueOf(raw.trim());
         } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("emergencyAccountIds must contain numeric account ids");
+            throw new IllegalArgumentException(field + " must contain numeric account ids");
         }
     }
 
