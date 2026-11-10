@@ -981,8 +981,13 @@ button {
 .af-metric-unit { font-size: 0.62em; font-weight: 500; margin-inline-start: 2px; letter-spacing: 0; }
 /* 카드 보조 문구 — 기존 Typography secondary 와 같은 값. */
 .af-metric-hint { margin-top: 4px; font-size: 12px; line-height: 18px; color: var(--af-muted-foreground); }
-/* 비상금 카드 헤더: 모드 스위치 + 기준 설정 아이콘(제목 폭을 먹지 않게 24px). */
-.af-runway-extra { display: flex; align-items: center; gap: 4px; }
+/* HC-1 카드/섹션 헤더 공통 구조: 톱니는 제목 바로 오른쪽, 스위치·링크는 우측.
+ * 좌우 그룹 모두 8px 트레일링 간격을 쓴다(두 헤더가 같은 클래스를 공유). */
+.af-header__title-group { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.af-header__actions { display: flex; align-items: center; gap: 8px; }
+/* antd 의 head-title 은 기본 overflow:hidden 이라, 제목 옆 톱니의 44px 히트
+ * (::after 확장)가 위아래로 잘린다. MetricCard 제목 영역만 visible 로 연다. */
+.ant-card-head-title.af-card-title { overflow: visible; }
 /* 접힘 요약은 1줄 고정 — 넘치면 말줄임, 펼치면 상세가 전부 나온다. */
 .af-runway-line { display: flex; align-items: center; gap: 2px; }
 .af-runway-summary { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
