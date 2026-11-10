@@ -3467,3 +3467,13 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
 - `b3e2d81` merge(구성비 전액 현금성 계좌 지정, §89): frontend / backend / e2e / quality
   **success ×4** (run 42749186605). backend-gate가 신규 SettingsApiTest 7종 포함 통과.
 - 운영 반영은 `/opt/assetflow/app.jar` 재배포 + `assetflow.service` 재시작 후에 유효(사람 실행).
+
+## 2026-11-10 — 카드·섹션 헤더 액션 규칙 통일 (§90) [✅ 검증 완료]
+
+- 규칙: 제목 + 톱니(⚙)를 좌측 그룹으로, Switch·이동 링크는 우측 정렬. 간격 8px, 톱니는
+  `.af-icon-btn`(24px 시각·44px 히트) 단일 스타일.
+- 변경: MetricCard/SectionHeader 에 `titleAction` 슬롯, `.af-header__title-group`/
+  `.af-header__actions` 공용 클래스, `.ant-card-head-title.af-card-title { overflow: visible }`
+  (44px 히트 잘림 방지).
+- 대상: 비상금 유지 개월, 자산 구성비.
+- 검증: 단위 241 passed, typecheck·lint 0, e2e 199 passed, 320~430 넘침 0.
