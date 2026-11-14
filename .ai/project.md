@@ -5538,3 +5538,46 @@ DB 의 10월 합계는 현대 2,609,560 · 삼성 362,230 이었고, 마지막 �
 - 퇴직연금 잔고조회는 **주식·ETF·ETN만** 조회되고 펀드는 빠진다.
 - 모의투자(vps)에는 연금 상품코드가 없어 29 조회가 실패하고 기존 폴백으로 떨어진다.
 - IRP 계좌의 KIS 설정에서 **상품코드가 29인지** 확인해야 한다(01이면 전용 API 미적용).
+
+## 95) KIS IRP 장내채권 잔고·현재가 동기화 (2026-11-15)
+
+**배경**
+- IRP에는 주식·ETF 외에 **채권**도 있다. 퇴직연금 잔고조회(TTTC2208R)는 주식·ETF·ETN만
+  반환하고 펀드는 제외한다. 채권은 별도 API로 가져와 합쳐야 한다.
+
+**KIS 공식 API**
+- **장내채권 잔고조회**: `GET /uapi/domestic-bond/v1/trading/inquire-balance`, tr_id `CTSC8407R`
+  - params: `CANO`, `ACNT_PRDT_CD`(29), `INQR_CNDT="00"`, `PDNO=""`, `BUY_DT=""`,
+    `CTX_AREA_FK200=""`, `CTX_AREA_NK200=""`
+  - 응답 `output`: `pdno`, `cblc_qty`(잔고수량), `buy_unpr`(매수단가), `buy_amt`(매수금액),
+    `buy_dt`, `exdt`, `ord_psbl_qty`
+- **장내채권 현재가**: `GET /uapi/domestic-bond/v1/quotations/inquire-price`, tr_id `FHKBJ773400C0`
+  - params: `FID_COND_MRKT_DIV_CODE="B"`, `FID_INPUT_ISCD=<pdno>`
+  - 응답 `output`: `hts_kor_isnm`(종목명), `bond_prpr`(현재가), `ernn_rate`
+
+**결정**
+- 상품코드 29(IRP) 동기화 시 퇴직연금 잔고에 **장내채권 잔고를 합친다**.
+- `pdno` 기준 **lot 집계**: `qty=Σcblc_qty`, `buyAmt=Σbuy_amt`,
+  `avgBuyUnpr=Σ(buy_unpr×qty)/qty`.
+- 채권은 수량이 **액면 천원**, 단가가 **액면 1만원** 기준이라 `수량×현재가`를 그대로 쓰면
+  10~100배 오차가 난다. 앱의 `quantity × marketPrice`가 현재 평가액이 되도록 **유효단가**를 역산:
+  `purchaseUnit = buy_amt / qty`,
+  `marketPrice = buy_amt × bond_prpr / Σ(buy_unpr × qty)` (현재가 없으면 purchaseUnit).
+- `KisBalanceResponse.Holding` 에 `assetClass` 추가. 퇴직연금 `item_dvsn_name` 매핑
+  (ETF/ETN→etf, 채권→bond, 펀드→fund, 그 외→stock), 채권 API는 bond.
+  `InvestmentController`는 `h.assetClass()`를 사용(기존 "stock" 하드코딩 제거).
+- 채권 조회 실패는 **부분 성공**: 주식/ETF는 유지하고 `warning`에 사유를 표시. warning이 있으면
+  KIS 출처 stale 행 삭제를 건너뛴다(보수적).
+
+**검증**
+- `KisBalanceServiceTest` 신규: lot 2건 → 1건 합산(수량 150, 평단 99.6667, 유효단가 10,000,
+  평가액 1,500,000), 채권 실패 시 ETF 유지 + warning.
+- 백엔드 전체 **289 passed**, 프론트 typecheck/lint 0·단위 246·e2e 201.
+
+**한계 / 사람 조치**
+- 채권·연금 API는 **실전 전용**(모의투자 vps 미지원).
+- 개별 채권 현재가 조회 실패 시 매수 평가단가로 폴백한다(현재가처럼 보일 수 있음).
+- 펀드는 어느 API에서도 잔고를 가져오지 않는다.
+- 채권 종목 수만큼 현재가를 1회씩 호출한다(rate limit 주의).
+- KIS 앱키에 **장내채권 API 권한**이 없으면 `out_of_scope` → 채권만 warning.
+- 백엔드 재배포 후 IRP 계좌(상품코드 29)에서 `한투 동기화` 재실행.
