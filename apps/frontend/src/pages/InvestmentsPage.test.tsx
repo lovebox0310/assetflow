@@ -232,7 +232,7 @@ describe("InvestmentsPage (§54 E2)", () => {
     });
   });
 
-  it("자산군=채권이면 금액·날짜 폼으로 전환하고 수량으로 나눠 저장한다 (BOND-FORM-1)", async () => {
+  it("자산군=채권이면 금액·날짜 폼으로 전환하고 수량으로 나눠 저장한다 (BOND-FORM-3)", async () => {
     render(<InvestmentsPage />);
     await screen.findByText("삼성전자");
 
@@ -240,19 +240,22 @@ describe("InvestmentsPage (§54 E2)", () => {
     fireEvent.mouseDown(screen.getByLabelText("자산군"));
     fireEvent.click(await screen.findByTitle("채권"));
 
-    // 채권 전용 6개 필드만 보이고, 주식용 가격/통화/기준일 필드는 사라진다.
-    expect(await screen.findByLabelText("종목번호")).toBeDefined();
+    // 채권 전용 필드: 종목명(필수)·종목번호(선택)·수량·평가·매수·발행·만기.
+    expect(await screen.findByLabelText("종목명")).toBeDefined();
+    expect(screen.getByLabelText("종목번호")).toBeDefined();
     expect(screen.getByLabelText("보유수량")).toBeDefined();
     expect(screen.getByLabelText("평가금액")).toBeDefined();
     expect(screen.getByLabelText("매수금액")).toBeDefined();
     expect(screen.getByLabelText("발행일")).toBeDefined();
     expect(screen.getByLabelText("만기일")).toBeDefined();
-    expect(screen.queryByLabelText("종목명")).toBeNull();
     expect(screen.queryByLabelText("평단가")).toBeNull();
     expect(screen.queryByLabelText("현재가")).toBeNull();
     expect(screen.queryByLabelText("통화")).toBeNull();
     expect(screen.queryByLabelText("기준일")).toBeNull();
 
+    fireEvent.change(screen.getByLabelText("종목명"), {
+      target: { value: "국고03000-3412(24-13)" },
+    });
     fireEvent.change(screen.getByLabelText("종목번호"), { target: { value: "KR103502GA34" } });
     fireEvent.change(screen.getByLabelText("보유수량"), { target: { value: "10" } });
     fireEvent.change(screen.getByLabelText("평가금액"), { target: { value: "880050" } });
@@ -269,7 +272,8 @@ describe("InvestmentsPage (§54 E2)", () => {
       expect(post).toBeDefined();
       expect(JSON.parse(String((post?.[1] as RequestInit).body))).toMatchObject({
         assetClass: "bond",
-        name: "KR103502GA34",
+        name: "국고03000-3412(24-13)",
+        symbol: "KR103502GA34",
         currency: "KRW",
         quantity: 10,
         marketPrice: 88005,
@@ -280,6 +284,70 @@ describe("InvestmentsPage (§54 E2)", () => {
         maturityDate: "2034-05-01",
       });
     });
+  });
+
+  it("종목번호 없이 종목명만으로 채권을 저장한다 (BOND-FORM-3)", async () => {
+    render(<InvestmentsPage />);
+    await screen.findByText("삼성전자");
+
+    fireEvent.click(screen.getByRole("button", { name: "+ 종목 추가" }));
+    fireEvent.mouseDown(screen.getByLabelText("자산군"));
+    fireEvent.click(await screen.findByTitle("채권"));
+    expect(await screen.findByLabelText("보유수량")).toBeDefined();
+
+    fireEvent.change(screen.getByLabelText("보유수량"), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("평가금액"), { target: { value: "101200" } });
+
+    // 종목명이 비면 제출이 막힌다 — POST 가 나가지 않는다.
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    expect(await screen.findByText("종목명을 입력하세요")).toBeDefined();
+    expect(fetchMock.mock.calls.some(
+      ([url, init]) =>
+        String(url).includes("/investments/holdings")
+        && (init as RequestInit | undefined)?.method === "POST",
+    )).toBe(false);
+
+    const name = "메리츠화재 이율보증형보험III(3년)IRP형";
+    fireEvent.change(screen.getByLabelText("종목명"), { target: { value: name } });
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === "POST"
+          && String((init as RequestInit).body).includes("메리츠화재"),
+      );
+      expect(post).toBeDefined();
+      expect(JSON.parse(String((post?.[1] as RequestInit).body))).toMatchObject({
+        assetClass: "bond",
+        name,
+        symbol: null,
+        quantity: 1,
+        marketPrice: 101200,
+      });
+    });
+  });
+
+  it("종목번호 없는 채권도 목록 제목이 종목명이다 (BOND-FORM-3)", async () => {
+    const name = "메리츠화재 이율보증형보험III(3년)IRP형";
+    const bond = {
+      id: 99, accountId: 4, assetClass: "bond", symbol: null, name,
+      currency: "KRW", quantity: 1, avgPrice: 99000, marketPrice: 101200, fxRate: 1,
+      priceAsOf: null, issueDate: "2024-03-12", maturityDate: "2034-03-12",
+    };
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.includes("/integrations/upbit")) {
+        return Promise.resolve(apiResponse({ configured: false, accessKeyMasked: null }));
+      }
+      return Promise.resolve(apiResponse({
+        ...portfolioFixture(),
+        holdings: [...portfolioFixture().holdings, bond],
+      }));
+    }));
+    render(<InvestmentsPage />);
+
+    expect(await screen.findByText(name)).toBeDefined();
+    expect(screen.getByText("채권 · 2034-03-12 만기")).toBeDefined();
   });
 
   it("채권 목록 부제는 만기일을 보여 주고 '주'를 붙이지 않는다 (BOND-FORM-1)", async () => {
