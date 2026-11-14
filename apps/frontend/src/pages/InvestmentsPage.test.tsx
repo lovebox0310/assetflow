@@ -327,6 +327,63 @@ describe("InvestmentsPage (§54 E2)", () => {
     });
   });
 
+  it("채권 찾기로 선택하면 종목명/종목번호/발행일/만기일이 채워지고 그 값으로 저장된다 (BOND-SEARCH-1)", async () => {
+    const bond = {
+      code: "KR103502GEC4",
+      name: "국고03000-3412(24-13)",
+      issueDate: "2024-12-10",
+      maturityDate: "2034-12-10",
+      bondType: "C0",
+      bondClass: "GA",
+    };
+    const base = fetchMock as unknown as
+      (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes("/investments/bonds")) {
+        return Promise.resolve(apiResponse({ items: [bond], warning: null }));
+      }
+      return base(input, init);
+    }));
+    render(<InvestmentsPage />);
+    await screen.findByText("삼성전자");
+
+    fireEvent.click(screen.getByRole("button", { name: "+ 종목 추가" }));
+    fireEvent.mouseDown(screen.getByLabelText("자산군"));
+    fireEvent.click(await screen.findByTitle("채권"));
+    expect(await screen.findByLabelText("보유수량")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "채권 찾기" }));
+    fireEvent.change(await screen.findByLabelText("채권 검색"), { target: { value: "국고03000" } });
+    expect(await screen.findByText(bond.name, {}, { timeout: 3000 })).toBeDefined();
+    fireEvent.click(screen.getByText(bond.name));
+
+    expect((screen.getByLabelText("종목명") as HTMLInputElement).value).toBe(bond.name);
+    expect((screen.getByLabelText("종목번호") as HTMLInputElement).value).toBe(bond.code);
+    expect((screen.getByLabelText("발행일") as HTMLInputElement).value).toBe(bond.issueDate);
+    expect((screen.getByLabelText("만기일") as HTMLInputElement).value).toBe(bond.maturityDate);
+
+    fireEvent.change(screen.getByLabelText("보유수량"), { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText("평가금액"), { target: { value: "880050" } });
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === "POST"
+          && String((init as RequestInit).body).includes("KR103502GEC4"),
+      );
+      expect(post).toBeDefined();
+      expect(JSON.parse(String((post?.[1] as RequestInit).body))).toMatchObject({
+        assetClass: "bond",
+        name: bond.name,
+        symbol: bond.code,
+        issueDate: "2024-12-10",
+        maturityDate: "2034-12-10",
+        quantity: 10,
+        marketPrice: 88005,
+      });
+    });
+  });
+
   it("종목번호 없는 채권도 목록 제목이 종목명이다 (BOND-FORM-3)", async () => {
     const name = "메리츠화재 이율보증형보험III(3년)IRP형";
     const bond = {

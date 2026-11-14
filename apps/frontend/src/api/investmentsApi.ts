@@ -182,6 +182,27 @@ export function previewKisBonds(accountId: number): Promise<KisBondPreview> {
   );
 }
 
+/** BOND-SEARCH-1 채권 마스터 종목. */
+export interface BondItem {
+  code: string;
+  name: string;
+  issueDate: string | null;
+  maturityDate: string | null;
+  bondType: string;
+  bondClass: string;
+}
+
+export interface BondSearchResult {
+  items: BondItem[];
+  warning: string | null;
+}
+
+/** 이름/코드 부분일치 검색. 다운로드 실패도 200 + 빈 목록 + warning 이다. */
+export function searchBonds(q: string, limit = 20): Promise<BondSearchResult> {
+  const params = new URLSearchParams({ q, limit: String(limit) });
+  return apiFetch<BondSearchResult>(`/api/v1/investments/bonds?${params.toString()}`);
+}
+
 /** 종목 1건 시세 — 종목 추가 폼의 "현재가 가져오기". 없으면 404 로 실패한다. */
 export function fetchQuote(symbol: string): Promise<Quote> {
   return apiFetch<Quote>(`/api/v1/investments/quotes?symbol=${encodeURIComponent(symbol)}`);

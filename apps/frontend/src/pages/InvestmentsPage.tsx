@@ -21,6 +21,7 @@ import { SubNav } from "../components/SubNav";
 import { AfListTable, type AfListColumn, type AfRowAction } from "../components/AfListTable";
 import { KisCredentialsModal } from "../components/KisCredentialsModal";
 import { KisBondPreviewModal } from "../components/KisBondPreviewModal";
+import { BondSearchModal } from "../components/BondSearchModal";
 import { UpbitCredentialsModal } from "../components/UpbitCredentialsModal";
 import {
   clearKisBalance,
@@ -174,6 +175,8 @@ export function InvestmentsPage({
   const [kisCredentialsAccount, setKisCredentialsAccount] = useState<{ id: number; name: string } | null>(null);
   /** KIS-BOND-2 읽기 전용 채권 원본 진단 모달. */
   const [bondPreviewAccount, setBondPreviewAccount] = useState<{ id: number; name: string } | null>(null);
+  /** BOND-SEARCH-1 채권 마스터 검색 모달. */
+  const [bondSearchOpen, setBondSearchOpen] = useState(false);
   /** 계좌 헤더의 `⋯` 메뉴는 한 번에 하나만 열린다 — aria-expanded 도 이 값으로 동기화한다. */
   const [openAccountMenu, setOpenAccountMenu] = useState<number | null>(null);
   /**
@@ -878,6 +881,7 @@ export function InvestmentsPage({
                     wide
                     onFetchQuote={() => void fetchQuoteForForm()}
                     fetchingQuote={quoteBusy}
+                    onOpenBondSearch={() => setBondSearchOpen(true)}
                   />
                   <Space style={{ marginTop: 8 }}>
                     <Button type="primary" onClick={() => void save()} loading={busy}>
@@ -1104,6 +1108,7 @@ export function InvestmentsPage({
                                 wide
                                 onFetchQuote={() => void fetchQuoteForForm()}
                                 fetchingQuote={quoteBusy}
+                                onOpenBondSearch={() => setBondSearchOpen(true)}
                               />
                               <Space style={{ marginTop: 8 }}>
                                 <Button type="primary" onClick={() => void save()} loading={busy}>
@@ -1186,6 +1191,20 @@ export function InvestmentsPage({
         />
       )}
 
+      <BondSearchModal
+        open={bondSearchOpen}
+        onClose={() => setBondSearchOpen(false)}
+        onSelect={(bond) => {
+          // 선택값은 사용자가 이후 수정할 수 있다 — 저장 시점에 다시 읽는다.
+          form.setFieldsValue({
+            name: bond.name,
+            symbol: bond.code,
+            issueDate: bond.issueDate ?? undefined,
+            maturityDate: bond.maturityDate ?? undefined,
+          });
+        }}
+      />
+
       <UpbitCredentialsModal
         open={upbitOpen}
         onClose={() => setUpbitOpen(false)}
@@ -1215,12 +1234,14 @@ function HoldingForm({
   wide,
   onFetchQuote,
   fetchingQuote,
+  onOpenBondSearch,
 }: {
   form: FormInstance<HoldingFormValues>;
   accounts: Portfolio["accounts"];
   wide: boolean;
   onFetchQuote: () => void;
   fetchingQuote: boolean;
+  onOpenBondSearch: () => void;
 }) {
   const currency = (Form.useWatch("currency", form) as string | undefined) ?? "KRW";
   const assetClass = (Form.useWatch("assetClass", form) as HoldingPayload["assetClass"] | undefined)
@@ -1273,6 +1294,9 @@ function HoldingForm({
               등록할 수 있도록 symbol 은 선택으로 둔다. 평단가/현재가/통화/기준일은 숨긴다. */}
           <Form.Item name="name" label="종목명" rules={[{ required: true, message: "종목명을 입력하세요" }]}>
             <Input style={{ width: wide ? 180 : "100%" }} placeholder="예: 국고03000-3412(24-13)" />
+          </Form.Item>
+          <Form.Item label=" " colon={false}>
+            <Button onClick={onOpenBondSearch}>채권 찾기</Button>
           </Form.Item>
           <Form.Item name="symbol" label="종목번호">
             <Input style={{ width: wide ? 180 : "100%" }} placeholder="예: KR103502GA34 (없으면 비움)" />
