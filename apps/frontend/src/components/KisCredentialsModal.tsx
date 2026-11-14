@@ -201,7 +201,13 @@ export function KisCredentialsModal({ accountId, accountName, open, onClose, onS
             name="acntPrdtCd"
             label="상품코드"
             rules={[{ required: true, message: "상품코드를 입력하세요" }]}
-            style={{ width: 120 }}
+            style={{ width: 160 }}
+            extra={
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                종합 01 · 개인연금 22 · 퇴직연금(IRP) 29. IRP는 29로 입력해야 예수금이
+                조회됩니다.
+              </Typography.Text>
+            }
           >
             <Input placeholder="예: 01" maxLength={4} />
           </Form.Item>

@@ -5502,3 +5502,39 @@ DB 의 10월 합계는 현대 2,609,560 · 삼성 362,230 이었고, 마지막 �
 **한계**
 - `100dvh` 미지원 구형 브라우저에서는 maxHeight 가 무시될 수 있다(iOS 15.4+ 지원).
 - 320×480 처럼 더 짧은 뷰포트에서는 body 스크롤이 깊어지지만 footer 는 유지된다.
+
+## 94) KIS IRP(상품코드 29) 퇴직연금 전용 잔고조회 (2026-11-15)
+
+**문제**
+- 퇴직연금 IRP 계좌(상품코드 29)가 "KIS 연결은 되었지만 예수금이 0"으로 동기화되고
+  보유종목도 0으로 보였다.
+- 원인: IRP는 일반 주식잔고(`inquire-balance`, TTTC8434R)와 계좌자산현황
+  (`inquire-account-balance`, CTRP6548R)으로 예수금이 조회되지 않는다. KIS는 IRP용
+  **퇴직연금 잔고조회**를 따로 제공한다.
+
+**결정 (KIS 공식 문서 기준)**
+- 상품코드 **29(퇴직연금/IRP)** 는 `GET /uapi/domestic-stock/v1/trading/pension/inquire-balance`,
+  tr_id **TTTC2208R** 로 조회한다.
+  - 파라미터: `CANO`, `ACNT_PRDT_CD=29`, `ACCA_DVSN_CD="00"`, `INQR_DVSN="00"`,
+    `CTX_AREA_FK100=""`, `CTX_AREA_NK100=""`.
+  - `output1`: `pdno`, `prdt_name`, `hldg_qty`, `pchs_avg_pric`, `evlu_amt`, `evlu_pfls_amt`.
+    현재가(`prpr`)가 없으면 `evlu_amt / hldg_qty`(4자리 HALF_UP) → 평단가 순으로 대체.
+  - `output2`: `dnca_tot_amt`, `tot_evlu_amt`, `scts_evlu_amt`.
+- `KisBalanceResponse.Summary` 에 **`cashKnown`** 추가. 퇴직연금 응답은 예수금 0도 신뢰한다.
+  일반 주식잔고 경로의 0은 여전히 "읽지 못함"으로 본다(§62.3).
+- `InvestmentController`: `cashKnown=true`면 예수금 0을 그대로 반영하고 경고를 내지 않는다.
+  연결 테스트도 `cashKnown=true`면 예수금 0이어도 성공으로 본다.
+- 22(개인연금)는 기존 경로 유지(회귀 방지). 29만 전용 API.
+- UI: `KisCredentialsModal` 상품코드 안내에 "종합 01 · 개인연금 22 · 퇴직연금(IRP) 29" 추가.
+
+**검증**
+- `KisBalanceServiceTest` 신규 2건: 29는 퇴직연금 경로만 호출(TTTC2208R), 예수금 76,502·
+  평가 21,691,902·851주·현재가 25,400 파싱, `cashKnown=true`; 예수금 0·보유 0도 전용 응답만.
+- 기존 21 계좌 테스트·`KisSyncCashTest` 회귀 없음. 백엔드 전체 287 passed.
+- 프론트 typecheck·lint 0, 단위 246, e2e 201.
+
+**한계 / 사람 조치**
+- 55번(DC 가입자) 계좌는 KIS 정책상 퇴직연금 조회 불가.
+- 퇴직연금 잔고조회는 **주식·ETF·ETN만** 조회되고 펀드는 빠진다.
+- 모의투자(vps)에는 연금 상품코드가 없어 29 조회가 실패하고 기존 폴백으로 떨어진다.
+- IRP 계좌의 KIS 설정에서 **상품코드가 29인지** 확인해야 한다(01이면 전용 API 미적용).
