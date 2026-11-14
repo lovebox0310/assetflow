@@ -23,11 +23,23 @@ public record KisBalanceResponse(
             String crdtLoanYn     // 신용대출여부
     ) {}
 
+    /**
+     * @param cashKnown 예수금 값을 **신뢰할 수 있는가**. 퇴직연금(IRP, 상품코드 29)
+     *                  전용 조회는 예수금 0 도 정상값이므로 true 다. 일반 주식잔고
+     *                  경로의 0 은 "읽지 못함"과 구분되지 않아 false 다.
+     */
     public record Summary(
             BigDecimal dncaTotAmt,   // 예수금총금액
             BigDecimal totEvluAmt,   // 총평가금액
             BigDecimal sctsEvluAmt,  // 주식평가금액
             BigDecimal thdtBuyAmt,   // 당일매수금액
-            BigDecimal thdtSllAmt    // 당일매도금액
-    ) {}
+            BigDecimal thdtSllAmt,   // 당일매도금액
+            boolean cashKnown
+    ) {
+        /** 기존 호출부 호환 — cashKnown=false. */
+        public Summary(BigDecimal dncaTotAmt, BigDecimal totEvluAmt, BigDecimal sctsEvluAmt,
+                       BigDecimal thdtBuyAmt, BigDecimal thdtSllAmt) {
+            this(dncaTotAmt, totEvluAmt, sctsEvluAmt, thdtBuyAmt, thdtSllAmt, false);
+        }
+    }
 }
