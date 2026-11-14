@@ -82,6 +82,8 @@ public class InvestmentQuoteController {
                         && q.currency().equalsIgnoreCase(holding.currency()))
                 .map(q -> new HoldingRow(holding.id(), holding.accountId(), holding.assetClass(),
                         holding.symbol(), holding.name(), holding.currency(), holding.quantity(),
-                        holding.avgPrice(), q.price(), holding.fxRate(), q.priceAsOf()));
+                        holding.avgPrice(), q.price(), holding.fxRate(), q.priceAsOf(),
+                        // BOND-FORM-2: 가격만 바꾸는 경로다 — 채권 발행일/만기일은 그대로 보존한다.
+                        holding.issueDate(), holding.maturityDate()));
     }
 }
