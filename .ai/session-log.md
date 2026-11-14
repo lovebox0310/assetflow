@@ -3574,3 +3574,10 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
 - KIS 계좌 `⋯` → `채권 진단` 모달(원본 JSON, 복사/닫기, body 스크롤).
 - 검증: 진단 테스트 2건, 백엔드 291, 프론트 246, e2e 201.
 - 사람 조치: 재배포 후 IRP 채권 진단으로 `balance.output`/`error` 확인.
+
+### KIS IRP 채권 진단 실측 (2026-11-15)
+- `kis-bond-preview` → `rt_cd=0`, `msg_cd=KIOK0560`, `msg1="조회할 내용이 없습니다"`,
+  `output=[]`, `prices=[]`, `error=null`.
+- 결론: 이 IRP 계좌의 **장내채권 잔고 0건**. 권한/IP 문제 아님. 보유 채권은 장외/펀드 또는
+  다른 계좌일 가능성. KIS Open API에는 장외/펀드 채권 잔고 API가 없다.
+- 대안: 채권은 `+ 종목 추가`로 수동 입력. 자동화는 KIS API 범위 밖.
