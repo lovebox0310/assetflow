@@ -165,6 +165,8 @@ export interface KisBondPreview {
   balance: unknown | null;
   prices: KisBondPricePreview[];
   error: string | null;
+  /** TTTC2202R(퇴직연금 체결기준잔고) 원본 — 보험·국민주택·국고채 포함 여부 진단용. */
+  pensionPresent?: unknown | null;
 }
 
 export function previewKisBonds(accountId: number): Promise<KisBondPreview> {
