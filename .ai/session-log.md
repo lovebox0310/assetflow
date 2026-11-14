@@ -3566,3 +3566,11 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
 - 채권 실패는 부분 성공(주식/ETF 유지 + warning).
 - 검증: 백엔드 289, 프론트 246, e2e 201.
 - 사람 조치: KIS 앱키 장내채권 권한 확인, 백엔드 재배포 후 IRP 동기화.
+
+## 2026-11-15 — KIS IRP 채권 원본 진단 API·모달 (§96) [✅ 검증 완료]
+
+- `POST /api/v1/investments/accounts/{id}/kis-bond-preview` (읽기 전용):
+  bond 잔고 원본 + pdno별 현재가 원본을 그대로 반환. 실패는 200 + error.
+- KIS 계좌 `⋯` → `채권 진단` 모달(원본 JSON, 복사/닫기, body 스크롤).
+- 검증: 진단 테스트 2건, 백엔드 291, 프론트 246, e2e 201.
+- 사람 조치: 재배포 후 IRP 채권 진단으로 `balance.output`/`error` 확인.

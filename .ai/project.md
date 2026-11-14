@@ -5581,3 +5581,31 @@ DB 의 10월 합계는 현대 2,609,560 · 삼성 362,230 이었고, 마지막 �
 - 채권 종목 수만큼 현재가를 1회씩 호출한다(rate limit 주의).
 - KIS 앱키에 **장내채권 API 권한**이 없으면 `out_of_scope` → 채권만 warning.
 - 백엔드 재배포 후 IRP 계좌(상품코드 29)에서 `한투 동기화` 재실행.
+
+## 96) KIS IRP 채권 원본 진단 API·모달 (2026-11-15)
+
+**배경**
+- IRP 채권 동기화가 실제로 rows를 받는지 확인이 필요했다. 변환된 Holding만으로는 KIS 원본
+  응답(잔고/현재가)을 볼 수 없어, "데이터가 없음"과 "변환/권한 문제"를 구분하기 어렵다.
+
+**결정**
+- **읽기 전용 진단 API**: `POST /api/v1/investments/accounts/{accountId}/kis-bond-preview`
+  - 응답 `BondPreview { balance: JsonNode|null, prices: [{pdno, price: JsonNode|null, error}], error }`
+  - 잔고 API(`CTSC8407R`) 원본과, 잔고의 중복 없는 `pdno`마다 현재가 API(`FHKBJ773400C0`) 원본.
+  - 잔고 실패는 **200 + error**(예외로 500/502를 내지 않음), 개별 현재가 실패는 항목별 error.
+  - **DB를 변경하지 않는다.**
+- **UI**: KIS 계좌 `⋯` 메뉴에 `채권 진단`. 모달에 원본 JSON(복사/닫기), `max-height: calc(100dvh - 32px)`,
+  body 스크롤. 320~430 가로 넘침 0.
+
+**검증**
+- `KisBalanceServiceTest` 진단 2건: 잔고 원본 2행 + 중복 pdno 제거한 현재가 1건 / 잔고 실패 시
+  `balance=null, prices=[], error` (예외 없음).
+- 백엔드 전체 **291 passed**, 프론트 typecheck/lint 0·단위 **246**·e2e **201**.
+
+**사용법 / 해석**
+- 재배포 후 IRP 계좌 `⋯` → **채권 진단**.
+  - `balance.output` rows 있음 → 장내채권 존재. sync가 저장하지 않으면 변환 로직을 디버그.
+  - `balance.output` 비어 있음 → IRP에 장내채권이 없음(장외채권·펀드일 수 있음) → 수동/CSV.
+  - `error` 에 `out_of_scope` → KIS 앱키에 **장내채권 API 권한** 없음.
+  - `error` 에 `no_authorization_ip` 등 → 키/IP/환경 문제.
+- 원본 JSON에는 계좌·보유 금액이 포함되므로 **공유 범위 주의**. 로그에는 남기지 않는다.
