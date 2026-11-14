@@ -5477,3 +5477,28 @@ DB 의 10월 합계는 현대 2,609,560 · 삼성 362,230 이었고, 마지막 �
 - 연동 해제는 모달 안에만 둔다 — 자격증명 삭제는 계좌 단위가 아닌 전역 동작이다.
 - 계좌 식별은 `institutionName`/`accountName`이 "업비트"인지로 판단한다. 이름을 바꾸면
   메뉴가 사라지고 상단 부트스트랩 버튼이 돌아온다(안정적 식별자가 필요하면 브로커 코드 도입).
+
+## 93) 비상금 설정 모달 모바일 셸 (2026-11-14)
+
+**문제**
+- `EmergencyFundSettingsModal` 이 320×568 에서 내용이 길어 footer(저장/취소)가 뷰포트 아래로
+  밀렸다(§87 감사: footer 815px 아래). 페이지형 스크롤이 생겨 모달 조작이 어려웠다.
+
+**해결**
+- `CompositionBasisModal` 과 동일한 검증된 셸을 적용:
+  - `centered`, `width="min(560px, calc(100vw - 24px))"`
+  - `styles.container { maxHeight: calc(100dvh - 32px); display:flex; flexDirection:column; padding:0; overflow:hidden }`
+  - `styles.body { overflowY:auto; flex:1 1 auto; minHeight:0; padding:'0 16px 12px'; overscrollBehavior:contain }`
+  - `styles.footer { margin:0; flex:'0 0 auto'; padding:'12px 16px calc(12px + var(--af-safe-bottom))'; borderTop:1px var(--af-border) }`
+- 모달 로직·문구·저장 동작은 변경하지 않았다.
+
+**가드**
+- 신규 `e2e/mobile-emergency-modal.spec.ts` — 모바일 320/390:
+  컨테이너 뷰포트 내(top≥8, bottom≤innerHeight−8), footer 항상 보임,
+  body 스크롤 시 footer 고정(±0.5px), `.ant-modal-wrap` 페이지 스크롤 0, 가로 넘침 0.
+  데스크톱 1280 1건 포함. antd 6 는 `.ant-modal-container` 를 쓴다(`.ant-modal-content` 없음).
+- 검증: 단위 246 passed, typecheck·lint 0, e2e **201 passed**(기존 199 + 2).
+
+**한계**
+- `100dvh` 미지원 구형 브라우저에서는 maxHeight 가 무시될 수 있다(iOS 15.4+ 지원).
+- 320×480 처럼 더 짧은 뷰포트에서는 body 스크롤이 깊어지지만 footer 는 유지된다.

@@ -137,7 +137,31 @@ export function EmergencyFundSettingsModal({
       open={open}
       title="비상금 유지 개월 기준"
       onCancel={onClose}
+      centered
       destroyOnHidden
+      width="min(560px, calc(100vw - 24px))"
+      styles={{
+        container: {
+          maxHeight: "calc(100dvh - 32px)",
+          display: "flex",
+          flexDirection: "column",
+          padding: 0,
+          overflow: "hidden",
+        },
+        body: {
+          overflowY: "auto",
+          flex: "1 1 auto",
+          minHeight: 0,
+          padding: "0 16px 12px",
+          overscrollBehavior: "contain",
+        },
+        footer: {
+          margin: 0,
+          flex: "0 0 auto",
+          padding: "12px 16px calc(12px + var(--af-safe-bottom))",
+          borderTop: "1px solid var(--af-border)",
+        },
+      }}
       footer={
         <Space>
           <Button onClick={onClose}>취소</Button>

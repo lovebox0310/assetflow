@@ -3531,3 +3531,11 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
 ### 참고 (환경)
 - 업비트 서버 공인 IP: `221.165.129.232` (허용 IP 등록, 고정 IP 권장)
 - 업비트 키 권한: 자산조회만(주문·출금 금지)
+
+## 2026-11-14 — 비상금 설정 모달 모바일 footer 수정 (§93) [✅ 검증 완료]
+
+- `EmergencyFundSettingsModal` 에 `CompositionBasisModal` 과 동일한 셸 적용
+  (centered, max-height 100dvh-32, body 스크롤, footer safe-area·border).
+- 신규 `e2e/mobile-emergency-modal.spec.ts`: 320/390 컨테이너·footer 뷰포트 내,
+  body 스크롤 시 footer 고정, wrap 스크롤 0, 가로 넘침 0. 데스크톱 1건.
+- 검증: 단위 246 passed, typecheck·lint 0, e2e 201 passed(199+2), before/after 캡처.
