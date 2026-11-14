@@ -68,6 +68,13 @@ class KisSyncCashTest {
                 new BigDecimal(cash), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
     }
 
+    /** IRP(상품코드 29) 전용 조회처럼 예수금 0 도 신뢰할 수 있는 응답. */
+    private static KisBalanceResponse withKnownCash(String cash) {
+        return new KisBalanceResponse(List.of(), new KisBalanceResponse.Summary(
+                new BigDecimal(cash), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, true));
+    }
+
     @Test
     void unresolvedCashKeepsExistingBalanceAndReturnsWarning() throws Exception {
         when(kisBalanceService.fetchBalance(any())).thenReturn(withCash("0"));
@@ -92,6 +99,32 @@ class KisSyncCashTest {
                 .andExpect(jsonPath("$.data.warning").value(org.hamcrest.Matchers.nullValue()));
 
         assertThat(assets.byId(INVEST_ACCOUNT_ID).balance()).isEqualTo(8_800_000L);
+    }
+
+    @Test
+    void knownZeroCashIsAppliedAsValidValueWithoutWarning() throws Exception {
+        when(kisBalanceService.fetchBalance(any())).thenReturn(withKnownCash("0"));
+
+        mvc.perform(post("/api/v1/investments/holdings/sync-kis").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"accountId\":" + INVEST_ACCOUNT_ID + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.warning").value(org.hamcrest.Matchers.nullValue()));
+
+        assertThat(assets.byId(INVEST_ACCOUNT_ID).balance()).isZero();
+    }
+
+    @Test
+    void connectionTestAcceptsKnownZeroCashForIrp() throws Exception {
+        when(kisBalanceService.fetchBalance(any())).thenReturn(withKnownCash("0"));
+
+        mvc.perform(post("/api/v1/investments/accounts/" + INVEST_ACCOUNT_ID + "/kis-credentials/test")
+                        .header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.ok").value(true))
+                .andExpect(jsonPath("$.data.cash").value(0))
+                .andExpect(jsonPath("$.data.message").value(
+                        org.hamcrest.Matchers.containsString("예수금 0원")));
     }
 
     @Test
