@@ -69,7 +69,9 @@ public class InvestmentController {
                                 String currency, BigDecimal quantity, BigDecimal avgPrice,
                                 BigDecimal marketPrice, BigDecimal fxRate, String priceAsOf,
                                 /** BOND-FORM-1: bond 일 때만 저장한다. YYYY-MM-DD. */
-                                String issueDate, String maturityDate) {}
+                                String issueDate, String maturityDate,
+                                /** BOND-INFO-1: bond 일 때만 저장한다. */
+                                String issuerName, BigDecimal couponRate) {}
 
     public record SyncKisRequest(Long accountId) {}
 
@@ -383,9 +385,21 @@ public class InvestmentController {
         // BOND-FORM-1: 발행일/만기일은 채권에만 저장한다. 다른 자산군이 보내면 무시(null).
         LocalDate issueDate = parseDate(request.issueDate(), "issueDate");
         LocalDate maturityDate = parseDate(request.maturityDate(), "maturityDate");
+        String issuerName = request.issuerName() == null ? null : request.issuerName().trim();
+        if (issuerName != null && issuerName.length() > 100) {
+            throw new IllegalArgumentException("issuerName must be at most 100 characters");
+        }
+        BigDecimal couponRate = request.couponRate();
+        if (couponRate != null
+                && (couponRate.signum() < 0 || couponRate.compareTo(new BigDecimal("100")) > 0)) {
+            throw new IllegalArgumentException("couponRate must be between 0 and 100");
+        }
+
         if (!"bond".equals(request.assetClass())) {
             issueDate = null;
             maturityDate = null;
+            issuerName = null;
+            couponRate = null;
         } else if (issueDate != null && maturityDate != null && maturityDate.isBefore(issueDate)) {
             throw new IllegalArgumentException("maturityDate must be on or after issueDate");
         }
@@ -393,7 +407,8 @@ public class InvestmentController {
         return new HoldingRow(0, request.accountId(), request.assetClass(),
                 request.symbol() == null || request.symbol().isBlank() ? null : request.symbol(),
                 request.name(), currency, request.quantity(), request.avgPrice(),
-                request.marketPrice(), request.fxRate(), priceAsOf, issueDate, maturityDate);
+                request.marketPrice(), request.fxRate(), priceAsOf, issueDate, maturityDate,
+                issuerName, couponRate);
     }
 
     private static LocalDate parseDate(String raw, String field) {

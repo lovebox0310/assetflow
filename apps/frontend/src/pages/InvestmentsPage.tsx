@@ -29,6 +29,7 @@ import {
   deleteHolding,
   fetchFxRate,
   fetchQuote,
+  fetchBondIssueInfo,
   getPortfolio,
   getUpbitStatus,
   refreshHoldingPrices,
@@ -116,9 +117,14 @@ function valueOf(h: HoldingRow): number {
  * 채권 폼 전용 값 — 사용자는 평가금액/매수금액을 입력하고, 저장 시 수량으로 나눠
  * marketPrice/avgPrice 로 환산한다. 다른 자산군은 이 두 필드를 쓰지 않는다.
  */
-type HoldingFormValues = Omit<HoldingPayload, "issueDate" | "maturityDate"> & {
+type HoldingFormValues = Omit<
+  HoldingPayload,
+  "issueDate" | "maturityDate" | "issuerName" | "couponRate"
+> & {
   issueDate?: string | null | undefined;
   maturityDate?: string | null | undefined;
+  issuerName?: string | null | undefined;
+  couponRate?: number | null | undefined;
   bondEvaluatedAmount?: number | undefined;
   bondPurchaseAmount?: number | undefined;
 };
@@ -165,6 +171,8 @@ export function InvestmentsPage({
   /** §54.4 시세: 자동 갱신은 조용히, 수동 새로고침·시세 가져오기는 실패를 화면에 알린다. */
   const [refreshingQuotes, setRefreshingQuotes] = useState(false);
   const [quoteBusy, setQuoteBusy] = useState(false);
+  /** BOND-INFO-1 발행정보 보강 조회. */
+  const [bondInfoBusy, setBondInfoBusy] = useState(false);
   const [form] = Form.useForm<HoldingFormValues>();
   /** §54.3: 계좌(예수금·이름·기관) 편집 상태. 종목 편집과 동시에 열지 않는다. */
   const [accountEditId, setAccountEditId] = useState<number | null>(null);
@@ -324,6 +332,8 @@ export function InvestmentsPage({
       priceAsOf: new Date().toISOString().slice(0, 10),
       issueDate: undefined,
       maturityDate: undefined,
+      issuerName: undefined,
+      couponRate: undefined,
       bondEvaluatedAmount: undefined,
       bondPurchaseAmount: undefined,
     });
@@ -346,6 +356,8 @@ export function InvestmentsPage({
       priceAsOf: row.priceAsOf ?? "",
       issueDate: row.issueDate ?? undefined,
       maturityDate: row.maturityDate ?? undefined,
+      issuerName: row.issuerName ?? undefined,
+      couponRate: row.couponRate ?? undefined,
       // 채권은 금액 입력으로 보여 준다 — 수량 × 저장 단가.
       bondEvaluatedAmount: row.assetClass === "bond" ? row.quantity * row.marketPrice : undefined,
       bondPurchaseAmount: row.assetClass === "bond" ? row.quantity * row.avgPrice : undefined,
@@ -399,9 +411,11 @@ export function InvestmentsPage({
             marketPrice: priceDrafts[h.id] ?? h.marketPrice,
             fxRate: h.fxRate,
             priceAsOf: today,
-            // 채권 날짜는 가격 갱신에서 건드리지 않는다.
+            // 채권 날짜·발행기관/표면이율은 가격 갱신에서 건드리지 않는다.
             issueDate: h.issueDate ?? null,
             maturityDate: h.maturityDate ?? null,
+            issuerName: h.issuerName ?? null,
+            couponRate: h.couponRate ?? null,
           }),
         ),
       );
@@ -452,6 +466,10 @@ export function InvestmentsPage({
         priceAsOf: null,
         issueDate: values.issueDate?.trim() ? values.issueDate.trim() : null,
         maturityDate: values.maturityDate?.trim() ? values.maturityDate.trim() : null,
+        issuerName: values.issuerName?.trim() ? values.issuerName.trim() : null,
+        couponRate: Number.isFinite(Number(values.couponRate)) && values.couponRate !== undefined
+          ? Number(values.couponRate)
+          : null,
       };
     } else {
       const currency = (values.currency || "KRW").toUpperCase();
@@ -469,6 +487,8 @@ export function InvestmentsPage({
         priceAsOf: values.priceAsOf?.trim() ? values.priceAsOf.trim() : null,
         issueDate: null,
         maturityDate: null,
+        issuerName: null,
+        couponRate: null,
       };
     }
     try {
@@ -527,6 +547,48 @@ export function InvestmentsPage({
     } finally {
       setQuoteBusy(false);
     }
+  };
+
+  /**
+   * BOND-INFO-1: KIS 발행정보로 발행기관·표면이율을 보강한다. 보조 정보이므로
+   * 실패해도 저장을 막지 않고 안내만 남긴다.
+   */
+  const applyBondIssueInfo = async (accountId: number, pdno: string) => {
+    setBondInfoBusy(true);
+    setActionError("");
+    try {
+      const info = await fetchBondIssueInfo(accountId, pdno);
+      if (info.error) {
+        setActionWarning(info.error);
+        return;
+      }
+      const patch: Partial<HoldingFormValues> = {};
+      if (info.issuerName) patch.issuerName = info.issuerName;
+      if (info.couponRate !== null) patch.couponRate = info.couponRate;
+      // 날짜는 사용자가 이미 채운 값이 있으면 덮지 않는다.
+      if (info.issueDate && !form.getFieldValue("issueDate")) patch.issueDate = info.issueDate;
+      if (info.maturityDate && !form.getFieldValue("maturityDate")) patch.maturityDate = info.maturityDate;
+      form.setFieldsValue(patch);
+      setActionWarning("");
+    } catch (e) {
+      setActionWarning(describeError(e, "발행정보를 가져오지 못했습니다 — 직접 입력할 수 있습니다"));
+    } finally {
+      setBondInfoBusy(false);
+    }
+  };
+
+  const fetchBondInfoForForm = async () => {
+    const accountId = Number(form.getFieldValue("accountId"));
+    const pdno = String(form.getFieldValue("symbol") ?? "").trim();
+    if (!accountId) {
+      setActionError("계좌를 먼저 선택하세요");
+      return;
+    }
+    if (!pdno) {
+      setActionError("종목번호를 입력하거나 채권 찾기로 선택하세요");
+      return;
+    }
+    await applyBondIssueInfo(accountId, pdno);
   };
 
   /**
@@ -738,11 +800,18 @@ export function InvestmentsPage({
    * 모바일 2행은 짧게 — 손익은 평가액 아래(`.af-list__value-sub`)에 두어
    * 좁은 폭에서도 잘리지 않고 항상 보이게 한다.
    */
-  const holdingSubtitle = (row: HoldingRow) =>
-    row.assetClass === "bond"
-      // 채권은 '주'가 아니라 만기일을 보여 준다 (BOND-FORM-1).
-      ? `채권 · ${row.maturityDate ? `${row.maturityDate} 만기` : "만기 미입력"}`
-      : `${CLASS_LABELS[row.assetClass]} · ${row.quantity.toLocaleString("ko-KR")}주`;
+  const holdingSubtitle = (row: HoldingRow) => {
+    if (row.assetClass === "bond") {
+      // BOND-INFO-1: 표면이율·발행기관·만기일을 있는 값만 조립한다. '주'는 쓰지 않는다.
+      const parts = ["채권"];
+      if (row.couponRate !== null && row.couponRate !== undefined) parts.push(`${row.couponRate}%`);
+      if (row.issuerName) parts.push(row.issuerName);
+      if (row.maturityDate) parts.push(`${row.maturityDate} 만기`);
+      const label = parts.join(" · ");
+      return <span title={label}>{label}</span>;
+    }
+    return `${CLASS_LABELS[row.assetClass]} · ${row.quantity.toLocaleString("ko-KR")}주`;
+  };
 
   return (
     <AppLayout
@@ -882,6 +951,8 @@ export function InvestmentsPage({
                     onFetchQuote={() => void fetchQuoteForForm()}
                     fetchingQuote={quoteBusy}
                     onOpenBondSearch={() => setBondSearchOpen(true)}
+                    onFetchBondInfo={() => void fetchBondInfoForForm()}
+                    bondInfoBusy={bondInfoBusy}
                   />
                   <Space style={{ marginTop: 8 }}>
                     <Button type="primary" onClick={() => void save()} loading={busy}>
@@ -1109,6 +1180,8 @@ export function InvestmentsPage({
                                 onFetchQuote={() => void fetchQuoteForForm()}
                                 fetchingQuote={quoteBusy}
                                 onOpenBondSearch={() => setBondSearchOpen(true)}
+                                onFetchBondInfo={() => void fetchBondInfoForForm()}
+                                bondInfoBusy={bondInfoBusy}
                               />
                               <Space style={{ marginTop: 8 }}>
                                 <Button type="primary" onClick={() => void save()} loading={busy}>
@@ -1202,6 +1275,9 @@ export function InvestmentsPage({
             issueDate: bond.issueDate ?? undefined,
             maturityDate: bond.maturityDate ?? undefined,
           });
+          // 계좌가 이미 선택돼 있으면 KIS 발행정보로 회사·금리를 보강한다(best-effort).
+          const accountId = Number(form.getFieldValue("accountId"));
+          if (accountId) void applyBondIssueInfo(accountId, bond.code);
         }}
       />
 
@@ -1235,6 +1311,8 @@ function HoldingForm({
   onFetchQuote,
   fetchingQuote,
   onOpenBondSearch,
+  onFetchBondInfo,
+  bondInfoBusy,
 }: {
   form: FormInstance<HoldingFormValues>;
   accounts: Portfolio["accounts"];
@@ -1242,8 +1320,11 @@ function HoldingForm({
   onFetchQuote: () => void;
   fetchingQuote: boolean;
   onOpenBondSearch: () => void;
+  onFetchBondInfo: () => void;
+  bondInfoBusy: boolean;
 }) {
   const currency = (Form.useWatch("currency", form) as string | undefined) ?? "KRW";
+  const accountId = Form.useWatch("accountId", form) as number | undefined;
   const assetClass = (Form.useWatch("assetClass", form) as HoldingPayload["assetClass"] | undefined)
     ?? "stock";
   const isBond = assetClass === "bond";
@@ -1301,6 +1382,16 @@ function HoldingForm({
           <Form.Item name="symbol" label="종목번호">
             <Input style={{ width: wide ? 180 : "100%" }} placeholder="예: KR103502GA34 (없으면 비움)" />
           </Form.Item>
+          <Form.Item label=" " colon={false}>
+            <Button
+              onClick={onFetchBondInfo}
+              loading={bondInfoBusy}
+              disabled={!accountId}
+              title={!accountId ? "계좌를 먼저 선택하세요" : undefined}
+            >
+              발행정보 가져오기
+            </Button>
+          </Form.Item>
           <Form.Item name="quantity" label="보유수량" rules={[{ required: true, message: "보유수량을 입력하세요" }]}>
             <InputNumber min={0} precision={8} style={{ width: numberWidth }} placeholder="예: 10" />
           </Form.Item>
@@ -1319,6 +1410,19 @@ function HoldingForm({
           </Form.Item>
           <Form.Item name="maturityDate" label="만기일" rules={[dateRule]}>
             <Input style={{ width: wide ? 150 : "100%" }} placeholder="YYYY-MM-DD" />
+          </Form.Item>
+          <Form.Item name="issuerName" label="발행기관">
+            <Input style={{ width: wide ? 180 : "100%" }} placeholder="예: 기획재정부" />
+          </Form.Item>
+          <Form.Item name="couponRate" label="표면이율">
+            <InputNumber
+              min={0}
+              max={100}
+              precision={4}
+              addonAfter="%"
+              style={{ width: numberWidth }}
+              placeholder="예: 3.0"
+            />
           </Form.Item>
         </>
       ) : (

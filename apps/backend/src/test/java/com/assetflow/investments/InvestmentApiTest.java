@@ -260,4 +260,51 @@ class InvestmentApiTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
     }
+
+    private static String bondInfoBody(String issuerName, String couponRate) {
+        return "{\"accountId\":4,\"assetClass\":\"bond\",\"symbol\":\"KR103502GEC4\","
+                + "\"name\":\"국고03000-3412(24-13)\",\"currency\":\"KRW\","
+                + "\"quantity\":10,\"avgPrice\":88119.6,\"marketPrice\":88005,\"fxRate\":1,"
+                + "\"priceAsOf\":null,\"issueDate\":\"2024-12-10\",\"maturityDate\":\"2034-12-10\","
+                + "\"issuerName\":" + (issuerName == null ? "null" : "\"" + issuerName + "\"")
+                + ",\"couponRate\":" + couponRate + "}";
+    }
+
+    @Test
+    void bondIssuerAndCouponRateRoundTrip() throws Exception {
+        mvc.perform(post("/api/v1/investments/holdings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bondInfoBody("기획재정부", "3.0000")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.issuerName").value("기획재정부"))
+                .andExpect(jsonPath("$.data.couponRate").value(3.0));
+
+        mvc.perform(get("/api/v1/investments/holdings").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data.holdings[4].issuerName").value("기획재정부"))
+                .andExpect(jsonPath("$.data.holdings[4].couponRate").value(3.0));
+    }
+
+    @Test
+    void nonBondIgnoresIssuerAndCouponRate() throws Exception {
+        mvc.perform(post("/api/v1/investments/holdings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"accountId":4,"assetClass":"stock","symbol":"005930","name":"삼성전자",
+                                 "currency":"KRW","quantity":1,"avgPrice":70000,"marketPrice":75000,
+                                 "fxRate":1,"priceAsOf":null,
+                                 "issuerName":"기획재정부","couponRate":3.0}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.issuerName").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.data.couponRate").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
+    void couponRateOutOfRangeIsRejected() throws Exception {
+        mvc.perform(post("/api/v1/investments/holdings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bondInfoBody("기획재정부", "101")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
 }

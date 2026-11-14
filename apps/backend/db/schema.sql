@@ -328,6 +328,8 @@ CREATE TABLE investment_holdings (
     price_as_of  DATE,
     issue_date   DATE,
     maturity_date DATE,
+    issuer_name  VARCHAR(100),
+    coupon_rate  NUMERIC(8, 4),
     source       VARCHAR(16) NOT NULL DEFAULT 'manual',
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -341,6 +343,9 @@ ALTER TABLE investment_holdings ADD COLUMN IF NOT EXISTS source VARCHAR(16) NOT 
 -- BOND-FORM-1: 채권 발행일/만기일 (다른 자산군은 NULL). 기존 DB에도 재배포만으로 적용된다.
 ALTER TABLE investment_holdings ADD COLUMN IF NOT EXISTS issue_date DATE;
 ALTER TABLE investment_holdings ADD COLUMN IF NOT EXISTS maturity_date DATE;
+-- BOND-INFO-1: 채권 발행기관·표면이율 (다른 자산군은 NULL).
+ALTER TABLE investment_holdings ADD COLUMN IF NOT EXISTS issuer_name VARCHAR(100);
+ALTER TABLE investment_holdings ADD COLUMN IF NOT EXISTS coupon_rate NUMERIC(8, 4);
 
 -- ---------------------------------------------------------------------------
 -- merchant_business_info: 사업자번호별 외부 조회 정보 캐시
