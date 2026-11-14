@@ -5538,3 +5538,291 @@ DB 의 10월 합계는 현대 2,609,560 · 삼성 362,230 이었고, 마지막 �
 - 퇴직연금 잔고조회는 **주식·ETF·ETN만** 조회되고 펀드는 빠진다.
 - 모의투자(vps)에는 연금 상품코드가 없어 29 조회가 실패하고 기존 폴백으로 떨어진다.
 - IRP 계좌의 KIS 설정에서 **상품코드가 29인지** 확인해야 한다(01이면 전용 API 미적용).
+
+## 95) KIS IRP 장내채권 잔고·현재가 동기화 (2026-11-15)
+
+**배경**
+- IRP에는 주식·ETF 외에 **채권**도 있다. 퇴직연금 잔고조회(TTTC2208R)는 주식·ETF·ETN만
+  반환하고 펀드는 제외한다. 채권은 별도 API로 가져와 합쳐야 한다.
+
+**KIS 공식 API**
+- **장내채권 잔고조회**: `GET /uapi/domestic-bond/v1/trading/inquire-balance`, tr_id `CTSC8407R`
+  - params: `CANO`, `ACNT_PRDT_CD`(29), `INQR_CNDT="00"`, `PDNO=""`, `BUY_DT=""`,
+    `CTX_AREA_FK200=""`, `CTX_AREA_NK200=""`
+  - 응답 `output`: `pdno`, `cblc_qty`(잔고수량), `buy_unpr`(매수단가), `buy_amt`(매수금액),
+    `buy_dt`, `exdt`, `ord_psbl_qty`
+- **장내채권 현재가**: `GET /uapi/domestic-bond/v1/quotations/inquire-price`, tr_id `FHKBJ773400C0`
+  - params: `FID_COND_MRKT_DIV_CODE="B"`, `FID_INPUT_ISCD=<pdno>`
+  - 응답 `output`: `hts_kor_isnm`(종목명), `bond_prpr`(현재가), `ernn_rate`
+
+**결정**
+- 상품코드 29(IRP) 동기화 시 퇴직연금 잔고에 **장내채권 잔고를 합친다**.
+- `pdno` 기준 **lot 집계**: `qty=Σcblc_qty`, `buyAmt=Σbuy_amt`,
+  `avgBuyUnpr=Σ(buy_unpr×qty)/qty`.
+- 채권은 수량이 **액면 천원**, 단가가 **액면 1만원** 기준이라 `수량×현재가`를 그대로 쓰면
+  10~100배 오차가 난다. 앱의 `quantity × marketPrice`가 현재 평가액이 되도록 **유효단가**를 역산:
+  `purchaseUnit = buy_amt / qty`,
+  `marketPrice = buy_amt × bond_prpr / Σ(buy_unpr × qty)` (현재가 없으면 purchaseUnit).
+- `KisBalanceResponse.Holding` 에 `assetClass` 추가. 퇴직연금 `item_dvsn_name` 매핑
+  (ETF/ETN→etf, 채권→bond, 펀드→fund, 그 외→stock), 채권 API는 bond.
+  `InvestmentController`는 `h.assetClass()`를 사용(기존 "stock" 하드코딩 제거).
+- 채권 조회 실패는 **부분 성공**: 주식/ETF는 유지하고 `warning`에 사유를 표시. warning이 있으면
+  KIS 출처 stale 행 삭제를 건너뛴다(보수적).
+
+**검증**
+- `KisBalanceServiceTest` 신규: lot 2건 → 1건 합산(수량 150, 평단 99.6667, 유효단가 10,000,
+  평가액 1,500,000), 채권 실패 시 ETF 유지 + warning.
+- 백엔드 전체 **289 passed**, 프론트 typecheck/lint 0·단위 246·e2e 201.
+
+**한계 / 사람 조치**
+- 채권·연금 API는 **실전 전용**(모의투자 vps 미지원).
+- 개별 채권 현재가 조회 실패 시 매수 평가단가로 폴백한다(현재가처럼 보일 수 있음).
+- 펀드는 어느 API에서도 잔고를 가져오지 않는다.
+- 채권 종목 수만큼 현재가를 1회씩 호출한다(rate limit 주의).
+- KIS 앱키에 **장내채권 API 권한**이 없으면 `out_of_scope` → 채권만 warning.
+- 백엔드 재배포 후 IRP 계좌(상품코드 29)에서 `한투 동기화` 재실행.
+
+## 96) KIS IRP 채권 원본 진단 API·모달 (2026-11-15)
+
+**배경**
+- IRP 채권 동기화가 실제로 rows를 받는지 확인이 필요했다. 변환된 Holding만으로는 KIS 원본
+  응답(잔고/현재가)을 볼 수 없어, "데이터가 없음"과 "변환/권한 문제"를 구분하기 어렵다.
+
+**결정**
+- **읽기 전용 진단 API**: `POST /api/v1/investments/accounts/{accountId}/kis-bond-preview`
+  - 응답 `BondPreview { balance: JsonNode|null, prices: [{pdno, price: JsonNode|null, error}], error }`
+  - 잔고 API(`CTSC8407R`) 원본과, 잔고의 중복 없는 `pdno`마다 현재가 API(`FHKBJ773400C0`) 원본.
+  - 잔고 실패는 **200 + error**(예외로 500/502를 내지 않음), 개별 현재가 실패는 항목별 error.
+  - **DB를 변경하지 않는다.**
+- **UI**: KIS 계좌 `⋯` 메뉴에 `채권 진단`. 모달에 원본 JSON(복사/닫기), `max-height: calc(100dvh - 32px)`,
+  body 스크롤. 320~430 가로 넘침 0.
+
+**검증**
+- `KisBalanceServiceTest` 진단 2건: 잔고 원본 2행 + 중복 pdno 제거한 현재가 1건 / 잔고 실패 시
+  `balance=null, prices=[], error` (예외 없음).
+- 백엔드 전체 **291 passed**, 프론트 typecheck/lint 0·단위 **246**·e2e **201**.
+
+**사용법 / 해석**
+- 재배포 후 IRP 계좌 `⋯` → **채권 진단**.
+  - `balance.output` rows 있음 → 장내채권 존재. sync가 저장하지 않으면 변환 로직을 디버그.
+  - `balance.output` 비어 있음 → IRP에 장내채권이 없음(장외채권·펀드일 수 있음) → 수동/CSV.
+  - `error` 에 `out_of_scope` → KIS 앱키에 **장내채권 API 권한** 없음.
+  - `error` 에 `no_authorization_ip` 등 → 키/IP/환경 문제.
+- 원본 JSON에는 계좌·보유 금액이 포함되므로 **공유 범위 주의**. 로그에는 남기지 않는다.
+
+**실측 (2026-11-15, IRP account 26)**
+- `kis-bond-preview` 응답: `rt_cd="0"`, `msg_cd="KIOK0560"`,
+  `msg1="조회할 내용이 없습니다"`, `output=[]`, `prices=[]`, `error=null`.
+- 해석: KIS Open API가 이 IRP 계좌의 **장내채권 잔고를 반환하지 않는다**. 권한/IP 문제가
+  아니라 조회 결과가 빈 것이다. 보유 채권이 **장외채권**이거나 **채권형 펀드**, 또는 다른
+  계좌(예: 연금저축 22)에 있을 가능성이 크다.
+- KIS Open API의 채권 잔고는 **장내채권 전용**(`domestic-bond/inquire-balance`)이며,
+  장외채권·펀드 잔고 API는 없다.
+- 대안: 투자 → `+ 종목 추가` → 자산군 **채권**으로 수동 입력(이미 지원). 자동이 필요하면
+  KIS가 장외/펀드 잔고를 API로 제공해야 한다.
+
+**TTTC2202R(퇴직연금 체결기준잔고) 우선 병합 (2026-11-15)**
+- IRP에는 보험·국민주택·국고채가 있고, `TTTC2208R`(잔고)와 장내채권(`CTSC8407R`)만으로는
+  잡히지 않았다(진단 결과 장내채권 0건). KIS **체결기준잔고** `TTTC2202R`
+  (`/pension/inquire-present-balance`, params `CANO`, `ACNT_PRDT_CD=29`, `USER_DVSN_CD="00"`)는
+  `cblc_dvsn_name`, `prdt_name`, `hldg_qty`, `pchs_avg_pric`, `prpr`, `evlu_amt`, `pchs_amt`,
+  `pftrt`를 주므로 전체 보유를 포함한다.
+- 병합 우선순위: **TTTC2202R > TTTC2208R > 장내채권**. key=`pdno`(없으면 name) 중복 제거.
+- 분류: `cblc_dvsn_name`/상품명에 ETF/ETN→etf, 채권/보험/국고/국민주택→**bond**,
+  펀드→fund, 그 외→stock. 보험은 별도 자산군이 없어 bond(고정수익)로 둔다.
+- **평가액 폴백**: `prpr`가 0/없음이면 `marketPrice = evlu_amt / hldg_qty`,
+  `hldg_qty`가 0인데 `evlu_amt > 0`이면 `qty=1`(보험). `pchs_avg_pric`가 0이면
+  `pchs_amt / qty` → `price` 순. 이로써 `quantity × marketPrice == evlu_amt`가 유지된다.
+- 진단 `BondPreview`에 `pensionPresent`(TTTC2202R 원본) 추가.
+
+**실측(사용자 IRP)**: 메리츠화재 이율보증보험III(3년)IRP형 101,200원(2.22%),
+국민주택1종23-06 60,301원(0.70%), 국고03000-3412(24-13) 880,050원(-0.13%).
+`TTTC2202R` 병합 후 4건(ETF+보험+국민주택+국고) 기준으로 테스트.
+
+**결론 — IRP 원리금보장(보험·장외채권)은 KIS Open API 범위 밖 (2026-11-15 2차 진단)**
+- `pensionPresent`(TTTC2202R) 응답: `output1`에 **TIGER 코리아TOP10 1건**만,
+  `cblc_dvsn_name="사용자"`, `cblc_weit="100.00000000"`. 즉 API가 보는 계좌 전체가 그 ETF다.
+- KIS Developers의 **연금 전용 API는 5종뿐**이고 모두 `주문/계좌` 조회다
+  (`TTTC2208R` 잔고 · `TTTC2202R` 체결기준잔고 · `TTTC2201R` 미체결 · `TTTC0503R` 매수가능 ·
+  `TTTC0506R` 예수금). **원리금보장형(예금·이율보증형 보험·ELB·RP) 잔고를 주는 API가 없다.**
+- 장내채권(`CTSC8407R`)도 0건 — IRP 채권은 **장외채권**이라 장내 잔고에 잡히지 않는다.
+- 따라서 IRP의 보험/국민주택/국고채 3종은 **자동 동기화 불가**. `source='manual'`로 직접 입력한다.
+  KIS 동기화는 `source='kis'` 행만 정리하므로(§70) 수동 행은 재동기화해도 보존된다.
+- 입력값(2026-11-15 기준, 수량 1 = 1좌 표시, `assetClass="bond"`):
+
+  | 이름 | 평가금액(현재가) | 수익률 | 매입금액(역산) |
+  |---|---|---|---|
+  | 메리츠화재 이율보증보험III(3년)IRP형 | 101,200 | +2.22% | ≈ 99,002 |
+  | 국민주택1종23-06 | 60,301 | +0.70% | ≈ 59,882 |
+  | 국고03000-3412(24-13) | 880,050 | −0.13% | ≈ 881,196 |
+
+  합계 1,041,551원. 매입금액은 수익률 2자리에서 역산한 값이라 손익이 ±1원 수준 다를 수 있다.
+
+## 97) 채권 전용 등록 폼 — 발행일·만기일 저장 (2026-11-15)
+
+**배경**
+- IRP 채권은 주식과 보유 정보가 다르다: **종목번호·보유수량·평가금액·매수금액·발행일·만기일**.
+  기존 폼은 종목명/심볼/수량/평단가/현재가만 받고 발행일·만기일을 저장할 컬럼도 없었다.
+- KIS Open API가 원리금보장(보험·장외채권) 잔고를 주지 않으므로(§95), 이 입력 경로가 실질적인
+  등록 수단이다.
+
+**결정**
+- `investment_holdings` 에 `issue_date DATE`, `maturity_date DATE` 추가(nullable).
+  스키마는 `mode: always` + `ADD COLUMN IF NOT EXISTS` 라 **재배포만으로 적용**된다.
+- `HoldingRow` 에 두 필드 추가 + **10인자 호환 생성자**(null 위임) → 기존 18개 호출부 무수정 컴파일.
+- `UpsertRequest` 는 `issueDate`/`maturityDate` **문자열(YYYY-MM-DD)**. 채권이 아니면 무시하고 null 저장,
+  `maturity < issue` 는 거부.
+- 프론트: `assetClass === "bond"` 일 때만 폼 전환. 금액은 **총액**으로 받고
+  `marketPrice = 평가금액 / 보유수량`, `avgPrice = 매수금액 / 보유수량`(4자리 HALF_UP)으로 환산한다.
+  수량·평가금액이 0 이하이면 제출 차단. 평단가/현재가/통화/환율/기준일 입력란은 채권에서 숨긴다.
+- 목록 부제: 채권은 `채권 · YYYY-MM-DD 만기`(없으면 `만기 미입력`), "주" 표기 제거.
+- **계산 로직 불변**: 저장은 여전히 `quantity × marketPrice` → 대시보드 합계·구성비 무변경.
+
+**버그 수정(같이 고침)**
+- `InvestmentQuoteController.withQuote` 가 10인자 생성자로 행을 복제해 **가격 갱신 시 발행일·만기일이
+  null 로 덮이던 문제**. 날짜를 넘겨 보존하고 `refreshKeepsBondIssueAndMaturityDates` 로 고정.
+
+**검증**
+- 백엔드 **298 passed**(날짜 왕복·비채권 무시·잘못된 날짜 거부·가격 갱신 보존), 프론트 typecheck/lint 0,
+  단위 **248**, e2e **201**(39 skipped). 320/390 가로 넘침 0.
+- 미검증: Postgres 실제 마이그레이션 실행(인메모리 프로필로만 테스트). `application-postgres.yml` 의
+  `mode: always` 로 기동 시 적용된다.
+
+**한계 / 사람 조치**
+- 채권 폼에 **종목명 입력란이 없다**(사용자 지정 6필드). 새 채권은 입력한 **종목번호가 목록 제목**이 된다.
+  코드 대신 `국고03000-3412(24-13)` 같은 식별명을 넣는 편이 읽기 좋다. 필요하면 종목명(선택)을 추가한다.
+- 매수금액을 비우면 `avgPrice=0` 으로 저장되어 손익이 0 또는 "—" 로 보인다.
+- 금액은 폼 전용이라 저장되지 않는다. 수정 시 `수량 × 단가` 로 재계산되며 4자리 반올림만큼 차이가 날 수 있다.
+- KIS 동기화는 채권 날짜를 모르므로 `upsert` 가 날짜를 건드리지 않는다(수동 입력값 유지).
+
+## 98) 채권 마스터 검색 — 이름으로 찾아 등록 (2026-11-15)
+
+**배경**
+- 채권은 종목명으로 찾아 등록해야 하는데 KIS Developers API에는 이름 검색이 없다.
+
+**결정**
+- KIS **종목정보파일(채권 마스터)** 을 서버가 내려받아 캐시하고 검색을 제공한다.
+  - URL `https://new.real.download.dws.co.kr/common/master/bond_code.mst.zip` (263KB zip →
+    `bond_code.mst` 1,963,332 bytes / 18,179행, CP949, 매일 갱신), TTL 24시간.
+  - 레코드는 **107바이트 고정**. 바이트 오프셋으로 파싱한다:
+    유형(0-1)·분류(2-3)·표준코드(4-15)·종목명(16-55)·이자분류(56-57)·
+    상장일(58-65)·발행일(66-73)·상환일(74-81).
+  - **공식 파이썬 샘플은 끝에서 자르는 방식**이라 이 파일(끝 패딩·`Y`)에서 날짜가 어긋난다.
+    반드시 바이트 오프셋을 쓴다. 회원사 마스터(`memcode.mst`)도 같은 함정이 있다.
+- `GET /api/v1/investments/bonds?q=` — 이름/코드 부분일치, 공백 무시, 코드 기준 중복 제거
+  (같은 코드가 `F9`/`C0` 두 줄로 온다), 실패는 **200 + 빈 목록 + warning**(500 금지).
+- 프론트: 채권 폼 `채권 찾기` → 검색 모달 → 선택 시 종목명·종목번호·발행일·만기일 자동 입력.
+- 실측: `국고03000` → `KR103502GEC4`(2024-12-10~2034-12-10),
+  `국민주택1종23-06` → `KR101501DD62`(2023-06-30~2028-06-30).
+- **`memcode.mst`(회원사)는 채권 발행기관이 아니다** — 증권사 63건, 2010년 이후 갱신 없음. 쓰지 않는다.
+
+## 99) 채권 발행기관·표면이율 + KIS 발행정보(issue-info) (2026-11-15)
+
+**결정**
+- `investment_holdings` 에 `issuer_name VARCHAR(100)`, `coupon_rate NUMERIC(8,4)` 추가
+  (`ADD COLUMN IF NOT EXISTS` → 재배포만으로 적용). `HoldingRow` 는 14필드가 되고
+  10인자·12인자 보조 생성자로 기존 호출부를 유지한다.
+- `GET /api/v1/investments/accounts/{id}/bond-issue-info?pdno=` → `CTPF1101R`
+  (`/uapi/domestic-bond/v1/quotations/issue-info`, `PDNO`, `PRDT_TYPE_CD=302`).
+  `issu_istt_name`→발행기관, `srfc_inrt`→표면이율(%), `issu_dt`/`expd_dt`→날짜,
+  `bond_cls_kor_name`→분류, 신용등급은 KIS→KBP→NICE→F&N 첫 값.
+  자격증명 없음·KIS 오류는 **200 + error**(예외 전파 금지).
+- 폼: `발행정보 가져오기` 버튼. 검색에서 선택하면 마스터 값을 먼저 채우고, 계좌가 선택돼
+  있으면 issue-info 를 best-effort 로 호출한다. **사용자가 입력한 날짜는 덮지 않는다.**
+- 목록 부제: `채권 · {표면이율}% · {발행기관} · {만기} 만기`(없는 값 생략, 말줄임+툴팁).
+- KIS 동기화는 발행기관·표면이율을 주지 않으므로 신규 동기화 행은 null, 수동 입력값은 보존.
+
+**한계**
+- `issue-info` 는 **종목번호 + 계좌의 KIS 자격증명 + 장내채권 API 권한**이 필요하다.
+- **원리금보장 보험**(메리츠 이율보증형)은 마스터·issue-info 모두 불가 → 전부 수동.
+- Postgres 실제 마이그레이션은 미검증(인메모리 테스트만).
+- 검색 후 발행정보 응답 전에 저장하면 회사·금리가 빠질 수 있다.
+
+## 100) 웹소켓 접속키(/oauth2/Approval)는 도입하지 않는다 (2026-11-15)
+
+- 문서 확인: `POST /oauth2/Approval` (JSON `{grant_type:"client_credentials", appkey, secretkey}`)
+  → `{ "approval_key": ... }`. 유효기간 24시간이지만 **웹소켓 세션 연결 시 1회만** 쓰이므로
+  세션이 끊기지 않으면 재발급이 필요 없다. 모의투자는 별도 도메인.
+- 이 키는 **웹소켓 실시간 시세 전용**이다. REST 조회에는 접근토큰만 쓴다.
+- 일반채권 실시간체결가(`H0BJCNT0`)는 `tr_key=채권 종목코드`, `tr_type=1(등록)/2(해제)`,
+  접속키를 헤더에 넣는다. 모의투자 미지원.
+- 도입하지 않는 이유:
+  1) 채권 호가는 **액면 10,000원 기준 원화**다(예: `bond_prpr = 10265.00` = 102.65%).
+     우리 모델(`수량 × marketPrice`)과 단위가 어긋난다(§101 정정).
+  2) IRP 보유분은 **장외채권·보험**이어서 실시간 시세 대상이 아니다(§95 실측).
+  3) 상시 연결·재연결·구독 관리 비용 대비 이득이 없다(개인 대시보드는 조회 시점 갱신으로 충분).
+- 대신 채권 가격이 필요하면 REST `장내채권현재가(시세)`(`FHKBJ773400C0`)를 **on-demand**로 쓰고,
+  단위는 `액면 × (bond_prpr/100)` 로 환산해야 한다(현재 모델에는 액면 필드가 없음).
+- 보안: `approval_key`·`appkey`·`appsecret` 은 자격증명이다. 로그·화면·문서에 남기지 않는다.
+
+## 101) [장내채권] 기본시세 문서 확인 — 단위 정정과 가격 자동화 후보 (2026-11-15)
+
+**출처**: `~/문서/bond_code.mst/[장내채권] 기본시세.xlsx` (9시트: 요약 + API 8종 명세)
+
+**확인된 API (모두 REST/GET, 모의투자 미지원)**
+| API | TR_ID | URL |
+|---|---|---|
+| 현재가(호가) | `FHKBJ773401C0` | `/uapi/domestic-bond/v1/quotations/inquire-asking-price` |
+| 현재가(시세) | `FHKBJ773400C0` | `/quotations/inquire-price` |
+| 현재가(체결) | `FHKBJ773403C0` | `/quotations/inquire-ccnl` |
+| 현재가(일별) | `FHKBJ773404C0` | `/quotations/inquire-daily-price` |
+| 기간별시세(일) | `FHKBJ773701C0` | `/quotations/inquire-daily-itemchartprice` |
+| 평균단가조회 | `CTPF2005R` | `/quotations/avg-unit` |
+| 발행정보 | `CTPF1101R` | `/quotations/issue-info` |
+| 기본조회 | `CTPF1114R` | `/quotations/search-bond-info` |
+
+요청은 모두 `FID_COND_MRKT_DIV_CODE=B` + `FID_INPUT_ISCD=<채권종목코드>`(시세 계열) 또는
+`PDNO`+`PRDT_TYPE_CD=302`(발행정보·기본조회).
+
+**단위 정정 (§100의 오기)**
+- 채권 호가·현재가는 **액면 10,000원 기준 원화**다. 예: `bond_prpr="10265.00"` = 102.65%,
+  `papr="10000"`(액면가). §100 에서 "액면 100 기준"이라고 적은 것은 틀렸다.
+- `srfc_inrt` 는 퍼센트 문자열 6자리(`"5.931000"`), 날짜는 `yyyyMMdd`.
+
+**발행정보(CTPF1101R) 실제 필드** — §99 구현과 일치 확인. `issu_istt_name`(발행기관명),
+`issu_istt_cd`(5), `cmco_cd`(주간사 4), `papr`, `srfc_inrt`, `issu_dt`, `expd_dt`,
+`bond_clsf_kor_name`, `lstg_rmnd`, 신용등급 4종.
+
+**가격 자동화 후보 — 평균단가조회(CTPF2005R)**
+- 파라미터: `INQR_STRT_DT`·`INQR_END_DT`·`PDNO`(공백=전체)·`PRDT_TYPE_CD=302`·`VRFC_KIND_CD=00`.
+- 응답: KIS·KBP·NICE·F&P 및 **평균평가단가/평가금액/평가수익율** (액면 10,000원 기준).
+- 장내 상장 채권이면 `평가액 = 보유액면 × avg_evlu_unpr / 10,000` 으로 정확히 평가할 수 있다.
+  단, 우리 모델에는 **액면 필드가 없어**(수량만 저장) 먼저 액면 입력/해석 규칙을 정해야 한다.
+- 원리금보장(보험·장외채권)은 이 API 대상이 아니다(§95).
+
+**결론**
+- 현재 구현(마스터 검색 + 발행정보)은 문서와 일치하며 변경 필요 없음.
+- 채권 시세 자동화를 하려면 ① 액면 필드 도입 → ② `CTPF2005R`(권장, 평가기관 평균단가) 또는
+  `FHKBJ773400C0`(현재가) 순서가 맞다. 웹소켓(`H0BJCNT0`)은 여전히 불필요(§100).
+
+## 102) 채권 액면 입력 + 평균단가조회로 평가금액 자동 계산 (2026-11-15)
+
+**배경**
+- 채권 평가액은 `수량 × 현재가`가 아니라 **액면 × 평가단가 / 10,000** 이다(§101: `papr=10000`).
+  KIS **평균단가조회**(`CTPF2005R`)가 KIS·KBP·NICE·F&P 및 평균평가단가/평가금액/평가수익율을 준다.
+
+**결정**
+- `investment_holdings` 에 `face_amount BIGINT`(보유 액면, 원) 추가(nullable, 재배포 시 자동).
+- `HoldingRow` 15필드 + 10/11?→**10·12·14인자 보조 생성자 유지**.
+- `GET /api/v1/investments/accounts/{id}/bond-valuation?pdno=&face=`:
+  - `INQR_STRT_DT`=오늘-30일, `INQR_END_DT`=오늘, `PDNO`, `PRDT_TYPE_CD=302`, `VRFC_KIND_CD=00`
+  - `output1` 일자별 배열에서 **최신 `evlu_dt`** 채택
+  - `evaluated = round(face × avg_evlu_unpr / 10000)` (HALF_UP, 원 단위)
+  - 자격증명 없음·KIS 오류·단가 없음은 **200 + error**(전파 금지), `face<=0` 은 400
+- 폼: **액면(원)** 입력란 + `평가단가 가져오기` 버튼 → 평가금액 자동 입력, `asOf`를 기준일로,
+  `2026-11-14 기준 · 평균평가단가 9,758.65 · 수익률 3.8348%` 안내. 실패는 경고만.
+- 기존 평가 로직(`수량 × 현재가`)·대시보드 합계·구성비는 **변경 없음**.
+
+**회귀 수정(같이 처리)**
+- 종목명이 AutoComplete 로 바뀌면서 테스트가 실제 `searchBonds` 를 타 5초 타임아웃이 났다.
+  채권 API(`searchBonds`·`fetchBondIssueInfo`·`fetchBondValuation`)를 테스트에서 모킹하고,
+  `InputNumber addonAfter`(antd 6 deprecated)를 `suffix` 로 교체했다. **타임아웃 상향으로 덮지 않았다.**
+
+**검증**
+- 백엔드 **317 passed**, 프론트 단위 **257 passed**, e2e **201**(39 skipped), typecheck/lint 0.
+
+**한계 / 사람 조치**
+- `CTPF2005R` 이 실제 보유 채권(`KR103502GEC4`, `KR101501DD62`)에 값을 주는지는 **미검증**.
+  배포 후 `평가단가 가져오기`로 확인하고, 안 되면 error 문구가 그대로 표시된다.
+- 액면을 모르면 자동 평가 불가 → 평가금액 직접 입력. 보험은 대상 아님.
+- KIS 장내채권 API 권한·자격증명 필요.

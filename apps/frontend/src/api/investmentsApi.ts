@@ -18,6 +18,14 @@ export interface HoldingRow {
   marketPrice: number;
   fxRate: number;
   priceAsOf: string | null;
+  /** 채권 발행일/만기일(YYYY-MM-DD). 다른 자산군은 null. */
+  issueDate?: string | null;
+  maturityDate?: string | null;
+  /** 채권 발행기관·표면이율(%). 다른 자산군은 null. */
+  issuerName?: string | null;
+  couponRate?: number | null;
+  /** 채권 액면(원). 다른 자산군·미입력은 null. */
+  faceAmount?: number | null;
 }
 
 export interface InvestmentAccountValue {
@@ -47,6 +55,14 @@ export interface HoldingPayload {
   marketPrice: number;
   fxRate: number;
   priceAsOf?: string | null;
+  /** 채권 발행일/만기일(YYYY-MM-DD). bond 가 아니면 무시된다. */
+  issueDate?: string | null;
+  maturityDate?: string | null;
+  /** 채권 발행기관·표면이율(%). bond 가 아니면 무시된다. */
+  issuerName?: string | null;
+  couponRate?: number | null;
+  /** 채권 액면(원). bond 가 아니면 무시된다. */
+  faceAmount?: number | null;
 }
 
 /** §54.4 시세 — 서버가 네이버 금융을 대신 호출한다(브라우저 직접 호출은 CORS). */
@@ -152,6 +168,93 @@ export function testUpbit(): Promise<UpbitTestResult> {
 /** 업비트 보유 코인을 '업비트' 계좌로 동기화한다. */
 export function syncUpbit(): Promise<UpbitSyncResult> {
   return apiFetch<UpbitSyncResult>("/api/v1/investments/upbit/sync", { method: "POST" });
+}
+
+/** KIS-BOND-2 진단용 채권 원본 — 변환하지 않은 KIS JSON. */
+export interface KisBondPricePreview {
+  pdno: string;
+  price: unknown | null;
+  error: string | null;
+}
+
+export interface KisBondPreview {
+  balance: unknown | null;
+  prices: KisBondPricePreview[];
+  error: string | null;
+  /** TTTC2202R(퇴직연금 체결기준잔고) 원본 — 보험·국민주택·국고채 포함 여부 진단용. */
+  pensionPresent?: unknown | null;
+}
+
+export function previewKisBonds(accountId: number): Promise<KisBondPreview> {
+  return apiFetch<KisBondPreview>(
+    `/api/v1/investments/accounts/${accountId}/kis-bond-preview`,
+    { method: "POST" },
+  );
+}
+
+/** BOND-SEARCH-1 채권 마스터 종목. */
+export interface BondItem {
+  code: string;
+  name: string;
+  issueDate: string | null;
+  maturityDate: string | null;
+  bondType: string;
+  bondClass: string;
+}
+
+export interface BondSearchResult {
+  items: BondItem[];
+  warning: string | null;
+}
+
+/** 이름/코드 부분일치 검색. 다운로드 실패도 200 + 빈 목록 + warning 이다. */
+export function searchBonds(q: string, limit = 20): Promise<BondSearchResult> {
+  const params = new URLSearchParams({ q, limit: String(limit) });
+  return apiFetch<BondSearchResult>(`/api/v1/investments/bonds?${params.toString()}`);
+}
+
+/** BOND-INFO-1 KIS 발행정보 (실패도 200 + error). */
+export interface BondIssueInfo {
+  issuerName: string | null;
+  couponRate: number | null;
+  issueDate: string | null;
+  maturityDate: string | null;
+  bondClass: string | null;
+  creditRating: string | null;
+  error: string | null;
+}
+
+export function fetchBondIssueInfo(accountId: number, pdno: string): Promise<BondIssueInfo> {
+  const params = new URLSearchParams({ pdno });
+  return apiFetch<BondIssueInfo>(
+    `/api/v1/investments/accounts/${accountId}/bond-issue-info?${params.toString()}`,
+  );
+}
+
+/** BOND-VALUE-1 KIS 평가단가 조회 결과 (실패도 200 + error). */
+export interface BondValuation {
+  pdno: string | null;
+  name: string | null;
+  asOf: string | null;
+  unitPrice: number | null;
+  evaluated: number;
+  avgYieldRate: number | null;
+  kisUnitPrice: number | null;
+  kbpUnitPrice: number | null;
+  niceUnitPrice: number | null;
+  fnpUnitPrice: number | null;
+  error: string | null;
+}
+
+export function fetchBondValuation(
+  accountId: number,
+  pdno: string,
+  face: number,
+): Promise<BondValuation> {
+  const params = new URLSearchParams({ pdno, face: String(face) });
+  return apiFetch<BondValuation>(
+    `/api/v1/investments/accounts/${accountId}/bond-valuation?${params.toString()}`,
+  );
 }
 
 /** 종목 1건 시세 — 종목 추가 폼의 "현재가 가져오기". 없으면 404 로 실패한다. */

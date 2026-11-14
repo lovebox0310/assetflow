@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AutoComplete,
   Button,
   Card,
   Dropdown,
@@ -9,6 +10,7 @@ import {
   Popconfirm,
   Select,
   Space,
+  Spin,
   Typography,
   type FormInstance,
   type MenuProps,
@@ -20,6 +22,7 @@ import { StateBlock, type SurfaceStatus } from "../components/StateBlock";
 import { SubNav } from "../components/SubNav";
 import { AfListTable, type AfListColumn, type AfRowAction } from "../components/AfListTable";
 import { KisCredentialsModal } from "../components/KisCredentialsModal";
+import { KisBondPreviewModal } from "../components/KisBondPreviewModal";
 import { UpbitCredentialsModal } from "../components/UpbitCredentialsModal";
 import {
   clearKisBalance,
@@ -27,13 +30,17 @@ import {
   deleteHolding,
   fetchFxRate,
   fetchQuote,
+  fetchBondIssueInfo,
+  fetchBondValuation,
   getPortfolio,
   getUpbitStatus,
   refreshHoldingPrices,
+  searchBonds,
   syncKisBalance,
   syncUpbit,
   updateHolding,
   type AssetClass,
+  type BondItem,
   type HoldingPayload,
   type HoldingRow,
   type InvestmentAccountValue,
@@ -110,6 +117,24 @@ function valueOf(h: HoldingRow): number {
   return h.quantity * h.marketPrice * h.fxRate;
 }
 
+/**
+ * 채권 폼 전용 값 — 사용자는 평가금액/매수금액을 입력하고, 저장 시 수량으로 나눠
+ * marketPrice/avgPrice 로 환산한다. 다른 자산군은 이 두 필드를 쓰지 않는다.
+ */
+type HoldingFormValues = Omit<
+  HoldingPayload,
+  "priceAsOf" | "issueDate" | "maturityDate" | "issuerName" | "couponRate" | "faceAmount"
+> & {
+  priceAsOf?: string | null | undefined;
+  issueDate?: string | null | undefined;
+  maturityDate?: string | null | undefined;
+  issuerName?: string | null | undefined;
+  couponRate?: number | null | undefined;
+  faceAmount?: number | null | undefined;
+  bondEvaluatedAmount?: number | undefined;
+  bondPurchaseAmount?: number | undefined;
+};
+
 function returnText(cost: number, value: number): string {
   // 원금 0은 "본전(0%)"이 아니라 계산 불가다 (§54.4).
   if (cost <= 0) return "—";
@@ -152,7 +177,9 @@ export function InvestmentsPage({
   /** §54.4 시세: 자동 갱신은 조용히, 수동 새로고침·시세 가져오기는 실패를 화면에 알린다. */
   const [refreshingQuotes, setRefreshingQuotes] = useState(false);
   const [quoteBusy, setQuoteBusy] = useState(false);
-  const [form] = Form.useForm<HoldingPayload>();
+  /** BOND-INFO-1 발행정보 보강 조회. */
+  const [bondInfoBusy, setBondInfoBusy] = useState(false);
+  const [form] = Form.useForm<HoldingFormValues>();
   /** §54.3: 계좌(예수금·이름·기관) 편집 상태. 종목 편집과 동시에 열지 않는다. */
   const [accountEditId, setAccountEditId] = useState<number | null>(null);
   const [accountBusy, setAccountBusy] = useState(false);
@@ -160,6 +187,8 @@ export function InvestmentsPage({
   /** §62 한국투자증권 잔고 동기화 상태. */
   const [kisSyncingAccountId, setKisSyncingAccountId] = useState<number | null>(null);
   const [kisCredentialsAccount, setKisCredentialsAccount] = useState<{ id: number; name: string } | null>(null);
+  /** KIS-BOND-2 읽기 전용 채권 원본 진단 모달. */
+  const [bondPreviewAccount, setBondPreviewAccount] = useState<{ id: number; name: string } | null>(null);
   /** 계좌 헤더의 `⋯` 메뉴는 한 번에 하나만 열린다 — aria-expanded 도 이 값으로 동기화한다. */
   const [openAccountMenu, setOpenAccountMenu] = useState<number | null>(null);
   /**
@@ -305,6 +334,13 @@ export function InvestmentsPage({
       name: "",
       currency: "KRW",
       priceAsOf: new Date().toISOString().slice(0, 10),
+      issueDate: undefined,
+      maturityDate: undefined,
+      issuerName: undefined,
+      couponRate: undefined,
+      faceAmount: undefined,
+      bondEvaluatedAmount: undefined,
+      bondPurchaseAmount: undefined,
     });
   };
 
@@ -323,6 +359,14 @@ export function InvestmentsPage({
       marketPrice: row.marketPrice,
       fxRate: row.fxRate,
       priceAsOf: row.priceAsOf ?? "",
+      issueDate: row.issueDate ?? undefined,
+      maturityDate: row.maturityDate ?? undefined,
+      issuerName: row.issuerName ?? undefined,
+      couponRate: row.couponRate ?? undefined,
+      faceAmount: row.faceAmount ?? undefined,
+      // 채권은 금액 입력으로 보여 준다 — 수량 × 저장 단가.
+      bondEvaluatedAmount: row.assetClass === "bond" ? row.quantity * row.marketPrice : undefined,
+      bondPurchaseAmount: row.assetClass === "bond" ? row.quantity * row.avgPrice : undefined,
     });
   };
 
@@ -373,6 +417,12 @@ export function InvestmentsPage({
             marketPrice: priceDrafts[h.id] ?? h.marketPrice,
             fxRate: h.fxRate,
             priceAsOf: today,
+            // 채권 날짜·발행기관/표면이율은 가격 갱신에서 건드리지 않는다.
+            issueDate: h.issueDate ?? null,
+            maturityDate: h.maturityDate ?? null,
+            issuerName: h.issuerName ?? null,
+            couponRate: h.couponRate ?? null,
+            faceAmount: h.faceAmount ?? null,
           }),
         ),
       );
@@ -386,7 +436,7 @@ export function InvestmentsPage({
   };
 
   const save = async () => {
-    let values: HoldingPayload;
+    let values: HoldingFormValues;
     try {
       values = await form.validateFields();
     } catch {
@@ -394,15 +444,64 @@ export function InvestmentsPage({
     }
     setBusy(true);
     setActionError("");
-    const currency = (values.currency || "KRW").toUpperCase();
-    const payload: HoldingPayload = {
-      ...values,
-      symbol: values.symbol?.trim() ? values.symbol.trim() : null,
-      priceAsOf: values.priceAsOf?.trim() ? values.priceAsOf.trim() : null,
-      currency,
-      // §54.4: 원화 종목의 환율은 항상 1이다 — 숨긴 입력란의 잔여값을 쓰지 않는다.
-      fxRate: currency === "USD" ? values.fxRate : 1,
-    };
+    const symbol = values.symbol?.trim() ? values.symbol.trim() : null;
+    const round4 = (value: number) => Math.round(value * 10000) / 10000;
+
+    let payload: HoldingPayload;
+    if (values.assetClass === "bond") {
+      // BOND-FORM-1: 사용자는 평가금액/매수금액을 입력하고, 저장 단가는 수량으로 나눠 환산한다.
+      const quantity = Number(values.quantity);
+      const evaluated = Number(values.bondEvaluatedAmount);
+      if (!Number.isFinite(quantity) || quantity <= 0
+          || !Number.isFinite(evaluated) || evaluated <= 0) {
+        setBusy(false);
+        setActionError("보유수량과 평가금액을 입력하세요");
+        return;
+      }
+      const purchase = Number(values.bondPurchaseAmount);
+      payload = {
+        accountId: values.accountId,
+        assetClass: "bond",
+        symbol,
+        // 종목명은 필수(폼 검증). 종목번호는 없으면 null — "채권" 같은 폴백을 만들지 않는다.
+        name: values.name.trim(),
+        currency: "KRW",
+        quantity,
+        avgPrice: Number.isFinite(purchase) && purchase > 0 ? round4(purchase / quantity) : 0,
+        marketPrice: round4(evaluated / quantity),
+        fxRate: 1,
+        priceAsOf: null,
+        issueDate: values.issueDate?.trim() ? values.issueDate.trim() : null,
+        maturityDate: values.maturityDate?.trim() ? values.maturityDate.trim() : null,
+        issuerName: values.issuerName?.trim() ? values.issuerName.trim() : null,
+        couponRate: Number.isFinite(Number(values.couponRate)) && values.couponRate !== undefined
+          ? Number(values.couponRate)
+          : null,
+        faceAmount: Number.isFinite(Number(values.faceAmount)) && values.faceAmount !== undefined
+          ? Number(values.faceAmount)
+          : null,
+      };
+    } else {
+      const currency = (values.currency || "KRW").toUpperCase();
+      payload = {
+        accountId: values.accountId,
+        assetClass: values.assetClass,
+        symbol,
+        name: values.name,
+        currency,
+        quantity: values.quantity,
+        avgPrice: values.avgPrice,
+        marketPrice: values.marketPrice,
+        // §54.4: 원화 종목의 환율은 항상 1이다 — 숨긴 입력란의 잔여값을 쓰지 않는다.
+        fxRate: currency === "USD" ? values.fxRate : 1,
+        priceAsOf: values.priceAsOf?.trim() ? values.priceAsOf.trim() : null,
+        issueDate: null,
+        maturityDate: null,
+        issuerName: null,
+        couponRate: null,
+        faceAmount: null,
+      };
+    }
     try {
       if (editingId === "new") await createHolding(payload);
       else if (typeof editingId === "number") await updateHolding(editingId, payload);
@@ -459,6 +558,54 @@ export function InvestmentsPage({
     } finally {
       setQuoteBusy(false);
     }
+  };
+
+  /**
+   * BOND-INFO-1: KIS 발행정보로 발행기관·표면이율을 보강한다. 보조 정보이므로
+   * 실패해도 저장을 막지 않고 안내만 남긴다.
+   */
+  const applyBondIssueInfo = async (accountId: number, pdno: string) => {
+    setBondInfoBusy(true);
+    setActionError("");
+    try {
+      const info = await fetchBondIssueInfo(accountId, pdno);
+      if (info.error) {
+        setActionWarning(info.error);
+        return;
+      }
+      const patch: Partial<HoldingFormValues> = {};
+      if (info.issuerName) patch.issuerName = info.issuerName;
+      if (info.couponRate !== null) patch.couponRate = info.couponRate;
+      // 날짜는 사용자가 이미 채운 값이 있으면 덮지 않는다.
+      if (info.issueDate && !form.getFieldValue("issueDate")) patch.issueDate = info.issueDate;
+      if (info.maturityDate && !form.getFieldValue("maturityDate")) patch.maturityDate = info.maturityDate;
+      form.setFieldsValue(patch);
+      setActionWarning("");
+    } catch (e) {
+      setActionWarning(describeError(e, "발행정보를 가져오지 못했습니다 — 직접 입력할 수 있습니다"));
+    } finally {
+      setBondInfoBusy(false);
+    }
+  };
+
+  const fetchBondInfoForForm = async () => {
+    const accountId = Number(form.getFieldValue("accountId"));
+    const pdno = String(form.getFieldValue("symbol") ?? "").trim();
+    if (!accountId) {
+      setActionError("계좌를 먼저 선택하세요");
+      return;
+    }
+    if (!pdno) {
+      setActionError("종목번호를 입력하세요");
+      return;
+    }
+    await applyBondIssueInfo(accountId, pdno);
+  };
+
+  /** 자동완성에서 채권을 고르면 계좌가 있을 때 발행정보를 best-effort 로 보강한다. */
+  const handleBondSelected = (bond: BondItem) => {
+    const accountId = Number(form.getFieldValue("accountId"));
+    if (accountId) void applyBondIssueInfo(accountId, bond.code);
   };
 
   /**
@@ -670,8 +817,18 @@ export function InvestmentsPage({
    * 모바일 2행은 짧게 — 손익은 평가액 아래(`.af-list__value-sub`)에 두어
    * 좁은 폭에서도 잘리지 않고 항상 보이게 한다.
    */
-  const holdingSubtitle = (row: HoldingRow) =>
-    `${CLASS_LABELS[row.assetClass]} · ${row.quantity.toLocaleString("ko-KR")}주`;
+  const holdingSubtitle = (row: HoldingRow) => {
+    if (row.assetClass === "bond") {
+      // BOND-INFO-1: 표면이율·발행기관·만기일을 있는 값만 조립한다. '주'는 쓰지 않는다.
+      const parts = ["채권"];
+      if (row.couponRate !== null && row.couponRate !== undefined) parts.push(`${row.couponRate}%`);
+      if (row.issuerName) parts.push(row.issuerName);
+      if (row.maturityDate) parts.push(`${row.maturityDate} 만기`);
+      const label = parts.join(" · ");
+      return <span title={label}>{label}</span>;
+    }
+    return `${CLASS_LABELS[row.assetClass]} · ${row.quantity.toLocaleString("ko-KR")}주`;
+  };
 
   return (
     <AppLayout
@@ -810,6 +967,9 @@ export function InvestmentsPage({
                     wide
                     onFetchQuote={() => void fetchQuoteForForm()}
                     fetchingQuote={quoteBusy}
+                    onBondSelected={handleBondSelected}
+                    onFetchBondInfo={() => void fetchBondInfoForForm()}
+                    bondInfoBusy={bondInfoBusy}
                   />
                   <Space style={{ marginTop: 8 }}>
                     <Button type="primary" onClick={() => void save()} loading={busy}>
@@ -846,6 +1006,7 @@ export function InvestmentsPage({
                     ? [
                         { key: "kis", label: "KIS 설정", disabled: accountActionDisabled },
                         { key: "sync", label: "한투 동기화", disabled: accountActionDisabled },
+                        { key: "bond-preview", label: "채권 진단", disabled: accountActionDisabled },
                         { type: "divider" },
                         { key: "clear", label: "동기화 해제", danger: true, disabled: accountActionDisabled },
                       ]
@@ -876,6 +1037,8 @@ export function InvestmentsPage({
                     else if (key === "kis")
                       setKisCredentialsAccount({ id: account.accountId, name: account.accountName });
                     else if (key === "sync") void doKisSync(account.accountId);
+                    else if (key === "bond-preview")
+                      setBondPreviewAccount({ id: account.accountId, name: account.accountName });
                     else if (key === "upbit-settings") setUpbitOpen(true);
                     else if (key === "upbit-sync") void handleUpbitSync();
                     // 확인이 필요한 동작은 앵커 Popconfirm 을 연다(메뉴는 antd 가 닫는다).
@@ -1033,6 +1196,9 @@ export function InvestmentsPage({
                                 wide
                                 onFetchQuote={() => void fetchQuoteForForm()}
                                 fetchingQuote={quoteBusy}
+                                onBondSelected={handleBondSelected}
+                                onFetchBondInfo={() => void fetchBondInfoForForm()}
+                                bondInfoBusy={bondInfoBusy}
                               />
                               <Space style={{ marginTop: 8 }}>
                                 <Button type="primary" onClick={() => void save()} loading={busy}>
@@ -1106,6 +1272,15 @@ export function InvestmentsPage({
         />
       )}
 
+      {bondPreviewAccount && (
+        <KisBondPreviewModal
+          accountId={bondPreviewAccount.id}
+          accountName={bondPreviewAccount.name}
+          open={bondPreviewAccount !== null}
+          onClose={() => setBondPreviewAccount(null)}
+        />
+      )}
+
       <UpbitCredentialsModal
         open={upbitOpen}
         onClose={() => setUpbitOpen(false)}
@@ -1135,14 +1310,50 @@ function HoldingForm({
   wide,
   onFetchQuote,
   fetchingQuote,
+  onBondSelected,
+  onFetchBondInfo,
+  bondInfoBusy,
 }: {
-  form: FormInstance<HoldingPayload>;
+  form: FormInstance<HoldingFormValues>;
   accounts: Portfolio["accounts"];
   wide: boolean;
   onFetchQuote: () => void;
   fetchingQuote: boolean;
+  /** 자동완성에서 채권을 골랐을 때 — 발행정보 보강은 부모가 best-effort 로 한다. */
+  onBondSelected: (bond: BondItem) => void;
+  onFetchBondInfo: () => void;
+  bondInfoBusy: boolean;
 }) {
   const currency = (Form.useWatch("currency", form) as string | undefined) ?? "KRW";
+  const accountId = Form.useWatch("accountId", form) as number | undefined;
+  // BOND-SEARCH-3: 종목명 입력란이 곧 검색이다. 폼이 닫히면(HoldingForm unmount) 초기화된다.
+  const [bondOptions, setBondOptions] = useState<BondItem[]>([]);
+  const [bondQuery, setBondQuery] = useState("");
+  const [bondFinding, setBondFinding] = useState(false);
+  const [bondFindWarning, setBondFindWarning] = useState("");
+  const bondByValue = useMemo(
+    () => new Map(bondOptions.map((bond) => [bond.name, bond])),
+    [bondOptions],
+  );
+  // BOND-VALUE-1: 액면 × 평가단가 / 10,000 자동 계산.
+  const bondSymbol = Form.useWatch("symbol", form) as string | undefined;
+  const bondFaceAmount = Form.useWatch("faceAmount", form) as number | undefined;
+  const [bondValueBusy, setBondValueBusy] = useState(false);
+  const [bondValueNotice, setBondValueNotice] = useState("");
+  const [bondValueWarning, setBondValueWarning] = useState("");
+  const bondValueReady = Boolean(accountId) && Boolean(bondSymbol?.trim())
+    && Number(bondFaceAmount) > 0;
+  const assetClass = (Form.useWatch("assetClass", form) as HoldingPayload["assetClass"] | undefined)
+    ?? "stock";
+  const isBond = assetClass === "bond";
+  // 좁은 화면에서는 Form.Item 폭을 채우고, 넓은 인라인 폼에서는 고정 폭을 쓴다.
+  const numberWidth = wide ? 140 : "100%";
+  const dateRule = {
+    validator: (_: unknown, value: string | undefined) =>
+      !value || /^\d{4}-\d{2}-\d{2}$/.test(value)
+        ? Promise.resolve()
+        : Promise.reject(new Error("YYYY-MM-DD")),
+  };
 
   /**
    * §54.4: 달러 종목을 고르면 환율 입력란을 채워 준다. 실패하면 빈 칸으로 두고
@@ -1157,6 +1368,81 @@ function HoldingForm({
       // 직접 입력 경로를 남긴다.
     }
   };
+
+  /** BOND-VALUE-1: 액면과 종목번호로 평균평가단가를 조회해 평가금액을 채운다. */
+  const fetchBondValue = async () => {
+    const id = Number(form.getFieldValue("accountId"));
+    const pdno = String(form.getFieldValue("symbol") ?? "").trim();
+    const face = Number(form.getFieldValue("faceAmount"));
+    if (!id || !pdno || !(face > 0)) return;
+    setBondValueBusy(true);
+    setBondValueNotice("");
+    setBondValueWarning("");
+    try {
+      const valuation = await fetchBondValuation(id, pdno, face);
+      if (valuation.error) {
+        setBondValueWarning(valuation.error);
+        return;
+      }
+      form.setFieldsValue({
+        bondEvaluatedAmount: valuation.evaluated,
+        priceAsOf: valuation.asOf ?? undefined,
+      });
+      const unit = valuation.unitPrice !== null
+        ? Number(valuation.unitPrice).toLocaleString("ko-KR", { maximumFractionDigits: 4 })
+        : "—";
+      const rate = valuation.avgYieldRate !== null
+        ? `${Number(valuation.avgYieldRate).toLocaleString("ko-KR", { maximumFractionDigits: 4 })}%`
+        : "—";
+      setBondValueNotice(
+        `${valuation.asOf ?? "기준일 미상"} 기준 · 평균평가단가 ${unit} · 수익률 ${rate}`,
+      );
+    } catch (e) {
+      setBondValueWarning(e instanceof Error ? e.message : "평가단가를 가져오지 못했습니다");
+    } finally {
+      setBondValueBusy(false);
+    }
+  };
+
+  // 채권 종목명 자동완성 — 300ms 디바운스 후 서버 검색을 그대로 쓴다.
+  useEffect(() => {
+    if (!isBond) {
+      setBondOptions([]);
+      setBondQuery("");
+      setBondFinding(false);
+      setBondFindWarning("");
+      return;
+    }
+    const q = bondQuery.trim();
+    if (q.length < 1) {
+      setBondOptions([]);
+      setBondFinding(false);
+      setBondFindWarning("");
+      return;
+    }
+    let cancelled = false;
+    setBondFinding(true);
+    const timer = setTimeout(() => {
+      searchBonds(q, 20)
+        .then((result) => {
+          if (cancelled) return;
+          setBondOptions(result.items);
+          setBondFindWarning(result.warning ?? "");
+        })
+        .catch((e: unknown) => {
+          if (cancelled) return;
+          setBondOptions([]);
+          setBondFindWarning(e instanceof Error ? e.message : "채권 검색에 실패했습니다");
+        })
+        .finally(() => {
+          if (!cancelled) setBondFinding(false);
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [bondQuery, isBond]);
 
   return (
     <Form form={form} layout={wide ? "inline" : "vertical"} style={{ rowGap: 8 }}>
@@ -1176,44 +1462,205 @@ function HoldingForm({
           options={CLASS_ORDER.map((cls) => ({ value: cls, label: CLASS_LABELS[cls] }))}
         />
       </Form.Item>
-      <Form.Item name="name" label="종목명" rules={[{ required: true, message: "종목명을 입력하세요" }]}>
-        <Input style={{ width: 150 }} />
-      </Form.Item>
-      <Form.Item name="symbol" label="심볼">
-        <Input style={{ width: 110 }} placeholder="005930" />
-      </Form.Item>
-      <Form.Item label=" " colon={false}>
-        <Button onClick={onFetchQuote} loading={fetchingQuote}>
-          현재가 가져오기
-        </Button>
-      </Form.Item>
-      <Form.Item name="currency" label="통화" rules={[{ required: true }]}>
-        <Select
-          style={{ minWidth: 140 }}
-          options={[...CURRENCIES]}
-          onChange={(value: string) => {
-            if (value === "USD") void fillUsdKrw();
-          }}
-        />
-      </Form.Item>
-      <Form.Item name="quantity" label="수량" rules={[{ required: true, message: "수량을 입력하세요" }]}>
-        <InputNumber min={0} precision={8} style={{ width: 120 }} placeholder="예: 200" />
-      </Form.Item>
-      <Form.Item name="avgPrice" label="평단가" rules={[{ required: true, message: "평단가를 입력하세요" }]}>
-        <InputNumber min={0} precision={4} style={{ width: 120 }} placeholder="예: 70000" />
-      </Form.Item>
-      <Form.Item name="marketPrice" label="현재가" rules={[{ required: true, message: "현재가를 입력하세요" }]}>
-        <InputNumber min={0} precision={4} style={{ width: 120 }} placeholder="직접 입력 또는 시세" />
-      </Form.Item>
-      {/* §54.4: 원화는 환율이 항상 1이라 입력란을 숨긴다. 달러일 때만 노출. */}
-      {currency === "USD" ? (
-        <Form.Item name="fxRate" label="환율" rules={[{ required: true, message: "환율을 입력하세요" }]}>
-          <InputNumber min={0.000001} precision={6} style={{ width: 110 }} placeholder="예: 1339" />
-        </Form.Item>
-      ) : null}
-      <Form.Item name="priceAsOf" label="기준일">
-        <Input style={{ width: 140 }} placeholder="YYYY-MM-DD" />
-      </Form.Item>
+      {isBond ? (
+        <>
+          {/* BOND-FORM-3: 채권의 정체성은 종목명이다. 보험처럼 종목번호가 없는 상품도
+              등록할 수 있도록 symbol 은 선택으로 둔다. 평단가/현재가/통화/기준일은 숨긴다. */}
+          <Form.Item
+            name="name"
+            label="종목명"
+            rules={[{ required: true, message: "종목명을 입력하세요" }]}
+            extra={
+              bondFindWarning ? (
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {bondFindWarning}
+                </Typography.Text>
+              ) : undefined
+            }
+          >
+            <AutoComplete
+              options={bondOptions.map((bond) => ({
+                // BOND-SEARCH-4: 한 줄이면 코드·만기가 잘린다 — 이름/코드·날짜 2줄 블록.
+                value: bond.name,
+                label: (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                    <span
+                      style={{
+                        fontWeight: 600,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {bond.name}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: "var(--af-muted-foreground)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {`${bond.code} · 발행 ${bond.issueDate ?? "미상"} ~ 만기 ${bond.maturityDate ?? "미상"}`}
+                    </span>
+                  </div>
+                ),
+              }))}
+              filterOption={false}
+              // 필드보다 넓게, 오른쪽 정렬 — 320px 에서도 코드·날짜가 잘리지 않게.
+              popupMatchSelectWidth={295}
+              onSearch={(value: string) => setBondQuery(value)}
+              onSelect={(value: string) => {
+                const bond = bondByValue.get(value);
+                if (!bond) return;
+                form.setFieldsValue({
+                  name: bond.name,
+                  symbol: bond.code,
+                  issueDate: bond.issueDate ?? undefined,
+                  maturityDate: bond.maturityDate ?? undefined,
+                });
+                onBondSelected(bond);
+              }}
+              notFoundContent={
+                bondFinding ? (
+                  <span><Spin size="small" /> 검색 중…</span>
+                ) : bondQuery.trim() ? (
+                  "일치하는 채권이 없습니다 — 직접 입력할 수 있습니다"
+                ) : null
+              }
+              listHeight={256}
+              // 320px 에서 인라인 라벨 폭까지 더해도 넘치지 않게 뷰포트 기준으로 상한을 둔다.
+              style={{ width: wide ? 220 : "100%", maxWidth: "calc(100vw - 120px)" }}
+              styles={{ popup: { root: { maxWidth: "calc(100vw - 16px)" } } }}
+            >
+              <Input placeholder="예: 국고03000-3412(24-13)" />
+            </AutoComplete>
+          </Form.Item>
+          <Form.Item name="symbol" label="종목번호">
+            <Input style={{ width: wide ? 180 : "100%" }} placeholder="예: KR103502GA34 (없으면 비움)" />
+          </Form.Item>
+          <Form.Item label=" " colon={false}>
+            <Button
+              onClick={onFetchBondInfo}
+              loading={bondInfoBusy}
+              disabled={!accountId}
+              title={!accountId ? "계좌를 먼저 선택하세요" : undefined}
+            >
+              발행정보 가져오기
+            </Button>
+          </Form.Item>
+          <Form.Item name="quantity" label="보유수량" rules={[{ required: true, message: "보유수량을 입력하세요" }]}>
+            <InputNumber min={0} precision={8} style={{ width: numberWidth }} placeholder="예: 10" />
+          </Form.Item>
+          <Form.Item name="faceAmount" label="액면(원)">
+            <InputNumber
+              min={0}
+              precision={0}
+              suffix="원"
+              style={{ width: numberWidth }}
+              placeholder="예: 1000000"
+            />
+          </Form.Item>
+          <Form.Item label=" " colon={false}>
+            <Button
+              onClick={() => void fetchBondValue()}
+              loading={bondValueBusy}
+              disabled={!bondValueReady}
+              title={
+                bondValueReady
+                  ? "평균평가단가로 평가금액을 계산합니다"
+                  : "종목번호와 액면을 입력해야 합니다"
+              }
+            >
+              평가단가 가져오기
+            </Button>
+          </Form.Item>
+          {bondValueWarning ? (
+            <Typography.Paragraph type="warning" style={{ marginBottom: 8 }} role="status">
+              {bondValueWarning}
+            </Typography.Paragraph>
+          ) : null}
+          {bondValueNotice ? (
+            <div role="status" aria-live="polite" style={{ marginBottom: 8 }}>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {bondValueNotice}
+              </Typography.Text>
+            </div>
+          ) : null}
+          <Form.Item
+            name="bondEvaluatedAmount"
+            label="평가금액"
+            rules={[{ required: true, message: "평가금액을 입력하세요" }]}
+          >
+            <InputNumber min={0} precision={4} style={{ width: numberWidth }} placeholder="예: 880050" />
+          </Form.Item>
+          <Form.Item name="bondPurchaseAmount" label="매수금액">
+            <InputNumber min={0} precision={4} style={{ width: numberWidth }} placeholder="예: 881196" />
+          </Form.Item>
+          <Form.Item name="issueDate" label="발행일" rules={[dateRule]}>
+            <Input style={{ width: wide ? 150 : "100%" }} placeholder="YYYY-MM-DD" />
+          </Form.Item>
+          <Form.Item name="maturityDate" label="만기일" rules={[dateRule]}>
+            <Input style={{ width: wide ? 150 : "100%" }} placeholder="YYYY-MM-DD" />
+          </Form.Item>
+          <Form.Item name="issuerName" label="발행기관">
+            <Input style={{ width: wide ? 180 : "100%" }} placeholder="예: 기획재정부" />
+          </Form.Item>
+          <Form.Item name="couponRate" label="표면이율">
+            <InputNumber
+              min={0}
+              max={100}
+              precision={4}
+              suffix="%"
+              style={{ width: numberWidth }}
+              placeholder="예: 3.0"
+            />
+          </Form.Item>
+        </>
+      ) : (
+        <>
+          <Form.Item name="name" label="종목명" rules={[{ required: true, message: "종목명을 입력하세요" }]}>
+            <Input style={{ width: 150 }} />
+          </Form.Item>
+          <Form.Item name="symbol" label="심볼">
+            <Input style={{ width: 110 }} placeholder="005930" />
+          </Form.Item>
+          <Form.Item label=" " colon={false}>
+            <Button onClick={onFetchQuote} loading={fetchingQuote}>
+              현재가 가져오기
+            </Button>
+          </Form.Item>
+          <Form.Item name="currency" label="통화" rules={[{ required: true }]}>
+            <Select
+              style={{ minWidth: 140 }}
+              options={[...CURRENCIES]}
+              onChange={(value: string) => {
+                if (value === "USD") void fillUsdKrw();
+              }}
+            />
+          </Form.Item>
+          <Form.Item name="quantity" label="수량" rules={[{ required: true, message: "수량을 입력하세요" }]}>
+            <InputNumber min={0} precision={8} style={{ width: 120 }} placeholder="예: 200" />
+          </Form.Item>
+          <Form.Item name="avgPrice" label="평단가" rules={[{ required: true, message: "평단가를 입력하세요" }]}>
+            <InputNumber min={0} precision={4} style={{ width: 120 }} placeholder="예: 70000" />
+          </Form.Item>
+          <Form.Item name="marketPrice" label="현재가" rules={[{ required: true, message: "현재가를 입력하세요" }]}>
+            <InputNumber min={0} precision={4} style={{ width: 120 }} placeholder="직접 입력 또는 시세" />
+          </Form.Item>
+          {/* §54.4: 원화는 환율이 항상 1이라 입력란을 숨긴다. 달러일 때만 노출. */}
+          {currency === "USD" ? (
+            <Form.Item name="fxRate" label="환율" rules={[{ required: true, message: "환율을 입력하세요" }]}>
+              <InputNumber min={0.000001} precision={6} style={{ width: 110 }} placeholder="예: 1339" />
+            </Form.Item>
+          ) : null}
+          <Form.Item name="priceAsOf" label="기준일">
+            <Input style={{ width: 140 }} placeholder="YYYY-MM-DD" />
+          </Form.Item>
+        </>
+      )}
     </Form>
   );
 }

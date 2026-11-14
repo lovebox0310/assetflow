@@ -193,4 +193,162 @@ class InvestmentApiTest {
         mvc.perform(get("/api/v1/investments/holdings").header("Authorization", TOKEN))
                 .andExpect(jsonPath("$.data.accounts[0].holdingsValue").value(29_700_001));
     }
+
+    private static String bondBody(long accountId, String symbol, String name,
+                                   String quantity, String avgPrice, String marketPrice,
+                                   String issueDate, String maturityDate) {
+        return "{\"accountId\":" + accountId
+                + ",\"assetClass\":\"bond\""
+                + ",\"symbol\":\"" + symbol + "\""
+                + ",\"name\":\"" + name + "\""
+                + ",\"currency\":\"KRW\""
+                + ",\"quantity\":" + quantity
+                + ",\"avgPrice\":" + avgPrice
+                + ",\"marketPrice\":" + marketPrice
+                + ",\"fxRate\":1"
+                + ",\"priceAsOf\":null"
+                + ",\"issueDate\":\"" + issueDate + "\""
+                + ",\"maturityDate\":\"" + maturityDate + "\"}";
+    }
+
+    @Test
+    void bondIssueAndMaturityDatesRoundTrip() throws Exception {
+        mvc.perform(post("/api/v1/investments/holdings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bondBody(4, "KR103502GA34", "국고03000-3412(24-13)",
+                                "10", "88119.6", "88005", "2024-05-01", "2034-05-01")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.issueDate").value("2024-05-01"))
+                .andExpect(jsonPath("$.data.maturityDate").value("2034-05-01"));
+
+        mvc.perform(get("/api/v1/investments/holdings").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data.holdings[4].symbol").value("KR103502GA34"))
+                .andExpect(jsonPath("$.data.holdings[4].issueDate").value("2024-05-01"))
+                .andExpect(jsonPath("$.data.holdings[4].maturityDate").value("2034-05-01"))
+                // 10 × 88,005 = 880,050
+                .andExpect(jsonPath("$.data.accounts[0].holdingsValue").value(30_580_050));
+    }
+
+    @Test
+    void nonBondIgnoresIssueAndMaturityDates() throws Exception {
+        mvc.perform(post("/api/v1/investments/holdings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"accountId":4,"assetClass":"stock","symbol":"005930","name":"삼성전자",
+                                 "currency":"KRW","quantity":1,"avgPrice":70000,"marketPrice":75000,
+                                 "fxRate":1,"priceAsOf":null,
+                                 "issueDate":"2024-05-01","maturityDate":"2034-05-01"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.issueDate").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.data.maturityDate").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
+    void invalidBondDatesAreRejected() throws Exception {
+        // 형식 오류
+        mvc.perform(post("/api/v1/investments/holdings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bondBody(4, "B1", "채권", "1", "100", "100", "2024/05/01", "2034-05-01")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+
+        // 만기 < 발행
+        mvc.perform(post("/api/v1/investments/holdings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bondBody(4, "B1", "채권", "1", "100", "100", "2034-05-01", "2024-05-01")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
+    private static String bondInfoBody(String issuerName, String couponRate) {
+        return "{\"accountId\":4,\"assetClass\":\"bond\",\"symbol\":\"KR103502GEC4\","
+                + "\"name\":\"국고03000-3412(24-13)\",\"currency\":\"KRW\","
+                + "\"quantity\":10,\"avgPrice\":88119.6,\"marketPrice\":88005,\"fxRate\":1,"
+                + "\"priceAsOf\":null,\"issueDate\":\"2024-12-10\",\"maturityDate\":\"2034-12-10\","
+                + "\"issuerName\":" + (issuerName == null ? "null" : "\"" + issuerName + "\"")
+                + ",\"couponRate\":" + couponRate + "}";
+    }
+
+    @Test
+    void bondIssuerAndCouponRateRoundTrip() throws Exception {
+        mvc.perform(post("/api/v1/investments/holdings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bondInfoBody("기획재정부", "3.0000")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.issuerName").value("기획재정부"))
+                .andExpect(jsonPath("$.data.couponRate").value(3.0));
+
+        mvc.perform(get("/api/v1/investments/holdings").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data.holdings[4].issuerName").value("기획재정부"))
+                .andExpect(jsonPath("$.data.holdings[4].couponRate").value(3.0));
+    }
+
+    @Test
+    void nonBondIgnoresIssuerAndCouponRate() throws Exception {
+        mvc.perform(post("/api/v1/investments/holdings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"accountId":4,"assetClass":"stock","symbol":"005930","name":"삼성전자",
+                                 "currency":"KRW","quantity":1,"avgPrice":70000,"marketPrice":75000,
+                                 "fxRate":1,"priceAsOf":null,
+                                 "issuerName":"기획재정부","couponRate":3.0}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.issuerName").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.data.couponRate").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
+    void couponRateOutOfRangeIsRejected() throws Exception {
+        mvc.perform(post("/api/v1/investments/holdings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bondInfoBody("기획재정부", "101")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    void bondFaceAmountRoundTrips() throws Exception {
+        mvc.perform(post("/api/v1/investments/holdings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"accountId":4,"assetClass":"bond","symbol":"KR103502GEC4",
+                                 "name":"국고03000-3412(24-13)","currency":"KRW",
+                                 "quantity":10,"avgPrice":88119.6,"marketPrice":88005,"fxRate":1,
+                                 "priceAsOf":null,"issueDate":"2024-12-10","maturityDate":"2034-12-10",
+                                 "faceAmount":1000000}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.faceAmount").value(1_000_000));
+
+        mvc.perform(get("/api/v1/investments/holdings").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data.holdings[4].faceAmount").value(1_000_000));
+    }
+
+    @Test
+    void nonBondIgnoresFaceAmount() throws Exception {
+        mvc.perform(post("/api/v1/investments/holdings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"accountId":4,"assetClass":"stock","symbol":"005930","name":"삼성전자",
+                                 "currency":"KRW","quantity":1,"avgPrice":70000,"marketPrice":75000,
+                                 "fxRate":1,"priceAsOf":null,"faceAmount":1000000}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.faceAmount").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
+    void negativeFaceAmountIsRejected() throws Exception {
+        mvc.perform(post("/api/v1/investments/holdings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"accountId":4,"assetClass":"bond","symbol":"B1","name":"채권",
+                                 "currency":"KRW","quantity":1,"avgPrice":100,"marketPrice":100,
+                                 "fxRate":1,"priceAsOf":null,"faceAmount":-1}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
 }

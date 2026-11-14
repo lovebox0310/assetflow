@@ -6,8 +6,12 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * §62 KIS 국내주식 잔고조회 서비스.
@@ -31,7 +35,16 @@ public class KisBalanceService {
     private static final String REAL_TR_ID = "TTTC8434R";
     private static final String ACCOUNT_BALANCE_TR_ID = "CTRP6548R";
     private static final String PENSION_TR_ID = "TTTC2208R";
+    /** 퇴직연금 체결기준잔고 — 보험·국민주택·국고채까지 전체 상품을 포함한다. */
+    private static final String PENSION_PRESENT_PATH =
+            "/uapi/domestic-stock/v1/trading/pension/inquire-present-balance";
+    private static final String PENSION_PRESENT_TR_ID = "TTTC2202R";
     private static final String PENSION_PRODUCT_CODE = "29";
+    /** 장내채권 잔고/현재가 — 퇴직연금 잔고(TTTC2208R)에는 채권이 오지 않는다. */
+    private static final String BOND_BALANCE_PATH = "/uapi/domestic-bond/v1/trading/inquire-balance";
+    private static final String BOND_PRICE_PATH = "/uapi/domestic-bond/v1/quotations/inquire-price";
+    private static final String BOND_BALANCE_TR_ID = "CTSC8407R";
+    private static final String BOND_PRICE_TR_ID = "FHKBJ773400C0";
 
     /** 예수금 후보 필드 — 계좌 종류에 따라 KIS 가 다른 필드에 넣어 준다. */
     private static final String[] CASH_FIELDS = {
@@ -51,6 +64,15 @@ public class KisBalanceService {
      * 사용자가 앱키/계좌번호/API 환경을 고칠 수 있다.
      */
     public KisBalanceResponse fetchBalance(KisCredentials credentials) {
+        KisBalanceResponse base = baseBalance(credentials);
+        // IRP(29)는 퇴직연금 잔고에 주식·ETF·ETN 만 온다 — 장내채권은 별도 API 로 합친다.
+        if (!PENSION_PRODUCT_CODE.equals(normalize(credentials.acntPrdtCd()))) {
+            return base;
+        }
+        return withPensionExtras(credentials, base);
+    }
+
+    private KisBalanceResponse baseBalance(KisCredentials credentials) {
         // 상품코드 29(퇴직연금 IRP)는 전용 API 로만 예수금/보유종목이 조회된다.
         // 성공하면 그대로 쓰고, 실패하면 아래 일반 경로로 폴백한다(22 개인연금 등은 기존 유지).
         if (PENSION_PRODUCT_CODE.equals(normalize(credentials.acntPrdtCd()))) {
@@ -182,7 +204,8 @@ public class KisBalanceService {
                         price,
                         evluAmt,
                         decimal(node.path("evlu_pfls_amt").asText("0")),
-                        text(node, "crdt_loan_yn")));
+                        text(node, "crdt_loan_yn"),
+                        pensionAssetClass(node)));
             }
         }
         JsonNode summaryNode = firstNode(root.path("output2"));
@@ -195,6 +218,290 @@ public class KisBalanceService {
                 BigDecimal.ZERO,
                 true);
         return new KisBalanceResponse(holdings, summary);
+    }
+
+    /** 퇴직연금 응답 item_dvsn_name → 앱 자산군. 채권/펀드는 이 응답에 드물게 오지만 매핑해 둔다. */
+    private static String pensionAssetClass(JsonNode node) {
+        String division = text(node, "item_dvsn_name").toUpperCase(Locale.ROOT);
+        if (division.contains("ETF") || division.contains("ETN")) return "etf";
+        if (division.contains("채권") || division.contains("BOND")) return "bond";
+        if (division.contains("펀드") || division.contains("FUND")) return "fund";
+        return "stock";
+    }
+
+    /**
+     * IRP(29) 보유 전체를 합친다.
+     *
+     * <p>우선순위: <b>TTTC2202R(체결기준잔고) &gt; TTTC2208R(기존 퇴직연금) &gt; 장내채권(CTSC8407R)</b>.
+     * 같은 key(pdno, 없으면 name)는 우선순위가 높은 행만 남긴다. TTTC2202R 은 보험·국민주택·
+     * 국고채까지 포함하지만, 혹시 누락된 장내채권을 위해 채권 조회는 fallback 으로 유지한다.
+     * 실패는 전체 실패가 아니다 — 각각 warning 문자열로 합친다.</p>
+     */
+    private KisBalanceResponse withPensionExtras(KisCredentials credentials, KisBalanceResponse base) {
+        List<String> warnings = new ArrayList<>();
+        if (base.warning() != null && !base.warning().isBlank()) {
+            warnings.add(base.warning());
+        }
+
+        List<KisBalanceResponse.Holding> present = List.of();
+        try {
+            present = fetchPensionPresentHoldings(credentials);
+        } catch (KisApiException e) {
+            warnings.add("퇴직연금 체결기준잔고를 읽지 못했습니다: " + e.getMessage());
+        }
+
+        List<KisBalanceResponse.Holding> bonds = List.of();
+        try {
+            bonds = fetchBondHoldings(credentials);
+        } catch (KisApiException e) {
+            warnings.add("채권 잔고를 읽지 못했습니다: " + e.getMessage());
+        }
+
+        Map<String, KisBalanceResponse.Holding> merged = new LinkedHashMap<>();
+        for (KisBalanceResponse.Holding holding : present) {
+            merged.putIfAbsent(holdingKey(holding), holding);
+        }
+        for (KisBalanceResponse.Holding holding : base.holdings()) {
+            merged.putIfAbsent(holdingKey(holding), holding);
+        }
+        for (KisBalanceResponse.Holding holding : bonds) {
+            merged.putIfAbsent(holdingKey(holding), holding);
+        }
+        String warning = warnings.isEmpty() ? null : String.join(" | ", warnings);
+        return new KisBalanceResponse(new ArrayList<>(merged.values()), base.summary(), warning);
+    }
+
+    /** 중복 제거 key — pdno(없으면 상품명). */
+    private static String holdingKey(KisBalanceResponse.Holding holding) {
+        String pdno = holding.pdno() == null ? "" : holding.pdno().trim();
+        if (!pdno.isEmpty()) return pdno;
+        String name = holding.prdtName() == null ? "" : holding.prdtName().trim();
+        return name;
+    }
+
+    /**
+     * 퇴직연금 체결기준잔고(TTTC2202R) — 보험·국민주택·국고채까지 전체 보유.
+     * output2 의 예수금은 신뢰하지 않는다(필드가 없을 수 있음) — 예수금은 TTTC2208R 값을 유지한다.
+     */
+    private List<KisBalanceResponse.Holding> fetchPensionPresentHoldings(KisCredentials credentials) {
+        JsonNode root = kisApiClient.get(credentials, PENSION_PRESENT_PATH,
+                pensionPresentParams(credentials), PENSION_PRESENT_TR_ID);
+
+        List<KisBalanceResponse.Holding> holdings = new ArrayList<>();
+        JsonNode output1 = root.path("output1");
+        if (output1.isArray()) {
+            for (JsonNode node : output1) {
+                BigDecimal evluAmt = decimal(node.path("evlu_amt").asText("0"));
+                BigDecimal pchsAmt = decimal(node.path("pchs_amt").asText("0"));
+                BigDecimal qty = decimal(node.path("hldg_qty").asText("0"));
+                // 보험처럼 수량이 0 으로 오지만 평가액이 있는 상품은 1주로 본다.
+                if (qty.signum() <= 0 && evluAmt.signum() > 0) {
+                    qty = BigDecimal.ONE;
+                }
+                if (qty.signum() <= 0) {
+                    continue; // 수량·평가액 모두 없으면 진짜 빈 행이다.
+                }
+
+                BigDecimal price = decimal(node.path("prpr").asText("0"));
+                // 보험·채권은 prpr 가 0/없음 — 평가액 ÷ 수량으로 현재가를 역산한다.
+                if (price.signum() <= 0 && evluAmt.signum() > 0) {
+                    price = evluAmt.divide(qty, 4, RoundingMode.HALF_UP);
+                }
+
+                BigDecimal avgPrice = decimal(node.path("pchs_avg_pric").asText("0"));
+                if (avgPrice.signum() <= 0 && pchsAmt.signum() > 0) {
+                    avgPrice = pchsAmt.divide(qty, 4, RoundingMode.HALF_UP);
+                }
+                if (avgPrice.signum() <= 0) {
+                    avgPrice = price;
+                }
+
+                holdings.add(new KisBalanceResponse.Holding(
+                        text(node, "pdno"),
+                        text(node, "prdt_name"),
+                        qty,
+                        avgPrice,
+                        price,
+                        evluAmt,
+                        decimal(node.path("evlu_pfls_amt").asText("0")),
+                        "",
+                        presentAssetClass(node)));
+            }
+        }
+        return holdings;
+    }
+
+    /** 체결기준잔고의 잔고구분명/상품명으로 자산군을 정한다. 보험·국민주택·국고는 bond. */
+    private static String presentAssetClass(JsonNode node) {
+        String division = (text(node, "cblc_dvsn_name") + " " + text(node, "prdt_name"))
+                .toUpperCase(Locale.ROOT);
+        if (division.contains("ETF") || division.contains("ETN")) return "etf";
+        if (division.contains("채권") || division.contains("보험") || division.contains("국고")
+                || division.contains("국민주택") || division.contains("BOND")
+                || division.contains("INSURANCE")) {
+            return "bond";
+        }
+        if (division.contains("펀드") || division.contains("FUND")) return "fund";
+        return "stock";
+    }
+
+    /**
+     * 장내채권 잔고(CTSC8407R) + 채권 현재가(FHKBJ773400C0).
+     *
+     * <p>KIS 채권 수량은 액면 천원, 단가는 액면 1만원 기준이라 `수량 × 현재가`를 그대로 쓰면
+     * 10~100배 오차가 난다. 그래서 앱이 쓰는 "유효단가"를 역산한다.</p>
+     * <pre>
+     * purchaseUnit = buy_amt / cblc_qty
+     * marketPrice  = purchaseUnit × (bond_prpr / buy_unpr)   // 현재가가 있을 때
+     * marketPrice  = purchaseUnit                            // 없거나 buy_unpr ≤ 0
+     * </pre>
+     */
+    private List<KisBalanceResponse.Holding> fetchBondHoldings(KisCredentials credentials) {
+        JsonNode root = kisApiClient.get(credentials, BOND_BALANCE_PATH,
+                bondBalanceParams(credentials), BOND_BALANCE_TR_ID);
+
+        // pdno 기준 lot 집계 — 같은 채권을 여러 번 매수하면 행이 나뉘어 온다.
+        Map<String, BondLot> lots = new LinkedHashMap<>();
+        JsonNode output = root.path("output");
+        if (output.isArray()) {
+            for (JsonNode node : output) {
+                String pdno = text(node, "pdno");
+                if (pdno.isBlank()) continue;
+                BigDecimal qty = decimal(node.path("cblc_qty").asText("0"));
+                if (qty.signum() <= 0) continue;
+                BigDecimal buyAmt = decimal(node.path("buy_amt").asText("0"));
+                BigDecimal buyUnpr = decimal(node.path("buy_unpr").asText("0"));
+                BondLot lot = lots.computeIfAbsent(pdno, key -> new BondLot());
+                lot.qty = lot.qty.add(qty);
+                lot.buyAmt = lot.buyAmt.add(buyAmt);
+                lot.weightedBuyUnpr = lot.weightedBuyUnpr.add(buyUnpr.multiply(qty));
+            }
+        }
+
+        List<KisBalanceResponse.Holding> holdings = new ArrayList<>();
+        for (Map.Entry<String, BondLot> entry : lots.entrySet()) {
+            String pdno = entry.getKey();
+            BondLot lot = entry.getValue();
+            BigDecimal avgBuyUnpr = lot.weightedBuyUnpr.divide(lot.qty, 4, RoundingMode.HALF_UP);
+            BigDecimal purchaseUnit = lot.buyAmt.divide(lot.qty, 4, RoundingMode.HALF_UP);
+
+            String name = pdno;
+            BigDecimal bondPrpr = null;
+            try {
+                JsonNode priceRoot = kisApiClient.get(credentials, BOND_PRICE_PATH,
+                        bondPriceParams(pdno), BOND_PRICE_TR_ID);
+                JsonNode priceNode = firstNode(priceRoot.path("output"));
+                String fetchedName = text(priceNode, "hts_kor_isnm");
+                if (!fetchedName.isBlank()) name = fetchedName;
+                BigDecimal price = decimal(text(priceNode, "bond_prpr"));
+                if (price.signum() > 0) bondPrpr = price;
+            } catch (KisApiException ignored) {
+                // 현재가가 없어도 잔고는 살린다 — 매수 평가단가를 그대로 쓴다.
+            }
+
+            // purchaseUnit × (bond_prpr / avgBuyUnpr) 를 중간 반올림 없이 한 번에 계산한다.
+            // (buy_amt × bond_prpr) / Σ(buy_unpr × qty) — lot 가중 평균을 그대로 쓴다.
+            BigDecimal marketPrice = purchaseUnit;
+            if (bondPrpr != null && lot.weightedBuyUnpr.signum() > 0) {
+                marketPrice = lot.buyAmt.multiply(bondPrpr)
+                        .divide(lot.weightedBuyUnpr, 4, RoundingMode.HALF_UP);
+            }
+            BigDecimal evluAmt = marketPrice.multiply(lot.qty);
+            BigDecimal evalPflsAmt = evluAmt.subtract(lot.buyAmt);
+            holdings.add(new KisBalanceResponse.Holding(
+                    pdno, name, lot.qty, avgBuyUnpr, marketPrice, evluAmt, evalPflsAmt, "", "bond"));
+        }
+        return holdings;
+    }
+
+    /** pdno 기준 lot 누적(수량·매수금액·수량가중 매수단가 분자). */
+    private static final class BondLot {
+        private BigDecimal qty = BigDecimal.ZERO;
+        private BigDecimal buyAmt = BigDecimal.ZERO;
+        private BigDecimal weightedBuyUnpr = BigDecimal.ZERO;
+    }
+
+    /** 진단용 원본 1건 — 변환/저장 없이 KIS JSON 을 그대로 보여 준다. */
+    public record BondPricePreview(String pdno, JsonNode price, String error) {}
+
+    /**
+     * 진단용 채권/퇴직연금 원본 묶음. balance 가 null 이면 error 에 잔고 조회 사유가 들어 있다.
+     * pensionPresent 는 TTTC2202R(체결기준잔고) 원본이며, 실패하면 null + error 문구가 붙는다.
+     */
+    public record BondPreview(JsonNode balance, List<BondPricePreview> prices, String error,
+                              JsonNode pensionPresent) {}
+
+    /**
+     * IRP 채권 원본 진단 (읽기 전용, DB 변경 없음).
+     *
+     * <p>잔고는 있으나 변환 결과가 비어 보일 때, 실제 KIS 응답(잔고/현재가)을 그대로
+     * 확인하기 위한 경로다. 잔고 조회 실패는 예외 대신 {@code error} 로 돌려준다(진단 목적).
+     * 현재가는 잔고의 중복 없는 pdno 마다 1회 조회하고, 개별 실패는 그 항목의 error 에 담는다.</p>
+     */
+    public BondPreview previewBonds(KisCredentials credentials) {
+        JsonNode balance;
+        try {
+            balance = kisApiClient.get(credentials, BOND_BALANCE_PATH,
+                    bondBalanceParams(credentials), BOND_BALANCE_TR_ID);
+        } catch (RuntimeException e) {
+            return new BondPreview(null, List.of(), e.getMessage(), null);
+        }
+
+        // TTTC2202R(체결기준잔고) 원본도 함께 — 보험/국민주택/국고채 포함 여부를 눈으로 확인한다.
+        JsonNode pensionPresent = null;
+        String presentError = null;
+        try {
+            pensionPresent = kisApiClient.get(credentials, PENSION_PRESENT_PATH,
+                    pensionPresentParams(credentials), PENSION_PRESENT_TR_ID);
+        } catch (RuntimeException e) {
+            presentError = "퇴직연금 체결기준잔고를 읽지 못했습니다: " + e.getMessage();
+        }
+
+        List<BondPricePreview> prices = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        JsonNode output = balance.path("output");
+        if (output.isArray()) {
+            for (JsonNode node : output) {
+                String pdno = text(node, "pdno");
+                if (pdno.isBlank() || !seen.add(pdno)) {
+                    continue;
+                }
+                try {
+                    JsonNode price = kisApiClient.get(credentials, BOND_PRICE_PATH,
+                            bondPriceParams(pdno), BOND_PRICE_TR_ID);
+                    prices.add(new BondPricePreview(pdno, price, null));
+                } catch (RuntimeException e) {
+                    prices.add(new BondPricePreview(pdno, null, e.getMessage()));
+                }
+            }
+        }
+        return new BondPreview(balance, prices, presentError, pensionPresent);
+    }
+
+    private static Map<String, String> pensionPresentParams(KisCredentials credentials) {
+        return Map.ofEntries(
+                Map.entry("CANO", normalize(credentials.cano())),
+                Map.entry("ACNT_PRDT_CD", normalize(credentials.acntPrdtCd())),
+                Map.entry("USER_DVSN_CD", "00"),
+                Map.entry("CTX_AREA_FK100", ""),
+                Map.entry("CTX_AREA_NK100", ""));
+    }
+
+    private static Map<String, String> bondBalanceParams(KisCredentials credentials) {
+        return Map.ofEntries(
+                Map.entry("CANO", normalize(credentials.cano())),
+                Map.entry("ACNT_PRDT_CD", normalize(credentials.acntPrdtCd())),
+                Map.entry("INQR_CNDT", "00"),
+                Map.entry("PDNO", ""),
+                Map.entry("BUY_DT", ""),
+                Map.entry("CTX_AREA_FK200", ""),
+                Map.entry("CTX_AREA_NK200", ""));
+    }
+
+    private static Map<String, String> bondPriceParams(String pdno) {
+        return Map.ofEntries(
+                Map.entry("FID_COND_MRKT_DIV_CODE", "B"),
+                Map.entry("FID_INPUT_ISCD", pdno));
     }
 
     private String trId(KisCredentials credentials) {

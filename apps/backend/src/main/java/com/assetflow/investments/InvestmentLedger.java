@@ -1,6 +1,9 @@
 package com.assetflow.investments;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 
@@ -13,7 +16,45 @@ public interface InvestmentLedger {
 
     record HoldingRow(long id, long accountId, String assetClass, String symbol, String name,
                       String currency, BigDecimal quantity, BigDecimal avgPrice,
-                      BigDecimal marketPrice, BigDecimal fxRate, String priceAsOf) {}
+                      BigDecimal marketPrice, BigDecimal fxRate, String priceAsOf,
+                      /** 채권 발행일/만기일. 다른 자산군은 null. API 는 YYYY-MM-DD 문자열. */
+                      @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+                      LocalDate issueDate,
+                      @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+                      LocalDate maturityDate,
+                      /** 채권 발행기관·표면이율(%). 다른 자산군은 null. */
+                      String issuerName,
+                      BigDecimal couponRate,
+                      /** 채권 액면(원). 다른 자산군·미입력은 null. */
+                      Long faceAmount) {
+
+        /** 기존 호출부 호환 — 액면 없이. */
+        public HoldingRow(long id, long accountId, String assetClass, String symbol, String name,
+                          String currency, BigDecimal quantity, BigDecimal avgPrice,
+                          BigDecimal marketPrice, BigDecimal fxRate, String priceAsOf,
+                          LocalDate issueDate, LocalDate maturityDate, String issuerName,
+                          BigDecimal couponRate) {
+            this(id, accountId, assetClass, symbol, name, currency, quantity, avgPrice,
+                    marketPrice, fxRate, priceAsOf, issueDate, maturityDate, issuerName, couponRate, null);
+        }
+
+        /** 기존 호출부 호환 — 발행기관/표면이율 없이(다른 자산군·KIS 동기화). */
+        public HoldingRow(long id, long accountId, String assetClass, String symbol, String name,
+                          String currency, BigDecimal quantity, BigDecimal avgPrice,
+                          BigDecimal marketPrice, BigDecimal fxRate, String priceAsOf,
+                          LocalDate issueDate, LocalDate maturityDate) {
+            this(id, accountId, assetClass, symbol, name, currency, quantity, avgPrice,
+                    marketPrice, fxRate, priceAsOf, issueDate, maturityDate, null, null, null);
+        }
+
+        /** 기존 호출부 호환 — 날짜도 없이 만든다. */
+        public HoldingRow(long id, long accountId, String assetClass, String symbol, String name,
+                          String currency, BigDecimal quantity, BigDecimal avgPrice,
+                          BigDecimal marketPrice, BigDecimal fxRate, String priceAsOf) {
+            this(id, accountId, assetClass, symbol, name, currency, quantity, avgPrice,
+                    marketPrice, fxRate, priceAsOf, null, null, null, null, null);
+        }
+    }
 
     List<HoldingRow> all();
 

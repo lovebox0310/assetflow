@@ -67,7 +67,13 @@ public class InvestmentController {
 
     public record UpsertRequest(Long accountId, String assetClass, String symbol, String name,
                                 String currency, BigDecimal quantity, BigDecimal avgPrice,
-                                BigDecimal marketPrice, BigDecimal fxRate, String priceAsOf) {}
+                                BigDecimal marketPrice, BigDecimal fxRate, String priceAsOf,
+                                /** BOND-FORM-1: bond 일 때만 저장한다. YYYY-MM-DD. */
+                                String issueDate, String maturityDate,
+                                /** BOND-INFO-1: bond 일 때만 저장한다. */
+                                String issuerName, BigDecimal couponRate,
+                                /** BOND-VALUE-1: bond 일 때만 저장한다. 원 단위 액면. */
+                                Long faceAmount) {}
 
     public record SyncKisRequest(Long accountId) {}
 
@@ -112,7 +118,8 @@ public class InvestmentController {
         // 단 예수금을 **읽지 못한 0 은 쓰지 않는다** — 계좌가 비어서 0 인 것과
         // API/자격증명 문제로 값을 못 받은 것은 구분할 수 없으므로, 보수적으로
         // 기존 잔액을 유지하고 경고를 돌려준다(§62.3).
-        String warning = null;
+        // 채권 잔고 부분 실패 등 서비스가 준 경고를 먼저 싣고, 예수금 미확인 경고는 뒤에 합친다.
+        String warning = balance.warning();
         boolean cashKnown = balance.summary() != null && balance.summary().cashKnown();
         BigDecimal cashAmount = balance.summary() == null ? null : balance.summary().dncaTotAmt();
         if (cashKnown) {
@@ -127,9 +134,10 @@ public class InvestmentController {
                     account.institutionName(), cash, account.isDebt(), account.openedAt());
             log.info("KIS sync updated cash balance for account {} to {}", account.id(), cash);
         } else {
-            warning = "KIS에서 예수금을 읽지 못해 계좌 잔액을 유지했습니다. "
+            String cashWarning = "KIS에서 예수금을 읽지 못해 계좌 잔액을 유지했습니다. "
                     + "App Key/App Secret이 실전·모의 중 어느 용인지, CANO·상품코드·API 환경이 "
                     + "해당 계좌와 맞는지 확인하세요. IRP는 상품코드 29, 개인연금은 22입니다.";
+            warning = warning == null || warning.isBlank() ? cashWarning : warning + " | " + cashWarning;
             log.warn("KIS sync could not resolve cash for account {} — keeping balance {}",
                     account.id(), account.balance());
         }
@@ -141,7 +149,7 @@ public class InvestmentController {
                 continue;
             }
             HoldingRow row = new HoldingRow(
-                    0, request.accountId(), "stock", symbol, h.prdtName(), "KRW",
+                    0, request.accountId(), h.assetClass(), symbol, h.prdtName(), "KRW",
                     h.hldgQty(), h.pchsAvgPric(), h.prpr(), BigDecimal.ONE, priceAsOf);
             // §70 사용자가 수동으로 넣은 같은 종목이 있으면 그 행을 덮어쓴다.
             ledger.upsertKis(row);
@@ -265,6 +273,26 @@ public class InvestmentController {
     }
 
     /**
+     * IRP 채권 원본 진단 (읽기 전용). 잔고·현재가 KIS JSON 을 그대로 돌려주며
+     * 어떤 계좌/보유종목도 변경하지 않는다. 실패도 200 + error 로 진단 가능하게 한다.
+     */
+    @PostMapping("/accounts/{accountId}/kis-bond-preview")
+    public ApiResponse<KisBalanceService.BondPreview> previewBonds(@PathVariable long accountId) {
+        AssetRow account = assetLedger.byId(accountId);
+        if (account == null) {
+            throw new IllegalArgumentException("account not found: " + accountId);
+        }
+        if (!"invest".equals(account.accountType())) {
+            throw new IllegalArgumentException("account must be an invest account");
+        }
+        KisCredentials credentials = kisCredentialsService.findDecrypted(account.id());
+        if (credentials == null) {
+            throw new IllegalArgumentException("KIS credentials not configured for account: " + account.id());
+        }
+        return new ApiResponse<>("OK", "KIS bond preview", kisBalanceService.previewBonds(credentials));
+    }
+
+    /**
      * §62.2 계좌별 KIS 자격증명을 삭제한다.
      */
     @DeleteMapping("/accounts/{accountId}/kis-credentials")
@@ -355,10 +383,49 @@ public class InvestmentController {
                 throw new IllegalArgumentException("priceAsOf must be YYYY-MM-DD");
             }
         }
+
+        // BOND-FORM-1: 발행일/만기일은 채권에만 저장한다. 다른 자산군이 보내면 무시(null).
+        LocalDate issueDate = parseDate(request.issueDate(), "issueDate");
+        LocalDate maturityDate = parseDate(request.maturityDate(), "maturityDate");
+        String issuerName = request.issuerName() == null ? null : request.issuerName().trim();
+        if (issuerName != null && issuerName.length() > 100) {
+            throw new IllegalArgumentException("issuerName must be at most 100 characters");
+        }
+        BigDecimal couponRate = request.couponRate();
+        if (couponRate != null
+                && (couponRate.signum() < 0 || couponRate.compareTo(new BigDecimal("100")) > 0)) {
+            throw new IllegalArgumentException("couponRate must be between 0 and 100");
+        }
+
+        Long faceAmount = request.faceAmount();
+        if (faceAmount != null && faceAmount < 0) {
+            throw new IllegalArgumentException("faceAmount must not be negative");
+        }
+
+        if (!"bond".equals(request.assetClass())) {
+            issueDate = null;
+            maturityDate = null;
+            issuerName = null;
+            couponRate = null;
+            faceAmount = null;
+        } else if (issueDate != null && maturityDate != null && maturityDate.isBefore(issueDate)) {
+            throw new IllegalArgumentException("maturityDate must be on or after issueDate");
+        }
+
         return new HoldingRow(0, request.accountId(), request.assetClass(),
                 request.symbol() == null || request.symbol().isBlank() ? null : request.symbol(),
                 request.name(), currency, request.quantity(), request.avgPrice(),
-                request.marketPrice(), request.fxRate(), priceAsOf);
+                request.marketPrice(), request.fxRate(), priceAsOf, issueDate, maturityDate,
+                issuerName, couponRate, faceAmount);
+    }
+
+    private static LocalDate parseDate(String raw, String field) {
+        if (raw == null || raw.isBlank()) return null;
+        try {
+            return LocalDate.parse(raw.trim());
+        } catch (DateTimeParseException e) {
+            throw new IllegalArgumentException(field + " must be YYYY-MM-DD");
+        }
     }
 
     private static void requireNonNegative(BigDecimal value, String field) {
