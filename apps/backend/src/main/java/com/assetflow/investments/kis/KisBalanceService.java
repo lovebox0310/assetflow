@@ -7,9 +7,11 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * §62 KIS 국내주식 잔고조회 서비스.
@@ -257,15 +259,8 @@ public class KisBalanceService {
      * </pre>
      */
     private List<KisBalanceResponse.Holding> fetchBondHoldings(KisCredentials credentials) {
-        Map<String, String> params = Map.ofEntries(
-                Map.entry("CANO", normalize(credentials.cano())),
-                Map.entry("ACNT_PRDT_CD", normalize(credentials.acntPrdtCd())),
-                Map.entry("INQR_CNDT", "00"),
-                Map.entry("PDNO", ""),
-                Map.entry("BUY_DT", ""),
-                Map.entry("CTX_AREA_FK200", ""),
-                Map.entry("CTX_AREA_NK200", ""));
-        JsonNode root = kisApiClient.get(credentials, BOND_BALANCE_PATH, params, BOND_BALANCE_TR_ID);
+        JsonNode root = kisApiClient.get(credentials, BOND_BALANCE_PATH,
+                bondBalanceParams(credentials), BOND_BALANCE_TR_ID);
 
         // pdno 기준 lot 집계 — 같은 채권을 여러 번 매수하면 행이 나뉘어 온다.
         Map<String, BondLot> lots = new LinkedHashMap<>();
@@ -295,9 +290,8 @@ public class KisBalanceService {
             String name = pdno;
             BigDecimal bondPrpr = null;
             try {
-                JsonNode priceRoot = kisApiClient.get(credentials, BOND_PRICE_PATH, Map.ofEntries(
-                        Map.entry("FID_COND_MRKT_DIV_CODE", "B"),
-                        Map.entry("FID_INPUT_ISCD", pdno)), BOND_PRICE_TR_ID);
+                JsonNode priceRoot = kisApiClient.get(credentials, BOND_PRICE_PATH,
+                        bondPriceParams(pdno), BOND_PRICE_TR_ID);
                 JsonNode priceNode = firstNode(priceRoot.path("output"));
                 String fetchedName = text(priceNode, "hts_kor_isnm");
                 if (!fetchedName.isBlank()) name = fetchedName;
@@ -327,6 +321,66 @@ public class KisBalanceService {
         private BigDecimal qty = BigDecimal.ZERO;
         private BigDecimal buyAmt = BigDecimal.ZERO;
         private BigDecimal weightedBuyUnpr = BigDecimal.ZERO;
+    }
+
+    /** 진단용 원본 1건 — 변환/저장 없이 KIS JSON 을 그대로 보여 준다. */
+    public record BondPricePreview(String pdno, JsonNode price, String error) {}
+
+    /** 진단용 채권 원본 묶음. balance 가 null 이면 error 에 잔고 조회 사유가 들어 있다. */
+    public record BondPreview(JsonNode balance, List<BondPricePreview> prices, String error) {}
+
+    /**
+     * IRP 채권 원본 진단 (읽기 전용, DB 변경 없음).
+     *
+     * <p>잔고는 있으나 변환 결과가 비어 보일 때, 실제 KIS 응답(잔고/현재가)을 그대로
+     * 확인하기 위한 경로다. 잔고 조회 실패는 예외 대신 {@code error} 로 돌려준다(진단 목적).
+     * 현재가는 잔고의 중복 없는 pdno 마다 1회 조회하고, 개별 실패는 그 항목의 error 에 담는다.</p>
+     */
+    public BondPreview previewBonds(KisCredentials credentials) {
+        JsonNode balance;
+        try {
+            balance = kisApiClient.get(credentials, BOND_BALANCE_PATH,
+                    bondBalanceParams(credentials), BOND_BALANCE_TR_ID);
+        } catch (RuntimeException e) {
+            return new BondPreview(null, List.of(), e.getMessage());
+        }
+
+        List<BondPricePreview> prices = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        JsonNode output = balance.path("output");
+        if (output.isArray()) {
+            for (JsonNode node : output) {
+                String pdno = text(node, "pdno");
+                if (pdno.isBlank() || !seen.add(pdno)) {
+                    continue;
+                }
+                try {
+                    JsonNode price = kisApiClient.get(credentials, BOND_PRICE_PATH,
+                            bondPriceParams(pdno), BOND_PRICE_TR_ID);
+                    prices.add(new BondPricePreview(pdno, price, null));
+                } catch (RuntimeException e) {
+                    prices.add(new BondPricePreview(pdno, null, e.getMessage()));
+                }
+            }
+        }
+        return new BondPreview(balance, prices, null);
+    }
+
+    private static Map<String, String> bondBalanceParams(KisCredentials credentials) {
+        return Map.ofEntries(
+                Map.entry("CANO", normalize(credentials.cano())),
+                Map.entry("ACNT_PRDT_CD", normalize(credentials.acntPrdtCd())),
+                Map.entry("INQR_CNDT", "00"),
+                Map.entry("PDNO", ""),
+                Map.entry("BUY_DT", ""),
+                Map.entry("CTX_AREA_FK200", ""),
+                Map.entry("CTX_AREA_NK200", ""));
+    }
+
+    private static Map<String, String> bondPriceParams(String pdno) {
+        return Map.ofEntries(
+                Map.entry("FID_COND_MRKT_DIV_CODE", "B"),
+                Map.entry("FID_INPUT_ISCD", pdno));
     }
 
     private String trId(KisCredentials credentials) {

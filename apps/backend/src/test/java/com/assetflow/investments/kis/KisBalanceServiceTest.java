@@ -282,4 +282,44 @@ class KisBalanceServiceTest {
                 .contains("채권 API 거부");
         assertThat(result.summary().cashKnown()).isTrue();
     }
+
+    @Test
+    void previewBondsReturnsRawBalanceAndOnePricePerUniquePdno() {
+        KisApiClient api = client((path, tr) -> {
+            if (path.contains("domestic-bond") && path.contains("inquire-balance")) {
+                return json(BOND_BALANCE_RESPONSE);
+            }
+            if (path.contains("domestic-bond") && path.contains("inquire-price")) {
+                return json(BOND_PRICE_RESPONSE);
+            }
+            throw new KisApiException("unexpected call: " + path);
+        });
+
+        KisBalanceService.BondPreview preview =
+                new KisBalanceService(api).previewBonds(pensionCredentials());
+
+        assertThat(preview.error()).isNull();
+        assertThat(preview.balance()).isNotNull();
+        assertThat(preview.balance().path("output")).hasSize(2);
+        // 동일 pdno 2 lot → 현재가는 1회만.
+        assertThat(preview.prices()).hasSize(1);
+        assertThat(preview.prices().get(0).pdno()).isEqualTo("KR103502GA34");
+        assertThat(preview.prices().get(0).error()).isNull();
+        assertThat(preview.prices().get(0).price().path("output").path("bond_prpr").asText())
+                .isEqualTo("100");
+    }
+
+    @Test
+    void previewBondsReportsBalanceFailureWithoutThrowing() {
+        KisApiClient api = client((path, tr) -> {
+            throw new KisApiException("채권 잔고 거부");
+        });
+
+        KisBalanceService.BondPreview preview =
+                new KisBalanceService(api).previewBonds(pensionCredentials());
+
+        assertThat(preview.balance()).isNull();
+        assertThat(preview.prices()).isEmpty();
+        assertThat(preview.error()).contains("채권 잔고 거부");
+    }
 }

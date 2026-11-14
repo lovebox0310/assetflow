@@ -154,6 +154,26 @@ export function syncUpbit(): Promise<UpbitSyncResult> {
   return apiFetch<UpbitSyncResult>("/api/v1/investments/upbit/sync", { method: "POST" });
 }
 
+/** KIS-BOND-2 진단용 채권 원본 — 변환하지 않은 KIS JSON. */
+export interface KisBondPricePreview {
+  pdno: string;
+  price: unknown | null;
+  error: string | null;
+}
+
+export interface KisBondPreview {
+  balance: unknown | null;
+  prices: KisBondPricePreview[];
+  error: string | null;
+}
+
+export function previewKisBonds(accountId: number): Promise<KisBondPreview> {
+  return apiFetch<KisBondPreview>(
+    `/api/v1/investments/accounts/${accountId}/kis-bond-preview`,
+    { method: "POST" },
+  );
+}
+
 /** 종목 1건 시세 — 종목 추가 폼의 "현재가 가져오기". 없으면 404 로 실패한다. */
 export function fetchQuote(symbol: string): Promise<Quote> {
   return apiFetch<Quote>(`/api/v1/investments/quotes?symbol=${encodeURIComponent(symbol)}`);

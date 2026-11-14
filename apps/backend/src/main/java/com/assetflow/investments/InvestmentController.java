@@ -267,6 +267,26 @@ public class InvestmentController {
     }
 
     /**
+     * IRP 채권 원본 진단 (읽기 전용). 잔고·현재가 KIS JSON 을 그대로 돌려주며
+     * 어떤 계좌/보유종목도 변경하지 않는다. 실패도 200 + error 로 진단 가능하게 한다.
+     */
+    @PostMapping("/accounts/{accountId}/kis-bond-preview")
+    public ApiResponse<KisBalanceService.BondPreview> previewBonds(@PathVariable long accountId) {
+        AssetRow account = assetLedger.byId(accountId);
+        if (account == null) {
+            throw new IllegalArgumentException("account not found: " + accountId);
+        }
+        if (!"invest".equals(account.accountType())) {
+            throw new IllegalArgumentException("account must be an invest account");
+        }
+        KisCredentials credentials = kisCredentialsService.findDecrypted(account.id());
+        if (credentials == null) {
+            throw new IllegalArgumentException("KIS credentials not configured for account: " + account.id());
+        }
+        return new ApiResponse<>("OK", "KIS bond preview", kisBalanceService.previewBonds(credentials));
+    }
+
+    /**
      * §62.2 계좌별 KIS 자격증명을 삭제한다.
      */
     @DeleteMapping("/accounts/{accountId}/kis-credentials")
