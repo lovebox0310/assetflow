@@ -3539,3 +3539,7 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
 - 신규 `e2e/mobile-emergency-modal.spec.ts`: 320/390 컨테이너·footer 뷰포트 내,
   body 스크롤 시 footer 고정, wrap 스크롤 0, 가로 넘침 0. 데스크톱 1건.
 - 검증: 단위 246 passed, typecheck·lint 0, e2e 201 passed(199+2), before/after 캡처.
+
+### CI 확인 (2026-11-14)
+- `6090c0e` merge(비상금 설정 모달 모바일 footer 수정, §93): frontend / backend / e2e / quality
+  **success ×4** (run 43606888308). 프론트 전용 — 백엔드 재배포 불필요, 프론트 배포 시 반영.
