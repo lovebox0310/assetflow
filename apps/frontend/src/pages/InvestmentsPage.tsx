@@ -439,11 +439,8 @@ export function InvestmentsPage({
         accountId: values.accountId,
         assetClass: "bond",
         symbol,
-        name:
-          values.name?.trim()
-          || String(form.getFieldValue("name") ?? "").trim()
-          || symbol
-          || "채권",
+        // 종목명은 필수(폼 검증). 종목번호는 없으면 null — "채권" 같은 폴백을 만들지 않는다.
+        name: values.name.trim(),
         currency: "KRW",
         quantity,
         avgPrice: Number.isFinite(purchase) && purchase > 0 ? round4(purchase / quantity) : 0,
@@ -1272,10 +1269,13 @@ function HoldingForm({
       </Form.Item>
       {isBond ? (
         <>
-          {/* BOND-FORM-1: 채권은 종목번호·수량·평가금액·매수금액·발행일·만기일만 받는다.
-              종목명/평단가/현재가/통화/환율/기준일은 숨기고 저장 시 환산한다. */}
-          <Form.Item name="symbol" label="종목번호" rules={[{ required: true, message: "종목번호를 입력하세요" }]}>
-            <Input style={{ width: wide ? 160 : "100%" }} placeholder="예: KR103502GA34" />
+          {/* BOND-FORM-3: 채권의 정체성은 종목명이다. 보험처럼 종목번호가 없는 상품도
+              등록할 수 있도록 symbol 은 선택으로 둔다. 평단가/현재가/통화/기준일은 숨긴다. */}
+          <Form.Item name="name" label="종목명" rules={[{ required: true, message: "종목명을 입력하세요" }]}>
+            <Input style={{ width: wide ? 180 : "100%" }} placeholder="예: 국고03000-3412(24-13)" />
+          </Form.Item>
+          <Form.Item name="symbol" label="종목번호">
+            <Input style={{ width: wide ? 180 : "100%" }} placeholder="예: KR103502GA34 (없으면 비움)" />
           </Form.Item>
           <Form.Item name="quantity" label="보유수량" rules={[{ required: true, message: "보유수량을 입력하세요" }]}>
             <InputNumber min={0} precision={8} style={{ width: numberWidth }} placeholder="예: 10" />
