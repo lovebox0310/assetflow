@@ -24,6 +24,8 @@ export interface HoldingRow {
   /** 채권 발행기관·표면이율(%). 다른 자산군은 null. */
   issuerName?: string | null;
   couponRate?: number | null;
+  /** 채권 액면(원). 다른 자산군·미입력은 null. */
+  faceAmount?: number | null;
 }
 
 export interface InvestmentAccountValue {
@@ -59,6 +61,8 @@ export interface HoldingPayload {
   /** 채권 발행기관·표면이율(%). bond 가 아니면 무시된다. */
   issuerName?: string | null;
   couponRate?: number | null;
+  /** 채권 액면(원). bond 가 아니면 무시된다. */
+  faceAmount?: number | null;
 }
 
 /** §54.4 시세 — 서버가 네이버 금융을 대신 호출한다(브라우저 직접 호출은 CORS). */
@@ -224,6 +228,32 @@ export function fetchBondIssueInfo(accountId: number, pdno: string): Promise<Bon
   const params = new URLSearchParams({ pdno });
   return apiFetch<BondIssueInfo>(
     `/api/v1/investments/accounts/${accountId}/bond-issue-info?${params.toString()}`,
+  );
+}
+
+/** BOND-VALUE-1 KIS 평가단가 조회 결과 (실패도 200 + error). */
+export interface BondValuation {
+  pdno: string | null;
+  name: string | null;
+  asOf: string | null;
+  unitPrice: number | null;
+  evaluated: number;
+  avgYieldRate: number | null;
+  kisUnitPrice: number | null;
+  kbpUnitPrice: number | null;
+  niceUnitPrice: number | null;
+  fnpUnitPrice: number | null;
+  error: string | null;
+}
+
+export function fetchBondValuation(
+  accountId: number,
+  pdno: string,
+  face: number,
+): Promise<BondValuation> {
+  const params = new URLSearchParams({ pdno, face: String(face) });
+  return apiFetch<BondValuation>(
+    `/api/v1/investments/accounts/${accountId}/bond-valuation?${params.toString()}`,
   );
 }
 

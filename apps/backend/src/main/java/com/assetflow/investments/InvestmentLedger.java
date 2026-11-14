@@ -24,7 +24,19 @@ public interface InvestmentLedger {
                       LocalDate maturityDate,
                       /** 채권 발행기관·표면이율(%). 다른 자산군은 null. */
                       String issuerName,
-                      BigDecimal couponRate) {
+                      BigDecimal couponRate,
+                      /** 채권 액면(원). 다른 자산군·미입력은 null. */
+                      Long faceAmount) {
+
+        /** 기존 호출부 호환 — 액면 없이. */
+        public HoldingRow(long id, long accountId, String assetClass, String symbol, String name,
+                          String currency, BigDecimal quantity, BigDecimal avgPrice,
+                          BigDecimal marketPrice, BigDecimal fxRate, String priceAsOf,
+                          LocalDate issueDate, LocalDate maturityDate, String issuerName,
+                          BigDecimal couponRate) {
+            this(id, accountId, assetClass, symbol, name, currency, quantity, avgPrice,
+                    marketPrice, fxRate, priceAsOf, issueDate, maturityDate, issuerName, couponRate, null);
+        }
 
         /** 기존 호출부 호환 — 발행기관/표면이율 없이(다른 자산군·KIS 동기화). */
         public HoldingRow(long id, long accountId, String assetClass, String symbol, String name,
@@ -32,7 +44,7 @@ public interface InvestmentLedger {
                           BigDecimal marketPrice, BigDecimal fxRate, String priceAsOf,
                           LocalDate issueDate, LocalDate maturityDate) {
             this(id, accountId, assetClass, symbol, name, currency, quantity, avgPrice,
-                    marketPrice, fxRate, priceAsOf, issueDate, maturityDate, null, null);
+                    marketPrice, fxRate, priceAsOf, issueDate, maturityDate, null, null, null);
         }
 
         /** 기존 호출부 호환 — 날짜도 없이 만든다. */
@@ -40,7 +52,7 @@ public interface InvestmentLedger {
                           String currency, BigDecimal quantity, BigDecimal avgPrice,
                           BigDecimal marketPrice, BigDecimal fxRate, String priceAsOf) {
             this(id, accountId, assetClass, symbol, name, currency, quantity, avgPrice,
-                    marketPrice, fxRate, priceAsOf, null, null, null, null);
+                    marketPrice, fxRate, priceAsOf, null, null, null, null, null);
         }
     }
 

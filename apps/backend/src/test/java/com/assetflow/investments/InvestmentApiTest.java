@@ -307,4 +307,48 @@ class InvestmentApiTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
     }
+
+    @Test
+    void bondFaceAmountRoundTrips() throws Exception {
+        mvc.perform(post("/api/v1/investments/holdings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"accountId":4,"assetClass":"bond","symbol":"KR103502GEC4",
+                                 "name":"국고03000-3412(24-13)","currency":"KRW",
+                                 "quantity":10,"avgPrice":88119.6,"marketPrice":88005,"fxRate":1,
+                                 "priceAsOf":null,"issueDate":"2024-12-10","maturityDate":"2034-12-10",
+                                 "faceAmount":1000000}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.faceAmount").value(1_000_000));
+
+        mvc.perform(get("/api/v1/investments/holdings").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data.holdings[4].faceAmount").value(1_000_000));
+    }
+
+    @Test
+    void nonBondIgnoresFaceAmount() throws Exception {
+        mvc.perform(post("/api/v1/investments/holdings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"accountId":4,"assetClass":"stock","symbol":"005930","name":"삼성전자",
+                                 "currency":"KRW","quantity":1,"avgPrice":70000,"marketPrice":75000,
+                                 "fxRate":1,"priceAsOf":null,"faceAmount":1000000}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.faceAmount").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
+    void negativeFaceAmountIsRejected() throws Exception {
+        mvc.perform(post("/api/v1/investments/holdings").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"accountId":4,"assetClass":"bond","symbol":"B1","name":"채권",
+                                 "currency":"KRW","quantity":1,"avgPrice":100,"marketPrice":100,
+                                 "fxRate":1,"priceAsOf":null,"faceAmount":-1}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
 }

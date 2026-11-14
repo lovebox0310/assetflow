@@ -71,7 +71,9 @@ public class InvestmentController {
                                 /** BOND-FORM-1: bond 일 때만 저장한다. YYYY-MM-DD. */
                                 String issueDate, String maturityDate,
                                 /** BOND-INFO-1: bond 일 때만 저장한다. */
-                                String issuerName, BigDecimal couponRate) {}
+                                String issuerName, BigDecimal couponRate,
+                                /** BOND-VALUE-1: bond 일 때만 저장한다. 원 단위 액면. */
+                                Long faceAmount) {}
 
     public record SyncKisRequest(Long accountId) {}
 
@@ -395,11 +397,17 @@ public class InvestmentController {
             throw new IllegalArgumentException("couponRate must be between 0 and 100");
         }
 
+        Long faceAmount = request.faceAmount();
+        if (faceAmount != null && faceAmount < 0) {
+            throw new IllegalArgumentException("faceAmount must not be negative");
+        }
+
         if (!"bond".equals(request.assetClass())) {
             issueDate = null;
             maturityDate = null;
             issuerName = null;
             couponRate = null;
+            faceAmount = null;
         } else if (issueDate != null && maturityDate != null && maturityDate.isBefore(issueDate)) {
             throw new IllegalArgumentException("maturityDate must be on or after issueDate");
         }
@@ -408,7 +416,7 @@ public class InvestmentController {
                 request.symbol() == null || request.symbol().isBlank() ? null : request.symbol(),
                 request.name(), currency, request.quantity(), request.avgPrice(),
                 request.marketPrice(), request.fxRate(), priceAsOf, issueDate, maturityDate,
-                issuerName, couponRate);
+                issuerName, couponRate, faceAmount);
     }
 
     private static LocalDate parseDate(String raw, String field) {

@@ -330,6 +330,7 @@ CREATE TABLE investment_holdings (
     maturity_date DATE,
     issuer_name  VARCHAR(100),
     coupon_rate  NUMERIC(8, 4),
+    face_amount  BIGINT,
     source       VARCHAR(16) NOT NULL DEFAULT 'manual',
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -346,6 +347,8 @@ ALTER TABLE investment_holdings ADD COLUMN IF NOT EXISTS maturity_date DATE;
 -- BOND-INFO-1: 채권 발행기관·표면이율 (다른 자산군은 NULL).
 ALTER TABLE investment_holdings ADD COLUMN IF NOT EXISTS issuer_name VARCHAR(100);
 ALTER TABLE investment_holdings ADD COLUMN IF NOT EXISTS coupon_rate NUMERIC(8, 4);
+-- BOND-VALUE-1: 채권 액면(원). NULL = 미입력. 음수 검증은 애플리케이션에서 한다.
+ALTER TABLE investment_holdings ADD COLUMN IF NOT EXISTS face_amount BIGINT;
 
 -- ---------------------------------------------------------------------------
 -- merchant_business_info: 사업자번호별 외부 조회 정보 캐시

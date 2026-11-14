@@ -31,6 +31,7 @@ import {
   fetchFxRate,
   fetchQuote,
   fetchBondIssueInfo,
+  fetchBondValuation,
   getPortfolio,
   getUpbitStatus,
   refreshHoldingPrices,
@@ -122,12 +123,14 @@ function valueOf(h: HoldingRow): number {
  */
 type HoldingFormValues = Omit<
   HoldingPayload,
-  "issueDate" | "maturityDate" | "issuerName" | "couponRate"
+  "priceAsOf" | "issueDate" | "maturityDate" | "issuerName" | "couponRate" | "faceAmount"
 > & {
+  priceAsOf?: string | null | undefined;
   issueDate?: string | null | undefined;
   maturityDate?: string | null | undefined;
   issuerName?: string | null | undefined;
   couponRate?: number | null | undefined;
+  faceAmount?: number | null | undefined;
   bondEvaluatedAmount?: number | undefined;
   bondPurchaseAmount?: number | undefined;
 };
@@ -335,6 +338,7 @@ export function InvestmentsPage({
       maturityDate: undefined,
       issuerName: undefined,
       couponRate: undefined,
+      faceAmount: undefined,
       bondEvaluatedAmount: undefined,
       bondPurchaseAmount: undefined,
     });
@@ -359,6 +363,7 @@ export function InvestmentsPage({
       maturityDate: row.maturityDate ?? undefined,
       issuerName: row.issuerName ?? undefined,
       couponRate: row.couponRate ?? undefined,
+      faceAmount: row.faceAmount ?? undefined,
       // 채권은 금액 입력으로 보여 준다 — 수량 × 저장 단가.
       bondEvaluatedAmount: row.assetClass === "bond" ? row.quantity * row.marketPrice : undefined,
       bondPurchaseAmount: row.assetClass === "bond" ? row.quantity * row.avgPrice : undefined,
@@ -417,6 +422,7 @@ export function InvestmentsPage({
             maturityDate: h.maturityDate ?? null,
             issuerName: h.issuerName ?? null,
             couponRate: h.couponRate ?? null,
+            faceAmount: h.faceAmount ?? null,
           }),
         ),
       );
@@ -471,6 +477,9 @@ export function InvestmentsPage({
         couponRate: Number.isFinite(Number(values.couponRate)) && values.couponRate !== undefined
           ? Number(values.couponRate)
           : null,
+        faceAmount: Number.isFinite(Number(values.faceAmount)) && values.faceAmount !== undefined
+          ? Number(values.faceAmount)
+          : null,
       };
     } else {
       const currency = (values.currency || "KRW").toUpperCase();
@@ -490,6 +499,7 @@ export function InvestmentsPage({
         maturityDate: null,
         issuerName: null,
         couponRate: null,
+        faceAmount: null,
       };
     }
     try {
@@ -1325,6 +1335,14 @@ function HoldingForm({
     () => new Map(bondOptions.map((bond) => [bond.name, bond])),
     [bondOptions],
   );
+  // BOND-VALUE-1: 액면 × 평가단가 / 10,000 자동 계산.
+  const bondSymbol = Form.useWatch("symbol", form) as string | undefined;
+  const bondFaceAmount = Form.useWatch("faceAmount", form) as number | undefined;
+  const [bondValueBusy, setBondValueBusy] = useState(false);
+  const [bondValueNotice, setBondValueNotice] = useState("");
+  const [bondValueWarning, setBondValueWarning] = useState("");
+  const bondValueReady = Boolean(accountId) && Boolean(bondSymbol?.trim())
+    && Number(bondFaceAmount) > 0;
   const assetClass = (Form.useWatch("assetClass", form) as HoldingPayload["assetClass"] | undefined)
     ?? "stock";
   const isBond = assetClass === "bond";
@@ -1348,6 +1366,41 @@ function HoldingForm({
       form.setFieldsValue({ fxRate: fx.rate });
     } catch {
       // 직접 입력 경로를 남긴다.
+    }
+  };
+
+  /** BOND-VALUE-1: 액면과 종목번호로 평균평가단가를 조회해 평가금액을 채운다. */
+  const fetchBondValue = async () => {
+    const id = Number(form.getFieldValue("accountId"));
+    const pdno = String(form.getFieldValue("symbol") ?? "").trim();
+    const face = Number(form.getFieldValue("faceAmount"));
+    if (!id || !pdno || !(face > 0)) return;
+    setBondValueBusy(true);
+    setBondValueNotice("");
+    setBondValueWarning("");
+    try {
+      const valuation = await fetchBondValuation(id, pdno, face);
+      if (valuation.error) {
+        setBondValueWarning(valuation.error);
+        return;
+      }
+      form.setFieldsValue({
+        bondEvaluatedAmount: valuation.evaluated,
+        priceAsOf: valuation.asOf ?? undefined,
+      });
+      const unit = valuation.unitPrice !== null
+        ? Number(valuation.unitPrice).toLocaleString("ko-KR", { maximumFractionDigits: 4 })
+        : "—";
+      const rate = valuation.avgYieldRate !== null
+        ? `${Number(valuation.avgYieldRate).toLocaleString("ko-KR", { maximumFractionDigits: 4 })}%`
+        : "—";
+      setBondValueNotice(
+        `${valuation.asOf ?? "기준일 미상"} 기준 · 평균평가단가 ${unit} · 수익률 ${rate}`,
+      );
+    } catch (e) {
+      setBondValueWarning(e instanceof Error ? e.message : "평가단가를 가져오지 못했습니다");
+    } finally {
+      setBondValueBusy(false);
     }
   };
 
@@ -1501,6 +1554,41 @@ function HoldingForm({
           <Form.Item name="quantity" label="보유수량" rules={[{ required: true, message: "보유수량을 입력하세요" }]}>
             <InputNumber min={0} precision={8} style={{ width: numberWidth }} placeholder="예: 10" />
           </Form.Item>
+          <Form.Item name="faceAmount" label="액면(원)">
+            <InputNumber
+              min={0}
+              precision={0}
+              suffix="원"
+              style={{ width: numberWidth }}
+              placeholder="예: 1000000"
+            />
+          </Form.Item>
+          <Form.Item label=" " colon={false}>
+            <Button
+              onClick={() => void fetchBondValue()}
+              loading={bondValueBusy}
+              disabled={!bondValueReady}
+              title={
+                bondValueReady
+                  ? "평균평가단가로 평가금액을 계산합니다"
+                  : "종목번호와 액면을 입력해야 합니다"
+              }
+            >
+              평가단가 가져오기
+            </Button>
+          </Form.Item>
+          {bondValueWarning ? (
+            <Typography.Paragraph type="warning" style={{ marginBottom: 8 }} role="status">
+              {bondValueWarning}
+            </Typography.Paragraph>
+          ) : null}
+          {bondValueNotice ? (
+            <div role="status" aria-live="polite" style={{ marginBottom: 8 }}>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {bondValueNotice}
+              </Typography.Text>
+            </div>
+          ) : null}
           <Form.Item
             name="bondEvaluatedAmount"
             label="평가금액"
@@ -1525,7 +1613,7 @@ function HoldingForm({
               min={0}
               max={100}
               precision={4}
-              addonAfter="%"
+              suffix="%"
               style={{ width: numberWidth }}
               placeholder="예: 3.0"
             />
