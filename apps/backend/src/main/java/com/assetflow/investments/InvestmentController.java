@@ -67,7 +67,9 @@ public class InvestmentController {
 
     public record UpsertRequest(Long accountId, String assetClass, String symbol, String name,
                                 String currency, BigDecimal quantity, BigDecimal avgPrice,
-                                BigDecimal marketPrice, BigDecimal fxRate, String priceAsOf) {}
+                                BigDecimal marketPrice, BigDecimal fxRate, String priceAsOf,
+                                /** BOND-FORM-1: bond 일 때만 저장한다. YYYY-MM-DD. */
+                                String issueDate, String maturityDate) {}
 
     public record SyncKisRequest(Long accountId) {}
 
@@ -377,10 +379,30 @@ public class InvestmentController {
                 throw new IllegalArgumentException("priceAsOf must be YYYY-MM-DD");
             }
         }
+
+        // BOND-FORM-1: 발행일/만기일은 채권에만 저장한다. 다른 자산군이 보내면 무시(null).
+        LocalDate issueDate = parseDate(request.issueDate(), "issueDate");
+        LocalDate maturityDate = parseDate(request.maturityDate(), "maturityDate");
+        if (!"bond".equals(request.assetClass())) {
+            issueDate = null;
+            maturityDate = null;
+        } else if (issueDate != null && maturityDate != null && maturityDate.isBefore(issueDate)) {
+            throw new IllegalArgumentException("maturityDate must be on or after issueDate");
+        }
+
         return new HoldingRow(0, request.accountId(), request.assetClass(),
                 request.symbol() == null || request.symbol().isBlank() ? null : request.symbol(),
                 request.name(), currency, request.quantity(), request.avgPrice(),
-                request.marketPrice(), request.fxRate(), priceAsOf);
+                request.marketPrice(), request.fxRate(), priceAsOf, issueDate, maturityDate);
+    }
+
+    private static LocalDate parseDate(String raw, String field) {
+        if (raw == null || raw.isBlank()) return null;
+        try {
+            return LocalDate.parse(raw.trim());
+        } catch (DateTimeParseException e) {
+            throw new IllegalArgumentException(field + " must be YYYY-MM-DD");
+        }
     }
 
     private static void requireNonNegative(BigDecimal value, String field) {

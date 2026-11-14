@@ -18,6 +18,9 @@ export interface HoldingRow {
   marketPrice: number;
   fxRate: number;
   priceAsOf: string | null;
+  /** 채권 발행일/만기일(YYYY-MM-DD). 다른 자산군은 null. */
+  issueDate?: string | null;
+  maturityDate?: string | null;
 }
 
 export interface InvestmentAccountValue {
@@ -47,6 +50,9 @@ export interface HoldingPayload {
   marketPrice: number;
   fxRate: number;
   priceAsOf?: string | null;
+  /** 채권 발행일/만기일(YYYY-MM-DD). bond 가 아니면 무시된다. */
+  issueDate?: string | null;
+  maturityDate?: string | null;
 }
 
 /** §54.4 시세 — 서버가 네이버 금융을 대신 호출한다(브라우저 직접 호출은 CORS). */
