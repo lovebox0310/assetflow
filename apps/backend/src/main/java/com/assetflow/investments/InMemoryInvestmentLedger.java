@@ -55,7 +55,8 @@ public class InMemoryInvestmentLedger implements InvestmentLedger {
     public HoldingRow create(HoldingRow row) {
         HoldingRow saved = new HoldingRow(nextId.getAndIncrement(), row.accountId(), row.assetClass(),
                 row.symbol(), row.name(), row.currency(), row.quantity(), row.avgPrice(),
-                row.marketPrice(), row.fxRate(), row.priceAsOf(), row.issueDate(), row.maturityDate());
+                row.marketPrice(), row.fxRate(), row.priceAsOf(), row.issueDate(), row.maturityDate(),
+                row.issuerName(), row.couponRate());
         synchronized (rows) {
             rows.add(saved);
         }
@@ -70,7 +71,7 @@ public class InMemoryInvestmentLedger implements InvestmentLedger {
                     HoldingRow saved = new HoldingRow(id, row.accountId(), row.assetClass(), row.symbol(),
                             row.name(), row.currency(), row.quantity(), row.avgPrice(),
                             row.marketPrice(), row.fxRate(), row.priceAsOf(),
-                            row.issueDate(), row.maturityDate());
+                            row.issueDate(), row.maturityDate(), row.issuerName(), row.couponRate());
                     rows.set(i, saved);
                     return saved;
                 }
@@ -127,7 +128,8 @@ public class InMemoryInvestmentLedger implements InvestmentLedger {
 
             HoldingRow saved = new HoldingRow(nextId.getAndIncrement(), row.accountId(), row.assetClass(),
                     row.symbol(), row.name(), row.currency(), row.quantity(), row.avgPrice(),
-                    row.marketPrice(), row.fxRate(), row.priceAsOf(), row.issueDate(), row.maturityDate());
+                    row.marketPrice(), row.fxRate(), row.priceAsOf(), row.issueDate(), row.maturityDate(),
+                    row.issuerName(), row.couponRate());
             rows.add(saved);
             kisIds.add(saved.id());
             return saved;
@@ -137,12 +139,13 @@ public class InMemoryInvestmentLedger implements InvestmentLedger {
     /** 첫 행만 갱신하고 나머지는 같은 종목의 중복 행이므로 삭제한다. */
     private HoldingRow applyKis(List<HoldingRow> matches, HoldingRow row) {
         long keepId = matches.get(0).id();
-        // KIS 동기화는 채권 발행일/만기일을 모른다 — 기존 값을 보존한다.
+        // KIS 동기화는 채권 발행일/만기일·발행기관/표면이율을 모른다 — 기존 값을 보존한다.
         LocalDate issueDate = row.issueDate() != null ? row.issueDate() : matches.get(0).issueDate();
         LocalDate maturityDate = row.maturityDate() != null ? row.maturityDate() : matches.get(0).maturityDate();
         HoldingRow saved = new HoldingRow(keepId, row.accountId(), row.assetClass(), row.symbol(),
                 row.name(), row.currency(), row.quantity(), row.avgPrice(), row.marketPrice(),
-                row.fxRate(), row.priceAsOf(), issueDate, maturityDate);
+                row.fxRate(), row.priceAsOf(), issueDate, maturityDate,
+                matches.get(0).issuerName(), matches.get(0).couponRate());
         for (int i = 0; i < rows.size(); i++) {
             if (rows.get(i).id() == keepId) {
                 rows.set(i, saved);

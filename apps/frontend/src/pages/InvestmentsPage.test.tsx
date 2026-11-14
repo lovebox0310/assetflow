@@ -5,6 +5,18 @@ import { clearInflight } from "../api/client";
 import { clearToken, saveToken } from "../auth/authStore";
 
 /** §38 표준 포맷 대역. */
+/** 자산군 Select 에서 "채권" 옵션을 고른다 — 목록 부제(title="채권")와 겹치지 않게 드롭다운 한정. */
+async function selectBondClass() {
+  const option = await waitFor(() => {
+    const found = document.querySelector<HTMLElement>(
+      '.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option[title="채권"]',
+    );
+    if (!found) throw new Error("채권 option not found");
+    return found;
+  });
+  fireEvent.click(option);
+}
+
 function apiResponse(data: unknown, ok = true, status = 200): Response {
   const body = ok
     ? { code: "OK", message: "loaded", data }
@@ -238,7 +250,7 @@ describe("InvestmentsPage (§54 E2)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "+ 종목 추가" }));
     fireEvent.mouseDown(screen.getByLabelText("자산군"));
-    fireEvent.click(await screen.findByTitle("채권"));
+    await selectBondClass();
 
     // 채권 전용 필드: 종목명(필수)·종목번호(선택)·수량·평가·매수·발행·만기.
     expect(await screen.findByLabelText("종목명")).toBeDefined();
@@ -292,7 +304,7 @@ describe("InvestmentsPage (§54 E2)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "+ 종목 추가" }));
     fireEvent.mouseDown(screen.getByLabelText("자산군"));
-    fireEvent.click(await screen.findByTitle("채권"));
+    await selectBondClass();
     expect(await screen.findByLabelText("보유수량")).toBeDefined();
 
     fireEvent.change(screen.getByLabelText("보유수량"), { target: { value: "1" } });
@@ -342,6 +354,17 @@ describe("InvestmentsPage (§54 E2)", () => {
       if (String(input).includes("/investments/bonds")) {
         return Promise.resolve(apiResponse({ items: [bond], warning: null }));
       }
+      if (String(input).includes("/bond-issue-info")) {
+        return Promise.resolve(apiResponse({
+          issuerName: "기획재정부",
+          couponRate: 3,
+          issueDate: null,
+          maturityDate: null,
+          bondClass: "국고채",
+          creditRating: "AAA",
+          error: null,
+        }));
+      }
       return base(input, init);
     }));
     render(<InvestmentsPage />);
@@ -349,7 +372,7 @@ describe("InvestmentsPage (§54 E2)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "+ 종목 추가" }));
     fireEvent.mouseDown(screen.getByLabelText("자산군"));
-    fireEvent.click(await screen.findByTitle("채권"));
+    await selectBondClass();
     expect(await screen.findByLabelText("보유수량")).toBeDefined();
 
     fireEvent.click(screen.getByRole("button", { name: "채권 찾기" }));
@@ -361,6 +384,12 @@ describe("InvestmentsPage (§54 E2)", () => {
     expect((screen.getByLabelText("종목번호") as HTMLInputElement).value).toBe(bond.code);
     expect((screen.getByLabelText("발행일") as HTMLInputElement).value).toBe(bond.issueDate);
     expect((screen.getByLabelText("만기일") as HTMLInputElement).value).toBe(bond.maturityDate);
+
+    // 계좌가 선택돼 있으면 발행정보(best-effort)가 자동으로 채워진다.
+    await waitFor(() => {
+      expect((screen.getByLabelText("발행기관") as HTMLInputElement).value).toBe("기획재정부");
+      expect(Number((screen.getByLabelText("표면이율") as HTMLInputElement).value)).toBe(3);
+    });
 
     fireEvent.change(screen.getByLabelText("보유수량"), { target: { value: "10" } });
     fireEvent.change(screen.getByLabelText("평가금액"), { target: { value: "880050" } });
@@ -378,8 +407,55 @@ describe("InvestmentsPage (§54 E2)", () => {
         symbol: bond.code,
         issueDate: "2024-12-10",
         maturityDate: "2034-12-10",
+        issuerName: "기획재정부",
+        couponRate: 3,
         quantity: 10,
         marketPrice: 88005,
+      });
+    });
+  });
+
+  it("발행정보 조회가 실패해도 채권 저장은 가능하다 (BOND-INFO-1)", async () => {
+    const base = fetchMock as unknown as
+      (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes("/bond-issue-info")) {
+        return Promise.resolve(apiResponse({
+          issuerName: null, couponRate: null, issueDate: null, maturityDate: null,
+          bondClass: null, creditRating: null, error: "KIS 자격증명이 없습니다",
+        }));
+      }
+      return base(input, init);
+    }));
+    render(<InvestmentsPage />);
+    await screen.findByText("삼성전자");
+
+    fireEvent.click(screen.getByRole("button", { name: "+ 종목 추가" }));
+    fireEvent.mouseDown(screen.getByLabelText("자산군"));
+    await selectBondClass();
+    await screen.findByLabelText("보유수량");
+
+    fireEvent.change(screen.getByLabelText("종목명"), { target: { value: "국고03000-3412(24-13)" } });
+    fireEvent.change(screen.getByLabelText("종목번호"), { target: { value: "KR103502GEC4" } });
+    fireEvent.change(screen.getByLabelText("보유수량"), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("평가금액"), { target: { value: "101200" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "발행정보 가져오기" }));
+    expect(await screen.findByText("KIS 자격증명이 없습니다")).toBeDefined();
+
+    // 보조 정보 실패는 저장을 막지 않는다.
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === "POST"
+          && String((init as RequestInit).body).includes("KR103502GEC4"),
+      );
+      expect(post).toBeDefined();
+      expect(JSON.parse(String((post?.[1] as RequestInit).body))).toMatchObject({
+        assetClass: "bond",
+        name: "국고03000-3412(24-13)",
+        issuerName: null,
+        couponRate: null,
       });
     });
   });
@@ -390,6 +466,7 @@ describe("InvestmentsPage (§54 E2)", () => {
       id: 99, accountId: 4, assetClass: "bond", symbol: null, name,
       currency: "KRW", quantity: 1, avgPrice: 99000, marketPrice: 101200, fxRate: 1,
       priceAsOf: null, issueDate: "2024-03-12", maturityDate: "2034-03-12",
+      issuerName: "기획재정부", couponRate: 3,
     };
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
       const path = String(input);
@@ -404,14 +481,17 @@ describe("InvestmentsPage (§54 E2)", () => {
     render(<InvestmentsPage />);
 
     expect(await screen.findByText(name)).toBeDefined();
-    expect(screen.getByText("채권 · 2034-03-12 만기")).toBeDefined();
+    // BOND-INFO-1: 표면이율·발행기관·만기일을 있는 값만 조립하고 title 에 전체 문자열을 둔다.
+    expect(screen.getByText("채권 · 3% · 기획재정부 · 2034-03-12 만기")).toBeDefined();
+    expect(screen.getByTitle("채권 · 3% · 기획재정부 · 2034-03-12 만기")).toBeDefined();
   });
 
   it("채권 목록 부제는 만기일을 보여 주고 '주'를 붙이지 않는다 (BOND-FORM-1)", async () => {
     render(<InvestmentsPage />);
     await screen.findByText("국고채 10년");
 
-    expect(screen.getByText("채권 · 만기 미입력")).toBeDefined();
+    // 값이 없는 항목은 생략한다 — 기본 fixture 는 표면이율/발행기관/만기일이 없다.
+    expect(screen.getByTitle("채권")).toBeDefined();
     expect(screen.queryByText(/국고채 10년.*100주/)).toBeNull();
   });
 

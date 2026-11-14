@@ -21,14 +21,26 @@ public interface InvestmentLedger {
                       @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
                       LocalDate issueDate,
                       @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
-                      LocalDate maturityDate) {
+                      LocalDate maturityDate,
+                      /** 채권 발행기관·표면이율(%). 다른 자산군은 null. */
+                      String issuerName,
+                      BigDecimal couponRate) {
 
-        /** 기존 호출부 호환 — 날짜 없이 만든다. */
+        /** 기존 호출부 호환 — 발행기관/표면이율 없이(다른 자산군·KIS 동기화). */
+        public HoldingRow(long id, long accountId, String assetClass, String symbol, String name,
+                          String currency, BigDecimal quantity, BigDecimal avgPrice,
+                          BigDecimal marketPrice, BigDecimal fxRate, String priceAsOf,
+                          LocalDate issueDate, LocalDate maturityDate) {
+            this(id, accountId, assetClass, symbol, name, currency, quantity, avgPrice,
+                    marketPrice, fxRate, priceAsOf, issueDate, maturityDate, null, null);
+        }
+
+        /** 기존 호출부 호환 — 날짜도 없이 만든다. */
         public HoldingRow(long id, long accountId, String assetClass, String symbol, String name,
                           String currency, BigDecimal quantity, BigDecimal avgPrice,
                           BigDecimal marketPrice, BigDecimal fxRate, String priceAsOf) {
             this(id, accountId, assetClass, symbol, name, currency, quantity, avgPrice,
-                    marketPrice, fxRate, priceAsOf, null, null);
+                    marketPrice, fxRate, priceAsOf, null, null, null, null);
         }
     }
 

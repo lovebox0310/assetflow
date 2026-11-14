@@ -21,6 +21,9 @@ export interface HoldingRow {
   /** 채권 발행일/만기일(YYYY-MM-DD). 다른 자산군은 null. */
   issueDate?: string | null;
   maturityDate?: string | null;
+  /** 채권 발행기관·표면이율(%). 다른 자산군은 null. */
+  issuerName?: string | null;
+  couponRate?: number | null;
 }
 
 export interface InvestmentAccountValue {
@@ -53,6 +56,9 @@ export interface HoldingPayload {
   /** 채권 발행일/만기일(YYYY-MM-DD). bond 가 아니면 무시된다. */
   issueDate?: string | null;
   maturityDate?: string | null;
+  /** 채권 발행기관·표면이율(%). bond 가 아니면 무시된다. */
+  issuerName?: string | null;
+  couponRate?: number | null;
 }
 
 /** §54.4 시세 — 서버가 네이버 금융을 대신 호출한다(브라우저 직접 호출은 CORS). */
@@ -201,6 +207,24 @@ export interface BondSearchResult {
 export function searchBonds(q: string, limit = 20): Promise<BondSearchResult> {
   const params = new URLSearchParams({ q, limit: String(limit) });
   return apiFetch<BondSearchResult>(`/api/v1/investments/bonds?${params.toString()}`);
+}
+
+/** BOND-INFO-1 KIS 발행정보 (실패도 200 + error). */
+export interface BondIssueInfo {
+  issuerName: string | null;
+  couponRate: number | null;
+  issueDate: string | null;
+  maturityDate: string | null;
+  bondClass: string | null;
+  creditRating: string | null;
+  error: string | null;
+}
+
+export function fetchBondIssueInfo(accountId: number, pdno: string): Promise<BondIssueInfo> {
+  const params = new URLSearchParams({ pdno });
+  return apiFetch<BondIssueInfo>(
+    `/api/v1/investments/accounts/${accountId}/bond-issue-info?${params.toString()}`,
+  );
 }
 
 /** 종목 1건 시세 — 종목 추가 폼의 "현재가 가져오기". 없으면 404 로 실패한다. */
