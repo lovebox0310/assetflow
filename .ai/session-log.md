@@ -3557,3 +3557,12 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
 ### CI 확인 (2026-11-15)
 - `57ddabd` merge(KIS IRP 퇴직연금 전용 잔고조회, §94): frontend / backend / e2e / quality
   **success ×4** (run 43615272736). 백엔드 재배포 후 IRP 상품코드 29로 동기화 확인 필요.
+
+## 2026-11-15 — KIS IRP 장내채권 동기화 (§95) [✅ 검증 완료]
+
+- 퇴직연금 잔고(TTTC2208R)에 없는 채권을 장내채권 잔고(CTSC8407R)로 합치고,
+  현재가(FHKBJ773400C0)로 평가. pdno 기준 lot 집계 + 유효단가 역산.
+- `assetClass` 추가: ETF/ETN→etf, 채권→bond, 펀드→fund, 그 외→stock.
+- 채권 실패는 부분 성공(주식/ETF 유지 + warning).
+- 검증: 백엔드 289, 프론트 246, e2e 201.
+- 사람 조치: KIS 앱키 장내채권 권한 확인, 백엔드 재배포 후 IRP 동기화.

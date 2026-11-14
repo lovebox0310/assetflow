@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -130,6 +131,9 @@ class KisBalanceServiceTest {
         KisApiClient api = client((path, tr) -> {
             paths.add(path);
             trIds.add(tr);
+            if (path.contains("domestic-bond")) {
+                return json("{\"rt_cd\":\"0\",\"output\":[]}");
+            }
             return json("""
                     {"rt_cd":"0",
                      "output1":[{"pdno":"458730","prdt_name":"TIGER 미국배당다우존스",
@@ -142,10 +146,11 @@ class KisBalanceServiceTest {
 
         KisBalanceResponse result = new KisBalanceService(api).fetchBalance(pensionCredentials());
 
-        // IRP(29)는 퇴직연금 전용 API 만 호출한다 — 일반 주식잔고/계좌자산현황 폴백 없음.
+        // IRP(29)는 퇴직연금 전용 + 장내채권 잔고만 호출한다 — 일반 폴백 없음.
         assertThat(paths).containsExactly(
-                "/uapi/domestic-stock/v1/trading/pension/inquire-balance");
-        assertThat(trIds).containsExactly("TTTC2208R");
+                "/uapi/domestic-stock/v1/trading/pension/inquire-balance",
+                "/uapi/domestic-bond/v1/trading/inquire-balance");
+        assertThat(trIds).containsExactly("TTTC2208R", "CTSC8407R");
         assertThat(result.summary().dncaTotAmt()).isEqualByComparingTo(new BigDecimal("76502"));
         assertThat(result.summary().totEvluAmt()).isEqualByComparingTo(new BigDecimal("21691902"));
         assertThat(result.summary().cashKnown()).isTrue();
@@ -162,6 +167,9 @@ class KisBalanceServiceTest {
         List<String> paths = new ArrayList<>();
         KisApiClient api = client((path, tr) -> {
             paths.add(path);
+            if (path.contains("domestic-bond")) {
+                return json("{\"rt_cd\":\"0\",\"output\":[]}");
+            }
             return json("""
                     {"rt_cd":"0","output1":[],
                      "output2":[{"dnca_tot_amt":"0","tot_evlu_amt":"0","scts_evlu_amt":"0"}]}
@@ -171,7 +179,8 @@ class KisBalanceServiceTest {
         KisBalanceResponse result = new KisBalanceService(api).fetchBalance(pensionCredentials());
 
         assertThat(paths).containsExactly(
-                "/uapi/domestic-stock/v1/trading/pension/inquire-balance");
+                "/uapi/domestic-stock/v1/trading/pension/inquire-balance",
+                "/uapi/domestic-bond/v1/trading/inquire-balance");
         assertThat(result.summary().dncaTotAmt()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(result.summary().cashKnown()).isTrue();
         assertThat(result.holdings()).isEmpty();
@@ -189,5 +198,88 @@ class KisBalanceServiceTest {
 
         assertThat(result.holdings()).hasSize(1);
         assertThat(result.summary().dncaTotAmt()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    private static final String PENSION_ETF_RESPONSE = """
+            {"rt_cd":"0",
+             "output1":[{"pdno":"458730","prdt_name":"TIGER 미국배당다우존스",
+               "hldg_qty":"851","pchs_avg_pric":"14693","evlu_amt":"21615400",
+               "evlu_pfls_amt":"510000","item_dvsn_name":"ETF"}],
+             "output2":[{"dnca_tot_amt":"76502","tot_evlu_amt":"21691902",
+               "scts_evlu_amt":"21615400"}]}
+            """;
+
+    private static final String BOND_BALANCE_RESPONSE = """
+            {"rt_cd":"0","output":[
+              {"pdno":"KR103502GA34","buy_dt":"20260101","buy_sqno":"1","cblc_qty":"100",
+               "buy_unpr":"99.5","buy_amt":"995000","exdt":"20360101","ord_psbl_qty":"100"},
+              {"pdno":"KR103502GA34","buy_dt":"20260201","buy_sqno":"2","cblc_qty":"50",
+               "buy_unpr":"100","buy_amt":"500000","exdt":"20360101","ord_psbl_qty":"50"}]}
+            """;
+
+    private static final String BOND_PRICE_RESPONSE = """
+            {"rt_cd":"0","output":{"hts_kor_isnm":"국고채 10년","bond_prpr":"100","ernn_rate":"3.5"}}
+            """;
+
+    @Test
+    void irpMergesBondLotsAndUsesEffectiveUnitPrice() {
+        List<String> paths = new ArrayList<>();
+        List<String> trIds = new ArrayList<>();
+        KisApiClient api = client((path, tr) -> {
+            paths.add(path);
+            trIds.add(tr);
+            if (path.contains("pension/inquire-balance")) return json(PENSION_ETF_RESPONSE);
+            if (path.contains("domestic-bond") && path.contains("inquire-balance")) {
+                return json(BOND_BALANCE_RESPONSE);
+            }
+            if (path.contains("domestic-bond") && path.contains("inquire-price")) {
+                return json(BOND_PRICE_RESPONSE);
+            }
+            throw new KisApiException("unexpected call: " + path);
+        });
+
+        KisBalanceResponse result = new KisBalanceService(api).fetchBalance(pensionCredentials());
+
+        assertThat(paths).contains("/uapi/domestic-bond/v1/quotations/inquire-price");
+        assertThat(trIds).contains("FHKBJ773400C0");
+        // ETF 1건 + 채권 lot 2건이 pdno 기준 1건으로 합쳐져 총 2건.
+        assertThat(result.holdings()).hasSize(2);
+        assertThat(result.holdings().get(0).assetClass()).isEqualTo("etf");
+
+        KisBalanceResponse.Holding bond = result.holdings().stream()
+                .filter(h -> "bond".equals(h.assetClass()))
+                .findFirst().orElseThrow();
+        assertThat(bond.pdno()).isEqualTo("KR103502GA34");
+        assertThat(bond.prdtName()).isEqualTo("국고채 10년");
+        assertThat(bond.hldgQty()).isEqualByComparingTo(new BigDecimal("150"));
+        // 수량가중 매수단가 = (99.5×100 + 100×50) / 150 = 99.6667
+        assertThat(bond.pchsAvgPric()).isEqualByComparingTo(new BigDecimal("99.6667"));
+        // 유효단가 = (995,000+500,000)/150 × (100/99.6667) = 10,000
+        assertThat(bond.prpr()).isEqualByComparingTo(new BigDecimal("10000"));
+        assertThat(bond.evluAmt()).isEqualByComparingTo(new BigDecimal("1500000"));
+        assertThat(bond.evalPflsAmt()).isEqualByComparingTo(new BigDecimal("5000"));
+        // quantity × marketPrice == buy_amt × (bond_prpr / buy_unpr) — lot 가중 평균 기준.
+        BigDecimal expectedUnit = new BigDecimal("1495000")
+                .multiply(new BigDecimal("100"))
+                .divide(new BigDecimal("14950"), 4, RoundingMode.HALF_UP);
+        BigDecimal expectedValuation = expectedUnit.multiply(new BigDecimal("150"));
+        assertThat(bond.hldgQty().multiply(bond.prpr())).isEqualByComparingTo(expectedValuation);
+    }
+
+    @Test
+    void bondFailureKeepsPensionHoldingsAndAddsWarning() {
+        KisApiClient api = client((path, tr) -> {
+            if (path.contains("pension/inquire-balance")) return json(PENSION_ETF_RESPONSE);
+            throw new KisApiException("채권 API 거부");
+        });
+
+        KisBalanceResponse result = new KisBalanceService(api).fetchBalance(pensionCredentials());
+
+        assertThat(result.holdings()).hasSize(1);
+        assertThat(result.holdings().get(0).assetClass()).isEqualTo("etf");
+        assertThat(result.warning())
+                .contains("채권 잔고를 읽지 못했습니다")
+                .contains("채권 API 거부");
+        assertThat(result.summary().cashKnown()).isTrue();
     }
 }

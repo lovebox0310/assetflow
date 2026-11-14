@@ -9,8 +9,15 @@ import java.util.List;
  */
 public record KisBalanceResponse(
         List<Holding> holdings,
-        Summary summary
+        Summary summary,
+        /** 부분 성공(예: 채권 잔고만 실패) 안내. 없으면 null. */
+        String warning
 ) {
+
+    /** 기존 호출부 호환 — warning=null. */
+    public KisBalanceResponse(List<Holding> holdings, Summary summary) {
+        this(holdings, summary, null);
+    }
 
     public record Holding(
             String pdno,          // 상품번호(종목코드)
@@ -20,8 +27,17 @@ public record KisBalanceResponse(
             BigDecimal prpr,      // 현재가
             BigDecimal evluAmt,   // 평가금액
             BigDecimal evalPflsAmt, // 평가손익금액
-            String crdtLoanYn     // 신용대출여부
-    ) {}
+            String crdtLoanYn,    // 신용대출여부
+            /** stock | etf | bond | fund — 퇴직연금 응답의 item_dvsn_name 으로 판별한다. */
+            String assetClass
+    ) {
+        /** 기존 호출부 호환 — assetClass="stock". */
+        public Holding(String pdno, String prdtName, BigDecimal hldgQty, BigDecimal pchsAvgPric,
+                       BigDecimal prpr, BigDecimal evluAmt, BigDecimal evalPflsAmt,
+                       String crdtLoanYn) {
+            this(pdno, prdtName, hldgQty, pchsAvgPric, prpr, evluAmt, evalPflsAmt, crdtLoanYn, "stock");
+        }
+    }
 
     /**
      * @param cashKnown 예수금 값을 **신뢰할 수 있는가**. 퇴직연금(IRP, 상품코드 29)

@@ -112,7 +112,8 @@ public class InvestmentController {
         // 단 예수금을 **읽지 못한 0 은 쓰지 않는다** — 계좌가 비어서 0 인 것과
         // API/자격증명 문제로 값을 못 받은 것은 구분할 수 없으므로, 보수적으로
         // 기존 잔액을 유지하고 경고를 돌려준다(§62.3).
-        String warning = null;
+        // 채권 잔고 부분 실패 등 서비스가 준 경고를 먼저 싣고, 예수금 미확인 경고는 뒤에 합친다.
+        String warning = balance.warning();
         boolean cashKnown = balance.summary() != null && balance.summary().cashKnown();
         BigDecimal cashAmount = balance.summary() == null ? null : balance.summary().dncaTotAmt();
         if (cashKnown) {
@@ -127,9 +128,10 @@ public class InvestmentController {
                     account.institutionName(), cash, account.isDebt(), account.openedAt());
             log.info("KIS sync updated cash balance for account {} to {}", account.id(), cash);
         } else {
-            warning = "KIS에서 예수금을 읽지 못해 계좌 잔액을 유지했습니다. "
+            String cashWarning = "KIS에서 예수금을 읽지 못해 계좌 잔액을 유지했습니다. "
                     + "App Key/App Secret이 실전·모의 중 어느 용인지, CANO·상품코드·API 환경이 "
                     + "해당 계좌와 맞는지 확인하세요. IRP는 상품코드 29, 개인연금은 22입니다.";
+            warning = warning == null || warning.isBlank() ? cashWarning : warning + " | " + cashWarning;
             log.warn("KIS sync could not resolve cash for account {} — keeping balance {}",
                     account.id(), account.balance());
         }
@@ -141,7 +143,7 @@ public class InvestmentController {
                 continue;
             }
             HoldingRow row = new HoldingRow(
-                    0, request.accountId(), "stock", symbol, h.prdtName(), "KRW",
+                    0, request.accountId(), h.assetClass(), symbol, h.prdtName(), "KRW",
                     h.hldgQty(), h.pchsAvgPric(), h.prpr(), BigDecimal.ONE, priceAsOf);
             // §70 사용자가 수동으로 넣은 같은 종목이 있으면 그 행을 덮어쓴다.
             ledger.upsertKis(row);
