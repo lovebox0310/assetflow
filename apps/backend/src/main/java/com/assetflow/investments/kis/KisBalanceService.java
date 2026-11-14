@@ -35,6 +35,10 @@ public class KisBalanceService {
     private static final String REAL_TR_ID = "TTTC8434R";
     private static final String ACCOUNT_BALANCE_TR_ID = "CTRP6548R";
     private static final String PENSION_TR_ID = "TTTC2208R";
+    /** 퇴직연금 체결기준잔고 — 보험·국민주택·국고채까지 전체 상품을 포함한다. */
+    private static final String PENSION_PRESENT_PATH =
+            "/uapi/domestic-stock/v1/trading/pension/inquire-present-balance";
+    private static final String PENSION_PRESENT_TR_ID = "TTTC2202R";
     private static final String PENSION_PRODUCT_CODE = "29";
     /** 장내채권 잔고/현재가 — 퇴직연금 잔고(TTTC2208R)에는 채권이 오지 않는다. */
     private static final String BOND_BALANCE_PATH = "/uapi/domestic-bond/v1/trading/inquire-balance";
@@ -65,7 +69,7 @@ public class KisBalanceService {
         if (!PENSION_PRODUCT_CODE.equals(normalize(credentials.acntPrdtCd()))) {
             return base;
         }
-        return withBondHoldings(credentials, base);
+        return withPensionExtras(credentials, base);
     }
 
     private KisBalanceResponse baseBalance(KisCredentials credentials) {
@@ -226,25 +230,119 @@ public class KisBalanceService {
     }
 
     /**
-     * IRP 퇴직연금 잔고에 없는 장내채권을 별도 조회해 합친다.
-     * 채권 조회 실패는 전체 실패가 아니다 — 주식/ETF는 살리고 warning 으로 알린다.
+     * IRP(29) 보유 전체를 합친다.
+     *
+     * <p>우선순위: <b>TTTC2202R(체결기준잔고) &gt; TTTC2208R(기존 퇴직연금) &gt; 장내채권(CTSC8407R)</b>.
+     * 같은 key(pdno, 없으면 name)는 우선순위가 높은 행만 남긴다. TTTC2202R 은 보험·국민주택·
+     * 국고채까지 포함하지만, 혹시 누락된 장내채권을 위해 채권 조회는 fallback 으로 유지한다.
+     * 실패는 전체 실패가 아니다 — 각각 warning 문자열로 합친다.</p>
      */
-    private KisBalanceResponse withBondHoldings(KisCredentials credentials, KisBalanceResponse base) {
-        try {
-            List<KisBalanceResponse.Holding> bonds = fetchBondHoldings(credentials);
-            if (bonds.isEmpty()) {
-                return base;
-            }
-            List<KisBalanceResponse.Holding> merged = new ArrayList<>(base.holdings());
-            merged.addAll(bonds);
-            return new KisBalanceResponse(merged, base.summary(), base.warning());
-        } catch (KisApiException e) {
-            String bondWarning = "채권 잔고를 읽지 못했습니다: " + e.getMessage();
-            String warning = base.warning() == null || base.warning().isBlank()
-                    ? bondWarning
-                    : base.warning() + " | " + bondWarning;
-            return new KisBalanceResponse(base.holdings(), base.summary(), warning);
+    private KisBalanceResponse withPensionExtras(KisCredentials credentials, KisBalanceResponse base) {
+        List<String> warnings = new ArrayList<>();
+        if (base.warning() != null && !base.warning().isBlank()) {
+            warnings.add(base.warning());
         }
+
+        List<KisBalanceResponse.Holding> present = List.of();
+        try {
+            present = fetchPensionPresentHoldings(credentials);
+        } catch (KisApiException e) {
+            warnings.add("퇴직연금 체결기준잔고를 읽지 못했습니다: " + e.getMessage());
+        }
+
+        List<KisBalanceResponse.Holding> bonds = List.of();
+        try {
+            bonds = fetchBondHoldings(credentials);
+        } catch (KisApiException e) {
+            warnings.add("채권 잔고를 읽지 못했습니다: " + e.getMessage());
+        }
+
+        Map<String, KisBalanceResponse.Holding> merged = new LinkedHashMap<>();
+        for (KisBalanceResponse.Holding holding : present) {
+            merged.putIfAbsent(holdingKey(holding), holding);
+        }
+        for (KisBalanceResponse.Holding holding : base.holdings()) {
+            merged.putIfAbsent(holdingKey(holding), holding);
+        }
+        for (KisBalanceResponse.Holding holding : bonds) {
+            merged.putIfAbsent(holdingKey(holding), holding);
+        }
+        String warning = warnings.isEmpty() ? null : String.join(" | ", warnings);
+        return new KisBalanceResponse(new ArrayList<>(merged.values()), base.summary(), warning);
+    }
+
+    /** 중복 제거 key — pdno(없으면 상품명). */
+    private static String holdingKey(KisBalanceResponse.Holding holding) {
+        String pdno = holding.pdno() == null ? "" : holding.pdno().trim();
+        if (!pdno.isEmpty()) return pdno;
+        String name = holding.prdtName() == null ? "" : holding.prdtName().trim();
+        return name;
+    }
+
+    /**
+     * 퇴직연금 체결기준잔고(TTTC2202R) — 보험·국민주택·국고채까지 전체 보유.
+     * output2 의 예수금은 신뢰하지 않는다(필드가 없을 수 있음) — 예수금은 TTTC2208R 값을 유지한다.
+     */
+    private List<KisBalanceResponse.Holding> fetchPensionPresentHoldings(KisCredentials credentials) {
+        JsonNode root = kisApiClient.get(credentials, PENSION_PRESENT_PATH,
+                pensionPresentParams(credentials), PENSION_PRESENT_TR_ID);
+
+        List<KisBalanceResponse.Holding> holdings = new ArrayList<>();
+        JsonNode output1 = root.path("output1");
+        if (output1.isArray()) {
+            for (JsonNode node : output1) {
+                BigDecimal evluAmt = decimal(node.path("evlu_amt").asText("0"));
+                BigDecimal pchsAmt = decimal(node.path("pchs_amt").asText("0"));
+                BigDecimal qty = decimal(node.path("hldg_qty").asText("0"));
+                // 보험처럼 수량이 0 으로 오지만 평가액이 있는 상품은 1주로 본다.
+                if (qty.signum() <= 0 && evluAmt.signum() > 0) {
+                    qty = BigDecimal.ONE;
+                }
+                if (qty.signum() <= 0) {
+                    continue; // 수량·평가액 모두 없으면 진짜 빈 행이다.
+                }
+
+                BigDecimal price = decimal(node.path("prpr").asText("0"));
+                // 보험·채권은 prpr 가 0/없음 — 평가액 ÷ 수량으로 현재가를 역산한다.
+                if (price.signum() <= 0 && evluAmt.signum() > 0) {
+                    price = evluAmt.divide(qty, 4, RoundingMode.HALF_UP);
+                }
+
+                BigDecimal avgPrice = decimal(node.path("pchs_avg_pric").asText("0"));
+                if (avgPrice.signum() <= 0 && pchsAmt.signum() > 0) {
+                    avgPrice = pchsAmt.divide(qty, 4, RoundingMode.HALF_UP);
+                }
+                if (avgPrice.signum() <= 0) {
+                    avgPrice = price;
+                }
+
+                holdings.add(new KisBalanceResponse.Holding(
+                        text(node, "pdno"),
+                        text(node, "prdt_name"),
+                        qty,
+                        avgPrice,
+                        price,
+                        evluAmt,
+                        decimal(node.path("evlu_pfls_amt").asText("0")),
+                        "",
+                        presentAssetClass(node)));
+            }
+        }
+        return holdings;
+    }
+
+    /** 체결기준잔고의 잔고구분명/상품명으로 자산군을 정한다. 보험·국민주택·국고는 bond. */
+    private static String presentAssetClass(JsonNode node) {
+        String division = (text(node, "cblc_dvsn_name") + " " + text(node, "prdt_name"))
+                .toUpperCase(Locale.ROOT);
+        if (division.contains("ETF") || division.contains("ETN")) return "etf";
+        if (division.contains("채권") || division.contains("보험") || division.contains("국고")
+                || division.contains("국민주택") || division.contains("BOND")
+                || division.contains("INSURANCE")) {
+            return "bond";
+        }
+        if (division.contains("펀드") || division.contains("FUND")) return "fund";
+        return "stock";
     }
 
     /**
@@ -326,8 +424,12 @@ public class KisBalanceService {
     /** 진단용 원본 1건 — 변환/저장 없이 KIS JSON 을 그대로 보여 준다. */
     public record BondPricePreview(String pdno, JsonNode price, String error) {}
 
-    /** 진단용 채권 원본 묶음. balance 가 null 이면 error 에 잔고 조회 사유가 들어 있다. */
-    public record BondPreview(JsonNode balance, List<BondPricePreview> prices, String error) {}
+    /**
+     * 진단용 채권/퇴직연금 원본 묶음. balance 가 null 이면 error 에 잔고 조회 사유가 들어 있다.
+     * pensionPresent 는 TTTC2202R(체결기준잔고) 원본이며, 실패하면 null + error 문구가 붙는다.
+     */
+    public record BondPreview(JsonNode balance, List<BondPricePreview> prices, String error,
+                              JsonNode pensionPresent) {}
 
     /**
      * IRP 채권 원본 진단 (읽기 전용, DB 변경 없음).
@@ -342,7 +444,17 @@ public class KisBalanceService {
             balance = kisApiClient.get(credentials, BOND_BALANCE_PATH,
                     bondBalanceParams(credentials), BOND_BALANCE_TR_ID);
         } catch (RuntimeException e) {
-            return new BondPreview(null, List.of(), e.getMessage());
+            return new BondPreview(null, List.of(), e.getMessage(), null);
+        }
+
+        // TTTC2202R(체결기준잔고) 원본도 함께 — 보험/국민주택/국고채 포함 여부를 눈으로 확인한다.
+        JsonNode pensionPresent = null;
+        String presentError = null;
+        try {
+            pensionPresent = kisApiClient.get(credentials, PENSION_PRESENT_PATH,
+                    pensionPresentParams(credentials), PENSION_PRESENT_TR_ID);
+        } catch (RuntimeException e) {
+            presentError = "퇴직연금 체결기준잔고를 읽지 못했습니다: " + e.getMessage();
         }
 
         List<BondPricePreview> prices = new ArrayList<>();
@@ -363,7 +475,16 @@ public class KisBalanceService {
                 }
             }
         }
-        return new BondPreview(balance, prices, null);
+        return new BondPreview(balance, prices, presentError, pensionPresent);
+    }
+
+    private static Map<String, String> pensionPresentParams(KisCredentials credentials) {
+        return Map.ofEntries(
+                Map.entry("CANO", normalize(credentials.cano())),
+                Map.entry("ACNT_PRDT_CD", normalize(credentials.acntPrdtCd())),
+                Map.entry("USER_DVSN_CD", "00"),
+                Map.entry("CTX_AREA_FK100", ""),
+                Map.entry("CTX_AREA_NK100", ""));
     }
 
     private static Map<String, String> bondBalanceParams(KisCredentials credentials) {

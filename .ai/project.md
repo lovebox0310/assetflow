@@ -5620,3 +5620,21 @@ DB 의 10월 합계는 현대 2,609,560 · 삼성 362,230 이었고, 마지막 �
   장외채권·펀드 잔고 API는 없다.
 - 대안: 투자 → `+ 종목 추가` → 자산군 **채권**으로 수동 입력(이미 지원). 자동이 필요하면
   KIS가 장외/펀드 잔고를 API로 제공해야 한다.
+
+**TTTC2202R(퇴직연금 체결기준잔고) 우선 병합 (2026-11-15)**
+- IRP에는 보험·국민주택·국고채가 있고, `TTTC2208R`(잔고)와 장내채권(`CTSC8407R`)만으로는
+  잡히지 않았다(진단 결과 장내채권 0건). KIS **체결기준잔고** `TTTC2202R`
+  (`/pension/inquire-present-balance`, params `CANO`, `ACNT_PRDT_CD=29`, `USER_DVSN_CD="00"`)는
+  `cblc_dvsn_name`, `prdt_name`, `hldg_qty`, `pchs_avg_pric`, `prpr`, `evlu_amt`, `pchs_amt`,
+  `pftrt`를 주므로 전체 보유를 포함한다.
+- 병합 우선순위: **TTTC2202R > TTTC2208R > 장내채권**. key=`pdno`(없으면 name) 중복 제거.
+- 분류: `cblc_dvsn_name`/상품명에 ETF/ETN→etf, 채권/보험/국고/국민주택→**bond**,
+  펀드→fund, 그 외→stock. 보험은 별도 자산군이 없어 bond(고정수익)로 둔다.
+- **평가액 폴백**: `prpr`가 0/없음이면 `marketPrice = evlu_amt / hldg_qty`,
+  `hldg_qty`가 0인데 `evlu_amt > 0`이면 `qty=1`(보험). `pchs_avg_pric`가 0이면
+  `pchs_amt / qty` → `price` 순. 이로써 `quantity × marketPrice == evlu_amt`가 유지된다.
+- 진단 `BondPreview`에 `pensionPresent`(TTTC2202R 원본) 추가.
+
+**실측(사용자 IRP)**: 메리츠화재 이율보증보험III(3년)IRP형 101,200원(2.22%),
+국민주택1종23-06 60,301원(0.70%), 국고03000-3412(24-13) 880,050원(-0.13%).
+`TTTC2202R` 병합 후 4건(ETF+보험+국민주택+국고) 기준으로 테스트.

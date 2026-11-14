@@ -131,6 +131,9 @@ class KisBalanceServiceTest {
         KisApiClient api = client((path, tr) -> {
             paths.add(path);
             trIds.add(tr);
+            if (path.contains("inquire-present-balance")) {
+                return json("{\"rt_cd\":\"0\",\"output1\":[]}");
+            }
             if (path.contains("domestic-bond")) {
                 return json("{\"rt_cd\":\"0\",\"output\":[]}");
             }
@@ -146,11 +149,12 @@ class KisBalanceServiceTest {
 
         KisBalanceResponse result = new KisBalanceService(api).fetchBalance(pensionCredentials());
 
-        // IRP(29)는 퇴직연금 전용 + 장내채권 잔고만 호출한다 — 일반 폴백 없음.
+        // IRP(29)는 퇴직연금(2208) → 체결기준(2202) → 장내채권 순으로 호출한다.
         assertThat(paths).containsExactly(
                 "/uapi/domestic-stock/v1/trading/pension/inquire-balance",
+                "/uapi/domestic-stock/v1/trading/pension/inquire-present-balance",
                 "/uapi/domestic-bond/v1/trading/inquire-balance");
-        assertThat(trIds).containsExactly("TTTC2208R", "CTSC8407R");
+        assertThat(trIds).containsExactly("TTTC2208R", "TTTC2202R", "CTSC8407R");
         assertThat(result.summary().dncaTotAmt()).isEqualByComparingTo(new BigDecimal("76502"));
         assertThat(result.summary().totEvluAmt()).isEqualByComparingTo(new BigDecimal("21691902"));
         assertThat(result.summary().cashKnown()).isTrue();
@@ -167,6 +171,9 @@ class KisBalanceServiceTest {
         List<String> paths = new ArrayList<>();
         KisApiClient api = client((path, tr) -> {
             paths.add(path);
+            if (path.contains("inquire-present-balance")) {
+                return json("{\"rt_cd\":\"0\",\"output1\":[]}");
+            }
             if (path.contains("domestic-bond")) {
                 return json("{\"rt_cd\":\"0\",\"output\":[]}");
             }
@@ -180,6 +187,7 @@ class KisBalanceServiceTest {
 
         assertThat(paths).containsExactly(
                 "/uapi/domestic-stock/v1/trading/pension/inquire-balance",
+                "/uapi/domestic-stock/v1/trading/pension/inquire-present-balance",
                 "/uapi/domestic-bond/v1/trading/inquire-balance");
         assertThat(result.summary().dncaTotAmt()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(result.summary().cashKnown()).isTrue();
@@ -228,6 +236,9 @@ class KisBalanceServiceTest {
         KisApiClient api = client((path, tr) -> {
             paths.add(path);
             trIds.add(tr);
+            if (path.contains("inquire-present-balance")) {
+                return json("{\"rt_cd\":\"0\",\"output1\":[]}");
+            }
             if (path.contains("pension/inquire-balance")) return json(PENSION_ETF_RESPONSE);
             if (path.contains("domestic-bond") && path.contains("inquire-balance")) {
                 return json(BOND_BALANCE_RESPONSE);
@@ -286,6 +297,9 @@ class KisBalanceServiceTest {
     @Test
     void previewBondsReturnsRawBalanceAndOnePricePerUniquePdno() {
         KisApiClient api = client((path, tr) -> {
+            if (path.contains("inquire-present-balance")) {
+                return json("{\"rt_cd\":\"0\",\"output1\":[]}");
+            }
             if (path.contains("domestic-bond") && path.contains("inquire-balance")) {
                 return json(BOND_BALANCE_RESPONSE);
             }
@@ -307,6 +321,7 @@ class KisBalanceServiceTest {
         assertThat(preview.prices().get(0).error()).isNull();
         assertThat(preview.prices().get(0).price().path("output").path("bond_prpr").asText())
                 .isEqualTo("100");
+        assertThat(preview.pensionPresent()).isNotNull();
     }
 
     @Test
@@ -321,5 +336,137 @@ class KisBalanceServiceTest {
         assertThat(preview.balance()).isNull();
         assertThat(preview.prices()).isEmpty();
         assertThat(preview.error()).contains("채권 잔고 거부");
+    }
+
+    private static final String PENSION_PRESENT_RESPONSE = """
+            {"rt_cd":"0","output1":[
+              {"cblc_dvsn":"2","cblc_dvsn_name":"보험","pdno":"MERITZIRP3",
+               "prdt_name":"메리츠화재 이율보증보험III(3년)IRP형","hldg_qty":"1",
+               "pchs_avg_pric":"99000","prpr":"101200","evlu_amt":"101200",
+               "pchs_amt":"99000","evlu_pfls_amt":"2200","pftrt":"2.22"},
+              {"cblc_dvsn":"1","cblc_dvsn_name":"채권","pdno":"NH23-06",
+               "prdt_name":"국민주택1종23-06","hldg_qty":"1","pchs_avg_pric":"59900",
+               "prpr":"60301","evlu_amt":"60301","pchs_amt":"59900",
+               "evlu_pfls_amt":"401","pftrt":"0.70"},
+              {"cblc_dvsn":"1","cblc_dvsn_name":"채권","pdno":"KR103502GA34",
+               "prdt_name":"국고03000-3412(24-13)","hldg_qty":"1","pchs_avg_pric":"881200",
+               "prpr":"880050","evlu_amt":"880050","pchs_amt":"881200",
+               "evlu_pfls_amt":"-1150","pftrt":"-0.13"},
+              {"cblc_dvsn":"1","cblc_dvsn_name":"ETF","pdno":"458730",
+               "prdt_name":"TIGER 미국배당다우존스","hldg_qty":"851",
+               "pchs_avg_pric":"14693","prpr":"25400","evlu_amt":"21615400",
+               "pchs_amt":"12500000","evlu_pfls_amt":"9115400","pftrt":"72.9"}
+            ],"output2":[{"tot_evlu_amt":"22556951"}]}
+            """;
+
+    @Test
+    void irpMergesPresentBalanceAndDeduplicatesByPdno() {
+        KisApiClient api = client((path, tr) -> {
+            if (path.contains("inquire-present-balance")) return json(PENSION_PRESENT_RESPONSE);
+            if (path.contains("pension/inquire-balance")) return json(PENSION_ETF_RESPONSE);
+            if (path.contains("domestic-bond") && path.contains("inquire-balance")) {
+                return json(BOND_BALANCE_RESPONSE);
+            }
+            if (path.contains("domestic-bond") && path.contains("inquire-price")) {
+                return json(BOND_PRICE_RESPONSE);
+            }
+            throw new KisApiException("unexpected call: " + path);
+        });
+
+        KisBalanceResponse result = new KisBalanceService(api).fetchBalance(pensionCredentials());
+
+        // ETF(2202/2208 중복) + 보험 + 국민주택 + 국고채 = 4건.
+        assertThat(result.holdings()).hasSize(4);
+        assertThat(result.holdings().stream().filter(h -> "bond".equals(h.assetClass())).count())
+                .isEqualTo(3);
+        assertThat(result.holdings().stream().filter(h -> "etf".equals(h.assetClass())).count())
+                .isEqualTo(1);
+        assertThat(result.holdings().stream().filter(h -> "458730".equals(h.pdno())).count())
+                .isEqualTo(1);
+        assertThat(result.holdings()).anySatisfy(h -> {
+            assertThat(h.prdtName()).isEqualTo("메리츠화재 이율보증보험III(3년)IRP형");
+            assertThat(h.assetClass()).isEqualTo("bond");
+            assertThat(h.evluAmt()).isEqualByComparingTo(new BigDecimal("101200"));
+        });
+        // 2202R 이 국고채를 포함하므로 장내채권 fallback 의 같은 pdno 는 중복 제거된다.
+        assertThat(result.holdings()).anySatisfy(h -> {
+            assertThat(h.pdno()).isEqualTo("KR103502GA34");
+            assertThat(h.prdtName()).isEqualTo("국고03000-3412(24-13)");
+        });
+    }
+
+    @Test
+    void presentBalanceFailureKeepsPensionHoldingsAndAddsWarning() {
+        KisApiClient api = client((path, tr) -> {
+            if (path.contains("inquire-present-balance")) {
+                throw new KisApiException("체결기준 거부");
+            }
+            if (path.contains("pension/inquire-balance")) return json(PENSION_ETF_RESPONSE);
+            if (path.contains("domestic-bond")) return json("{\"rt_cd\":\"0\",\"output\":[]}");
+            throw new KisApiException("unexpected call: " + path);
+        });
+
+        KisBalanceResponse result = new KisBalanceService(api).fetchBalance(pensionCredentials());
+
+        assertThat(result.holdings()).hasSize(1);
+        assertThat(result.holdings().get(0).assetClass()).isEqualTo("etf");
+        assertThat(result.warning())
+                .contains("퇴직연금 체결기준잔고를 읽지 못했습니다")
+                .contains("체결기준 거부");
+    }
+
+    @Test
+    void presentBalanceCorrectsZeroQuantityAndPriceFromEvaluation() {
+        String present = """
+                {"rt_cd":"0","output1":[
+                  {"cblc_dvsn_name":"보험","pdno":"MERITZIRP3",
+                   "prdt_name":"메리츠화재 이율보증보험III(3년)IRP형",
+                   "hldg_qty":"0","pchs_avg_pric":"0","prpr":"0",
+                   "evlu_amt":"101200","pchs_amt":"99000","evlu_pfls_amt":"2200","pftrt":"2.22"},
+                  {"cblc_dvsn_name":"채권","pdno":"NH23-06",
+                   "prdt_name":"국민주택1종23-06",
+                   "hldg_qty":"1","pchs_avg_pric":"0","prpr":"0",
+                   "evlu_amt":"60301","pchs_amt":"59882","evlu_pfls_amt":"419","pftrt":"0.70"},
+                  {"cblc_dvsn_name":"채권","pdno":"KR103502GA34",
+                   "prdt_name":"국고03000-3412(24-13)",
+                   "hldg_qty":"1","pchs_avg_pric":"0","prpr":"0",
+                   "evlu_amt":"880050","pchs_amt":"881196","evlu_pfls_amt":"-1146","pftrt":"-0.13"}
+                ]}
+                """;
+        KisApiClient api = client((path, tr) -> {
+            if (path.contains("inquire-present-balance")) return json(present);
+            if (path.contains("pension/inquire-balance")) {
+                return json("{\"rt_cd\":\"0\",\"output1\":[],\"output2\":[{\"dnca_tot_amt\":\"0\"}]}");
+            }
+            if (path.contains("domestic-bond")) return json("{\"rt_cd\":\"0\",\"output\":[]}");
+            throw new KisApiException("unexpected call: " + path);
+        });
+
+        KisBalanceResponse result = new KisBalanceService(api).fetchBalance(pensionCredentials());
+
+        assertThat(result.holdings()).hasSize(3);
+        KisBalanceResponse.Holding insurance = result.holdings().stream()
+                .filter(h -> h.prdtName().contains("메리츠화재")).findFirst().orElseThrow();
+        // 수량 0 + 평가액 > 0 → qty 1, 현재가 101,200, 평단 99,000.
+        assertThat(insurance.hldgQty()).isEqualByComparingTo(BigDecimal.ONE);
+        assertThat(insurance.prpr()).isEqualByComparingTo(new BigDecimal("101200"));
+        assertThat(insurance.pchsAvgPric()).isEqualByComparingTo(new BigDecimal("99000"));
+        assertThat(insurance.assetClass()).isEqualTo("bond");
+
+        KisBalanceResponse.Holding housing = result.holdings().stream()
+                .filter(h -> h.prdtName().contains("국민주택")).findFirst().orElseThrow();
+        assertThat(housing.prpr()).isEqualByComparingTo(new BigDecimal("60301"));
+        assertThat(housing.pchsAvgPric()).isEqualByComparingTo(new BigDecimal("59882"));
+
+        KisBalanceResponse.Holding treasury = result.holdings().stream()
+                .filter(h -> h.prdtName().contains("국고03000")).findFirst().orElseThrow();
+        assertThat(treasury.prpr()).isEqualByComparingTo(new BigDecimal("880050"));
+        assertThat(treasury.pchsAvgPric()).isEqualByComparingTo(new BigDecimal("881196"));
+
+        for (KisBalanceResponse.Holding holding : result.holdings()) {
+            assertThat(holding.hldgQty().multiply(holding.prpr()))
+                    .as("quantity × marketPrice == evluAmt (%s)", holding.prdtName())
+                    .isEqualByComparingTo(holding.evluAmt());
+        }
     }
 }
