@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
 
@@ -114,6 +116,65 @@ class KisBalanceServiceTest {
                 .isInstanceOf(KisApiException.class)
                 .hasMessageContaining("주식잔고 거부")
                 .hasMessageContaining("계좌자산현황 거부");
+    }
+
+    private static KisCredentials pensionCredentials() {
+        return new KisCredentials(26L, "appkey", "appsecret",
+                "https://openapi.koreainvestment.com:9443", "64116780", "29");
+    }
+
+    @Test
+    void irpUsesPensionApiAndDerivesPriceFromEvaluation() {
+        List<String> paths = new ArrayList<>();
+        List<String> trIds = new ArrayList<>();
+        KisApiClient api = client((path, tr) -> {
+            paths.add(path);
+            trIds.add(tr);
+            return json("""
+                    {"rt_cd":"0",
+                     "output1":[{"pdno":"458730","prdt_name":"TIGER 미국배당다우존스",
+                       "hldg_qty":"851","pchs_avg_pric":"14693","evlu_amt":"21615400",
+                       "evlu_pfls_amt":"510000"}],
+                     "output2":[{"dnca_tot_amt":"76502","tot_evlu_amt":"21691902",
+                       "scts_evlu_amt":"21615400"}]}
+                    """);
+        });
+
+        KisBalanceResponse result = new KisBalanceService(api).fetchBalance(pensionCredentials());
+
+        // IRP(29)는 퇴직연금 전용 API 만 호출한다 — 일반 주식잔고/계좌자산현황 폴백 없음.
+        assertThat(paths).containsExactly(
+                "/uapi/domestic-stock/v1/trading/pension/inquire-balance");
+        assertThat(trIds).containsExactly("TTTC2208R");
+        assertThat(result.summary().dncaTotAmt()).isEqualByComparingTo(new BigDecimal("76502"));
+        assertThat(result.summary().totEvluAmt()).isEqualByComparingTo(new BigDecimal("21691902"));
+        assertThat(result.summary().cashKnown()).isTrue();
+        assertThat(result.holdings()).hasSize(1);
+        KisBalanceResponse.Holding holding = result.holdings().get(0);
+        assertThat(holding.pdno()).isEqualTo("458730");
+        assertThat(holding.hldgQty()).isEqualByComparingTo(new BigDecimal("851"));
+        // prpr 없음 → evlu_amt / hldg_qty = 21,615,400 / 851 = 25,400 (4자리 HALF_UP)
+        assertThat(holding.prpr()).isEqualByComparingTo(new BigDecimal("25400"));
+    }
+
+    @Test
+    void irpWithZeroCashIsValidAndDoesNotFallBack() {
+        List<String> paths = new ArrayList<>();
+        KisApiClient api = client((path, tr) -> {
+            paths.add(path);
+            return json("""
+                    {"rt_cd":"0","output1":[],
+                     "output2":[{"dnca_tot_amt":"0","tot_evlu_amt":"0","scts_evlu_amt":"0"}]}
+                    """);
+        });
+
+        KisBalanceResponse result = new KisBalanceService(api).fetchBalance(pensionCredentials());
+
+        assertThat(paths).containsExactly(
+                "/uapi/domestic-stock/v1/trading/pension/inquire-balance");
+        assertThat(result.summary().dncaTotAmt()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(result.summary().cashKnown()).isTrue();
+        assertThat(result.holdings()).isEmpty();
     }
 
     @Test

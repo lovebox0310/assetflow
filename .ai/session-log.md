@@ -3543,3 +3543,13 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
 ### CI 확인 (2026-11-14)
 - `6090c0e` merge(비상금 설정 모달 모바일 footer 수정, §93): frontend / backend / e2e / quality
   **success ×4** (run 43606888308). 프론트 전용 — 백엔드 재배포 불필요, 프론트 배포 시 반영.
+
+## 2026-11-15 — KIS IRP(상품코드 29) 퇴직연금 잔고조회 (§94) [✅ 검증 완료]
+
+- 문제: IRP 계좌 예수금 0. 원인: IRP는 일반 주식잔고/계좌자산현황이 아니라
+  `pension/inquire-balance`(TTTC2208R)로 조회해야 함.
+- 변경: 29면 퇴직연금 전용 API 우선, output1/output2 파싱, prpr 없으면 평가액/수량,
+  `Summary.cashKnown` 추가(0을 정상값으로), controller/test가 cashKnown 반영.
+- UI: 상품코드 안내 01/22/29.
+- 검증: KIS 테스트 신규 2건 + 기존 회귀 없음, 백엔드 287, 프론트 246, e2e 201.
+- 사람 조치: IRP KIS 설정의 상품코드 29 확인, 백엔드 재배포 후 '한투 동기화'.

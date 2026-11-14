@@ -113,8 +113,15 @@ public class InvestmentController {
         // API/자격증명 문제로 값을 못 받은 것은 구분할 수 없으므로, 보수적으로
         // 기존 잔액을 유지하고 경고를 돌려준다(§62.3).
         String warning = null;
+        boolean cashKnown = balance.summary() != null && balance.summary().cashKnown();
         BigDecimal cashAmount = balance.summary() == null ? null : balance.summary().dncaTotAmt();
-        if (cashAmount != null && cashAmount.compareTo(BigDecimal.ZERO) > 0) {
+        if (cashKnown) {
+            // IRP(상품코드 29) 전용 조회는 예수금 0 도 정상값이다 — 그대로 반영한다.
+            long cash = cashAmount == null ? 0L : cashAmount.longValue();
+            assetLedger.update(account.id(), account.accountType(), account.name(),
+                    account.institutionName(), cash, account.isDebt(), account.openedAt());
+            log.info("KIS sync updated cash balance for account {} to {}", account.id(), cash);
+        } else if (cashAmount != null && cashAmount.compareTo(BigDecimal.ZERO) > 0) {
             long cash = cashAmount.longValue();
             assetLedger.update(account.id(), account.accountType(), account.name(),
                     account.institutionName(), cash, account.isDebt(), account.openedAt());
@@ -122,7 +129,7 @@ public class InvestmentController {
         } else {
             warning = "KIS에서 예수금을 읽지 못해 계좌 잔액을 유지했습니다. "
                     + "App Key/App Secret이 실전·모의 중 어느 용인지, CANO·상품코드·API 환경이 "
-                    + "해당 계좌와 맞는지 확인하세요.";
+                    + "해당 계좌와 맞는지 확인하세요. IRP는 상품코드 29, 개인연금은 22입니다.";
             log.warn("KIS sync could not resolve cash for account {} — keeping balance {}",
                     account.id(), account.balance());
         }
@@ -238,13 +245,15 @@ public class InvestmentController {
         }
         try {
             KisBalanceResponse balance = kisBalanceService.fetchBalance(credentials);
+            boolean cashKnown = balance.summary() != null && balance.summary().cashKnown();
             BigDecimal cash = balance.summary() == null ? null : balance.summary().dncaTotAmt();
-            if (cash == null || cash.compareTo(BigDecimal.ZERO) <= 0) {
+            if (cash == null || (cash.compareTo(BigDecimal.ZERO) <= 0 && !cashKnown)) {
                 // 연결은 됐지만 예수금을 못 읽은 경우 — 성공으로 보이면 안 된다.
                 return new ApiResponse<>("OK", "KIS connected but cash is unknown",
                         new KisConnectionTest(false, null,
                                 "KIS 연결은 되었지만 예수금이 0으로 조회됩니다. "
-                                        + "CANO·상품코드가 이 앱키에 등록된 계좌와 맞는지 확인하세요."));
+                                        + "CANO·상품코드가 이 앱키에 등록된 계좌와 맞는지 확인하세요. "
+                                        + "IRP는 상품코드 29, 개인연금은 22입니다."));
             }
             return new ApiResponse<>("OK", "KIS connected",
                     new KisConnectionTest(true, cash.longValue(),

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -24,9 +25,13 @@ public class KisBalanceService {
 
     private static final String BALANCE_PATH = "/uapi/domestic-stock/v1/trading/inquire-balance";
     private static final String ACCOUNT_BALANCE_PATH = "/uapi/domestic-stock/v1/trading/inquire-account-balance";
+    /** 퇴직연금(IRP, 상품코드 29) 전용 잔고조회 — 일반 주식잔고로는 예수금이 조회되지 않는다. */
+    private static final String PENSION_BALANCE_PATH = "/uapi/domestic-stock/v1/trading/pension/inquire-balance";
     private static final String MOCK_TR_ID = "VTTC8434R";
     private static final String REAL_TR_ID = "TTTC8434R";
     private static final String ACCOUNT_BALANCE_TR_ID = "CTRP6548R";
+    private static final String PENSION_TR_ID = "TTTC2208R";
+    private static final String PENSION_PRODUCT_CODE = "29";
 
     /** 예수금 후보 필드 — 계좌 종류에 따라 KIS 가 다른 필드에 넣어 준다. */
     private static final String[] CASH_FIELDS = {
@@ -46,6 +51,20 @@ public class KisBalanceService {
      * 사용자가 앱키/계좌번호/API 환경을 고칠 수 있다.
      */
     public KisBalanceResponse fetchBalance(KisCredentials credentials) {
+        // 상품코드 29(퇴직연금 IRP)는 전용 API 로만 예수금/보유종목이 조회된다.
+        // 성공하면 그대로 쓰고, 실패하면 아래 일반 경로로 폴백한다(22 개인연금 등은 기존 유지).
+        if (PENSION_PRODUCT_CODE.equals(normalize(credentials.acntPrdtCd()))) {
+            try {
+                KisBalanceResponse pension = fetchPensionBalance(credentials);
+                if ((pension.summary() != null && pension.summary().cashKnown())
+                        || !pension.holdings().isEmpty()) {
+                    return pension;
+                }
+            } catch (KisApiException ignored) {
+                // 퇴직연금 조회가 막히면 기존 주식잔고→계좌자산현황 경로로 넘어간다.
+            }
+        }
+
         KisBalanceResponse primary = null;
         KisApiException primaryError = null;
         try {
@@ -114,6 +133,68 @@ public class KisBalanceService {
                 Map.entry("BSPR_BF_DT_APLY_YN", ""));
         JsonNode root = kisApiClient.get(credentials, ACCOUNT_BALANCE_PATH, params, ACCOUNT_BALANCE_TR_ID);
         return parseAccountBalance(root);
+    }
+
+    /**
+     * 퇴직연금(IRP) 잔고조회 — tr_id TTTC2208R.
+     * 일반 주식잔고(TTTC8434R)·계좌자산현황(CTRP6548R)으로는 IRP 예수금이 0 으로 온다.
+     * 모의투자에는 연금 상품코드가 없으므로 실전 tr_id 만 쓴다.
+     */
+    private KisBalanceResponse fetchPensionBalance(KisCredentials credentials) {
+        Map<String, String> params = Map.ofEntries(
+                Map.entry("CANO", normalize(credentials.cano())),
+                Map.entry("ACNT_PRDT_CD", normalize(credentials.acntPrdtCd())),
+                Map.entry("ACCA_DVSN_CD", "00"),
+                Map.entry("INQR_DVSN", "00"),
+                Map.entry("CTX_AREA_FK100", ""),
+                Map.entry("CTX_AREA_NK100", ""));
+        JsonNode root = kisApiClient.get(credentials, PENSION_BALANCE_PATH, params, PENSION_TR_ID);
+        return parsePension(root);
+    }
+
+    /**
+     * 퇴직연금 응답 파싱. output1 보유종목은 현재가(prpr)가 없을 수 있어
+     * 평가금액/수량 → 평단가 순으로 대체한다. output2 의 예수금은 0 도 신뢰한다(cashKnown).
+     */
+    private KisBalanceResponse parsePension(JsonNode root) {
+        List<KisBalanceResponse.Holding> holdings = new ArrayList<>();
+        JsonNode output1 = root.path("output1");
+        if (output1.isArray()) {
+            for (JsonNode node : output1) {
+                BigDecimal qty = decimal(node.path("hldg_qty").asText("0"));
+                if (qty.signum() <= 0) {
+                    continue;
+                }
+                BigDecimal avgPrice = decimal(node.path("pchs_avg_pric").asText("0"));
+                BigDecimal evluAmt = decimal(node.path("evlu_amt").asText("0"));
+                BigDecimal price = decimal(node.path("prpr").asText("0"));
+                if (price.signum() <= 0 && evluAmt.signum() > 0) {
+                    price = evluAmt.divide(qty, 4, RoundingMode.HALF_UP);
+                }
+                if (price.signum() <= 0) {
+                    price = avgPrice;
+                }
+                holdings.add(new KisBalanceResponse.Holding(
+                        text(node, "pdno"),
+                        text(node, "prdt_name"),
+                        qty,
+                        avgPrice,
+                        price,
+                        evluAmt,
+                        decimal(node.path("evlu_pfls_amt").asText("0")),
+                        text(node, "crdt_loan_yn")));
+            }
+        }
+        JsonNode summaryNode = firstNode(root.path("output2"));
+        BigDecimal cash = firstNonZero(summaryNode, CASH_FIELDS);
+        KisBalanceResponse.Summary summary = new KisBalanceResponse.Summary(
+                cash,
+                decimal(text(summaryNode, "tot_evlu_amt")),
+                decimal(text(summaryNode, "scts_evlu_amt")),
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                true);
+        return new KisBalanceResponse(holdings, summary);
     }
 
     private String trId(KisCredentials credentials) {
