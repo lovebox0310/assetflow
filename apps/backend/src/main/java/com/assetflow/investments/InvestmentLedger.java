@@ -1,6 +1,9 @@
 package com.assetflow.investments;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 
@@ -13,7 +16,21 @@ public interface InvestmentLedger {
 
     record HoldingRow(long id, long accountId, String assetClass, String symbol, String name,
                       String currency, BigDecimal quantity, BigDecimal avgPrice,
-                      BigDecimal marketPrice, BigDecimal fxRate, String priceAsOf) {}
+                      BigDecimal marketPrice, BigDecimal fxRate, String priceAsOf,
+                      /** 채권 발행일/만기일. 다른 자산군은 null. API 는 YYYY-MM-DD 문자열. */
+                      @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+                      LocalDate issueDate,
+                      @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+                      LocalDate maturityDate) {
+
+        /** 기존 호출부 호환 — 날짜 없이 만든다. */
+        public HoldingRow(long id, long accountId, String assetClass, String symbol, String name,
+                          String currency, BigDecimal quantity, BigDecimal avgPrice,
+                          BigDecimal marketPrice, BigDecimal fxRate, String priceAsOf) {
+            this(id, accountId, assetClass, symbol, name, currency, quantity, avgPrice,
+                    marketPrice, fxRate, priceAsOf, null, null);
+        }
+    }
 
     List<HoldingRow> all();
 

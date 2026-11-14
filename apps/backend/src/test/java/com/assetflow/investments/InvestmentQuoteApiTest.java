@@ -16,9 +16,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Map;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -154,6 +156,26 @@ class InvestmentQuoteApiTest {
                 .andExpect(jsonPath("$.data.holdings[4].symbol").value("ETH"))
                 .andExpect(jsonPath("$.data.holdings[4].marketPrice").value(3500))
                 .andExpect(jsonPath("$.data.holdings[4].priceAsOf").value("2026-10-24"));
+    }
+
+    @Test
+    void refreshKeepsBondIssueAndMaturityDates() throws Exception {
+        // 시세가 있는 심볼(005930)을 쓰되 자산군은 bond — 가격만 갱신되고 날짜는 보존돼야 한다.
+        InvestmentLedger.HoldingRow bond = ledger.create(new InvestmentLedger.HoldingRow(
+                0, 4, "bond", "005930", "국고채 실험", "KRW",
+                new BigDecimal("10"), new BigDecimal("50000"), new BigDecimal("51000"),
+                BigDecimal.ONE, "2026-10-24",
+                LocalDate.parse("2024-03-12"), LocalDate.parse("2034-03-12")));
+
+        mvc.perform(post("/api/v1/investments/quotes/refresh").header("Authorization", TOKEN))
+                .andExpect(status().isOk());
+
+        InvestmentLedger.HoldingRow reloaded = ledger.all().stream()
+                .filter(row -> row.id() == bond.id())
+                .findFirst().orElseThrow();
+        assertThat(reloaded.marketPrice()).isEqualByComparingTo(new BigDecimal("244000"));
+        assertThat(reloaded.issueDate()).isEqualTo(LocalDate.parse("2024-03-12"));
+        assertThat(reloaded.maturityDate()).isEqualTo(LocalDate.parse("2034-03-12"));
     }
 
     @Test

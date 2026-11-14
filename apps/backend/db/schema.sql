@@ -326,6 +326,8 @@ CREATE TABLE investment_holdings (
     market_price NUMERIC(20, 4) NOT NULL CHECK (market_price >= 0),
     fx_rate      NUMERIC(12, 6) NOT NULL DEFAULT 1 CHECK (fx_rate > 0),
     price_as_of  DATE,
+    issue_date   DATE,
+    maturity_date DATE,
     source       VARCHAR(16) NOT NULL DEFAULT 'manual',
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -336,6 +338,9 @@ CREATE INDEX ix_holdings_user_account ON investment_holdings (user_id, account_i
 -- §70 동기화 출처('manual' 사용자 입력 / 'kis' 한투 동기화). 기존 DB 마이그레이션.
 -- 동기화가 완전히 성공하면 'kis' 행만 이번 결과로 정리하고 'manual' 행은 보존한다.
 ALTER TABLE investment_holdings ADD COLUMN IF NOT EXISTS source VARCHAR(16) NOT NULL DEFAULT 'manual';
+-- BOND-FORM-1: 채권 발행일/만기일 (다른 자산군은 NULL). 기존 DB에도 재배포만으로 적용된다.
+ALTER TABLE investment_holdings ADD COLUMN IF NOT EXISTS issue_date DATE;
+ALTER TABLE investment_holdings ADD COLUMN IF NOT EXISTS maturity_date DATE;
 
 -- ---------------------------------------------------------------------------
 -- merchant_business_info: 사업자번호별 외부 조회 정보 캐시

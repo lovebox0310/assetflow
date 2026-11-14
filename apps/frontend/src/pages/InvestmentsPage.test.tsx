@@ -232,6 +232,64 @@ describe("InvestmentsPage (§54 E2)", () => {
     });
   });
 
+  it("자산군=채권이면 금액·날짜 폼으로 전환하고 수량으로 나눠 저장한다 (BOND-FORM-1)", async () => {
+    render(<InvestmentsPage />);
+    await screen.findByText("삼성전자");
+
+    fireEvent.click(screen.getByRole("button", { name: "+ 종목 추가" }));
+    fireEvent.mouseDown(screen.getByLabelText("자산군"));
+    fireEvent.click(await screen.findByTitle("채권"));
+
+    // 채권 전용 6개 필드만 보이고, 주식용 가격/통화/기준일 필드는 사라진다.
+    expect(await screen.findByLabelText("종목번호")).toBeDefined();
+    expect(screen.getByLabelText("보유수량")).toBeDefined();
+    expect(screen.getByLabelText("평가금액")).toBeDefined();
+    expect(screen.getByLabelText("매수금액")).toBeDefined();
+    expect(screen.getByLabelText("발행일")).toBeDefined();
+    expect(screen.getByLabelText("만기일")).toBeDefined();
+    expect(screen.queryByLabelText("종목명")).toBeNull();
+    expect(screen.queryByLabelText("평단가")).toBeNull();
+    expect(screen.queryByLabelText("현재가")).toBeNull();
+    expect(screen.queryByLabelText("통화")).toBeNull();
+    expect(screen.queryByLabelText("기준일")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("종목번호"), { target: { value: "KR103502GA34" } });
+    fireEvent.change(screen.getByLabelText("보유수량"), { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText("평가금액"), { target: { value: "880050" } });
+    fireEvent.change(screen.getByLabelText("매수금액"), { target: { value: "881196" } });
+    fireEvent.change(screen.getByLabelText("발행일"), { target: { value: "2024-05-01" } });
+    fireEvent.change(screen.getByLabelText("만기일"), { target: { value: "2034-05-01" } });
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === "POST"
+          && String((init as RequestInit).body).includes("KR103502GA34"),
+      );
+      expect(post).toBeDefined();
+      expect(JSON.parse(String((post?.[1] as RequestInit).body))).toMatchObject({
+        assetClass: "bond",
+        name: "KR103502GA34",
+        currency: "KRW",
+        quantity: 10,
+        marketPrice: 88005,
+        avgPrice: 88119.6,
+        fxRate: 1,
+        priceAsOf: null,
+        issueDate: "2024-05-01",
+        maturityDate: "2034-05-01",
+      });
+    });
+  });
+
+  it("채권 목록 부제는 만기일을 보여 주고 '주'를 붙이지 않는다 (BOND-FORM-1)", async () => {
+    render(<InvestmentsPage />);
+    await screen.findByText("국고채 10년");
+
+    expect(screen.getByText("채권 · 만기 미입력")).toBeDefined();
+    expect(screen.queryByText(/국고채 10년.*100주/)).toBeNull();
+  });
+
   it("종목 추가 폼은 수량·평단가·현재가를 비워 두고, 원화면 환율 란을 숨긴다 (§54.4)", async () => {
     render(<InvestmentsPage />);
     await screen.findByText("삼성전자");
