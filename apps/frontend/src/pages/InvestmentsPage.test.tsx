@@ -339,20 +339,21 @@ describe("InvestmentsPage (§54 E2)", () => {
     });
   });
 
-  it("채권 찾기로 선택하면 종목명/종목번호/발행일/만기일이 채워지고 그 값으로 저장된다 (BOND-SEARCH-1)", async () => {
-    const bond = {
-      code: "KR103502GEC4",
-      name: "국고03000-3412(24-13)",
-      issueDate: "2024-12-10",
-      maturityDate: "2034-12-10",
-      bondType: "C0",
-      bondClass: "GA",
-    };
+  const treasuryBond = {
+    code: "KR103502GEC4",
+    name: "국고03000-3412(24-13)",
+    issueDate: "2024-12-10",
+    maturityDate: "2034-12-10",
+    bondType: "C0",
+    bondClass: "GA",
+  };
+
+  it("종목명 자동완성 후보를 선택하면 4값이 채워지고 발행정보도 보강된다 (BOND-SEARCH-3)", async () => {
     const base = fetchMock as unknown as
       (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       if (String(input).includes("/investments/bonds")) {
-        return Promise.resolve(apiResponse({ items: [bond], warning: null }));
+        return Promise.resolve(apiResponse({ items: [treasuryBond], warning: null }));
       }
       if (String(input).includes("/bond-issue-info")) {
         return Promise.resolve(apiResponse({
@@ -374,16 +375,21 @@ describe("InvestmentsPage (§54 E2)", () => {
     fireEvent.mouseDown(screen.getByLabelText("자산군"));
     await selectBondClass();
     expect(await screen.findByLabelText("보유수량")).toBeDefined();
+    // 모달·버튼 없는 자동완성이다.
+    expect(screen.queryByRole("button", { name: "채권 찾기" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "채권 찾기" }));
-    fireEvent.change(await screen.findByLabelText("채권 검색"), { target: { value: "국고03000" } });
-    expect(await screen.findByText(bond.name, {}, { timeout: 3000 })).toBeDefined();
-    fireEvent.click(screen.getByText(bond.name));
+    const optionMeta =
+      `${treasuryBond.code} · 발행 ${treasuryBond.issueDate} ~ 만기 ${treasuryBond.maturityDate}`;
+    fireEvent.change(screen.getByLabelText("종목명"), { target: { value: "국고03000" } });
+    // BOND-SEARCH-4: 2줄 블록 — 이름과 코드·발행~만기가 함께 보인다.
+    expect(await screen.findByText(optionMeta, {}, { timeout: 3000 })).toBeDefined();
+    expect(screen.getAllByText(treasuryBond.name).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByText(optionMeta));
 
-    expect((screen.getByLabelText("종목명") as HTMLInputElement).value).toBe(bond.name);
-    expect((screen.getByLabelText("종목번호") as HTMLInputElement).value).toBe(bond.code);
-    expect((screen.getByLabelText("발행일") as HTMLInputElement).value).toBe(bond.issueDate);
-    expect((screen.getByLabelText("만기일") as HTMLInputElement).value).toBe(bond.maturityDate);
+    expect((screen.getByLabelText("종목명") as HTMLInputElement).value).toBe(treasuryBond.name);
+    expect((screen.getByLabelText("종목번호") as HTMLInputElement).value).toBe(treasuryBond.code);
+    expect((screen.getByLabelText("발행일") as HTMLInputElement).value).toBe(treasuryBond.issueDate);
+    expect((screen.getByLabelText("만기일") as HTMLInputElement).value).toBe(treasuryBond.maturityDate);
 
     // 계좌가 선택돼 있으면 발행정보(best-effort)가 자동으로 채워진다.
     await waitFor(() => {
@@ -403,14 +409,81 @@ describe("InvestmentsPage (§54 E2)", () => {
       expect(post).toBeDefined();
       expect(JSON.parse(String((post?.[1] as RequestInit).body))).toMatchObject({
         assetClass: "bond",
-        name: bond.name,
-        symbol: bond.code,
+        name: treasuryBond.name,
+        symbol: treasuryBond.code,
         issueDate: "2024-12-10",
         maturityDate: "2034-12-10",
         issuerName: "기획재정부",
         couponRate: 3,
         quantity: 10,
         marketPrice: 88005,
+      });
+    });
+  });
+
+  it("코드로 입력해도 후보가 표시된다 (BOND-SEARCH-3)", async () => {
+    const base = fetchMock as unknown as
+      (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes("/investments/bonds")) {
+        return Promise.resolve(apiResponse({ items: [treasuryBond], warning: null }));
+      }
+      return base(input, init);
+    }));
+    render(<InvestmentsPage />);
+    await screen.findByText("삼성전자");
+
+    fireEvent.click(screen.getByRole("button", { name: "+ 종목 추가" }));
+    fireEvent.mouseDown(screen.getByLabelText("자산군"));
+    await selectBondClass();
+    await screen.findByLabelText("보유수량");
+
+    fireEvent.change(screen.getByLabelText("종목명"), { target: { value: "KR1035" } });
+    const optionMeta =
+      `${treasuryBond.code} · 발행 ${treasuryBond.issueDate} ~ 만기 ${treasuryBond.maturityDate}`;
+    // filterOption=false — 서버가 코드로 찾은 후보가 클라이언트 재필터로 사라지면 안 된다.
+    expect(await screen.findByText(optionMeta, {}, { timeout: 3000 })).toBeDefined();
+    expect(screen.getAllByText(treasuryBond.name).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("후보가 없으면 직접 입력으로 저장한다 (보험, BOND-SEARCH-3)", async () => {
+    const base = fetchMock as unknown as
+      (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes("/investments/bonds")) {
+        return Promise.resolve(apiResponse({ items: [], warning: null }));
+      }
+      return base(input, init);
+    }));
+    render(<InvestmentsPage />);
+    await screen.findByText("삼성전자");
+
+    fireEvent.click(screen.getByRole("button", { name: "+ 종목 추가" }));
+    fireEvent.mouseDown(screen.getByLabelText("자산군"));
+    await selectBondClass();
+    await screen.findByLabelText("보유수량");
+
+    const name = "메리츠화재 이율보증형보험III(3년)IRP형";
+    fireEvent.change(screen.getByLabelText("종목명"), { target: { value: name } });
+    expect(await screen.findByText(
+      "일치하는 채권이 없습니다 — 직접 입력할 수 있습니다", {}, { timeout: 3000 },
+    )).toBeDefined();
+
+    fireEvent.change(screen.getByLabelText("보유수량"), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("평가금액"), { target: { value: "101200" } });
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === "POST"
+          && String((init as RequestInit).body).includes("메리츠화재"),
+      );
+      expect(post).toBeDefined();
+      expect(JSON.parse(String((post?.[1] as RequestInit).body))).toMatchObject({
+        assetClass: "bond",
+        name,
+        symbol: null,
       });
     });
   });
