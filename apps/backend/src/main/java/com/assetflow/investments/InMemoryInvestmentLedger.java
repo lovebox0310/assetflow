@@ -56,7 +56,7 @@ public class InMemoryInvestmentLedger implements InvestmentLedger {
         HoldingRow saved = new HoldingRow(nextId.getAndIncrement(), row.accountId(), row.assetClass(),
                 row.symbol(), row.name(), row.currency(), row.quantity(), row.avgPrice(),
                 row.marketPrice(), row.fxRate(), row.priceAsOf(), row.issueDate(), row.maturityDate(),
-                row.issuerName(), row.couponRate());
+                row.issuerName(), row.couponRate(), row.faceAmount());
         synchronized (rows) {
             rows.add(saved);
         }
@@ -71,7 +71,7 @@ public class InMemoryInvestmentLedger implements InvestmentLedger {
                     HoldingRow saved = new HoldingRow(id, row.accountId(), row.assetClass(), row.symbol(),
                             row.name(), row.currency(), row.quantity(), row.avgPrice(),
                             row.marketPrice(), row.fxRate(), row.priceAsOf(),
-                            row.issueDate(), row.maturityDate(), row.issuerName(), row.couponRate());
+                            row.issueDate(), row.maturityDate(), row.issuerName(), row.couponRate(), row.faceAmount());
                     rows.set(i, saved);
                     return saved;
                 }
@@ -129,7 +129,7 @@ public class InMemoryInvestmentLedger implements InvestmentLedger {
             HoldingRow saved = new HoldingRow(nextId.getAndIncrement(), row.accountId(), row.assetClass(),
                     row.symbol(), row.name(), row.currency(), row.quantity(), row.avgPrice(),
                     row.marketPrice(), row.fxRate(), row.priceAsOf(), row.issueDate(), row.maturityDate(),
-                    row.issuerName(), row.couponRate());
+                    row.issuerName(), row.couponRate(), row.faceAmount());
             rows.add(saved);
             kisIds.add(saved.id());
             return saved;
@@ -145,7 +145,7 @@ public class InMemoryInvestmentLedger implements InvestmentLedger {
         HoldingRow saved = new HoldingRow(keepId, row.accountId(), row.assetClass(), row.symbol(),
                 row.name(), row.currency(), row.quantity(), row.avgPrice(), row.marketPrice(),
                 row.fxRate(), row.priceAsOf(), issueDate, maturityDate,
-                matches.get(0).issuerName(), matches.get(0).couponRate());
+                matches.get(0).issuerName(), matches.get(0).couponRate(), matches.get(0).faceAmount());
         for (int i = 0; i < rows.size(); i++) {
             if (rows.get(i).id() == keepId) {
                 rows.set(i, saved);

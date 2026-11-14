@@ -109,7 +109,8 @@ public class PostgresInvestmentLedger implements InvestmentLedger {
                 rs.getObject("issue_date", LocalDate.class),
                 rs.getObject("maturity_date", LocalDate.class),
                 rs.getString("issuer_name"),
-                rs.getBigDecimal("coupon_rate"));
+                rs.getBigDecimal("coupon_rate"),
+                rs.getObject("face_amount", Long.class));
     }
 
     @Override
@@ -117,7 +118,7 @@ public class PostgresInvestmentLedger implements InvestmentLedger {
         return jdbc.query("""
                 SELECT id, account_id, asset_class, symbol, name, currency,
                        quantity, avg_price, market_price, fx_rate, price_as_of,
-                       issue_date, maturity_date, issuer_name, coupon_rate
+                       issue_date, maturity_date, issuer_name, coupon_rate, face_amount
                 FROM investment_holdings WHERE user_id = ? ORDER BY account_id, id
                 """, PostgresInvestmentLedger::map, userId);
     }
@@ -128,13 +129,13 @@ public class PostgresInvestmentLedger implements InvestmentLedger {
                 INSERT INTO investment_holdings (user_id, account_id, asset_class, symbol, name,
                                                  currency, quantity, avg_price, market_price, fx_rate,
                                                  price_as_of, issue_date, maturity_date,
-                                                 issuer_name, coupon_rate)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                                 issuer_name, coupon_rate, face_amount)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 RETURNING id
                 """, Long.class, userId, row.accountId(), row.assetClass(), row.symbol(), row.name(),
                 row.currency(), row.quantity(), row.avgPrice(), row.marketPrice(), row.fxRate(),
                 row.priceAsOf() == null ? null : Date.valueOf(row.priceAsOf()),
-                row.issueDate(), row.maturityDate(), row.issuerName(), row.couponRate());
+                row.issueDate(), row.maturityDate(), row.issuerName(), row.couponRate(), row.faceAmount());
         return withId(id, row);
     }
 
@@ -145,12 +146,12 @@ public class PostgresInvestmentLedger implements InvestmentLedger {
                 SET account_id = ?, asset_class = ?, symbol = ?, name = ?, currency = ?,
                     quantity = ?, avg_price = ?, market_price = ?, fx_rate = ?, price_as_of = ?,
                     issue_date = ?, maturity_date = ?, issuer_name = ?, coupon_rate = ?,
-                    updated_at = now()
+                    face_amount = ?, updated_at = now()
                 WHERE id = ? AND user_id = ?
                 """, row.accountId(), row.assetClass(), row.symbol(), row.name(), row.currency(),
                 row.quantity(), row.avgPrice(), row.marketPrice(), row.fxRate(),
                 row.priceAsOf() == null ? null : Date.valueOf(row.priceAsOf()),
-                row.issueDate(), row.maturityDate(), row.issuerName(), row.couponRate(), id, userId);
+                row.issueDate(), row.maturityDate(), row.issuerName(), row.couponRate(), row.faceAmount(), id, userId);
         if (updated == 0) {
             throw new NotFoundException("holding id " + id);
         }
@@ -235,7 +236,7 @@ public class PostgresInvestmentLedger implements InvestmentLedger {
         return new HoldingRow(id, row.accountId(), row.assetClass(), row.symbol(), row.name(),
                 row.currency(), row.quantity(), row.avgPrice(), row.marketPrice(), row.fxRate(),
                 row.priceAsOf(), row.issueDate(), row.maturityDate(),
-                row.issuerName(), row.couponRate());
+                row.issuerName(), row.couponRate(), row.faceAmount());
     }
 
     @Override

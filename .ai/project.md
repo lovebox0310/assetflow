@@ -5794,3 +5794,35 @@ DB 의 10월 합계는 현대 2,609,560 · 삼성 362,230 이었고, 마지막 �
 - 현재 구현(마스터 검색 + 발행정보)은 문서와 일치하며 변경 필요 없음.
 - 채권 시세 자동화를 하려면 ① 액면 필드 도입 → ② `CTPF2005R`(권장, 평가기관 평균단가) 또는
   `FHKBJ773400C0`(현재가) 순서가 맞다. 웹소켓(`H0BJCNT0`)은 여전히 불필요(§100).
+
+## 102) 채권 액면 입력 + 평균단가조회로 평가금액 자동 계산 (2026-11-15)
+
+**배경**
+- 채권 평가액은 `수량 × 현재가`가 아니라 **액면 × 평가단가 / 10,000** 이다(§101: `papr=10000`).
+  KIS **평균단가조회**(`CTPF2005R`)가 KIS·KBP·NICE·F&P 및 평균평가단가/평가금액/평가수익율을 준다.
+
+**결정**
+- `investment_holdings` 에 `face_amount BIGINT`(보유 액면, 원) 추가(nullable, 재배포 시 자동).
+- `HoldingRow` 15필드 + 10/11?→**10·12·14인자 보조 생성자 유지**.
+- `GET /api/v1/investments/accounts/{id}/bond-valuation?pdno=&face=`:
+  - `INQR_STRT_DT`=오늘-30일, `INQR_END_DT`=오늘, `PDNO`, `PRDT_TYPE_CD=302`, `VRFC_KIND_CD=00`
+  - `output1` 일자별 배열에서 **최신 `evlu_dt`** 채택
+  - `evaluated = round(face × avg_evlu_unpr / 10000)` (HALF_UP, 원 단위)
+  - 자격증명 없음·KIS 오류·단가 없음은 **200 + error**(전파 금지), `face<=0` 은 400
+- 폼: **액면(원)** 입력란 + `평가단가 가져오기` 버튼 → 평가금액 자동 입력, `asOf`를 기준일로,
+  `2026-11-14 기준 · 평균평가단가 9,758.65 · 수익률 3.8348%` 안내. 실패는 경고만.
+- 기존 평가 로직(`수량 × 현재가`)·대시보드 합계·구성비는 **변경 없음**.
+
+**회귀 수정(같이 처리)**
+- 종목명이 AutoComplete 로 바뀌면서 테스트가 실제 `searchBonds` 를 타 5초 타임아웃이 났다.
+  채권 API(`searchBonds`·`fetchBondIssueInfo`·`fetchBondValuation`)를 테스트에서 모킹하고,
+  `InputNumber addonAfter`(antd 6 deprecated)를 `suffix` 로 교체했다. **타임아웃 상향으로 덮지 않았다.**
+
+**검증**
+- 백엔드 **317 passed**, 프론트 단위 **257 passed**, e2e **201**(39 skipped), typecheck/lint 0.
+
+**한계 / 사람 조치**
+- `CTPF2005R` 이 실제 보유 채권(`KR103502GEC4`, `KR101501DD62`)에 값을 주는지는 **미검증**.
+  배포 후 `평가단가 가져오기`로 확인하고, 안 되면 error 문구가 그대로 표시된다.
+- 액면을 모르면 자동 평가 불가 → 평가금액 직접 입력. 보험은 대상 아님.
+- KIS 장내채권 API 권한·자격증명 필요.

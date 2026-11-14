@@ -4,6 +4,24 @@ import { InvestmentsPage } from "./InvestmentsPage";
 import { clearInflight } from "../api/client";
 import { clearToken, saveToken } from "../auth/authStore";
 
+// 채권 보조 API 는 fetch 가 아니라 모듈 함수로 모킹한다 — 테스트가 실제 네트워크를
+// 타지 않고, 디바운스 뒤 호출되는 검색도 즉시 결정되게 한다.
+const { searchBondsMock, fetchBondIssueInfoMock, fetchBondValuationMock } = vi.hoisted(() => ({
+  searchBondsMock: vi.fn(),
+  fetchBondIssueInfoMock: vi.fn(),
+  fetchBondValuationMock: vi.fn(),
+}));
+
+vi.mock("../api/investmentsApi", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api/investmentsApi")>();
+  return {
+    ...actual,
+    searchBonds: searchBondsMock,
+    fetchBondIssueInfo: fetchBondIssueInfoMock,
+    fetchBondValuation: fetchBondValuationMock,
+  };
+});
+
 /** §38 표준 포맷 대역. */
 /** 자산군 Select 에서 "채권" 옵션을 고른다 — 목록 부제(title="채권")와 겹치지 않게 드롭다운 한정. */
 async function selectBondClass() {
@@ -92,6 +110,19 @@ describe("InvestmentsPage (§54 E2)", () => {
   beforeEach(() => {
     clearToken();
     saveToken("tok", Date.now() + 60_000);
+    searchBondsMock.mockReset();
+    fetchBondIssueInfoMock.mockReset();
+    fetchBondValuationMock.mockReset();
+    searchBondsMock.mockResolvedValue({ items: [], warning: null });
+    fetchBondIssueInfoMock.mockResolvedValue({
+      issuerName: null, couponRate: null, issueDate: null, maturityDate: null,
+      bondClass: null, creditRating: null, error: null,
+    });
+    fetchBondValuationMock.mockResolvedValue({
+      pdno: null, name: null, asOf: null, unitPrice: null, evaluated: 0,
+      avgYieldRate: null, kisUnitPrice: null, kbpUnitPrice: null,
+      niceUnitPrice: null, fnpUnitPrice: null, error: "평가단가가 없습니다",
+    });
     fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input);
       const method = init?.method ?? "GET";
@@ -349,25 +380,16 @@ describe("InvestmentsPage (§54 E2)", () => {
   };
 
   it("종목명 자동완성 후보를 선택하면 4값이 채워지고 발행정보도 보강된다 (BOND-SEARCH-3)", async () => {
-    const base = fetchMock as unknown as
-      (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input).includes("/investments/bonds")) {
-        return Promise.resolve(apiResponse({ items: [treasuryBond], warning: null }));
-      }
-      if (String(input).includes("/bond-issue-info")) {
-        return Promise.resolve(apiResponse({
-          issuerName: "기획재정부",
-          couponRate: 3,
-          issueDate: null,
-          maturityDate: null,
-          bondClass: "국고채",
-          creditRating: "AAA",
-          error: null,
-        }));
-      }
-      return base(input, init);
-    }));
+    searchBondsMock.mockResolvedValue({ items: [treasuryBond], warning: null });
+    fetchBondIssueInfoMock.mockResolvedValue({
+      issuerName: "기획재정부",
+      couponRate: 3,
+      issueDate: null,
+      maturityDate: null,
+      bondClass: "국고채",
+      creditRating: "AAA",
+      error: null,
+    });
     render(<InvestmentsPage />);
     await screen.findByText("삼성전자");
 
@@ -422,14 +444,7 @@ describe("InvestmentsPage (§54 E2)", () => {
   });
 
   it("코드로 입력해도 후보가 표시된다 (BOND-SEARCH-3)", async () => {
-    const base = fetchMock as unknown as
-      (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input).includes("/investments/bonds")) {
-        return Promise.resolve(apiResponse({ items: [treasuryBond], warning: null }));
-      }
-      return base(input, init);
-    }));
+    searchBondsMock.mockResolvedValue({ items: [treasuryBond], warning: null });
     render(<InvestmentsPage />);
     await screen.findByText("삼성전자");
 
@@ -447,15 +462,102 @@ describe("InvestmentsPage (§54 E2)", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("액면과 평가단가로 평가금액을 자동 계산해 저장한다 (BOND-VALUE-1)", async () => {
+    fetchBondValuationMock.mockResolvedValue({
+      pdno: "KR103502GEC4", name: "국고03000-3412(24-13)", asOf: "2026-11-14",
+      unitPrice: 9758.65, evaluated: 975865, avgYieldRate: 3.8348,
+      kisUnitPrice: 9750, kbpUnitPrice: 9760, niceUnitPrice: 9770, fnpUnitPrice: 9780,
+      error: null,
+    });
+    render(<InvestmentsPage />);
+    await screen.findByText("삼성전자");
+
+    fireEvent.click(screen.getByRole("button", { name: "+ 종목 추가" }));
+    fireEvent.mouseDown(screen.getByLabelText("자산군"));
+    await selectBondClass();
+    await screen.findByLabelText("보유수량");
+
+    fireEvent.change(screen.getByLabelText("종목명"), { target: { value: "국고03000-3412(24-13)" } });
+    fireEvent.change(screen.getByLabelText("종목번호"), { target: { value: "KR103502GEC4" } });
+    fireEvent.change(screen.getByLabelText("보유수량"), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("액면(원)"), { target: { value: "1000000" } });
+    const valuationButton = screen.getByRole("button", { name: "평가단가 가져오기" }) as HTMLButtonElement;
+    await waitFor(() => expect(valuationButton.disabled).toBe(false));
+    fireEvent.click(valuationButton);
+
+    await waitFor(() => {
+      expect(Number((screen.getByLabelText("평가금액") as HTMLInputElement).value)).toBe(975865);
+    });
+    expect(await screen.findByText(
+      "2026-11-14 기준 · 평균평가단가 9,758.65 · 수익률 3.8348%",
+    )).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === "POST"
+          && String((init as RequestInit).body).includes("KR103502GEC4"),
+      );
+      expect(post).toBeDefined();
+      expect(JSON.parse(String((post?.[1] as RequestInit).body))).toMatchObject({
+        assetClass: "bond",
+        faceAmount: 1000000,
+        marketPrice: 975865,
+      });
+    });
+  });
+
+  it("평가단가 조회가 실패해도 경고만 남기고 저장할 수 있다 (BOND-VALUE-1)", async () => {
+    // beforeEach 기본값이 error 응답이다.
+    render(<InvestmentsPage />);
+    await screen.findByText("삼성전자");
+
+    fireEvent.click(screen.getByRole("button", { name: "+ 종목 추가" }));
+    fireEvent.mouseDown(screen.getByLabelText("자산군"));
+    await selectBondClass();
+    await screen.findByLabelText("보유수량");
+
+    fireEvent.change(screen.getByLabelText("종목명"), { target: { value: "국고03000-3412(24-13)" } });
+    fireEvent.change(screen.getByLabelText("종목번호"), { target: { value: "KR103502GEC4" } });
+    fireEvent.change(screen.getByLabelText("보유수량"), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("액면(원)"), { target: { value: "1000000" } });
+    fireEvent.change(screen.getByLabelText("평가금액"), { target: { value: "880050" } });
+    const valuationButton = screen.getByRole("button", { name: "평가단가 가져오기" }) as HTMLButtonElement;
+    await waitFor(() => expect(valuationButton.disabled).toBe(false));
+    fireEvent.click(valuationButton);
+
+    expect(await screen.findByText("평가단가가 없습니다")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === "POST"
+          && String((init as RequestInit).body).includes("KR103502GEC4"),
+      );
+      expect(post).toBeDefined();
+      expect(JSON.parse(String((post?.[1] as RequestInit).body))).toMatchObject({
+        assetClass: "bond",
+        faceAmount: 1000000,
+      });
+    });
+  });
+
+  it("종목번호가 없는 보험은 평가단가 버튼이 비활성이다 (BOND-VALUE-1)", async () => {
+    render(<InvestmentsPage />);
+    await screen.findByText("삼성전자");
+
+    fireEvent.click(screen.getByRole("button", { name: "+ 종목 추가" }));
+    fireEvent.mouseDown(screen.getByLabelText("자산군"));
+    await selectBondClass();
+    await screen.findByLabelText("보유수량");
+    fireEvent.change(screen.getByLabelText("액면(원)"), { target: { value: "1000000" } });
+
+    expect((screen.getByRole("button", { name: "평가단가 가져오기" }) as HTMLButtonElement).disabled)
+      .toBe(true);
+  });
+
   it("후보가 없으면 직접 입력으로 저장한다 (보험, BOND-SEARCH-3)", async () => {
-    const base = fetchMock as unknown as
-      (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input).includes("/investments/bonds")) {
-        return Promise.resolve(apiResponse({ items: [], warning: null }));
-      }
-      return base(input, init);
-    }));
+    // beforeEach 기본값이 빈 검색 결과다.
     render(<InvestmentsPage />);
     await screen.findByText("삼성전자");
 
@@ -489,17 +591,10 @@ describe("InvestmentsPage (§54 E2)", () => {
   });
 
   it("발행정보 조회가 실패해도 채권 저장은 가능하다 (BOND-INFO-1)", async () => {
-    const base = fetchMock as unknown as
-      (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input).includes("/bond-issue-info")) {
-        return Promise.resolve(apiResponse({
-          issuerName: null, couponRate: null, issueDate: null, maturityDate: null,
-          bondClass: null, creditRating: null, error: "KIS 자격증명이 없습니다",
-        }));
-      }
-      return base(input, init);
-    }));
+    fetchBondIssueInfoMock.mockResolvedValue({
+      issuerName: null, couponRate: null, issueDate: null, maturityDate: null,
+      bondClass: null, creditRating: null, error: "KIS 자격증명이 없습니다",
+    });
     render(<InvestmentsPage />);
     await screen.findByText("삼성전자");
 
