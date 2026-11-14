@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AutoComplete,
   Button,
   Card,
   Dropdown,
@@ -9,6 +10,7 @@ import {
   Popconfirm,
   Select,
   Space,
+  Spin,
   Typography,
   type FormInstance,
   type MenuProps,
@@ -21,7 +23,6 @@ import { SubNav } from "../components/SubNav";
 import { AfListTable, type AfListColumn, type AfRowAction } from "../components/AfListTable";
 import { KisCredentialsModal } from "../components/KisCredentialsModal";
 import { KisBondPreviewModal } from "../components/KisBondPreviewModal";
-import { BondSearchModal } from "../components/BondSearchModal";
 import { UpbitCredentialsModal } from "../components/UpbitCredentialsModal";
 import {
   clearKisBalance,
@@ -33,10 +34,12 @@ import {
   getPortfolio,
   getUpbitStatus,
   refreshHoldingPrices,
+  searchBonds,
   syncKisBalance,
   syncUpbit,
   updateHolding,
   type AssetClass,
+  type BondItem,
   type HoldingPayload,
   type HoldingRow,
   type InvestmentAccountValue,
@@ -183,8 +186,6 @@ export function InvestmentsPage({
   const [kisCredentialsAccount, setKisCredentialsAccount] = useState<{ id: number; name: string } | null>(null);
   /** KIS-BOND-2 읽기 전용 채권 원본 진단 모달. */
   const [bondPreviewAccount, setBondPreviewAccount] = useState<{ id: number; name: string } | null>(null);
-  /** BOND-SEARCH-1 채권 마스터 검색 모달. */
-  const [bondSearchOpen, setBondSearchOpen] = useState(false);
   /** 계좌 헤더의 `⋯` 메뉴는 한 번에 하나만 열린다 — aria-expanded 도 이 값으로 동기화한다. */
   const [openAccountMenu, setOpenAccountMenu] = useState<number | null>(null);
   /**
@@ -585,10 +586,16 @@ export function InvestmentsPage({
       return;
     }
     if (!pdno) {
-      setActionError("종목번호를 입력하거나 채권 찾기로 선택하세요");
+      setActionError("종목번호를 입력하세요");
       return;
     }
     await applyBondIssueInfo(accountId, pdno);
+  };
+
+  /** 자동완성에서 채권을 고르면 계좌가 있을 때 발행정보를 best-effort 로 보강한다. */
+  const handleBondSelected = (bond: BondItem) => {
+    const accountId = Number(form.getFieldValue("accountId"));
+    if (accountId) void applyBondIssueInfo(accountId, bond.code);
   };
 
   /**
@@ -950,7 +957,7 @@ export function InvestmentsPage({
                     wide
                     onFetchQuote={() => void fetchQuoteForForm()}
                     fetchingQuote={quoteBusy}
-                    onOpenBondSearch={() => setBondSearchOpen(true)}
+                    onBondSelected={handleBondSelected}
                     onFetchBondInfo={() => void fetchBondInfoForForm()}
                     bondInfoBusy={bondInfoBusy}
                   />
@@ -1179,7 +1186,7 @@ export function InvestmentsPage({
                                 wide
                                 onFetchQuote={() => void fetchQuoteForForm()}
                                 fetchingQuote={quoteBusy}
-                                onOpenBondSearch={() => setBondSearchOpen(true)}
+                                onBondSelected={handleBondSelected}
                                 onFetchBondInfo={() => void fetchBondInfoForForm()}
                                 bondInfoBusy={bondInfoBusy}
                               />
@@ -1264,23 +1271,6 @@ export function InvestmentsPage({
         />
       )}
 
-      <BondSearchModal
-        open={bondSearchOpen}
-        onClose={() => setBondSearchOpen(false)}
-        onSelect={(bond) => {
-          // 선택값은 사용자가 이후 수정할 수 있다 — 저장 시점에 다시 읽는다.
-          form.setFieldsValue({
-            name: bond.name,
-            symbol: bond.code,
-            issueDate: bond.issueDate ?? undefined,
-            maturityDate: bond.maturityDate ?? undefined,
-          });
-          // 계좌가 이미 선택돼 있으면 KIS 발행정보로 회사·금리를 보강한다(best-effort).
-          const accountId = Number(form.getFieldValue("accountId"));
-          if (accountId) void applyBondIssueInfo(accountId, bond.code);
-        }}
-      />
-
       <UpbitCredentialsModal
         open={upbitOpen}
         onClose={() => setUpbitOpen(false)}
@@ -1310,7 +1300,7 @@ function HoldingForm({
   wide,
   onFetchQuote,
   fetchingQuote,
-  onOpenBondSearch,
+  onBondSelected,
   onFetchBondInfo,
   bondInfoBusy,
 }: {
@@ -1319,12 +1309,22 @@ function HoldingForm({
   wide: boolean;
   onFetchQuote: () => void;
   fetchingQuote: boolean;
-  onOpenBondSearch: () => void;
+  /** 자동완성에서 채권을 골랐을 때 — 발행정보 보강은 부모가 best-effort 로 한다. */
+  onBondSelected: (bond: BondItem) => void;
   onFetchBondInfo: () => void;
   bondInfoBusy: boolean;
 }) {
   const currency = (Form.useWatch("currency", form) as string | undefined) ?? "KRW";
   const accountId = Form.useWatch("accountId", form) as number | undefined;
+  // BOND-SEARCH-3: 종목명 입력란이 곧 검색이다. 폼이 닫히면(HoldingForm unmount) 초기화된다.
+  const [bondOptions, setBondOptions] = useState<BondItem[]>([]);
+  const [bondQuery, setBondQuery] = useState("");
+  const [bondFinding, setBondFinding] = useState(false);
+  const [bondFindWarning, setBondFindWarning] = useState("");
+  const bondByValue = useMemo(
+    () => new Map(bondOptions.map((bond) => [bond.name, bond])),
+    [bondOptions],
+  );
   const assetClass = (Form.useWatch("assetClass", form) as HoldingPayload["assetClass"] | undefined)
     ?? "stock";
   const isBond = assetClass === "bond";
@@ -1351,6 +1351,46 @@ function HoldingForm({
     }
   };
 
+  // 채권 종목명 자동완성 — 300ms 디바운스 후 서버 검색을 그대로 쓴다.
+  useEffect(() => {
+    if (!isBond) {
+      setBondOptions([]);
+      setBondQuery("");
+      setBondFinding(false);
+      setBondFindWarning("");
+      return;
+    }
+    const q = bondQuery.trim();
+    if (q.length < 1) {
+      setBondOptions([]);
+      setBondFinding(false);
+      setBondFindWarning("");
+      return;
+    }
+    let cancelled = false;
+    setBondFinding(true);
+    const timer = setTimeout(() => {
+      searchBonds(q, 20)
+        .then((result) => {
+          if (cancelled) return;
+          setBondOptions(result.items);
+          setBondFindWarning(result.warning ?? "");
+        })
+        .catch((e: unknown) => {
+          if (cancelled) return;
+          setBondOptions([]);
+          setBondFindWarning(e instanceof Error ? e.message : "채권 검색에 실패했습니다");
+        })
+        .finally(() => {
+          if (!cancelled) setBondFinding(false);
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [bondQuery, isBond]);
+
   return (
     <Form form={form} layout={wide ? "inline" : "vertical"} style={{ rowGap: 8 }}>
       <Form.Item name="accountId" label="계좌" rules={[{ required: true, message: "계좌를 선택하세요" }]}>
@@ -1373,11 +1413,77 @@ function HoldingForm({
         <>
           {/* BOND-FORM-3: 채권의 정체성은 종목명이다. 보험처럼 종목번호가 없는 상품도
               등록할 수 있도록 symbol 은 선택으로 둔다. 평단가/현재가/통화/기준일은 숨긴다. */}
-          <Form.Item name="name" label="종목명" rules={[{ required: true, message: "종목명을 입력하세요" }]}>
-            <Input style={{ width: wide ? 180 : "100%" }} placeholder="예: 국고03000-3412(24-13)" />
-          </Form.Item>
-          <Form.Item label=" " colon={false}>
-            <Button onClick={onOpenBondSearch}>채권 찾기</Button>
+          <Form.Item
+            name="name"
+            label="종목명"
+            rules={[{ required: true, message: "종목명을 입력하세요" }]}
+            extra={
+              bondFindWarning ? (
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {bondFindWarning}
+                </Typography.Text>
+              ) : undefined
+            }
+          >
+            <AutoComplete
+              options={bondOptions.map((bond) => ({
+                // BOND-SEARCH-4: 한 줄이면 코드·만기가 잘린다 — 이름/코드·날짜 2줄 블록.
+                value: bond.name,
+                label: (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                    <span
+                      style={{
+                        fontWeight: 600,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {bond.name}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: "var(--af-muted-foreground)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {`${bond.code} · 발행 ${bond.issueDate ?? "미상"} ~ 만기 ${bond.maturityDate ?? "미상"}`}
+                    </span>
+                  </div>
+                ),
+              }))}
+              filterOption={false}
+              // 필드보다 넓게, 오른쪽 정렬 — 320px 에서도 코드·날짜가 잘리지 않게.
+              popupMatchSelectWidth={295}
+              onSearch={(value: string) => setBondQuery(value)}
+              onSelect={(value: string) => {
+                const bond = bondByValue.get(value);
+                if (!bond) return;
+                form.setFieldsValue({
+                  name: bond.name,
+                  symbol: bond.code,
+                  issueDate: bond.issueDate ?? undefined,
+                  maturityDate: bond.maturityDate ?? undefined,
+                });
+                onBondSelected(bond);
+              }}
+              notFoundContent={
+                bondFinding ? (
+                  <span><Spin size="small" /> 검색 중…</span>
+                ) : bondQuery.trim() ? (
+                  "일치하는 채권이 없습니다 — 직접 입력할 수 있습니다"
+                ) : null
+              }
+              listHeight={256}
+              // 320px 에서 인라인 라벨 폭까지 더해도 넘치지 않게 뷰포트 기준으로 상한을 둔다.
+              style={{ width: wide ? 220 : "100%", maxWidth: "calc(100vw - 120px)" }}
+              styles={{ popup: { root: { maxWidth: "calc(100vw - 16px)" } } }}
+            >
+              <Input placeholder="예: 국고03000-3412(24-13)" />
+            </AutoComplete>
           </Form.Item>
           <Form.Item name="symbol" label="종목번호">
             <Input style={{ width: wide ? 180 : "100%" }} placeholder="예: KR103502GA34 (없으면 비움)" />

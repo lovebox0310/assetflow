@@ -5747,9 +5747,50 @@ DB 의 10월 합계는 현대 2,609,560 · 삼성 362,230 이었고, 마지막 �
 - 일반채권 실시간체결가(`H0BJCNT0`)는 `tr_key=채권 종목코드`, `tr_type=1(등록)/2(해제)`,
   접속키를 헤더에 넣는다. 모의투자 미지원.
 - 도입하지 않는 이유:
-  1) 채권 호가는 **액면 100 기준**이라 우리 모델(`수량 × marketPrice`)과 단위가 어긋난다.
+  1) 채권 호가는 **액면 10,000원 기준 원화**다(예: `bond_prpr = 10265.00` = 102.65%).
+     우리 모델(`수량 × marketPrice`)과 단위가 어긋난다(§101 정정).
   2) IRP 보유분은 **장외채권·보험**이어서 실시간 시세 대상이 아니다(§95 실측).
   3) 상시 연결·재연결·구독 관리 비용 대비 이득이 없다(개인 대시보드는 조회 시점 갱신으로 충분).
 - 대신 채권 가격이 필요하면 REST `장내채권현재가(시세)`(`FHKBJ773400C0`)를 **on-demand**로 쓰고,
   단위는 `액면 × (bond_prpr/100)` 로 환산해야 한다(현재 모델에는 액면 필드가 없음).
 - 보안: `approval_key`·`appkey`·`appsecret` 은 자격증명이다. 로그·화면·문서에 남기지 않는다.
+
+## 101) [장내채권] 기본시세 문서 확인 — 단위 정정과 가격 자동화 후보 (2026-11-15)
+
+**출처**: `~/문서/bond_code.mst/[장내채권] 기본시세.xlsx` (9시트: 요약 + API 8종 명세)
+
+**확인된 API (모두 REST/GET, 모의투자 미지원)**
+| API | TR_ID | URL |
+|---|---|---|
+| 현재가(호가) | `FHKBJ773401C0` | `/uapi/domestic-bond/v1/quotations/inquire-asking-price` |
+| 현재가(시세) | `FHKBJ773400C0` | `/quotations/inquire-price` |
+| 현재가(체결) | `FHKBJ773403C0` | `/quotations/inquire-ccnl` |
+| 현재가(일별) | `FHKBJ773404C0` | `/quotations/inquire-daily-price` |
+| 기간별시세(일) | `FHKBJ773701C0` | `/quotations/inquire-daily-itemchartprice` |
+| 평균단가조회 | `CTPF2005R` | `/quotations/avg-unit` |
+| 발행정보 | `CTPF1101R` | `/quotations/issue-info` |
+| 기본조회 | `CTPF1114R` | `/quotations/search-bond-info` |
+
+요청은 모두 `FID_COND_MRKT_DIV_CODE=B` + `FID_INPUT_ISCD=<채권종목코드>`(시세 계열) 또는
+`PDNO`+`PRDT_TYPE_CD=302`(발행정보·기본조회).
+
+**단위 정정 (§100의 오기)**
+- 채권 호가·현재가는 **액면 10,000원 기준 원화**다. 예: `bond_prpr="10265.00"` = 102.65%,
+  `papr="10000"`(액면가). §100 에서 "액면 100 기준"이라고 적은 것은 틀렸다.
+- `srfc_inrt` 는 퍼센트 문자열 6자리(`"5.931000"`), 날짜는 `yyyyMMdd`.
+
+**발행정보(CTPF1101R) 실제 필드** — §99 구현과 일치 확인. `issu_istt_name`(발행기관명),
+`issu_istt_cd`(5), `cmco_cd`(주간사 4), `papr`, `srfc_inrt`, `issu_dt`, `expd_dt`,
+`bond_clsf_kor_name`, `lstg_rmnd`, 신용등급 4종.
+
+**가격 자동화 후보 — 평균단가조회(CTPF2005R)**
+- 파라미터: `INQR_STRT_DT`·`INQR_END_DT`·`PDNO`(공백=전체)·`PRDT_TYPE_CD=302`·`VRFC_KIND_CD=00`.
+- 응답: KIS·KBP·NICE·F&P 및 **평균평가단가/평가금액/평가수익율** (액면 10,000원 기준).
+- 장내 상장 채권이면 `평가액 = 보유액면 × avg_evlu_unpr / 10,000` 으로 정확히 평가할 수 있다.
+  단, 우리 모델에는 **액면 필드가 없어**(수량만 저장) 먼저 액면 입력/해석 규칙을 정해야 한다.
+- 원리금보장(보험·장외채권)은 이 API 대상이 아니다(§95).
+
+**결론**
+- 현재 구현(마스터 검색 + 발행정보)은 문서와 일치하며 변경 필요 없음.
+- 채권 시세 자동화를 하려면 ① 액면 필드 도입 → ② `CTPF2005R`(권장, 평가기관 평균단가) 또는
+  `FHKBJ773400C0`(현재가) 순서가 맞다. 웹소켓(`H0BJCNT0`)은 여전히 불필요(§100).
