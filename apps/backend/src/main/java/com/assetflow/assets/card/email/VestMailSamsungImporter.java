@@ -226,7 +226,8 @@ public class VestMailSamsungImporter {
                     businessNo,
                     businessCategory,
                     memberRelation.isBlank() ? "본인" : memberRelation,
-                    cardCompanyLabel));
+                    cardCompanyLabel,
+                    CardImportLedger.SOURCE_EMAIL));
         }
         return rows;
     }

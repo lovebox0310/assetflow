@@ -453,3 +453,71 @@ CREATE TABLE IF NOT EXISTS upbit_credentials (
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_upbit_credentials_user UNIQUE (user_id)
 );
+
+-- ---------------------------------------------------------------------------
+-- CARD-MERGE-1 (2026-11-12): 카드내역 출처 컬럼 + CSV 정본 대체 정책.
+--
+-- CSV/XLSX 수동 업로드를 정본(canonical)으로 본다. 이메일 명세서와 포맷이 달라
+-- 같은 이용내역이 중복 저장되던 문제를 (카드사·이용일·금액) 자연키로 막고,
+-- 같은 자리의 행이 이미 있으면 저장 규칙(PostgresCardImportLedger.saveOne)이
+-- csv > email/unknown 순으로 값을 대체한다.
+--
+-- 출처 값: csv(업로드 정본) | email(이메일 수집) | unknown(출처를 모르는 기존 행).
+-- 컬럼을 처음 추가할 때만 기존 행을 unknown 으로 백필하고, 그 뒤 기본값을 csv 로
+-- 바꾼다 — 재배포 때 이미 csv 로 기록된 행을 unknown 으로 되돌리지 않기 위해서다.
+-- ---------------------------------------------------------------------------
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'card_imports'
+          AND column_name = 'source'
+    ) THEN
+        ALTER TABLE card_imports ADD COLUMN source VARCHAR(16) NOT NULL DEFAULT 'unknown';
+        ALTER TABLE card_imports ALTER COLUMN source SET DEFAULT 'csv';
+    END IF;
+END $$;
+
+-- 카드내역 중복 정리 — 1회성(이후 0건)이고 삭제는 안전한 경우에만 한다.
+--   · 후보는 source='unknown' 인 기존 행뿐이다. 새로 들어온 csv/email 행은
+--     절대 지우지 않는다 — 같은 날 같은 가맹점·금액의 정당한 2건을 보존한다.
+--   · 같은 (카드사·이용일·금액) 그룹에서 정규화 가맹점이 같거나 한쪽이 다른 쪽을
+--     포함(포함되는 쪽 4자 이상)할 때만, 더 나은 행이 있으면 후보를 지운다.
+--     가맹점이 다른 행은 손대지 않는다(합치면 안 되는 다른 거래일 수 있다).
+--   · 남길 우선순위: source='csv' > category_id 있음 > business_no 있음 >
+--     updated_at 최신 > id 작은 것. (16/4/1 가중치는 이 순서를 보장한다)
+WITH legacy AS (
+    SELECT c.id,
+           c.user_id,
+           COALESCE(c.card_company, '') AS company,
+           c.approved_at,
+           c.gross_amount,
+           regexp_replace(lower(c.merchant_name), '[\s.,()\[\]{}\-_/·]', '', 'g') AS norm,
+           c.source,
+           c.updated_at,
+           (CASE WHEN c.source = 'csv' THEN 16 ELSE 0 END
+            + CASE WHEN c.category_id IS NOT NULL THEN 4 ELSE 0 END
+            + CASE WHEN COALESCE(c.business_no, '') <> '' THEN 1 ELSE 0 END) AS keep_score
+    FROM card_imports c
+)
+DELETE FROM card_imports target
+USING legacy candidate, legacy better
+WHERE target.id = candidate.id
+  AND candidate.source = 'unknown'
+  AND better.id <> candidate.id
+  AND better.user_id = candidate.user_id
+  AND better.company = candidate.company
+  AND better.approved_at = candidate.approved_at
+  AND better.gross_amount = candidate.gross_amount
+  AND (
+        (better.norm = candidate.norm AND candidate.norm <> '')
+        OR (length(better.norm) >= 4 AND candidate.norm LIKE '%' || better.norm || '%')
+        OR (length(candidate.norm) >= 4 AND better.norm LIKE '%' || candidate.norm || '%')
+      )
+  AND (
+        better.keep_score > candidate.keep_score
+        OR (better.keep_score = candidate.keep_score AND better.updated_at > candidate.updated_at)
+        OR (better.keep_score = candidate.keep_score AND better.updated_at = candidate.updated_at
+            AND better.id < candidate.id)
+      );

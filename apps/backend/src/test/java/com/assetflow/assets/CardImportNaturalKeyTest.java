@@ -72,4 +72,13 @@ class CardImportNaturalKeyTest {
         assertThat(stored).isEqualTo(1);
         assertThat(ledger.all()).hasSize(2);
     }
+
+    /** CARD-MERGE-1: 자연키는 카드사·이용일·금액뿐 — 가맹점명 표기는 키에 들어가지 않는다. */
+    @Test
+    void naturalKeyIgnoresMerchantName() {
+        assertThat(CardImportLedger.naturalKey("현대카드", "2026-10-06", 555940))
+                .isEqualTo("현대카드|2026-10-06|555940");
+        assertThat(CardImportLedger.naturalKey(null, "2026-10-06", 555940))
+                .isEqualTo("|2026-10-06|555940");
+    }
 }

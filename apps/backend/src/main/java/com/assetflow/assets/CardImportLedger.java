@@ -1,6 +1,5 @@
 package com.assetflow.assets;
 
-import java.text.Normalizer;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -18,7 +17,35 @@ public interface CardImportLedger {
                        long supplyExVat, long vat, long grossAmount,
                        String cardMasked, String expenseKind, String subCategory,
                        String businessNo, String businessCategory,
-                       String memberRelation, String cardCompany) {}
+                       String memberRelation, String cardCompany,
+                       String source) {
+
+        /** 출처를 모르는 기존 호출부(테스트·도구)는 업로드 정본(csv)으로 본다. */
+        public ImportedRow(String rowKey, String approvedAt, String merchantName,
+                           long supplyExVat, long vat, long grossAmount,
+                           String cardMasked, String expenseKind, String subCategory,
+                           String businessNo, String businessCategory,
+                           String memberRelation, String cardCompany) {
+            this(rowKey, approvedAt, merchantName, supplyExVat, vat, grossAmount,
+                    cardMasked, expenseKind, subCategory, businessNo, businessCategory,
+                    memberRelation, cardCompany, SOURCE_CSV);
+        }
+    }
+
+    /** CSV/XLSX 수동 업로드 — 정본(canonical) 출처. */
+    String SOURCE_CSV = "csv";
+    /** 이메일 명세서 자동 수집. */
+    String SOURCE_EMAIL = "email";
+    /** 출처를 모르는 기존 행(백필 기본값). */
+    String SOURCE_UNKNOWN = "unknown";
+
+    /** null/공백은 csv 로 본다. 대소문자는 소문자로 맞춘다. */
+    static String normalizeSource(String source) {
+        if (source == null || source.isBlank()) {
+            return SOURCE_CSV;
+        }
+        return source.trim().toLowerCase(Locale.ROOT);
+    }
 
     /** 미분류 작업함의 가맹점 묶음 (§55.8). */
     record UnclassifiedGroup(String merchantName, int count, long grossTotal,
@@ -49,18 +76,17 @@ public interface CardImportLedger {
     int addAll(List<ImportedRow> incoming);
 
     /**
-     * §71 출처가 달라도 같은 거래로 볼 수 있는 자연키.
+     * §71·CARD-MERGE-1 출처가 달라도 같은 거래로 볼 수 있는 자연키.
      *
      * <p>수동 업로드(CSV/XLSX)와 이메일 명세서는 `row_key` 형식이 다르고, 같은
-     * 가맹점이라도 공백·괄호 표기가 다르다. 그래서 저장 전에 카드사·승인일·금액·
-     * 정규화한 가맹점명으로 중복을 판정한다. 카드번호·부가세는 출처마다 달라
-     * 키에 넣지 않는다.</p>
+     * 가맹점이라도 공백·괄호 표기가 다르다(예: {@code (주)합성마트 - 합성지점} vs
+     * {@code 합성마트 합성지점}). 그래서 저장 전에 <b>카드사·이용일·금액</b>으로
+     * 중복을 판정한다. 가맹점명은 키에 넣지 않는다 — 표기가 달라 같은 거래가
+     * 중복 저장되던 원인이다. 같은 날 같은 금액의 서로 다른 가맹점은 배치 순번
+     * ({@code #1}, {@code #2})으로 구분해 둘 다 보존한다.</p>
      */
-    static String naturalKey(String cardCompany, String approvedAt, long grossAmount, String merchantName) {
-        String merchant = merchantName == null ? "" : Normalizer.normalize(merchantName, Normalizer.Form.NFKC)
-                .toLowerCase(Locale.ROOT)
-                .replaceAll("[^\\p{L}\\p{N}]", "");
-        return (cardCompany == null ? "" : cardCompany) + "|" + approvedAt + "|" + grossAmount + "|" + merchant;
+    static String naturalKey(String cardCompany, String approvedAt, long grossAmount) {
+        return (cardCompany == null ? "" : cardCompany) + "|" + approvedAt + "|" + grossAmount;
     }
 
     /** rowKey 로 한 행을 찾는다 — 카테고리 수정 API 용 (§55.8). */

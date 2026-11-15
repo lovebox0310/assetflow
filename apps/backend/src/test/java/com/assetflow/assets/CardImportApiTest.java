@@ -968,4 +968,74 @@ class CardImportApiTest {
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].memberRelation").value("가족"));
     }
+
+    /** CARD-MERGE-1: 업로드 행은 출처를 보내지 않으면 정본(csv)으로 저장된다. */
+    @Test
+    void uploadedRowsDefaultToCsvSource() throws Exception {
+        String body = "{\"rows\":[" + row("k1", "2026-10-06", "합성마트", 500000, 55940, 555940)
+                + "],\"merchantRules\":{}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/assets/card-imports?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].source").value("csv"));
+    }
+
+    @Test
+    void unknownSourceValueIsRejected() throws Exception {
+        String body = "{\"rows\":[{\"rowKey\":\"k1\",\"approvedAt\":\"2026-10-06\",\"merchantName\":\"합성마트\","
+                + "\"supplyExVat\":500000,\"vat\":55940,\"grossAmount\":555940,\"source\":\"paper\"}],"
+                + "\"merchantRules\":{}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest());
+    }
+
+    /**
+     * CARD-MERGE-1 진단 API: 같은 (카드사·이용일·금액) 그룹을 돌려주되 아무것도 지우지 않는다.
+     * 가맹점이 다른 행도 같은 그룹이면 함께 보여 준다 — 판단은 사용자가 한다.
+     */
+    @Test
+    void duplicatesEndpointReportsGroupsWithoutDeleting() throws Exception {
+        String body = "{\"rows\":["
+                + rowWithCardInfo("k1", "2026-10-06", "(주)합성마트 - 합성지점", 555940, 0, 555940, "본인", "현대카드") + ","
+                + rowWithCardInfo("k2", "2026-10-06", "합성마트 합성지점", 555940, 0, 555940, "본인", "현대카드") + ","
+                + rowWithCardInfo("k3", "2026-10-07", "단일가맹점", 1000, 0, 1000, "본인", "현대카드")
+                + "],\"merchantRules\":{}}";
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.stored").value(3));
+
+        mvc.perform(get("/api/v1/assets/card-imports/duplicates").header("Authorization", TOKEN)
+                        .param("month", "2026-10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].cardCompany").value("현대카드"))
+                .andExpect(jsonPath("$.data[0].approvedAt").value("2026-10-06"))
+                .andExpect(jsonPath("$.data[0].grossAmount").value(555940))
+                .andExpect(jsonPath("$.data[0].rows.length()").value(2))
+                .andExpect(jsonPath("$.data[0].rows[0].rowKey").value("k1"))
+                .andExpect(jsonPath("$.data[0].rows[0].merchantName").value("(주)합성마트 - 합성지점"))
+                .andExpect(jsonPath("$.data[0].rows[0].source").value("csv"))
+                .andExpect(jsonPath("$.data[0].rows[0].hasCategory").value(false));
+
+        // 읽기 전용 — 조회 후에도 행이 그대로다
+        mvc.perform(get("/api/v1/assets/card-imports?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(jsonPath("$.data.length()").value(3));
+    }
+
+    @Test
+    void duplicatesEndpointRejectsBadMonthAndReturnsEmptyForCleanMonth() throws Exception {
+        mvc.perform(get("/api/v1/assets/card-imports/duplicates").header("Authorization", TOKEN)
+                        .param("month", "2026-10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+
+        mvc.perform(get("/api/v1/assets/card-imports/duplicates").header("Authorization", TOKEN)
+                        .param("month", "2026/10"))
+                .andExpect(status().isBadRequest());
+    }
 }
