@@ -218,7 +218,7 @@ assetflow-deploy.timer (10분)
         ▼
 deploy/autodeploy.sh ── dirty? ────────────→ 중단(사람 확인)
         │
-        ├─ git fetch → HEAD == origin/main ? ─→ 종료(변경 없음)
+        ├─ git fetch → 배포된 sha == origin/main ? ─→ 종료(이미 배포된 커밋)
         │
         ├─ 로컬에만 있는 커밋? ───────────────→ 중단(CI 미검증 커밋)
         │
@@ -309,7 +309,7 @@ sudo systemctl daemon-reload
 | 상황 | 판단 | 종료 코드 | 배포 |
 |---|---|---|---|
 | 작업트리가 dirty | 로컬 수정이 섞이면 배포 내용을 설명할 수 없다 | 3 | 안 함 |
-| `HEAD == origin/main` | 변경 없음 | 0 | 안 함 |
+| 배포된 sha == origin/main | 이미 배포된 커밋 | 0 | 안 함 |
 | 로컬 main 이 `origin/main` 을 앞섬·갈라짐 | CI 가 본 적 없는 커밋이다(게이트 우회 금지) | 1 | 안 함 |
 | CI 실행의 `headSha != origin/main` | 그 커밋의 CI 결과가 아직 없다 | 0 | 안 함 |
 | CI `status != completed` | 진행 중 — 다음 주기에 다시 본다 | 0 | 안 함 |

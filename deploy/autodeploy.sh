@@ -1,11 +1,16 @@
 #!/bin/bash
-# AssetFlow 자동 배포 — main 이 전진했고 그 커밋의 CI(quality-gate 4잡)가 성공했을 때만 배포한다.
+# AssetFlow 자동 배포 — origin/main 의 최신 커밋이 "마지막으로 배포한 커밋"과 다르고,
+# 그 커밋의 CI(quality-gate 4잡)가 성공했을 때만 배포한다.
+#
+# 배포 판정 기준은 "로컬 HEAD vs origin/main" 이 아니라 "배포된 sha(=$STATE_FILE) vs origin/main" 이다.
+# 서버가 스스로 커밋을 만들지 않는 한 로컬 HEAD 는 origin/main 과 항상 같으므로, 로컬 비교로는
+# 새 커밋을 영원히 감지하지 못한다.
 #
 # 실행 주체: systemd timer (assetflow-deploy.timer, redbox9 사용자)
 # 수동 실행: sudo systemctl start assetflow-deploy.service   (또는 직접 실행)
 #
 # 종료 코드
-#   0  정상 종료 — 변경 없음 / CI 결과 없음 / CI 미통과 / 중복 실행 (배포하지 않음)
+#   0  정상 종료 — 변경 없음 / 이미 배포된 커밋 / CI 결과 없음 / CI 미통과 / 중복 실행 (배포하지 않음)
 #   1  실패 — fetch/pull/sudo/deploy.sh 실패 (사람이 확인)
 #   3  실패 — 작업트리가 dirty (자동 배포 중단, 사람이 정리)
 #
@@ -63,12 +68,23 @@ fi
 LOCAL="$(git rev-parse HEAD)"
 REMOTE="$(git rev-parse "origin/$BRANCH")"
 
-# 5) 변경 없음
-if [ "$LOCAL" = "$REMOTE" ]; then
-    log "변경 없음: 로컬 HEAD 와 origin/$BRANCH 가 같다 (${LOCAL:0:12}) — 배포하지 않는다"
+# 5) 배포 여부 판정 — 로컬 HEAD 가 아니라 "마지막으로 배포한 sha" 와 origin/main 을 비교한다.
+#    로컬 HEAD 로 비교하면 서버가 직접 커밋하지 않는 한 항상 같아서 새 커밋을 감지하지 못한다.
+DEPLOYED="$(cat "$STATE_FILE" 2>/dev/null || true)"
+if [ -z "$DEPLOYED" ]; then
+    DEPLOYED="none"
+fi
+if [ "$DEPLOYED" = "none" ]; then
+    DEPLOYED_SHOW="없음"
+else
+    DEPLOYED_SHOW="${DEPLOYED:0:12}"
+fi
+
+if [ "$DEPLOYED" = "$REMOTE" ]; then
+    log "이미 배포된 커밋: origin/$BRANCH ${REMOTE:0:12} (마지막 배포 ${DEPLOYED_SHOW}) — 배포하지 않는다"
     exit 0
 fi
-log "변경 감지: 로컬 ${LOCAL:0:12} → origin/$BRANCH ${REMOTE:0:12}"
+log "배포 대상: ${REMOTE:0:12} (마지막 배포 ${DEPLOYED_SHOW})"
 
 # 4-1) 로컬에만 있는 커밋은 CI 가 본 적이 없다. 그대로 배포하면 게이트를 우회하므로
 #      "origin/$BRANCH 이 로컬을 포함하는지"(fast-forward 가능한지)를 먼저 확인한다.
@@ -114,14 +130,11 @@ if [ "$CI_CONCLUSION" != "success" ]; then
 fi
 log "CI 통과: ${REMOTE:0:12} (status=$CI_STATUS, conclusion=$CI_CONCLUSION)"
 
-# 7) fast-forward 로만 당긴다. 갈라졌으면 pull 이 실패하고 배포도 하지 않는다.
+# 7) fast-forward 로만 당긴다. 이미 origin/$BRANCH 과 같으면 pull 은 no-op 이다.
+#    갈라졌으면 pull 이 실패하고 배포도 하지 않는다.
 if ! git pull --quiet --ff-only origin "$BRANCH"; then
     log "git pull --ff-only 실패 — 로컬 $BRANCH 가 갈라졌다. 사람이 확인할 것"
     exit 1
-fi
-PREV_SHA="unknown"
-if [ -f "$STATE_FILE" ]; then
-    PREV_SHA="$(cat "$STATE_FILE")"
 fi
 NEW_SHA="$(git rev-parse HEAD)"
 
@@ -140,4 +153,4 @@ fi
 # 9) 성공 기록
 mkdir -p "$STATE_DIR"
 printf '%s\n' "$NEW_SHA" > "$STATE_FILE"
-log "배포 완료: 이전 ${PREV_SHA:0:12} → 현재 ${NEW_SHA:0:12} / $(date '+%F %T')"
+log "배포 완료: ${DEPLOYED_SHOW} → ${NEW_SHA:0:12} / $(date '+%F %T')"
