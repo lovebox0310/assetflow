@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -133,6 +134,40 @@ class DashboardApiTest {
         mvc.perform(get("/api/v1/dashboard/cashflow?months=1").header("Authorization", "Bearer " + token))
                 .andExpect(jsonPath("$.data[0].expenses").value(1_500_000))
                 .andExpect(jsonPath("$.data[0].balance").value(7_500_000));
+    }
+
+    @Test
+    void cashflowRecomputesPastMonthsFromCurrentData() throws Exception {
+        String token = new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com");
+        // 2026-09 스냅샷의 expenses 111,111 은 확정 시점 저장값 — 응답에 쓰이면 안 된다.
+        snapshotLedger.upsert(new ExpenseSnapshotLedger.Snapshot("2026-09", 0, 0, 8_000_000L, 500_000L, 111_111L, 0, true));
+        snapshotLedger.upsert(new ExpenseSnapshotLedger.Snapshot("2026-10", 0, 0, 9_000_000L, 0L, 0L, 0, true));
+        cardLedger.addAll(java.util.List.of(
+                card("p09a", "2026-09-10", 700_000),
+                card("p09b", "2026-09-20", 300_000),
+                card("p10a", "2026-10-05", 1_000_000)));
+        itemLedger.create("2026-09", "기타", 200_000, false, 0, "교육");
+
+        mvc.perform(get("/api/v1/dashboard/cashflow?months=2").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].month").value("2026-10"))
+                .andExpect(jsonPath("$.data[0].expenses").value(1_000_000))
+                // 과거 월도 조회 시점 합계: 카드 1,000,000 + 항목 200,000
+                .andExpect(jsonPath("$.data[1].month").value("2026-09"))
+                .andExpect(jsonPath("$.data[1].expenses").value(1_200_000))
+                .andExpect(jsonPath("$.data[1].expenses").value(not(111_111)))
+                // 수지 = 수입 - 부가세이체 - 지출 = 8,000,000 - 500,000 - 1,200,000
+                .andExpect(jsonPath("$.data[1].balance").value(6_300_000));
+
+        // 2026-09 카드 행만 추가 — 월 재확정 없이 과거 월 지출이 따라 바뀌어야 한다.
+        cardLedger.addAll(java.util.List.of(card("p09c", "2026-09-25", 50_000)));
+
+        mvc.perform(get("/api/v1/dashboard/cashflow?months=2").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].expenses").value(1_000_000))
+                .andExpect(jsonPath("$.data[1].expenses").value(1_250_000))
+                .andExpect(jsonPath("$.data[1].balance").value(6_250_000));
     }
 
     @Test
