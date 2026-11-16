@@ -3627,3 +3627,9 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
 - CSV 업로드가 덮는 기간(카드사별 min~max)의 email/unknown 행 자동 정리, 응답에 reconciled.
 - 기존 잔재는 schema.sql 멱등 DELETE 로 기동 시 정리. 임시 PG에서 1회 4건 → 2회 0건 확인.
 - 검증: 백엔드 338 passed. 실시간 업데이트 방안은 §106에 조사 기록(이메일 cron·드롭 폴더가 현실적).
+
+### CI 확인 (2026-11-16)
+- `c354ffe` merge(카드 CSV 정본 통합 + 대시보드 카드 합계 라인): backend / frontend / e2e / quality
+  **success ×4** (run 43865156349).
+- 배포 후 확인: `column "source" does not exist` 소멸, 카드 2026-10 = 141건·***원,
+  대시보드 카드 차트 막대+합계 라인.

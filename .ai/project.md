@@ -5931,3 +5931,24 @@ Postgres 접속 불가) — 배포 후 로그에서 `column "source" does not ex
 
 - 카드사는 **승인 건별 이메일을 보내지 않고 명세서만** 보낸다 → 이메일 주기를 줄여도 결제 즉시 반영은 불가.
 - 단계: ① cron 1시간 간격 ② `~/문서/재무_Finance` 같은 드롭 폴더 자동 임포트 ③ 필요 시 유료 API 검토.
+
+## 107) 대시보드 카드 차트 — 월 합계 라인 겹치기 (2026-11-16)
+
+**요구**: "카드별 본인·가족 사용 내역" 막대 차트는 그대로 두고, **그 달 사용 총합**을 꺾은선으로 겹쳐 그린다.
+
+**구현**
+- `BarChart` → **`ComposedChart`**. `Bar`(카드사별 `stackId`, 본인=`--af-slate`/가족=`--af-cat-leisure`)는
+  속성·순서·애니메이션 그대로. 막대 뒤에 `Line(dataKey="__total", stroke="--af-primary", strokeWidth 2,
+  dot r=3, activeDot r=5, isAnimationActive=false)`.
+- 계산 로직을 `src/dashboard/cardCompany.ts` 의 `cardChartSeries(groups, months)` 로 분리(순수 함수).
+  `points[i].__total` = 그 달 모든 카드사·관계 세그먼트의 합 → 막대와 합계가 구조적으로 어긋날 수 없다.
+- 툴팁·범례에 **"월 합계"**, sr-only 데이터 표에 **합계 열** 추가, `aria-label` 문구 보강.
+
+**검증**
+- 프론트 단위 **261**(신규 4), e2e **201**(39 skipped), typecheck/lint 0.
+- 브라우저 실측(320/390): 가로 넘침 0, 범례 잘림 없음(320에서 4줄), 툴팁 `월 합계 : …원`,
+  표 헤더 `월 | 카드사… | 합계`.
+
+**한계**
+- 카드사가 4개 이상이면 모바일 범례가 세로로 길어진다(넘침은 없음). 필요 시 `layout="vertical"` 검토.
+- recharts 기본 동작으로 한 카드사 안에서 `가족`이 `본인`보다 먼저 보인다(변경 전과 동일).
