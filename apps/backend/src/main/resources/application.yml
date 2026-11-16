@@ -62,3 +62,10 @@ app:
       # §68 삼성카드 VestMail — 같은 Playwright 의존성을 쓰지만 폼·표 구조가 달라 별도 스크립트.
       samsung:
         script-dir: ${VESTMAIL_SAMSUNG_SCRIPT_DIR:}
+    # 카드 명세서 드롭 폴더 자동 반영. 기본 비활성이라 켜기 전에는 동작이 바뀌지 않는다.
+    # 켜는 방법: CARD_DROP_FOLDER_ENABLED=true + CARD_DROP_FOLDER_PATH=/경로
+    drop-folder:
+      enabled: ${CARD_DROP_FOLDER_ENABLED:false}
+      path: ${CARD_DROP_FOLDER_PATH:}
+      cron: ${CARD_DROP_FOLDER_CRON:0 */5 * * * *}
+      max-file-bytes: ${CARD_DROP_FOLDER_MAX_BYTES:20971520}
