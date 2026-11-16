@@ -11,5 +11,8 @@ WorkingDirectory=/home/redbox9/assetflow-dev
 Environment=HOME=/home/redbox9
 EnvironmentFile=-/home/redbox9/.config/assetflow/gh.env
 ExecStart=/home/redbox9/assetflow-dev/deploy/autodeploy.sh
+# 3 = 작업트리 dirty(사람이 정리해야 함). 배포를 하지 않은 정상 종료로 취급한다.
+# exit 1(fetch/pull/sudo/deploy.sh 실패)은 진짜 장애이므로 실패로 남긴다.
+SuccessExitStatus=3
 TimeoutStartSec=1800
 Nice=10

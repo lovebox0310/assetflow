@@ -318,7 +318,7 @@ sudo systemctl daemon-reload
 | `git fetch`/`pull --ff-only` 실패 | 네트워크 또는 이력 갈라짐 | 1 | 안 함 |
 | `sudo -n deploy.sh` 실패 | sudoers 미설정, 빌드 실패 등 | 1 | 안 함 |
 
-0 은 "이번 주기는 할 일이 없었다", 1·3 은 "사람이 봐야 한다"로 구분한다. 3 은 작업트리를 정리할 때까지 매 주기 반복되므로 `list-timers` 로는 보이지 않아도 `systemctl status assetflow-deploy` 에 실패로 남는다. `git pull` 직후 HEAD 가 CI 통과 커밋과 다르면(정상 흐름에서는 나올 수 없음) 역시 1 로 멈추고 배포하지 않는다.
+0 은 "이번 주기는 할 일이 없었다", 1·3 은 "사람이 봐야 한다"로 구분한다. 3 은 작업트리를 정리할 때까지 매 주기 반복되지만, dirty 로 건너뛴 실행은 `SuccessExitStatus=3` 덕분에 `systemctl --failed` 에 나타나지 않는다. 로그는 `journalctl -u assetflow-deploy` 로 확인. 1 은 `git fetch`/`pull`/`deploy.sh` 실패 등 진짜 장애이므로 systemd 에서도 실패로 남는다. `git pull` 직후 HEAD 가 CI 통과 커밋과 다르면(정상 흐름에서는 나올 수 없음) 역시 1 로 멈추고 배포하지 않는다.
 
 ### 7.6 롤백
 
