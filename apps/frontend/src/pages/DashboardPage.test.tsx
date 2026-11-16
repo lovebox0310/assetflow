@@ -176,11 +176,11 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     stubFetch(route);
     render(<DashboardPage onLogout={() => {}} />);
 
-    // 순자산 691,844,440 → 6.9억 / 월 수지 +3,240,000원
+    // 순자산 691,844,440 → 6.9억 / 월 수지 +3,240,000 → +324.0만 (A-05 축약 표기)
     // 비상금: 통장 18,500,000 ÷ (필수 2,317,180 + 식비 평균 900,000) = 5.75 → 5.8개월
     expect(await findByTextContent(document.body, "6.9억")).toBeDefined();
-    // 카드와 현금흐름 표가 같은 금액을 보인다 — 두 인스턴스 모두 잡혀야 한다.
-    const balanceMatches = await findAllByTextContent(document.body, "+3,240,000원");
+    // 카드와 현금흐름 표가 같은 금액 체계를 쓴다 — 두 인스턴스 모두 잡혀야 한다.
+    const balanceMatches = await findAllByTextContent(document.body, "+324.0만");
     expect(balanceMatches.length).toBeGreaterThanOrEqual(2);
     expect(await findByTextContent(document.body, "5.75개월")).toBeDefined();
     expect(screen.getByText(/예측 비상금 19,303,080원/)).toBeDefined();
@@ -208,12 +208,12 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     expect(within(cashflowSection).getByText(monthKey(1))).toBeDefined();
     expect(within(cashflowSection).getByText(monthKey(2))).toBeDefined();
     // 수지는 그 달 수입 − 부가세통장 이체 − 그 달 지출만 보여 준다(이전 달 누적 아님).
-    // 2026-10: 8,200,000 − 0 − 4,960,000 = +3,240,000 / 2026-09: +2,640,000
-    expect(within(cashflowSection).getByText("+2,640,000원")).toBeDefined();
-    expect(within(cashflowSection).queryByText("+5,880,000원")).toBeNull();
+    // 2026-10: 8,200,000 − 0 − 4,960,000 = +3,240,000 → +324.0만 / 2026-09: +264.0만
+    expect(within(cashflowSection).getByText("+264.0만")).toBeDefined();
+    expect(within(cashflowSection).queryByText("+588.0만")).toBeNull();
 
     // 스위치를 켜면 같은 월 사용액 기준의 투자금 유지 개월(16.9개월)로 전환된다.
-    const toggle = screen.getByRole("switch", { name: "유지 개월 모드 전환" });
+    const toggle = screen.getByRole("switch", { name: /비상금 유지 개월 모드 전환/ });
     fireEvent.click(toggle);
     expect(await findByTextContent(document.body, "16.94개월")).toBeDefined();
     expect(screen.getByRole("heading", { name: "투자금 유지 개월" })).toBeDefined();

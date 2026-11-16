@@ -5,6 +5,7 @@ import {
   formatMonths,
   formatPercent,
   formatSignedKrw,
+  formatSignedKrwAbbr,
 } from "./formatters";
 
 // §28.3 의 예시 값과 경계를 그대로 계약으로 박는다.
@@ -34,6 +35,14 @@ describe("formatters (§28.3)", () => {
     expect(formatSignedKrw(1_240_000)).toBe("+1,240,000원");
     expect(formatSignedKrw(-1_240_000)).toBe("-1,240,000원");
     expect(formatSignedKrw(0)).toBe("0원");
+  });
+
+  // A-05: 카드·표가 같은 금액 체계를 쓰도록 축약 + 부호 규칙을 박는다.
+  it("부호 + 축약 수지 (A-05)", () => {
+    expect(formatSignedKrwAbbr(2_500_000)).toBe("+250.0만");
+    expect(formatSignedKrwAbbr(230_000_000)).toBe("+2.3억");
+    expect(formatSignedKrwAbbr(-2_500_000)).toBe("-250.0만");
+    expect(formatSignedKrwAbbr(0)).toBe("0원");
   });
 
   it("개월 표시는 소수점 2자리, 반올림 없이 버림", () => {

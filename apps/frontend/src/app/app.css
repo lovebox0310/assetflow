@@ -965,6 +965,16 @@ button {
   height: 44px;
   transform: translateY(-50%);
 }
+/* A-09: 대시보드 모드 전환 스위치는 small(32×16)이라 히트가 좁다.
+ * 시각 트랙은 그대로 두고 히트만 44×44 로 넓힌다(중심 고정, 위 규칙보다 특이도 우선). */
+.ant-switch.af-tap-sm::after {
+  left: 50%;
+  right: auto;
+  width: 44px;
+  height: 44px;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
 
 /* 날짜 입력의 지우기 아이콘은 14×14 다. 시각은 그대로, 히트만 24×24(AA). */
 .ant-picker-clear { position: relative; }
@@ -974,8 +984,9 @@ button {
   inset: -5px;   /* 14 + 10 = 24 */
 }
 
-/* 같은 행 카드가 늘어날 때만 합계 문구를 바닥에 붙인다. */
-.af-cash-note { margin-top: auto; padding-top: 12px; margin-bottom: 0; }
+/* A-04: 비상금 카드가 내용 높이만 차지하므로(auto) 바닥에 붙이지 않는다.
+ * 합계 문구는 계좌 목록 아래 12px 간격으로만 둔다. */
+.af-cash-note { margin-top: 12px; padding-top: 0; margin-bottom: 0; }
 
 /* 대표 지표: 단위(억·만·원·개월·%)는 숫자보다 작게. */
 .af-metric-unit { font-size: 0.62em; font-weight: 500; margin-inline-start: 2px; letter-spacing: 0; }

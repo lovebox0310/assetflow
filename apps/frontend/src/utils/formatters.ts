@@ -35,6 +35,12 @@ export function formatSignedKrw(value: number): string {
   return `${nf0.format(value)}원`;
 }
 
+/** 부호 + 축약: +250.0만 / +1.4억 / -250.0만 / 0원 (A-05 금액 표기 통일) */
+export function formatSignedKrwAbbr(value: number): string {
+  if (value > 0) return `+${formatKrwAbbr(value)}`;
+  return formatKrwAbbr(value);
+}
+
 /** 비상금 유지 개월: 소수점 2자리, 반올림 없이 버림 (§59). 분모가 0 이하면 계산 불가 → null */
 export function formatMonths(value: number | null): string {
   if (value === null || !Number.isFinite(value)) return "—";
