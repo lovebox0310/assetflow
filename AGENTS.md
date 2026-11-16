@@ -54,6 +54,8 @@ assetflow/
 
 ## ANTI-PATTERNS
 - **Never commit a real card statement.** Card numbers, member names, and merchant names are personal financial data. Only anonymized copies under `samples/card/anonymized/` are tracked; `.gitignore` blocks common real-data paths.
+- **No real figures in records**: `.ai/`·`DEPLOY.md`·이슈/PR 본문에 **실수치 금액·개인 이메일·서버 접속 정보(SSH 포트/호스트/내부 IP)** 를 적지 않는다. 필요하면 비율·건수·마스킹(예: `***,***원`)으로 남긴다. 저장소는 공개될 수 있고 git 히스토리는 삭제가 어렵다.
+- **Deploy doc is public-safe**: `DEPLOY.md` 는 실제 SSH 포트·호스트·계정을 적지 않는다(운영 담당자 보관).
 - **Encrypted files**: Read only when opened with the exact password the user typed, or when already decrypted. No retry loops, brute forcing, or workaround logic. The file and password never reach the server.
 - **Magic bytes over extensions**: Real card statement files may be named `.xlsx` but be ECMA-376 Agile Encryption packages (CFB containers). The tool detects the real format from magic bytes instead of trusting the extension.
 

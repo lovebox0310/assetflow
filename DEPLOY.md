@@ -7,13 +7,13 @@
 
 | 구성요소 | 내용 |
 |---|---|
-| 접속 | `ssh redbox9@***.ddns -p <SSH_PORT>` (ipTIME DDNS, 공유기 2222→22 포워딩) |
+| 접속 | **SSH 포트·호스트는 저장소에 적지 않는다**(운영 담당자 보관). ipTIME DDNS 사용 |
 | OS | Ubuntu 26.04, 15GB RAM |
 | PostgreSQL | 18.6, `localhost:5432`, DB/유저 `assetflow` |
 | Backend | `/opt/assetflow/app.jar` + systemd `assetflow.service` — postgres 프로필, `-Xmx512m`, Restart=always |
 | Frontend | `/opt/assetflow/frontend` — Caddy 정적 서빙 |
 | HTTPS | Caddy 역방향 프록시 — `https://***.ddns` (자체 서명 인증서). 정식 인증서는 `iptime.org` CAA 차단으로 불가; 도메인 구입 시 Caddyfile 도메인만 교체하면 자동 발급으로 전환 |
-| 방화벽 | ufw: 22/2222, 80, 443 허용. **5432 외부 개방 금지** |
+| 방화벽 | ufw: 22/SSH포트, 80, 443 허용. **5432 외부 개방 금지**. 실제 SSH 포트는 저장소에 적지 않는다 |
 
 공유기 포트포워딩(사용자 완료): 외부 80→80, 443→443 (***.***.***.***). 80은 ipTIME 원격 관리 서버(Httpd/1.0)가 선점해 404 응답 — HTTP-01 챌린지 불가, TLS-ALPN(443)도 CAA 차단으로 전환해 자체 서명으로 확정.
 
@@ -156,7 +156,7 @@ curl http://127.0.0.1:8080/health
    ```
 2. **전송·복원** (홈서버):
    ```bash
-   scp -P 2222 assetflow-dump.sql redbox9@***.ddns:/tmp/
+   scp -P <SSH_PORT> assetflow-dump.sql <SSH_USER@HOST>:/tmp/
    PGPASSWORD='<assetflow 비밀번호>' psql -h localhost -U assetflow -d assetflow -f /tmp/assetflow-dump.sql
    ```
 3. **향후 VPS 등으로 이관할 때**: 같은 `pg_dump`/`psql` 절차 반복 — 계약 변화 없음
