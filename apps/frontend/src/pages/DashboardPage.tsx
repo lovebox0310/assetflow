@@ -111,7 +111,7 @@ function SectionHeader({
       }}
     >
       <div className="af-header__title-group">
-        <Typography.Title level={2} id={id} style={{ fontSize: 16, margin: 0 }}>
+        <Typography.Title level={2} id={id} style={{ fontSize: 18, margin: 0 }}>
           {title}
         </Typography.Title>
         {titleAction}
@@ -418,7 +418,7 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
         대시보드
       </Typography.Title>
       <section aria-labelledby="h-core" style={{ marginBottom: 32 }}>
-        <Typography.Title level={2} id="h-core" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>
+        <Typography.Title level={2} id="h-core" style={{ fontSize: 18, margin: 0, marginBottom: 16 }}>
           핵심 지표
         </Typography.Title>
         {/* §74: 핵심 지표는 3종. lg 에서 3열(span 8)로 균등 배치한다.

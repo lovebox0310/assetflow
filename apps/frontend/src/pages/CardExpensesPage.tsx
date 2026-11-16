@@ -509,7 +509,7 @@ export function CardExpensesPage({
 
       {/* §72.1: 카드사별 승인일 합계와 명세서 금액을 한 표에서 비교한다. */}
       <section aria-labelledby="h-card-companies" style={{ marginBottom: 32 }}>
-        <Typography.Title level={2} id="h-card-companies" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>
+        <Typography.Title level={2} id="h-card-companies" style={{ fontSize: 18, margin: 0, marginBottom: 16 }}>
           카드사별 사용금액
         </Typography.Title>
         <Card>
@@ -559,7 +559,7 @@ export function CardExpensesPage({
       ) : null}
 
       <section aria-labelledby="h-card-upload" style={{ marginBottom: 32 }}>
-        <Typography.Title level={2} id="h-card-upload" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>
+        <Typography.Title level={2} id="h-card-upload" style={{ fontSize: 18, margin: 0, marginBottom: 16 }}>
           카드 내역 가져오기
         </Typography.Title>
         <CardImportPanel />
@@ -574,7 +574,7 @@ export function CardExpensesPage({
         {/* 공용 섹션 헤더 — 좁은 폭에서 제목이 글자 단위로 쪼개지지 않고,
             설명은 다음 줄로 내려간다(InvestmentsPage 와 같은 패턴). */}
         <div className="af-section-head" style={{ marginBottom: 16 }}>
-          <Typography.Title level={2} id="h-unclassified" className="af-section-head__title" style={{ fontSize: 16, margin: 0 }}>미분류 정리</Typography.Title>
+          <Typography.Title level={2} id="h-unclassified" className="af-section-head__title" style={{ fontSize: 18, margin: 0 }}>미분류 정리</Typography.Title>
           <Typography.Text type="secondary" className="af-section-head__actions" style={{ fontSize: 12 }}>
             가맹점 하나를 고르면 같은 가맹점 내역 전체에 한 번에 적용됩니다
           </Typography.Text>
@@ -679,7 +679,7 @@ export function CardExpensesPage({
 
       <section aria-labelledby="h-card-imports" style={{ marginBottom: 32 }}>
         <div className="af-section-head" style={{ marginBottom: 16 }}>
-          <Typography.Title level={2} id="h-card-imports" className="af-section-head__title" style={{ fontSize: 16, margin: 0 }}>가져온 카드내역</Typography.Title>
+          <Typography.Title level={2} id="h-card-imports" className="af-section-head__title" style={{ fontSize: 18, margin: 0 }}>가져온 카드내역</Typography.Title>
           <Space className="af-section-head__actions">
             <Button onClick={downloadCsv}>CSV 다운로드</Button>
             <Button

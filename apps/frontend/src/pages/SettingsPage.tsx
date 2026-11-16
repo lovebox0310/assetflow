@@ -91,7 +91,7 @@ export function SettingsPage({ onOpenDashboard, onOpenAssets, onOpenExpenses }: 
         </p>
 
         <section aria-labelledby="h-profile" style={{ marginBottom: 32 }}>
-          <Typography.Title level={2} id="h-profile" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>프로필</Typography.Title>
+          <Typography.Title level={2} id="h-profile" style={{ fontSize: 18, margin: 0, marginBottom: 16 }}>프로필</Typography.Title>
           <Card>
             <StateBlock status={status} onRetry={load} errorText={errorText}>
               {settings ? (
@@ -107,7 +107,7 @@ export function SettingsPage({ onOpenDashboard, onOpenAssets, onOpenExpenses }: 
         </section>
 
         <section aria-labelledby="h-password" style={{ marginBottom: 32 }}>
-          <Typography.Title level={2} id="h-password" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>비밀번호 변경</Typography.Title>
+          <Typography.Title level={2} id="h-password" style={{ fontSize: 18, margin: 0, marginBottom: 16 }}>비밀번호 변경</Typography.Title>
           <Card>
             {passwordStatus === "error" && (
               <Alert

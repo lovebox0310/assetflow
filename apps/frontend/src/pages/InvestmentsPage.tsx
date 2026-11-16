@@ -875,7 +875,7 @@ export function InvestmentsPage({
       ) : null}
 
       <section aria-labelledby="h-portfolio-summary" style={{ marginBottom: 24 }}>
-        <Typography.Title level={2} id="h-portfolio-summary" style={{ fontSize: 16, margin: 0, marginBottom: 12 }}>
+        <Typography.Title level={2} id="h-portfolio-summary" style={{ fontSize: 18, margin: 0, marginBottom: 12 }}>
           포트폴리오 요약
         </Typography.Title>
         <Card>
@@ -898,7 +898,7 @@ export function InvestmentsPage({
 
       <section aria-labelledby="h-holdings">
         <div className="af-section-head">
-          <Typography.Title level={2} id="h-holdings" className="af-section-head__title" style={{ fontSize: 16, margin: 0 }}>
+          <Typography.Title level={2} id="h-holdings" className="af-section-head__title" style={{ fontSize: 18, margin: 0 }}>
             보유종목
           </Typography.Title>
           <Space wrap className="af-section-head__actions">

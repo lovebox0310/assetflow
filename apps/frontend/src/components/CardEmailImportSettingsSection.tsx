@@ -134,7 +134,7 @@ export function CardEmailImportSettingsSection() {
 
   return (
     <Card>
-      <Typography.Title level={2} id="h-card-email-import" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>
+      <Typography.Title level={2} id="h-card-email-import" style={{ fontSize: 18, margin: 0, marginBottom: 16 }}>
         카드 명세서 자동 수집
       </Typography.Title>
       <StateBlock status={status} onRetry={load} errorText={errorText}>

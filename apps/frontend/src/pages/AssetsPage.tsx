@@ -341,7 +341,7 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
           </Typography.Paragraph>
         ) : null}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
-          <Typography.Title level={2} id="h-assets" style={{ fontSize: 16, margin: 0 }}>금융자산</Typography.Title>
+          <Typography.Title level={2} id="h-assets" style={{ fontSize: 18, margin: 0 }}>금융자산</Typography.Title>
           <Button onClick={beginCreate} disabled={editingId !== null}>+ 자산 추가</Button>
         </div>
         <Card>
@@ -378,7 +378,7 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
 
       <section aria-labelledby="h-liab" style={{ marginBottom: 24 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
-          <Typography.Title level={2} id="h-liab" style={{ fontSize: 16, margin: 0 }}>부채</Typography.Title>
+          <Typography.Title level={2} id="h-liab" style={{ fontSize: 18, margin: 0 }}>부채</Typography.Title>
           <Button
             onClick={() => {
               setEditingId("new");
@@ -428,7 +428,7 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
       </section>
 
       <section aria-labelledby="h-expense-owned" style={{ marginBottom: 24 }}>
-        <Typography.Title level={2} id="h-expense-owned" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>
+        <Typography.Title level={2} id="h-expense-owned" style={{ fontSize: 18, margin: 0, marginBottom: 16 }}>
           다른 화면이 읽는 값
         </Typography.Title>
         <Card>

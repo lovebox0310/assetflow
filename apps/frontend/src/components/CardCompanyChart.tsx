@@ -21,10 +21,25 @@ interface CardCompanyChartProps {
   to: string;
 }
 
-const RELATION_COLORS: Record<string, string> = {
-  본인: "var(--af-slate)",
-  가족: "var(--af-cat-leisure)",
-};
+/**
+ * A-02: 카드사·관계 조합마다 다른 색을 준다.
+ * 카드사 이름은 사용자 데이터라 하드코딩할 수 없으므로 **카드사 순서(index)** 로 고른다.
+ * 기존 토큰만 사용한다(새 토큰 금지). 각 줄이 한 카드사의 [본인, 가족] 색이다.
+ */
+const SERIES_PALETTE: ReadonlyArray<readonly [string, string]> = [
+  ["var(--af-slate)", "var(--af-cat-education)"], // 카드사 1: 본인, 가족
+  ["var(--af-cat-shopping)", "var(--af-cat-leisure)"], // 카드사 2
+  ["var(--af-cat-health)", "var(--af-cat-transport)"], // 3개 이상일 때
+  ["var(--af-cat-finance)", "var(--af-cat-etc)"],
+];
+
+/** 카드사 인덱스와 관계 인덱스로 색을 고른다. 카드사가 4개를 넘으면 순환한다. */
+function seriesColor(companyIndex: number, relationIndex: number): string {
+  // 팔레트 줄 = [본인, 가족] 이고 CARD_RELATIONS 순서와 같다. 관계는 2개뿐이다.
+  const row = SERIES_PALETTE[companyIndex % SERIES_PALETTE.length];
+  if (!row) return "var(--af-slate)";
+  return row[relationIndex % 2 === 0 ? 0 : 1];
+}
 
 /**
  * 대시보드 카드사·소유 구분 월별 누적 막대 차트.
@@ -103,14 +118,14 @@ export function CardCompanyChart({ groups, from, to }: CardCompanyChartProps) {
                   color: "var(--af-foreground)",
                 }}
               />
-              {companyOrder.map((company) =>
-                CARD_RELATIONS.map((relation) => (
+              {companyOrder.map((company, companyIndex) =>
+                CARD_RELATIONS.map((relation, relationIndex) => (
                   <Bar
                     key={`${company}|${relation}`}
                     dataKey={`${company}|${relation}`}
                     name={`${company}|${relation}`}
                     stackId={company}
-                    fill={RELATION_COLORS[relation]}
+                    fill={seriesColor(companyIndex, relationIndex)}
                     // A-02: 같은 카드사 안의 본인·가족 세그먼트 경계를 카드 배경색으로
                     // 나눈다(도넛과 같은 방식). 색은 토큰 그대로, 새 색 없음.
                     stroke="var(--af-card)"
@@ -147,8 +162,8 @@ export function CardCompanyChart({ groups, from, to }: CardCompanyChartProps) {
       </figure>
 
       {/* A-02: recharts Legend 를 지출 추이와 같은 목록으로 바꾼다.
-          막대 색은 본인/가족 2색뿐이라 "색 2개 ↔ 카드사 2개" 로 오해되기 쉽다 —
-          카드사마다 두 색을 함께 붙이고 "삼성카드 — 본인·가족" 두 줄로 고정한다. */}
+          색은 카드사·관계마다 다르지만(4색), 범례는 카드사마다 두 색을 함께 붙이고
+          "삼성카드 — 본인·가족" 두 줄로 고정한다(줄 수를 카드사 수에 묶어 둔다). */}
       <ul
         aria-label="카드사 범례"
         style={{
@@ -161,17 +176,17 @@ export function CardCompanyChart({ groups, from, to }: CardCompanyChartProps) {
           gap: "8px 20px",
         }}
       >
-        {companyOrder.map((company) => (
+        {companyOrder.map((company, companyIndex) => (
           <li key={company} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
             <span aria-hidden style={{ display: "inline-flex", gap: 2, flexShrink: 0 }}>
-              {CARD_RELATIONS.map((relation) => (
+              {CARD_RELATIONS.map((relation, relationIndex) => (
                 <span
                   key={relation}
                   style={{
                     width: 10,
                     height: 10,
                     borderRadius: 2,
-                    background: RELATION_COLORS[relation],
+                    background: seriesColor(companyIndex, relationIndex),
                     flexShrink: 0,
                   }}
                 />

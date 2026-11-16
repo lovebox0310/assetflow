@@ -241,7 +241,7 @@ export function BankLinkSection({ accounts, accountsReady = true, onSynced }: Ba
 
   return (
     <section aria-labelledby="h-bank-sync" style={{ marginBottom: 24 }}>
-      <Typography.Title level={2} id="h-bank-sync" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>
+      <Typography.Title level={2} id="h-bank-sync" style={{ fontSize: 18, margin: 0, marginBottom: 16 }}>
         은행 잔액 가져오기
       </Typography.Title>
       <Card>

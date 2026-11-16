@@ -480,7 +480,7 @@ export function ExpensesPage({
       ) : null}
 
       <section aria-labelledby="h-items" style={{ marginBottom: 32 }}>
-        <Typography.Title level={2} id="h-items" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>월 지출 항목</Typography.Title>
+        <Typography.Title level={2} id="h-items" style={{ fontSize: 18, margin: 0, marginBottom: 16 }}>월 지출 항목</Typography.Title>
         <Card>
           {prevCount !== null && prevCount > 0 && itemStatus === "empty" ? (
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "var(--af-secondary)", border: "1px dashed var(--af-border)", borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
@@ -529,7 +529,7 @@ export function ExpensesPage({
       </section>
 
       <section aria-labelledby="h-recurring" style={{ marginBottom: 32 }}>
-        <Typography.Title level={2} id="h-recurring" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>정기 항목 (고정지출)</Typography.Title>
+        <Typography.Title level={2} id="h-recurring" style={{ fontSize: 18, margin: 0, marginBottom: 16 }}>정기 항목 (고정지출)</Typography.Title>
         <Card>
           {recurring === null ? (
             <Typography.Text type="secondary">정기 항목을 불러올 수 없습니다</Typography.Text>
@@ -607,7 +607,7 @@ export function ExpensesPage({
       </section>
 
       <section aria-labelledby="h-snapshot" style={{ marginBottom: 32 }}>
-        <Typography.Title level={2} id="h-snapshot" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>월 기준 입력</Typography.Title>
+        <Typography.Title level={2} id="h-snapshot" style={{ fontSize: 18, margin: 0, marginBottom: 16 }}>월 기준 입력</Typography.Title>
         <Card>
           <p style={{ margin: "0 0 16px", fontSize: 14, lineHeight: "22px", color: "var(--af-muted-foreground)" }}>
             이번 달 수입과 부가세통장 이체액으로 확정합니다. 부가세통장 이체는 부가세 납부를 위해
