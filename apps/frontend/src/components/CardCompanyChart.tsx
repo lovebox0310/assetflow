@@ -109,7 +109,7 @@ export function CardCompanyChart({ groups, from, to }: CardCompanyChartProps) {
                 type="monotone"
                 dataKey={CARD_TOTAL_KEY}
                 name={CARD_TOTAL_KEY}
-                stroke="var(--af-primary)"
+                stroke="var(--af-destructive)"
                 strokeWidth={2}
                 dot={{ r: 3 }}
                 activeDot={{ r: 5 }}
