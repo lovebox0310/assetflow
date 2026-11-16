@@ -30,6 +30,12 @@ import { formatKrwExact } from "../utils/formatters";
 interface BankLinkSectionProps {
   /** 은행 동기화 대상 계좌 — 현금성(cash)·예적금(deposit)이면서 부채가 아닌 행만. */
   accounts: AssetAccountRow[];
+  /**
+   * 계정 목록이 확정됐는지(로딩 완료·조회 성공). false 인 동안에는
+   * "현금성·예적금 계좌가 없습니다" 를 말하지 않는다 — 아직 모르는 것을
+   * "없다"고 단정하면 계좌가 있는데도 추가하라고 시키는 셈이다.
+   */
+  accountsReady?: boolean;
   /** 동기화 성공 후 자산 목록을 다시 읽는다. */
   onSynced: () => void;
 }
@@ -82,10 +88,14 @@ function formatWhen(iso: string | null): string {
  * - 계좌번호는 서버가 암호화해 저장하고, 목록에는 마스킹된 값만 나온다.
  * - 실패는 숨기지 않는다. 은행 거절 사유(예: "계좌번호 오류")를 그대로 보여 준다.
  */
-export function BankLinkSection({ accounts, onSynced }: BankLinkSectionProps) {
+export function BankLinkSection({ accounts, accountsReady = true, onSynced }: BankLinkSectionProps) {
   const [links, setLinks] = useState<BankLink[]>([]);
   const [banks, setBanks] = useState<BankOption[]>(FALLBACK_BANKS);
-  const [loadFailed, setLoadFailed] = useState(false);
+  /**
+   * P3: 연결 목록의 상태. 로딩 중에 "연결 안 됨"을 먼저 그리면, 실제로는
+   * 연결된 계좌에 "계좌 연결" 버튼이 잠깐 보인다(연결 상태를 잘못 말한다).
+   */
+  const [linksState, setLinksState] = useState<"loading" | "ready" | "error">("loading");
   const [linkOpen, setLinkOpen] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
   const [target, setTarget] = useState<AssetAccountRow | null>(null);
@@ -97,17 +107,18 @@ export function BankLinkSection({ accounts, onSynced }: BankLinkSectionProps) {
   const mountedRef = useRef(false);
 
   const refreshLinks = useCallback(() => {
-    setLoadFailed(false);
+    setLinksState("loading");
     listBankLinks()
       .then((rows) => {
         if (!mountedRef.current) return;
         // 다른 GET 응답이 섞여 오더라도(테스트 목업 등) 연결 행만 받는다.
         setLinks(Array.isArray(rows) ? rows.filter(isBankLink) : []);
+        setLinksState("ready");
       })
       .catch(() => {
         if (!mountedRef.current) return;
         // 연결 목록은 보조 정보다 — 실패해도 자산 화면 전체를 막지 않는다.
-        setLoadFailed(true);
+        setLinksState("error");
       });
   }, []);
 
@@ -234,19 +245,22 @@ export function BankLinkSection({ accounts, onSynced }: BankLinkSectionProps) {
         은행 잔액 가져오기
       </Typography.Title>
       <Card>
+        {/* P2: 자격증명 안내는 모달 안에 이미 있다 — 카드 문단은 1~2줄로 줄인다(중복 제거). */}
         <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-          농협·국민·우리·기업은행의 <b>빠른조회(간편조회)</b>에 등록된 계좌만 조회합니다. 계좌
-          비밀번호와 생년월일은 조회에만 쓰고 저장하지 않습니다. 같은 계좌는 5분에 1회만 조회할 수
-          있습니다.
+          농협·국민·우리·기업은행의 빠른조회에 등록된 계좌만, 같은 계좌는 5분에 1회 조회합니다.
         </Typography.Paragraph>
 
-        {loadFailed ? (
+        {linksState === "error" ? (
           <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
             은행 연결 정보를 불러오지 못했습니다. 자산 화면을 새로고침한 뒤 다시 시도해 주세요.
           </Typography.Paragraph>
         ) : null}
 
-        {accounts.length === 0 ? (
+        {/*
+         * P3: 계정 목록이 확정되기 전(로딩·조회 실패)에는 "계좌가 없습니다"를
+         * 말하지 않는다. 화면은 은행 연결 상태와 무관하게 나머지를 그린다.
+         */}
+        {!accountsReady ? null : accounts.length === 0 ? (
           <Typography.Text type="secondary">
             현금성·예적금 계좌가 없습니다 — 위에서 계좌를 먼저 추가하세요.
           </Typography.Text>
@@ -277,32 +291,42 @@ export function BankLinkSection({ accounts, onSynced }: BankLinkSectionProps) {
                     </Typography.Text>
                     <div>
                       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                        {link
-                          ? `${bankLabelOf(link, banks)} ${link.accountNumberMasked}${
-                              link.lastSyncedAt
-                                ? ` · 마지막 동기화 ${formatWhen(link.lastSyncedAt)}`
-                                : " · 동기화 전"
-                            }`
-                          : "연결 안 됨"}
+                        {linksState === "loading"
+                          ? "연결 정보를 불러오는 중"
+                          : linksState === "error"
+                            ? "연결 정보를 확인할 수 없습니다"
+                            : link
+                              ? `${bankLabelOf(link, banks)} ${link.accountNumberMasked}${
+                                  link.lastSyncedAt
+                                    ? ` · 마지막 동기화 ${formatWhen(link.lastSyncedAt)}`
+                                    : " · 동기화 전"
+                                }`
+                              : "연결 안 됨"}
                       </Typography.Text>
                     </div>
                   </div>
-                  <Space wrap>
-                    {link ? (
-                      <>
-                        <Button onClick={() => openSync(account)}>잔액 가져오기</Button>
-                        <Popconfirm
-                          title="은행 연결을 해제할까요?"
-                          description="잔액은 그대로 남고, 자동 조회만 끊깁니다."
-                          onConfirm={() => void unlink(account.id)}
-                        >
-                          <Button type="text" danger>연결 해제</Button>
-                        </Popconfirm>
-                      </>
-                    ) : (
-                      <Button onClick={() => openLink(account)}>계좌 연결</Button>
-                    )}
-                  </Space>
+                  {/*
+                   * 연결 상태를 모르는 동안(로딩·실패)에는 동작을 내지 않는다 —
+                   * "계좌 연결"은 "연결 안 됨"을 전제한 버튼이다.
+                   */}
+                  {linksState !== "ready" ? null : (
+                    <Space wrap>
+                      {link ? (
+                        <>
+                          <Button onClick={() => openSync(account)}>잔액 가져오기</Button>
+                          <Popconfirm
+                            title="은행 연결을 해제할까요?"
+                            description="잔액은 그대로 남고, 자동 조회만 끊깁니다."
+                            onConfirm={() => void unlink(account.id)}
+                          >
+                            <Button type="text" danger>연결 해제</Button>
+                          </Popconfirm>
+                        </>
+                      ) : (
+                        <Button onClick={() => openLink(account)}>계좌 연결</Button>
+                      )}
+                    </Space>
+                  )}
                 </div>
               );
             })}
@@ -334,15 +358,50 @@ export function BankLinkSection({ accounts, onSynced }: BankLinkSectionProps) {
         ) : null}
       </Card>
 
+      {/*
+       * §93 모달 셸: 320px 에서도 footer 가 화면 안에 남도록 컨테이너를 flex 열로
+       * 두고 body 만 스크롤한다. `styles.container` 는 antd 6 이름이다
+       * (형제 구현 CompositionBasisModal 과 같은 값).
+       */}
       <Modal
         open={linkOpen}
         title={target ? `${target.name} 은행 연결` : "은행 연결"}
         onCancel={closeLink}
+        centered
         destroyOnHidden
+        width="min(560px, calc(100vw - 24px))"
         okText="연결하고 잔액 가져오기"
         cancelText="취소"
         confirmLoading={busy}
+        okButtonProps={{ type: "primary" }}
         onOk={() => void linkForm.submit()}
+        styles={{
+          container: {
+            maxHeight: "calc(100dvh - 32px)",
+            display: "flex",
+            flexDirection: "column",
+            padding: 0,
+            overflow: "hidden",
+          },
+          /*
+           * 컨테이너 padding 을 0 으로 두면 제목도 여백 없이 테두리에 붙는다 —
+           * 제목만 따로 16px 들여 body(0 16px 12px)와 왼쪽을 맞춘다.
+           */
+          header: { padding: "16px 40px 8px 16px" },
+          body: {
+            overflowY: "auto",
+            flex: "1 1 auto",
+            minHeight: 0,
+            padding: "0 16px 12px",
+            overscrollBehavior: "contain",
+          },
+          footer: {
+            margin: 0,
+            flex: "0 0 auto",
+            padding: "12px 16px calc(12px + var(--af-safe-bottom))",
+            borderTop: "1px solid var(--af-border)",
+          },
+        }}
       >
         <Form form={linkForm} layout="vertical" onFinish={(values) => void submitLink(values)}>
           <Form.Item
@@ -417,11 +476,41 @@ export function BankLinkSection({ accounts, onSynced }: BankLinkSectionProps) {
         open={syncOpen}
         title={target ? `${target.name} 잔액 가져오기` : "잔액 가져오기"}
         onCancel={closeSync}
+        centered
         destroyOnHidden
+        width="min(560px, calc(100vw - 24px))"
         okText="가져오기"
         cancelText="취소"
         confirmLoading={busy}
+        okButtonProps={{ type: "primary" }}
         onOk={() => void syncForm.submit()}
+        styles={{
+          container: {
+            maxHeight: "calc(100dvh - 32px)",
+            display: "flex",
+            flexDirection: "column",
+            padding: 0,
+            overflow: "hidden",
+          },
+          /*
+           * 컨테이너 padding 을 0 으로 두면 제목도 여백 없이 테두리에 붙는다 —
+           * 제목만 따로 16px 들여 body(0 16px 12px)와 왼쪽을 맞춘다.
+           */
+          header: { padding: "16px 40px 8px 16px" },
+          body: {
+            overflowY: "auto",
+            flex: "1 1 auto",
+            minHeight: 0,
+            padding: "0 16px 12px",
+            overscrollBehavior: "contain",
+          },
+          footer: {
+            margin: 0,
+            flex: "0 0 auto",
+            padding: "12px 16px calc(12px + var(--af-safe-bottom))",
+            borderTop: "1px solid var(--af-border)",
+          },
+        }}
       >
         <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
           연결된 계좌번호로 최근 7일 거래와 현재 잔액을 조회합니다. 자산 화면의 잔액이 은행

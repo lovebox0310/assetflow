@@ -249,6 +249,12 @@ export function AfListTable<T>({
                             <button
                               type="button"
                               className="af-list__edit"
+                              /* A15: 잘린 이름을 마우스로도 읽을 수 있게 native tooltip 을 준다. */
+                              title={
+                                typeof content === "string" || typeof content === "number"
+                                  ? String(content)
+                                  : undefined
+                              }
                               aria-label={activateLabel ? activateLabel(row) : undefined}
                               onClick={() => onActivate(row)}
                               ref={(el) => {
@@ -308,6 +314,9 @@ export function AfListTable<T>({
                           onOpenChange={(open) => {
                             if (!open) setConfirmTarget(null);
                           }}
+                          /* A12: 확인/취소는 손가락 히트 44 이상(§78). */
+                          okButtonProps={{ style: { minHeight: 44, minWidth: 44 } }}
+                          cancelButtonProps={{ style: { minHeight: 44, minWidth: 44 } }}
                         >
                           <span
                             style={{
