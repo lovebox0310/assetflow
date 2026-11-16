@@ -5984,3 +5984,12 @@ balance          = income − vatSetAside − expenses   (income/vatSetAside 는
   확정 시점 지출은 DB 컬럼에만 남고 API 로 노출되지 않는다.
 - `essentialComplete` 는 저장값 유지(확정 후 필수 항목이 늘어도 플래그는 그대로).
 - 월 마감 후 값을 고정하려면 `locked` 플래그가 필요하다(후속).
+
+**대비 보강(2026-11-16 추가)**
+- 붉은 합계선이 **막대 위를 지날 때 사라지는 문제**(WCAG 1.4.11 그래픽 3:1 미달):
+  라이트 선 vs 본인/가족 막대 **1.17:1 / 1.07:1**, 다크 **1.03:1 / 1.13:1**.
+- 해결: 붉은 선 **아래에 카드 배경색 halo**(`var(--af-card)`, 5px, `legendType="none"`,
+  `tooltipType="none"`, dot 없음)를 먼저 그린다. 선의 인접색이 배경색이 되어
+  선 vs 카드 **5.24:1**(라이트) / **5.81:1**(다크) 로 올라간다.
+- halo 숨김은 recharts 기본 툴팁/범례 필터(`type === 'none'`)에 의존한다 —
+  `Tooltip content` 를 커스텀하면 halo 행이 다시 나오므로 그때는 전용 dataKey 가 필요하다.

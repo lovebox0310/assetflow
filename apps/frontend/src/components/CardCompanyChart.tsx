@@ -105,6 +105,18 @@ export function CardCompanyChart({ groups, from, to }: CardCompanyChartProps) {
                   />
                 )),
               )}
+              {/* 대비 보강: 막대 위에서도 선이 보이도록 배경색 테두리를 먼저 그린다 */}
+              <Line
+                type="monotone"
+                dataKey={CARD_TOTAL_KEY}
+                stroke="var(--af-card)"
+                strokeWidth={5}
+                dot={false}
+                activeDot={false}
+                legendType="none"
+                tooltipType="none"
+                isAnimationActive={false}
+              />
               <Line
                 type="monotone"
                 dataKey={CARD_TOTAL_KEY}
