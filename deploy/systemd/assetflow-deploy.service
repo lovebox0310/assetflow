@@ -1,0 +1,15 @@
+[Unit]
+Description=AssetFlow auto deploy (main + CI success)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=redbox9
+Group=redbox9
+WorkingDirectory=/home/redbox9/assetflow-dev
+Environment=HOME=/home/redbox9
+EnvironmentFile=-/home/redbox9/.config/assetflow/gh.env
+ExecStart=/home/redbox9/assetflow-dev/deploy/autodeploy.sh
+TimeoutStartSec=1800
+Nice=10

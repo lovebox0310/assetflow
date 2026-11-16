@@ -208,6 +208,139 @@ SELECT source, count(*) FROM card_imports GROUP BY source ORDER BY source;
 - 필수 상태 체크: `quality-gate`, `frontend-gate`, `backend-gate` (strict)
 - 승인 요구: **제거됨** — 단독 개발자는 자신의 PR을 승인할 수 없어 병합 불가가 되기 때문(사용자 결정). 규칙 변경은 GitHub Settings → Branches 또는 `gh api -X PUT .../branches/main/protection`
 
+## 7. 자동 배포 (선택)
+
+main 이 전진했고 **그 커밋의 CI 4잡(quality-gate·frontend-gate·e2e-gate·backend-gate)이 모두 성공**했을 때만 서버에 배포한다. 10분마다 도는 systemd 타이머가 판단하고, 실제 배포는 지금 쓰는 `deploy.sh` 가 한다.
+
+```
+assetflow-deploy.timer (10분)
+        │  systemd, User=redbox9
+        ▼
+deploy/autodeploy.sh ── dirty? ────────────→ 중단(사람 확인)
+        │
+        ├─ git fetch → HEAD == origin/main ? ─→ 종료(변경 없음)
+        │
+        ├─ 로컬에만 있는 커밋? ───────────────→ 중단(CI 미검증 커밋)
+        │
+        ├─ gh run list (main 최신 실행)
+        │     headSha != origin/main ────────→ 중단(CI 결과 없음)
+        │     status != completed ───────────→ 중단(진행 중)
+        │     conclusion != success ──────── → 중단(CI 미통과)
+        ▼
+   git pull --ff-only origin main
+        ▼
+   sudo -n deploy.sh  (root: 빌드·/opt/assetflow 교체·서비스 재시작)
+        ▼
+   ~/.local/state/assetflow/deployed-sha 기록 + journal 로그
+```
+
+왜 이렇게 하는가: 서버가 스스로 pull 해서 코드를 실행하는 구조이므로, **CI 성공 게이트 없이는 자동 배포를 켜지 않는다**. 갈라진 이력은 `--ff-only` 로 거부하고, 로컬 수정(dirty)이 있으면 무엇이 배포됐는지 설명할 수 없으므로 멈춘다.
+
+### 7.1 설치 (사용자가 sudo로 1회)
+
+저장소에는 파일만 있고, 설치는 아래 명령을 **사용자가 직접** 실행한다.
+
+```bash
+sudo install -d -m 755 /etc/systemd/system
+sudo cp /home/redbox9/assetflow-dev/deploy/systemd/assetflow-deploy.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now assetflow-deploy.timer
+sudo systemctl list-timers assetflow-deploy.timer
+```
+
+### 7.2 sudoers 1줄 (deploy.sh 만 무암호 허용)
+
+`sudo -n deploy.sh` 가 동작하려면 규칙이 필요하다. **deploy.sh 한 파일에만** 허용한다.
+
+```bash
+sudo visudo -f /etc/sudoers.d/assetflow-deploy
+```
+
+```sudoers
+redbox9 ALL=(root) NOPASSWD: /home/redbox9/assetflow-dev/deploy.sh
+```
+
+```bash
+sudo chmod 440 /etc/sudoers.d/assetflow-deploy   # 반드시 필요 (visudo 는 안 해준다)
+sudo -l -U redbox9 | grep deploy.sh              # 적용 확인
+```
+
+- 경로는 **정확히** 일치해야 한다. `deploy.sh` 를 옮기거나 이름을 바꾸면 규칙도 고쳐야 하고, 그전까지 자동 배포는 `deploy.sh 실패(sudo -n)` 로 멈춘다.
+- 규칙을 `deploy.sh` 전체 경로로 좁혔으므로 이 사용자는 그 외 root 명령을 무암호로 못 한다.
+
+### 7.3 토큰 파일 (CI 게이트용, 선택)
+
+`gh` 는 지금 키링(대화형 로그인)으로 동작하지만, systemd 는 세션 키링에 접근하지 못해 `gh run list` 가 실패할 수 있다. 그 경우 자동 배포는 **배포하지 않고 종료**한다. 토큰 파일을 두면 그 문제가 없어진다.
+
+```bash
+mkdir -p ~/.config/assetflow
+printf 'GH_TOKEN=%s\n' "$(gh auth token)" > ~/.config/assetflow/gh.env
+chmod 600 ~/.config/assetflow/gh.env
+```
+
+- 파일은 `GH_TOKEN=...` **한 줄**이어야 한다(`EnvironmentFile` 형식).
+- `gh auth token` 은 키링을 쓰므로 **로그인된 대화형 세션에서** 만들어야 한다.
+- 유닛은 `EnvironmentFile=-/home/redbox9/.config/assetflow/gh.env` 로 읽는다(`-` 는 파일이 없어도 기동).
+- 토큰은 저장소에 커밋하지 않는다 — 저장소 밖(`~/`) 경로에 두고, 실수로 저장소에 넣더라도 `.env`/`.env.*` 는 ignore 대상이다.
+
+### 7.4 로그·상태·수동 실행·중지
+
+```bash
+journalctl -u assetflow-deploy -n 80 --no-pager     # 실행 로그
+sudo systemctl start assetflow-deploy.service       # 즉시 1회 실행
+sudo systemctl list-timers assetflow-deploy.timer   # 다음 실행 시각
+cat ~/.local/state/assetflow/deployed-sha           # 마지막으로 배포된 커밋
+sudo systemctl disable --now assetflow-deploy.timer # 자동 배포 끄기
+```
+
+로그는 journal 과 `logger -t assetflow-autodeploy`(syslog) 양쪽에 남는다. `systemctl start` 는 결과를 기다리지 않으므로 실행 후 `journalctl` 로 확인한다.
+
+완전히 해제하려면 타이머를 끈 뒤 유닛 파일과 sudoers 규칙을 지운다.
+
+```bash
+sudo systemctl disable --now assetflow-deploy.timer
+sudo rm /etc/systemd/system/assetflow-deploy.{service,timer}
+sudo rm /etc/sudoers.d/assetflow-deploy
+sudo systemctl daemon-reload
+```
+
+### 7.5 배포하지 않고 끝나는 경우 (스크립트 분기)
+
+| 상황 | 판단 | 종료 코드 | 배포 |
+|---|---|---|---|
+| 작업트리가 dirty | 로컬 수정이 섞이면 배포 내용을 설명할 수 없다 | 3 | 안 함 |
+| `HEAD == origin/main` | 변경 없음 | 0 | 안 함 |
+| 로컬 main 이 `origin/main` 을 앞섬·갈라짐 | CI 가 본 적 없는 커밋이다(게이트 우회 금지) | 1 | 안 함 |
+| CI 실행의 `headSha != origin/main` | 그 커밋의 CI 결과가 아직 없다 | 0 | 안 함 |
+| CI `status != completed` | 진행 중 — 다음 주기에 다시 본다 | 0 | 안 함 |
+| CI `conclusion != success` | 미통과 | 0 | 안 함 |
+| `gh run list` 실패(토큰·키링 없음) | CI 를 확인할 수 없다 | 0 | 안 함 |
+| `git fetch`/`pull --ff-only` 실패 | 네트워크 또는 이력 갈라짐 | 1 | 안 함 |
+| `sudo -n deploy.sh` 실패 | sudoers 미설정, 빌드 실패 등 | 1 | 안 함 |
+
+0 은 "이번 주기는 할 일이 없었다", 1·3 은 "사람이 봐야 한다"로 구분한다. 3 은 작업트리를 정리할 때까지 매 주기 반복되므로 `list-timers` 로는 보이지 않아도 `systemctl status assetflow-deploy` 에 실패로 남는다. `git pull` 직후 HEAD 가 CI 통과 커밋과 다르면(정상 흐름에서는 나올 수 없음) 역시 1 로 멈추고 배포하지 않는다.
+
+### 7.6 롤백
+
+1. **코드로 되돌리기(권장)** — main 에 `git revert` 커밋을 올린다. CI 가 통과하면 다음 타이머가 그 커밋을 배포한다.
+   ```bash
+   git revert <문제 커밋> && git push origin main
+   ```
+   `app.jar` 백업은 `deploy.sh` 가 `/opt/assetflow/app.jar.bak-<STAMP>` 로 남기므로, 급하면 §4 의 수동 롤백을 그대로 쓴다.
+2. **자동 배포를 멈추고 수동 배포** — 되돌릴 커밋이 CI 를 통과하지 못하는 상황이면 타이머를 먼저 끈다.
+   ```bash
+   sudo systemctl stop assetflow-deploy.timer
+   sudo systemctl start assetflow-deploy.service   # 필요하면 1회만
+   ```
+
+### 7.7 보안 주의
+
+- 이 구성은 **main 에 머지된 코드가 서버에서 곧바로 실행된다**는 뜻이다. main 에 올릴 수 있는 사람 = 서버에서 코드를 실행할 수 있는 사람이다.
+- 그래서 **CI 성공 게이트를 끄지 않는다**. 게이트를 빼면 검증되지 않은 커밋이 자동 실행된다.
+- sudoers 는 **`deploy.sh` 한 파일에만** 연다. `NOPASSWD: ALL` 이나 스크립트 디렉터리 전체를 열면 그 경로에 파일을 쓸 수 있는 사람이 root 를 얻는다.
+- `deploy/autodeploy.sh` 자체를 고치는 커밋은 실행 중인 스크립트를 교체할 수 있다. 그런 커밋을 배포할 때는 타이머를 잠시 끄고 수동 배포하는 편이 안전하다.
+- 저장소가 **공개**라면 이 구성을 권하지 않는다. 배포 경로·계정·sudoers 규칙이 모두 공개되고, main 에 push 할 수 있는 모든 경로가 서버 실행 권한이 된다.
+
 ---
 
 ## 부록 A: Render + Vercel + Neon (역사적 참고)

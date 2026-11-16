@@ -1,0 +1,11 @@
+[Unit]
+Description=Run AssetFlow auto deploy every 10 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=10min
+Persistent=true
+Unit=assetflow-deploy.service
+
+[Install]
+WantedBy=timers.target

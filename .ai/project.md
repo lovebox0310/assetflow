@@ -6022,3 +6022,38 @@ balance          = income − vatSetAside − expenses   (income/vatSetAside 는
 - 도넛 `role="img"`를 `figure`에 줄 수 없어(axe `aria-allowed-role`) 래퍼 div 로 이동 → figcaption 과 이름이 중복 낭독.
 - A-02 색 자체(4계열 구분)와 A-12(전 화면 h2 16→18)는 **별도 이슈**.
 - 7개월 조회는 짝수 달 라벨이 빠진다(320 겹침 방지 우선).
+
+## 110) 자동 배포 — systemd 타이머 + CI 성공 게이트 (2026-11-17)
+
+**결정**
+- GitHub self-hosted runner 대신 **서버 로컬 systemd 타이머**(10분)로 배포한다.
+  - 인바운드 포트·GitHub 설정 변경이 필요 없고, 저장소가 이미 서버에 있다.
+  - hosted Actions + SSH 방식은 공격면이 커서 채택하지 않는다.
+- 배포 조건: **main 전진 + 그 커밋의 quality-gate(4잡) success + fast-forward 가능 + 작업트리 clean**.
+  하나라도 어긋나면 배포하지 않고 로그만 남긴다(조용한 성공 금지).
+
+**구성**
+| 파일 | 역할 |
+|---|---|
+| `deploy/autodeploy.sh` | flock → dirty 차단(exit 3) → fetch → 변경 없음 종료 → 로컬 앞섬 차단(exit 1) → `gh run list` CI 게이트 → `git pull --ff-only` → sha 재확인 → `sudo -n deploy.sh` → `~/.local/state/assetflow/deployed-sha` 기록 |
+| `deploy/systemd/assetflow-deploy.service` | oneshot, `User=redbox9`, `EnvironmentFile=-~/.config/assetflow/gh.env`, timeout 30분 |
+| `deploy/systemd/assetflow-deploy.timer` | `OnBootSec=3min`, `OnUnitActiveSec=10min`, `Persistent=true` |
+| `DEPLOY.md §7` | 설치·sudoers·GH_TOKEN·로그·중지·롤백·보안 주의 |
+
+**사람이 하는 일(설치)**
+- 유닛 복사 + `daemon-reload` + `enable --now assetflow-deploy.timer`
+- `/etc/sudoers.d/assetflow-deploy`: `redbox9 ALL=(root) NOPASSWD: /home/redbox9/assetflow-dev/deploy.sh` (chmod 440)
+- (선택) `~/.config/assetflow/gh.env` 에 `GH_TOKEN` — systemd 비대화형에서 gh 키링이 막힐 때
+
+**검증(코드 레벨)**
+- `bash -n` 통과, `systemd-analyze verify` rc=0.
+- 하네스로 분기 실측: 변경 없음(0)·dirty(3)·CI sha 불일치(0)·CI 실패(0)·CI 진행 중(0)·gh 실패(0)·
+  실행 기록 없음(0)·로컬 앞섬(1)·deploy.sh 실패(1) 모두 **sudo 미호출**, 정상 케이스만 배포.
+- 실제 설치·타이머 기동은 **미실행**(sudo는 사용자 몫).
+
+**한계 / 주의**
+- 자동 배포는 main 코드가 서버에서 실행되는 구조다. sudoers는 `deploy.sh` 한 파일에만, CI 성공 게이트 필수.
+- 저장소가 공개라면 권장하지 않는다. `deploy.sh` 자체 변경 커밋도 타이머가 실행할 수 있다.
+- 배포마다 서비스 재시작(수 초). `Persistent=true`는 `OnBootSec`이 대신하므로 놓친 주기를 보충하지 않는다.
+- `gh run list`는 워크플로 미지정이라 main push로 도는 워크플로가 늘면 다른 실행을 볼 수 있다
+  (후속: `--workflow quality-gate.yml`).
