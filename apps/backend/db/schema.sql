@@ -463,21 +463,17 @@ CREATE TABLE IF NOT EXISTS upbit_credentials (
 -- csv > email/unknown 순으로 값을 대체한다.
 --
 -- 출처 값: csv(업로드 정본) | email(이메일 수집) | unknown(출처를 모르는 기존 행).
--- 컬럼을 처음 추가할 때만 기존 행을 unknown 으로 백필하고, 그 뒤 기본값을 csv 로
--- 바꾼다 — 재배포 때 이미 csv 로 기록된 행을 unknown 으로 되돌리지 않기 위해서다.
+-- 컬럼을 추가한 뒤 기존 행(값이 NULL 인 행)만 unknown 으로 백필하고, 그 뒤 기본값을
+-- csv 로 바꾼다 — 재배포 때 이미 csv 로 기록된 행을 unknown 으로 되돌리지 않기 위해서다.
+--
+-- 위 4문장은 여러 번 돌려도 안전하다(멱등): ADD COLUMN IF NOT EXISTS / NULL 행만 백필 /
+-- DEFAULT·NOT NULL 재설정. spring.sql.init 은 스크립트를 세미콜론으로 쪼개므로
+-- 달러 인용(DO ... END) 블록은 조각나 실행되지 않는다 — 그래서 단일 문장으로 처리한다.
 -- ---------------------------------------------------------------------------
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = current_schema()
-          AND table_name = 'card_imports'
-          AND column_name = 'source'
-    ) THEN
-        ALTER TABLE card_imports ADD COLUMN source VARCHAR(16) NOT NULL DEFAULT 'unknown';
-        ALTER TABLE card_imports ALTER COLUMN source SET DEFAULT 'csv';
-    END IF;
-END $$;
+ALTER TABLE card_imports ADD COLUMN IF NOT EXISTS source VARCHAR(16);
+UPDATE card_imports SET source = 'unknown' WHERE source IS NULL;
+ALTER TABLE card_imports ALTER COLUMN source SET DEFAULT 'csv';
+ALTER TABLE card_imports ALTER COLUMN source SET NOT NULL;
 
 -- 카드내역 중복 정리 — 1회성(이후 0건)이고 삭제는 안전한 경우에만 한다.
 --   · 후보는 source='unknown' 인 기존 행뿐이다. 새로 들어온 csv/email 행은

@@ -5865,3 +5865,28 @@ DB 의 10월 합계는 현대 *** · 삼성 *** 이었고, 마지막 거래일�
   값이 다른 슬롯에 들어가 본인/가족 태그가 뒤바뀔 수 있다. 카드번호/관계를 1차 키로 쓰는 규칙이 후속 과제.
 - `PostgresCardImportLedger` 병합 경로는 통합 테스트가 없다(인메모리로만 검증).
 - 카드사가 비어 있는 기존 행은 채워진 행과 매칭되지 않는다(백필 필요).
+
+## 104) 카드 source 컬럼 미생성 사고 — DO 블록 제거 (2026-11-16)
+
+**증상**: 배포 후 카드내역 화면·이메일 수집이 현대/삼성 모두 실패.
+운영 로그 `ERROR: column "source" does not exist`
+(`PostgresCardImportLedger.nthExisting`, `inMonth`, `VestMailHyundaiImporter.importForUser`).
+
+**원인**: `db/schema.sql` 의 `DO $$ … END $$;` 블록이 **`spring.sql.init` 의 세미콜론 분할**과
+충돌해 실행되지 않았다. `application-postgres.yml` 의 `continue-on-error: true` 가 실패를 삼켜
+`card_imports.source` 가 만들어지지 않았고, 새 코드가 그 컬럼을 SELECT 하면서 전부 500.
+
+**수정**
+- `DO` 블록을 멱등 단일 문장 4개로 교체:
+  `ADD COLUMN IF NOT EXISTS`(DEFAULT 없이) → `UPDATE ... 'unknown'`(기존 행 백필) →
+  `SET DEFAULT 'csv'` → `SET NOT NULL`.
+- 재발 방지 테스트 `SchemaSqlSplitSafetyTest`: schema.sql 에 달러 인용이 없고, 위 4문장이
+  개별 문장·순서대로 존재하며, 정리 DELETE 가 남아 있음을 고정. (옛 블록을 복원하면 실패하는 것까지 확인)
+
+**검증**: 백엔드 **332 passed**, 프론트 257, typecheck/lint 0. **실 DB 적용은 미검증**(이 환경에서
+Postgres 접속 불가) — 배포 후 로그에서 `column "source" does not exist` 소멸로 확인해야 한다.
+
+**교훈**
+- `spring.sql.init` 스크립트에는 **달러 인용(DO/plpgsql) 금지**. 세미콜론으로 쪼개진다.
+- `continue-on-error: true` 는 DDL 실패를 조용히 만든다. 멱등 DDL 을 유지하면서 이 옵션을 끄는 것을
+  검토해야 한다(후속).
