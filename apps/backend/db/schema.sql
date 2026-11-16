@@ -517,3 +517,25 @@ WHERE target.id = candidate.id
         OR (better.keep_score = candidate.keep_score AND better.updated_at = candidate.updated_at
             AND better.id < candidate.id)
       );
+
+-- CARD-MERGE-2: CSV 가 덮는 기간의 이메일/미상 행 정리 — 1회성 잔재 청소(이후 0건).
+--   · 이메일 명세서와 CSV 는 금액 표기가 달라(이메일은 부가세 0, 승인번호 없음) 같은
+--     거래인데도 (카드사·이용일·금액) 자연키가 어긋나 병합되지 못한다. 그 결과 CSV 로
+--     반영된 뒤에도 이메일 행이 잔재로 남는다.
+--   · 같은 사용자·카드사의 csv 행이 덮는 기간(MIN~MAX approved_at) 안에서는 CSV 가
+--     정본이므로, 그 기간의 email/unknown 행은 잔재로 보고 지운다.
+--   · source='csv' 행은 절대 지우지 않는다. 달러 인용 없이 단일 문장으로 둔다
+--     (spring.sql.init 이 세미콜론으로 쪼개기 때문 — SchemaSqlSplitSafetyTest 참고).
+--   · 재실행하면 0건이다(멱등). 카드사 비교는 COALESCE 로 NULL/빈 문자열을 같이 본다.
+DELETE FROM card_imports stale
+USING (
+    SELECT user_id, COALESCE(card_company, '') AS company,
+           MIN(approved_at) AS lo, MAX(approved_at) AS hi
+    FROM card_imports
+    WHERE source = 'csv'
+    GROUP BY user_id, COALESCE(card_company, '')
+) covered
+WHERE stale.user_id = covered.user_id
+  AND COALESCE(stale.card_company, '') = covered.company
+  AND stale.source IN ('unknown', 'email')
+  AND stale.approved_at BETWEEN covered.lo AND covered.hi;

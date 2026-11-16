@@ -327,4 +327,23 @@ public class PostgresCardImportLedger implements CardImportLedger {
                   AND (target.card_company IS NULL OR target.card_company = '');
                 """, userId);
     }
+
+    /**
+     * CARD-MERGE-2: CSV 가 덮는 기간의 이메일/미상 행을 지운다.
+     * {@code source='csv'} 행은 대상이 아니다 — 정본은 지우지 않는다.
+     * 카드사 비교는 COALESCE 로 NULL/빈 문자열을 같이 본다.
+     */
+    public int deleteUnconfirmedInRange(String cardCompany, String fromDate, String toDate) {
+        if (fromDate == null || fromDate.isBlank() || toDate == null || toDate.isBlank()) {
+            return 0; // 범위가 없으면 아무것도 지우지 않는다(전체 삭제로 번지지 않게).
+        }
+        String company = cardCompany == null ? "" : cardCompany;
+        return jdbc.update("""
+                DELETE FROM card_imports
+                WHERE user_id = ?
+                  AND COALESCE(card_company, '') = ?
+                  AND source IN ('unknown', 'email')
+                  AND approved_at BETWEEN ? AND ?
+                """, userId, company, Date.valueOf(fromDate), Date.valueOf(toDate));
+    }
 }

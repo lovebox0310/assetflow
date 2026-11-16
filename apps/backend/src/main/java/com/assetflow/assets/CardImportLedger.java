@@ -115,4 +115,18 @@ public interface CardImportLedger {
      * 비어 있는 card_company 를 채운다. 안전한 추론이 가능한 행만 갱신한다.
      */
     int backfillCardCompany();
+
+    /**
+     * CARD-MERGE-2: CSV 가 덮는 기간의 이메일/미상 잔재를 정리한다.
+     *
+     * <p>이메일 명세서와 CSV 는 금액 표기가 다르다(이메일은 부가세 0, 승인번호 없음).
+     * 그래서 같은 거래인데도 (카드사·이용일·금액) 자연키가 어긋나 병합되지 못하고
+     * 이메일 행이 잔재로 남는다. CSV 가 그 기간을 덮었다면 그 기간의 정본은 CSV 이므로,
+     * <b>같은 카드사</b>의 {@code source IN ('unknown','email')} 행 중
+     * {@code approvedAt} 이 {@code fromDate}~{@code toDate}(양끝 포함) 인 행을 지운다.</p>
+     *
+     * <p>{@code source='csv'} 행은 이 메서드로 절대 지워지지 않는다. 카드사 비교는
+     * null 과 빈 문자열을 같이 본다(COALESCE). 지운 건수를 돌려준다.</p>
+     */
+    int deleteUnconfirmedInRange(String cardCompany, String fromDate, String toDate);
 }

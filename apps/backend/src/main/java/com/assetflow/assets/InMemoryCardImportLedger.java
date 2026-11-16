@@ -356,4 +356,38 @@ public class InMemoryCardImportLedger implements CardImportLedger {
         }
         return updated;
     }
+
+    /**
+     * CARD-MERGE-2: CSV 가 덮는 기간의 이메일/미상 행을 지운다.
+     * {@code source='csv'} 행은 대상이 아니다 — 정본은 지우지 않는다.
+     */
+    public int deleteUnconfirmedInRange(String cardCompany, String fromDate, String toDate) {
+        if (isBlank(fromDate) || isBlank(toDate)) {
+            return 0; // 범위가 없으면 아무것도 지우지 않는다(전체 삭제로 번지지 않게).
+        }
+        String company = cardCompany == null ? "" : cardCompany;
+        int deleted = 0;
+        synchronized (rows) {
+            java.util.Iterator<ImportedRow> it = rows.iterator();
+            while (it.hasNext()) {
+                ImportedRow r = it.next();
+                String source = sourceOf(r);
+                if (!CardImportLedger.SOURCE_EMAIL.equals(source)
+                        && !CardImportLedger.SOURCE_UNKNOWN.equals(source)) {
+                    continue; // csv 를 포함해 그 밖의 출처는 건드리지 않는다.
+                }
+                String rowCompany = r.cardCompany() == null ? "" : r.cardCompany();
+                if (!company.equals(rowCompany)) {
+                    continue;
+                }
+                String at = r.approvedAt();
+                if (at == null || at.compareTo(fromDate) < 0 || at.compareTo(toDate) > 0) {
+                    continue;
+                }
+                it.remove();
+                deleted++;
+            }
+        }
+        return deleted;
+    }
 }

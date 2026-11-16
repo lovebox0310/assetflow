@@ -3622,3 +3622,8 @@ T2+T4 산출물(설정/카드내역/SubNav/ExpenseTabs 삭제)은 되돌리지 �
 - 진단 API `GET /card-imports/duplicates?month=` 추가(읽기 전용).
 - 검증: 백엔드 329, 프론트 257, e2e 201(39 skipped), typecheck/lint 0.
 - 사람 조치: 배포 후 2026-10 카드내역 행수가 CSV 기준(삼성 21건)과 맞는지 확인.
+
+### 2026-11-16 — 카드 CSV 정본 reconcile (§105) [✅ 검증 완료]
+- CSV 업로드가 덮는 기간(카드사별 min~max)의 email/unknown 행 자동 정리, 응답에 reconciled.
+- 기존 잔재는 schema.sql 멱등 DELETE 로 기동 시 정리. 임시 PG에서 1회 4건 → 2회 0건 확인.
+- 검증: 백엔드 338 passed. 실시간 업데이트 방안은 §106에 조사 기록(이메일 cron·드롭 폴더가 현실적).

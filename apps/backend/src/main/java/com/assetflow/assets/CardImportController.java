@@ -466,6 +466,10 @@ public class CardImportController {
 
         // §29.6: 중복 rowKey 는 한 건만 반영 — 건수를 결과로 알린다
         int stored = ledger.addAll(incoming);
+        // CARD-MERGE-2: CSV 가 덮는 기간의 이메일/미상 잔재를 정리한다. 저장이 끝난 뒤에
+        // 하므로 CSV 정본 행은 이미 자리를 잡았고, 그 기간에서 이메일 표기 차이로
+        // 병합되지 못한 행만 지워진다.
+        int reconciled = reconcileEmailResidue(incoming);
         List<ImportedRow> all = ledger.all();
 
         // 합계는 행에서 재계산 (§29.7 — 스냅샷에 합계를 두지 않는다)
@@ -484,7 +488,43 @@ public class CardImportController {
                 "duplicatesInBatch", duplicatesInBatch,
                 "knownRowKeys", keys.size(),
                 "totals", Map.of("gross", gross, "vat", vat, "supplyExVat", supply),
-                "supplyInconsistentRows", supplyInconsistent));
+                "supplyInconsistentRows", supplyInconsistent,
+                "reconciled", reconciled));
+    }
+
+    /**
+     * CARD-MERGE-2: 이번 업로드의 csv 행이 덮는 기간을 카드사별로 구해,
+     * 그 기간·카드사의 이메일/미상 행을 지운다. 업로드에 csv 행이 없으면
+     * (이메일 수집 경로 등) 아무것도 하지 않는다.
+     *
+     * @return 지운 행 수 합계
+     */
+    private int reconcileEmailResidue(List<ImportedRow> incoming) {
+        // 카드사 → {min approvedAt, max approvedAt}
+        Map<String, String[]> coveredRanges = new LinkedHashMap<>();
+        for (ImportedRow row : incoming) {
+            if (!CardImportLedger.SOURCE_CSV.equals(CardImportLedger.normalizeSource(row.source()))) {
+                continue;
+            }
+            String company = row.cardCompany() == null ? "" : row.cardCompany();
+            String at = row.approvedAt();
+            String[] range = coveredRanges.get(company);
+            if (range == null) {
+                coveredRanges.put(company, new String[]{at, at});
+                continue;
+            }
+            if (at.compareTo(range[0]) < 0) {
+                range[0] = at;
+            }
+            if (at.compareTo(range[1]) > 0) {
+                range[1] = at;
+            }
+        }
+        int deleted = 0;
+        for (Map.Entry<String, String[]> entry : coveredRanges.entrySet()) {
+            deleted += ledger.deleteUnconfirmedInRange(entry.getKey(), entry.getValue()[0], entry.getValue()[1]);
+        }
+        return deleted;
     }
 
     /** 기존 카드 내역을 키워드/규칙/업종 기반으로 일괄 재분류한다 (§55.8, §55.10, §55.8.9). */
