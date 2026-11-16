@@ -37,7 +37,7 @@ import {
   formatKrwAbbr,
   formatKrwExact,
   formatMonths,
-  formatSignedKrw,
+  formatSignedKrwAbbr,
 } from "../utils/formatters";
 import { clearToken } from "../auth/authStore";
 
@@ -403,7 +403,8 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
       header: "수지",
       numeric: true,
       mobile: "value",
-      render: (r) => (isConfirmed(r) ? formatSignedKrw(r.balance) : "미확정"),
+      // A-05: 카드(월 수지)와 같은 금액 체계 — 부호 + 축약(+230.0만).
+      render: (r) => (isConfirmed(r) ? formatSignedKrwAbbr(r.balance) : "미확정"),
     },
   ];
 
@@ -436,9 +437,26 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
             title="월 수지"
             status={summaryStatus}
             onRetry={load}
-            hint={dataReady ? `수입 ${formatKrwAbbr(summary.monthly.income)} · 부가세 ${formatKrwAbbr(summary.monthly.vatSetAside)} · 지출 ${formatKrwAbbr(summary.monthly.expenses)}` : undefined}
+            hint={
+              dataReady ? (
+                // A-06: 320px 에서 "지출 850.0 / 만" 으로 숫자·단위가 갈라지지 않게
+                // "· " 기준 3조각으로 나누고 조각 안에서는 줄바꿈을 막는다.
+                // 구분 기호의 공백은 텍스트에 남긴다(복사·붙여넣기) — 시각 간격은 flex gap.
+                <span style={{ display: "flex", flexWrap: "wrap", columnGap: 4, rowGap: 2 }}>
+                  {[
+                    `수입 ${formatKrwAbbr(summary.monthly.income)}`,
+                    `부가세 ${formatKrwAbbr(summary.monthly.vatSetAside)}`,
+                    `지출 ${formatKrwAbbr(summary.monthly.expenses)}`,
+                  ].map((part, i, all) => (
+                    <span key={part} style={{ whiteSpace: "nowrap" }}>
+                      {i < all.length - 1 ? `${part} · ` : part}
+                    </span>
+                  ))}
+                </span>
+              ) : undefined
+            }
           >
-            {dataReady ? formatSignedKrw(monthlyBalance(summary)) : "—"}
+            {dataReady ? formatSignedKrwAbbr(monthlyBalance(summary)) : "—"}
           </MetricCard>
           <MetricCard
             title={showInvestMonths ? "투자금 유지 개월" : "비상금 유지 개월"}
@@ -460,11 +478,12 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
               <div className="af-header__actions">
                 <Switch
                   size="small"
-                  checkedChildren="투자금"
-                  unCheckedChildren="비상금"
+                  className="af-tap-sm"
                   checked={showInvestMonths}
                   onChange={setShowInvestMonths}
-                  aria-label="유지 개월 모드 전환"
+                  // A-09: 트랙 안 글자(투자금/비상금)는 지웠다 — 화면 라벨은 제목·값이
+                  // 이미 말한다. 접근 이름은 화면 라벨을 포함해 무엇을 바꾸는지 밝힌다.
+                  aria-label="비상금 유지 개월 모드 전환"
                 />
               </div>
             }
@@ -502,7 +521,9 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
         </ResponsiveGrid>
       </section>
 
-      <ResponsiveGrid spans={{ xs: 24, md: 24, xl: 12 }} align="stretch">
+      {/* A-04: 두 섹션 높이를 억지로 맞추면 비상금 카드 내용 아래에 큰 공백이 남는다.
+          align="top" — 각 카드는 자기 내용 높이만 차지한다. */}
+      <ResponsiveGrid spans={{ xs: 24, md: 24, xl: 12 }} align="top">
         <section
           aria-labelledby="h-composition"
           style={{ marginBottom: 32, height: "100%", display: "flex", flexDirection: "column" }}
@@ -548,17 +569,14 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
 
         <section
           aria-labelledby="h-emergency-accounts"
-          style={{ marginBottom: 32, height: "100%", display: "flex", flexDirection: "column" }}
+          style={{ marginBottom: 32 }}
         >
           <SectionHeader
             id="h-emergency-accounts"
             title="비상금 계좌"
             link={{ label: "자산 화면 보기", ariaLabel: "자산 화면 보기 — 비상금 계좌", onClick: () => onOpenAssets?.() }}
           />
-          <Card
-            style={{ flex: 1, display: "flex", flexDirection: "column" }}
-            styles={{ body: { flex: 1, display: "flex", flexDirection: "column" } }}
-          >
+          <Card>
             <StateBlock status={summaryStatus} onRetry={load} errorText={summaryError}>
               {dataReady ? (
                 <CashAccountCards
@@ -579,8 +597,14 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
         />
         <Card>
           <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <Typography.Text style={{ fontWeight: 600, whiteSpace: "nowrap" }}>조회 범위</Typography.Text>
+            {/* A-08: 두 조회 범위가 같은 "조회 범위" 라 구분되지 않았다.
+                보이는 라벨을 화면별로 나누고, label ↔ 입력을 id/htmlFor 로 잇는다.
+                RangePicker 는 id 를 {start,end} 로 받아 두 입력에 각각 준다. */}
+            <label htmlFor="card-range-from" style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
+              카드 조회 범위
+            </label>
             <DatePicker.RangePicker
+              id={{ start: "card-range-from", end: "card-range-to" }}
               picker="month"
               format="YYYY-MM"
               value={[dayjs(cardGroupsRange.from), dayjs(cardGroupsRange.to)]}
@@ -599,9 +623,13 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
                 setCardGroupsRange({ from, to });
                 loadCardGroups(from, to);
               }}
-              placeholder={["시작", "종료"]}
+              placeholder={["카드 조회 시작", "카드 조회 종료"]}
               style={{ flex: "1 1 220px", minWidth: 0, maxWidth: 360 }}
             />
+            {/* 두 번째 입력은 htmlFor 로 이름을 붙인다(화면에는 숨김). */}
+            <label htmlFor="card-range-to" className="sr-only">
+              카드 조회 종료
+            </label>
           </div>
           {cardGroupsRangeNotice ? (
             <Alert
@@ -634,8 +662,11 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
         </Typography.Text>
         <Card>
           <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <Typography.Text style={{ fontWeight: 600, whiteSpace: "nowrap" }}>조회 범위</Typography.Text>
+            <label htmlFor="trend-range-from" style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
+              지출 추이 조회 범위
+            </label>
             <DatePicker.RangePicker
+              id={{ start: "trend-range-from", end: "trend-range-to" }}
               picker="month"
               format="YYYY-MM"
               value={[dayjs(trendRange.from), dayjs(trendRange.to)]}
@@ -655,9 +686,12 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
                 setTrendRange({ from, to });
                 void loadTrend(from, to);
               }}
-              placeholder={["시작", "종료"]}
+              placeholder={["추이 조회 시작", "추이 조회 종료"]}
               style={{ flex: "1 1 220px", minWidth: 0, maxWidth: 360 }}
             />
+            <label htmlFor="trend-range-to" className="sr-only">
+              추이 조회 종료
+            </label>
           </div>
           {trendRangeNotice ? (
             <Alert

@@ -13,6 +13,7 @@ import {
   formatMonthTick,
   type TrendSeries,
 } from "../dashboard/expenseTrend";
+import { useMinWidth } from "../hooks/useMinWidth";
 import { formatKrwAbbr, formatKrwExact } from "../utils/formatters";
 
 /**
@@ -34,7 +35,9 @@ export function ExpenseTrendChart({
 }) {
   const screens = Grid.useBreakpoint();
   const wide = Boolean(screens.md);
-
+  // A-03: 좁은 폭에서는 눈금을 전부 보여 주고(interval 0) "10월" 로 줄인다.
+  // 넓은 폭은 기존 "26.10" 표기를 유지한다. matchMedia 미지원 환경은 false(좁은 쪽).
+  const wideTicks = useMinWidth(768);
   const { points, categories, totals, incomeMonths, disposableIncomeTotal, vatSetAsideTotal } = series;
 
   if (points.length === 0) {
@@ -45,6 +48,19 @@ export function ExpenseTrendChart({
   const activeCategories = categories.filter((c) => (totals[c] ?? 0) !== 0);
   const hasIncome = incomeMonths > 0;
   const unconfirmedMonths = points.length - incomeMonths;
+
+  /**
+   * 좁은 폭의 눈금은 **개월 수**로 정한다(하드코딩 금지 — 조회 범위를 바꿀 수 있다).
+   * - 6개 이하: 모든 달을 가로로 (기본값 6개월 = 전부 표시)
+   * - 7개 이상: 끝(최신 달)부터 격월로 줄인다 — 최신 달은 항상 포함된다.
+   *   320의 밴드(≈21.7px)가 라벨(≈22.3px)보다 좁아지는 7개월부터 격월이 필요하다.
+   * 회전은 쓰지 않는다(가로 라벨만).
+   */
+  const monthKeys = points.map((p) => String(p.month));
+  const sparseTicks =
+    !wideTicks && monthKeys.length > 6
+      ? monthKeys.filter((_, i) => (monthKeys.length - 1 - i) % 2 === 0)
+      : null;
 
   return (
     <div style={{ width: "100%" }}>
@@ -66,15 +82,17 @@ export function ExpenseTrendChart({
           style={{ width: "100%", height: wide ? 340 : 280 }}
         >
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+            <BarChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} accessibilityLayer={false}>
               <CartesianGrid stroke="var(--af-border)" strokeDasharray="3 3" vertical={false} />
               <XAxis
                 dataKey="month"
-                tickFormatter={formatMonthTick}
-                tick={{ fill: "var(--af-muted-foreground)", fontSize: 12 }}
+                // A-03/A-10: <768px 는 "10월" 로 줄이고, 9개월 이상이면 격월 눈금만
+                // 보여 준다(최신 달 포함). minTickGap 대신 ticks 로 직접 고른다.
+                tickFormatter={wideTicks ? formatMonthTick : (month: string) => `${month.slice(5)}월`}
+                tick={{ fill: "var(--af-muted-foreground)", fontSize: wideTicks ? 12 : 11 }}
                 stroke="var(--af-border)"
-                interval="preserveStartEnd"
-                minTickGap={8}
+                interval={wideTicks ? "preserveStartEnd" : 0}
+                {...(wideTicks ? { minTickGap: 8 } : sparseTicks ? { ticks: sparseTicks } : {})}
               />
               <YAxis
                 tickFormatter={(value) => formatKrwAbbr(Number(value))}

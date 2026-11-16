@@ -3,7 +3,6 @@ import {
   Bar,
   CartesianGrid,
   ComposedChart,
-  Legend,
   Line,
   ResponsiveContainer,
   Tooltip,
@@ -13,6 +12,7 @@ import {
 import type { CardCompanyGroup } from "../api/cardImportApi";
 import { formatKrwAbbr, formatKrwExact } from "../utils/formatters";
 import { formatMonthTick, monthsBetween } from "../dashboard/expenseTrend";
+import { useMinWidth } from "../hooks/useMinWidth";
 import { CARD_RELATIONS, CARD_TOTAL_KEY, cardChartSeries } from "../dashboard/cardCompany";
 
 interface CardCompanyChartProps {
@@ -33,6 +33,8 @@ const RELATION_COLORS: Record<string, string> = {
  * 월별 전체 사용금액은 막대 위에 꺾은선으로 겹쳐 그린다.
  */
 export function CardCompanyChart({ groups, from, to }: CardCompanyChartProps) {
+  // A-03/A-10: 좁은 폭은 "10월" + 모든 눈금, 넓은 폭은 기존 "26.10".
+  const wideTicks = useMinWidth(768);
   if (groups.length === 0) {
     return <Typography.Text type="secondary">표시할 카드 데이터가 없습니다</Typography.Text>;
   }
@@ -44,6 +46,17 @@ export function CardCompanyChart({ groups, from, to }: CardCompanyChartProps) {
 
   const { companyOrder, points, total, selfTotal, familyTotal } = cardChartSeries(groups, months);
   const summary = `총 ${formatKrwExact(total)}, 본인 ${formatKrwExact(selfTotal)}, 가족 ${formatKrwExact(familyTotal)}`;
+
+  /**
+   * 좁은 폭의 눈금은 **개월 수**로 정한다(하드코딩 금지 — 조회 범위를 바꿀 수 있다).
+   * - 6개 이하: 모든 달을 가로로 (카드사용 기본 6개월은 항상 전체 표시)
+   * - 7개 이상: 끝(최신 달)부터 격월. 320의 밴드가 라벨보다 좁아진다.
+   * 회전은 쓰지 않는다.
+   */
+  const sparseTicks =
+    !wideTicks && months.length > 6
+      ? months.filter((_, i) => (months.length - 1 - i) % 2 === 0)
+      : null;
 
   return (
     <div style={{ width: "100%" }}>
@@ -57,13 +70,16 @@ export function CardCompanyChart({ groups, from, to }: CardCompanyChartProps) {
           style={{ width: "100%", height: 320 }}
         >
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+            <ComposedChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} accessibilityLayer={false}>
               <CartesianGrid stroke="var(--af-border)" strokeDasharray="3 3" vertical={false} />
               <XAxis
                 dataKey="month"
-                tickFormatter={formatMonthTick}
-                tick={{ fill: "var(--af-muted-foreground)", fontSize: 12 }}
+                // A-03/A-10: 좁은 폭은 "10월" 로 줄이고, 9개월 이상이면 격월 눈금만(최신 달 포함).
+                tickFormatter={wideTicks ? formatMonthTick : (month: string) => `${month.slice(5)}월`}
+                tick={{ fill: "var(--af-muted-foreground)", fontSize: wideTicks ? 12 : 11 }}
                 stroke="var(--af-border)"
+                interval={wideTicks ? "preserveStartEnd" : 0}
+                {...(wideTicks ? { minTickGap: 8 } : sparseTicks ? { ticks: sparseTicks } : {})}
               />
               <YAxis
                 tickFormatter={(value) => formatKrwAbbr(Number(value))}
@@ -87,12 +103,6 @@ export function CardCompanyChart({ groups, from, to }: CardCompanyChartProps) {
                   color: "var(--af-foreground)",
                 }}
               />
-              <Legend
-                formatter={(value) =>
-                  value === CARD_TOTAL_KEY ? "월 합계" : String(value).replace("|", " · ")
-                }
-                wrapperStyle={{ color: "var(--af-foreground)" }}
-              />
               {companyOrder.map((company) =>
                 CARD_RELATIONS.map((relation) => (
                   <Bar
@@ -101,6 +111,10 @@ export function CardCompanyChart({ groups, from, to }: CardCompanyChartProps) {
                     name={`${company}|${relation}`}
                     stackId={company}
                     fill={RELATION_COLORS[relation]}
+                    // A-02: 같은 카드사 안의 본인·가족 세그먼트 경계를 카드 배경색으로
+                    // 나눈다(도넛과 같은 방식). 색은 토큰 그대로, 새 색 없음.
+                    stroke="var(--af-card)"
+                    strokeWidth={1}
                     isAnimationActive={false}
                   />
                 )),
@@ -131,6 +145,42 @@ export function CardCompanyChart({ groups, from, to }: CardCompanyChartProps) {
           </ResponsiveContainer>
         </div>
       </figure>
+
+      {/* A-02: recharts Legend 를 지출 추이와 같은 목록으로 바꾼다.
+          막대 색은 본인/가족 2색뿐이라 "색 2개 ↔ 카드사 2개" 로 오해되기 쉽다 —
+          카드사마다 두 색을 함께 붙이고 "삼성카드 — 본인·가족" 두 줄로 고정한다. */}
+      <ul
+        aria-label="카드사 범례"
+        style={{
+          listStyle: "none",
+          margin: 0,
+          marginTop: 12,
+          padding: 0,
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "8px 20px",
+        }}
+      >
+        {companyOrder.map((company) => (
+          <li key={company} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+            <span aria-hidden style={{ display: "inline-flex", gap: 2, flexShrink: 0 }}>
+              {CARD_RELATIONS.map((relation) => (
+                <span
+                  key={relation}
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: 2,
+                    background: RELATION_COLORS[relation],
+                    flexShrink: 0,
+                  }}
+                />
+              ))}
+            </span>
+            <span style={{ whiteSpace: "pre-line" }}>{`${company}\n— ${CARD_RELATIONS.join("·")}`}</span>
+          </li>
+        ))}
+      </ul>
 
       {/* 스크린리더용 데이터 테이블 (Sprint 1.1 접근성) */}
       <table

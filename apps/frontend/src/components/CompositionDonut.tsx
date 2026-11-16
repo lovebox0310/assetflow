@@ -169,6 +169,12 @@ export function CompositionDonut({
     </table>
   );
 
+  // A-07: 차트 조각은 스크린리더에 한 덩어리(요약)로만 노출한다 —
+  // 접근성 레이어(recharts application)는 끄고 차트 래퍼에 이름을 준다.
+  const chartSummary = `자산 구성 도넛 차트 — ${slices
+    .map((s) => `${s.label} ${s.percent.toFixed(1)}%`)
+    .join(", ")}`;
+
   const chart = (
     <figure
       style={{
@@ -183,16 +189,29 @@ export function CompositionDonut({
       }}
     >
       <figcaption className="sr-only" style={{ marginBottom: 8 }}>
-        자산 구성 도넛 차트 — {slices.map((s) => `${s.label} ${s.percent.toFixed(1)}%`).join(", ")}
+        {chartSummary}
       </figcaption>
-      <div style={{ width: "100%", height: 240, margin: "0 auto" }}>
+      {/* figure 에 role="img" 는 ARIA-in-HTML 상 허용되지 않는다(axe aria-allowed-role).
+          다른 두 차트처럼 차트 래퍼 div 에 role="img" + 요약 이름을 준다. */}
+      <div role="img" aria-label={chartSummary} style={{ width: "100%", height: 240, margin: "0 auto" }}>
         <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
+          {/* A-07: accessibilityLayer 는 탭 스톱(무명 application)을 만든다. 끈다. */}
+          <PieChart accessibilityLayer={false}>
             <Tooltip
               formatter={(value, name) => [
                 formatKrwExact(Number(value)),
                 String(name),
               ]}
+              // A-01: 다크 카드 위 기본 툴팁(흰 배경/검정 글자 위 흰 글자) 대비 1.15:1.
+              // 다른 차트와 같은 세트를 쓴다 — 새 색 없이 `--af-*` 토큰만.
+              contentStyle={{
+                background: "var(--af-card)",
+                border: "1px solid var(--af-border)",
+                borderRadius: 8,
+                color: "var(--af-foreground)",
+              }}
+              itemStyle={{ color: "var(--af-foreground)" }}
+              labelStyle={{ color: "var(--af-muted-foreground)" }}
             />
             <Pie
               data={slices.map((s, i) => ({ name: s.label, value: s.value, fill: colorFor(i) }))}

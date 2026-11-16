@@ -5993,3 +5993,32 @@ balance          = income − vatSetAside − expenses   (income/vatSetAside 는
   선 vs 카드 **5.24:1**(라이트) / **5.81:1**(다크) 로 올라간다.
 - halo 숨김은 recharts 기본 툴팁/범례 필터(`type === 'none'`)에 의존한다 —
   `Tooltip content` 를 커스텀하면 halo 행이 다시 나오므로 그때는 전용 dataKey 가 필요하다.
+
+## 109) 대시보드 UI/UX 1차 패스 (2026-11-17)
+
+**방법**: `designer` 감사(320/375/390/430/768/1024/1280 × 라이트/다크 실측) → 사람 승인 →
+`developer` 적용 → Playwright 실측 검증. **스냅샷 갱신은 승인 후** 수행.
+
+**적용 (기능 변경 0 — 표시 문자열·스타일·ARIA·props만)**
+| ID | 문제 | 조치 |
+|---|---|---|
+| A-01 | 다크 도넛 툴팁 1.15:1(흰 배경+밝은 글자) | 다른 차트와 같은 `contentStyle/itemStyle/labelStyle` → 약 14.6:1 |
+| A-03/A-10 | 좁은 화면에서 데이터 있는 달 라벨 소실 | <768: `10월` 형식, 6개 이하 전부·7개 이상 **최신 달부터 격월**(`ticks` 명시), ≥768 현행 |
+| A-05/A-13 | 금액 표기 혼용(`-2750.0만` vs `+***원`) | `formatSignedKrwAbbr` 추가 → 카드·표 모두 `+250.0만` 체계 |
+| A-06 | 320에서 `지출 850.0`/`만` 분리 | 힌트 3스팬 `nowrap` + `· ` 유지 |
+| A-07 | 무명 `role=application` 포커스 스톱 3개 | 3차트 `accessibilityLayer={false}` (sr-only 표 유지) |
+| A-09 | 스위치 터치 18px·트랙 라벨 2.99:1 | `af-tap-sm`(44 히트) + 자식 글자 제거 + aria-label |
+| A-08 | 날짜 입력 4개 동명("시작"/"종료") | 라벨 `카드/지출 추이 조회 범위` + placeholder 구분 + `htmlFor` |
+| A-04 | 1280 비상금 카드 공백 172.8px | `align="top"` + flex 해제 + note 12px → 공백 12px |
+| A-02 | 4계열이 2색 공유(인접 1.09:1) | 막대 `stroke=--af-card` 1px 경계 + 범례를 카드사별 2줄 `ul` 로 교체(색 추가 없음) |
+
+**검증**
+- 프론트 단위 **262**(신규 `formatSignedKrwAbbr` 계약 4건), e2e **201**(39 skipped), a11y 6, typecheck/lint 0.
+- 320/375/390/430/1280 × 라이트/다크 **문서 가로 넘침 0**, 축 라벨 교차 면적 0(7·8개월 범위 실측 포함), 회전 transform 0.
+- 디자인 스냅샷 **54개**(18종 × 3 프로젝트) 갱신. `dashboard-header`, `mobile-bottom-nav`, `cash-cards-1col/2col` 12개는 불변.
+
+**남긴 것 / 후속**
+- 스위치 **요소 박스 32×18**(히트만 44×44) — 시각 크기를 키우려면 디자인 결정 필요.
+- 도넛 `role="img"`를 `figure`에 줄 수 없어(axe `aria-allowed-role`) 래퍼 div 로 이동 → figcaption 과 이름이 중복 낭독.
+- A-02 색 자체(4계열 구분)와 A-12(전 화면 h2 16→18)는 **별도 이슈**.
+- 7개월 조회는 짝수 달 라벨이 빠진다(320 겹침 방지 우선).
