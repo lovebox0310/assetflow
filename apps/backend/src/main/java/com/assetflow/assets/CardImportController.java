@@ -8,6 +8,8 @@ import com.assetflow.expenses.categories.CategoryClassifier;
 import com.assetflow.expenses.categories.CategoryClassifier.Classification;
 import com.assetflow.expenses.categories.CategoryTaxonomy;
 import com.assetflow.expenses.categories.MerchantPatterns;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -25,10 +27,12 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 
 import com.assetflow.assets.card.CardContract;
+import com.assetflow.assets.card.CardReconcilePolicy;
 import com.assetflow.assets.card.CardStatementReader;
 
 /**
@@ -40,6 +44,8 @@ import com.assetflow.assets.card.CardStatementReader;
 @RestController
 @RequestMapping("/api/v1/assets")
 public class CardImportController {
+
+    private static final Logger log = LoggerFactory.getLogger(CardImportController.class);
 
     private static final Pattern ISO_DATE = Pattern.compile("\\d{4}-\\d{2}-\\d{2}");
     private static final Pattern MONTH_PATTERN = Pattern.compile("\\d{4}-(0[1-9]|1[0-2])");
@@ -468,8 +474,8 @@ public class CardImportController {
         int stored = ledger.addAll(incoming);
         // CARD-MERGE-2: CSV 가 덮는 기간의 이메일/미상 잔재를 정리한다. 저장이 끝난 뒤에
         // 하므로 CSV 정본 행은 이미 자리를 잡았고, 그 기간에서 이메일 표기 차이로
-        // 병합되지 못한 행만 지워진다.
-        int reconciled = reconcileEmailResidue(incoming);
+        // 병합되지 못한 행만 지워진다. 명세서 수준이 아닌 부분 업로드는 건너뛴다.
+        ReconcileResult reconcile = reconcileEmailResidue(incoming);
         List<ImportedRow> all = ledger.all();
 
         // 합계는 행에서 재계산 (§29.7 — 스냅샷에 합계를 두지 않는다)
@@ -489,42 +495,53 @@ public class CardImportController {
                 "knownRowKeys", keys.size(),
                 "totals", Map.of("gross", gross, "vat", vat, "supplyExVat", supply),
                 "supplyInconsistentRows", supplyInconsistent,
-                "reconciled", reconciled));
+                "reconciled", reconcile.deleted(),
+                // CARD-MERGE-2: 명세서 수준이 아니라 정리를 건너뛴 카드사 그룹 수.
+                "reconcileSkipped", reconcile.skipped()));
     }
+
+    /** CARD-MERGE-2 정리 결과 — 지운 행 수와 건너뛴 카드사 그룹 수. */
+    private record ReconcileResult(int deleted, int skipped) {}
 
     /**
      * CARD-MERGE-2: 이번 업로드의 csv 행이 덮는 기간을 카드사별로 구해,
      * 그 기간·카드사의 이메일/미상 행을 지운다. 업로드에 csv 행이 없으면
      * (이메일 수집 경로 등) 아무것도 하지 않는다.
      *
-     * @return 지운 행 수 합계
+     * <p>부분 업로드로 다른 기간의 이메일 행을 지우지 않도록, 카드사 그룹이
+     * 명세서 수준({@link CardReconcilePolicy})일 때만 정리한다. 미달이면 지우지 않고
+     * 건너뛴 그룹으로 센다.</p>
+     *
+     * @return 지운 행 수 합계와 건너뛴 카드사 그룹 수
      */
-    private int reconcileEmailResidue(List<ImportedRow> incoming) {
-        // 카드사 → {min approvedAt, max approvedAt}
-        Map<String, String[]> coveredRanges = new LinkedHashMap<>();
+    private ReconcileResult reconcileEmailResidue(List<ImportedRow> incoming) {
+        // 카드사 → 그 카드사의 csv 행
+        Map<String, List<ImportedRow>> byCompany = new LinkedHashMap<>();
         for (ImportedRow row : incoming) {
             if (!CardImportLedger.SOURCE_CSV.equals(CardImportLedger.normalizeSource(row.source()))) {
                 continue;
             }
             String company = row.cardCompany() == null ? "" : row.cardCompany();
-            String at = row.approvedAt();
-            String[] range = coveredRanges.get(company);
-            if (range == null) {
-                coveredRanges.put(company, new String[]{at, at});
-                continue;
-            }
-            if (at.compareTo(range[0]) < 0) {
-                range[0] = at;
-            }
-            if (at.compareTo(range[1]) > 0) {
-                range[1] = at;
-            }
+            byCompany.computeIfAbsent(company, k -> new ArrayList<>()).add(row);
         }
         int deleted = 0;
-        for (Map.Entry<String, String[]> entry : coveredRanges.entrySet()) {
-            deleted += ledger.deleteUnconfirmedInRange(entry.getKey(), entry.getValue()[0], entry.getValue()[1]);
+        int skipped = 0;
+        for (Map.Entry<String, List<ImportedRow>> entry : byCompany.entrySet()) {
+            Optional<CardReconcilePolicy.CoveredRange> range =
+                    CardReconcilePolicy.range(entry.getValue());
+            if (range.isEmpty() || !range.get().isStatementSized()) {
+                skipped++;
+                log.info("card import: reconcile skipped for '{}' — {}행 / {}일 (최소 {}행·{}일 필요)",
+                        entry.getKey(),
+                        range.map(CardReconcilePolicy.CoveredRange::rowCount).orElse(0),
+                        range.map(CardReconcilePolicy.CoveredRange::spanDaysInclusive).orElse(0),
+                        CardReconcilePolicy.MIN_ROWS, CardReconcilePolicy.MIN_SPAN_DAYS_INCLUSIVE);
+                continue;
+            }
+            CardReconcilePolicy.CoveredRange covered = range.get();
+            deleted += ledger.deleteUnconfirmedInRange(entry.getKey(), covered.fromDate(), covered.toDate());
         }
-        return deleted;
+        return new ReconcileResult(deleted, skipped);
     }
 
     /** 기존 카드 내역을 키워드/규칙/업종 기반으로 일괄 재분류한다 (§55.8, §55.10, §55.8.9). */

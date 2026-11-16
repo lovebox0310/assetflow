@@ -11,6 +11,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -132,7 +133,7 @@ class CardImportReconcileTest {
         assertThat(l.all()).hasSize(before);
     }
 
-    /** AC3: submit 응답의 reconciled 가 삭제 건수와 일치하고, 남은 행에 이메일 잔재가 없다. */
+    /** AC3: 명세서 수준 업로드(10행·31일)는 기존처럼 정리하고, 건너뛴 그룹은 0 이다. */
     @Test
     void submitReconcilesAndReportsDeletedCount() throws Exception {
         ledger.addAll(List.of(
@@ -140,32 +141,132 @@ class CardImportReconcileTest {
                 row("email|31", "현대카드", "2026-10-31", "합성주유소", 19113, CardImportLedger.SOURCE_EMAIL),
                 row("email|s27", "삼성카드", "2026-10-27", "합성마트 합성지점", 30000, CardImportLedger.SOURCE_EMAIL)));
 
-        // CSV 업로드: 현대카드 10/01 ~ 10/31. 이메일과 금액 표기가 달라 병합되지 않는 거래만 넣는다.
-        String body = "{\"rows\":["
-                + csvRow("csv|1", "2026-10-01", "합성마트 - 합성지점", 10000, 1000, 11000)
-                + "," + csvRow("csv|2", "2026-10-31", "합성주유소", 50000, 5000, 55000)
-                + "],\"merchantRules\":{}}";
+        // CSV 업로드: 현대카드 10/01 ~ 10/31, 10행. 이메일과 금액 표기가 달라 병합되지 않는 거래만 넣는다.
+        String body = body(List.of(
+                csvRow("csv|1", "2026-10-01", "합성문구", 10000, 1000, 11000),
+                csvRow("csv|2", "2026-10-04", "합성문구", 10000, 1000, 11000),
+                csvRow("csv|3", "2026-10-07", "합성문구", 10000, 1000, 11000),
+                csvRow("csv|4", "2026-10-10", "합성문구", 10000, 1000, 11000),
+                csvRow("csv|5", "2026-10-13", "합성문구", 10000, 1000, 11000),
+                csvRow("csv|6", "2026-10-16", "합성문구", 10000, 1000, 11000),
+                csvRow("csv|7", "2026-10-19", "합성문구", 10000, 1000, 11000),
+                csvRow("csv|8", "2026-10-22", "합성문구", 10000, 1000, 11000),
+                csvRow("csv|9", "2026-10-25", "합성문구", 10000, 1000, 11000),
+                csvRow("csv|10", "2026-10-31", "합성문구", 10000, 1000, 11000)));
 
         mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.stored").value(2))
+                .andExpect(jsonPath("$.data.stored").value(10))
                 .andExpect(jsonPath("$.data.reconciled").value(2))
+                .andExpect(jsonPath("$.data.reconcileSkipped").value(0))
                 // 응답 합계는 정리 뒤 남은 행에서 재계산된다(이메일 잔재 49,113 제외, 삼성 이메일 30,000 은 유지)
-                .andExpect(jsonPath("$.data.totals.gross").value(96000))
-                .andExpect(jsonPath("$.data.totalRows").value(3));
+                .andExpect(jsonPath("$.data.totals.gross").value(140000))
+                .andExpect(jsonPath("$.data.totalRows").value(11));
 
         // 현대카드 이메일 잔재는 사라지고, 다른 카드사 이메일 행은 남는다.
         assertThat(ledger.all()).extracting(CardImportLedger.ImportedRow::rowKey)
-                .containsExactlyInAnyOrder("csv|1", "csv|2", "email|s27");
+                .containsExactlyInAnyOrder("csv|1", "csv|2", "csv|3", "csv|4", "csv|5",
+                        "csv|6", "csv|7", "csv|8", "csv|9", "csv|10", "email|s27");
+    }
+
+    /** AC1: 부분 업로드(3행·3일)는 정리를 건너뛰고 이메일 행을 지우지 않는다. */
+    @Test
+    void partialUploadSkipsReconcileAndKeepsEmailRows() throws Exception {
+        ledger.addAll(List.of(
+                // 업로드가 덮는 10/01~10/03 안의 이메일 행 — 부분 업로드로는 지우면 안 된다.
+                row("email|02", "현대카드", "2026-10-02", "합성마트 합성지점", 30000, CardImportLedger.SOURCE_EMAIL)));
+
+        String body = body(List.of(
+                csvRow("csv|1", "2026-10-01", "합성문구", 10000, 1000, 11000),
+                csvRow("csv|2", "2026-10-02", "합성문구", 10000, 1000, 11000),
+                csvRow("csv|3", "2026-10-03", "합성문구", 10000, 1000, 11000)));
+
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.stored").value(3))
+                .andExpect(jsonPath("$.data.reconciled").value(0))
+                .andExpect(jsonPath("$.data.reconcileSkipped").value(1));
+
+        assertThat(ledger.all()).extracting(CardImportLedger.ImportedRow::rowKey)
+                .containsExactlyInAnyOrder("email|02", "csv|1", "csv|2", "csv|3");
+    }
+
+    /** AC2: 명세서 수준 업로드(12행·26일)는 같은 카드사·기간의 이메일 행을 정리한다. */
+    @Test
+    void statementSizedUploadStillReconciles() throws Exception {
+        ledger.addAll(List.of(
+                row("email|10", "현대카드", "2026-12-10", "합성마트 합성지점", 30000, CardImportLedger.SOURCE_EMAIL),
+                row("email|27", "현대카드", "2026-12-27", "합성서점", 12000, CardImportLedger.SOURCE_EMAIL)));
+
+        String[] dates = {"2026-12-01", "2026-12-03", "2026-12-05", "2026-12-07",
+                "2026-12-09", "2026-12-11", "2026-12-13", "2026-12-15",
+                "2026-12-17", "2026-12-19", "2026-12-21", "2026-12-26"};
+        List<String> rows = new ArrayList<>();
+        for (int i = 0; i < dates.length; i++) {
+            rows.add(csvRow("csv|" + (i + 1), dates[i], "합성문구", 10000, 1000, 11000));
+        }
+
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body(rows)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.stored").value(12))
+                .andExpect(jsonPath("$.data.reconciled").value(1))
+                .andExpect(jsonPath("$.data.reconcileSkipped").value(0));
+
+        // 기간 안 잔재(12/10)는 지워지고, 기간 밖(12/27)은 남는다.
+        assertThat(ledger.all()).extracting(CardImportLedger.ImportedRow::rowKey)
+                .contains("email|27")
+                .doesNotContain("email|10");
+    }
+
+    /** AC3: 두 카드사가 섞이면 부분 카드사만 건너뛰고, 명세서 수준 카드사는 정리한다. */
+    @Test
+    void mixedUploadSkipsOnlyPartialCompanyAndReconcilesTheOther() throws Exception {
+        ledger.addAll(List.of(
+                row("email|h02", "현대카드", "2026-10-02", "합성마트 합성지점", 30000, CardImportLedger.SOURCE_EMAIL),
+                row("email|s10", "삼성카드", "2026-11-10", "합성마트 합성지점", 30000, CardImportLedger.SOURCE_EMAIL)));
+
+        List<String> rows = new ArrayList<>();
+        // 현대카드: 부분 업로드(3행·3일) — 정리하지 않는다.
+        rows.add(csvRow("h|1", "2026-10-01", "합성문구", 10000, 1000, 11000, "현대카드"));
+        rows.add(csvRow("h|2", "2026-10-02", "합성문구", 10000, 1000, 11000, "현대카드"));
+        rows.add(csvRow("h|3", "2026-10-03", "합성문구", 10000, 1000, 11000, "현대카드"));
+        // 삼성카드: 명세서 수준(10행·26일) — 정리한다.
+        String[] samsungDates = {"2026-11-01", "2026-11-04", "2026-11-07", "2026-11-10",
+                "2026-11-13", "2026-11-16", "2026-11-19", "2026-11-22", "2026-11-25", "2026-11-26"};
+        for (int i = 0; i < samsungDates.length; i++) {
+            rows.add(csvRow("s|" + (i + 1), samsungDates[i], "합성문구", 10000, 1000, 11000, "삼성카드"));
+        }
+
+        mvc.perform(post("/api/v1/assets/card-imports").header("Authorization", TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON).content(body(rows)))
+                .andExpect(status().isOk())
+                // 삼성카드 이메일 1건만 지워진다.
+                .andExpect(jsonPath("$.data.reconciled").value(1))
+                .andExpect(jsonPath("$.data.reconcileSkipped").value(1));
+
+        assertThat(ledger.all()).extracting(CardImportLedger.ImportedRow::rowKey)
+                .contains("email|h02")
+                .doesNotContain("email|s10");
+    }
+
+    private static String body(List<String> rows) {
+        return "{\"rows\":[" + String.join(",", rows) + "],\"merchantRules\":{}}";
     }
 
     private static String csvRow(String rowKey, String approvedAt, String merchant,
                                  long supply, long vat, long gross) {
+        return csvRow(rowKey, approvedAt, merchant, supply, vat, gross, "현대카드");
+    }
+
+    private static String csvRow(String rowKey, String approvedAt, String merchant,
+                                 long supply, long vat, long gross, String cardCompany) {
         return "{\"rowKey\":\"" + rowKey + "\",\"approvedAt\":\"" + approvedAt + "\""
                 + ",\"merchantName\":\"" + merchant + "\",\"supplyExVat\":" + supply
                 + ",\"vat\":" + vat + ",\"grossAmount\":" + gross
                 + ",\"cardMasked\":\"****1111\",\"expenseKind\":\"\",\"subCategory\":\"\""
-                + ",\"cardCompany\":\"현대카드\",\"source\":\"csv\"}";
+                + ",\"cardCompany\":\"" + cardCompany + "\",\"source\":\"csv\"}";
     }
 }

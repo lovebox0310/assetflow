@@ -3,6 +3,7 @@ package com.assetflow.assets.card.drop;
 import com.assetflow.assets.CardImportLedger;
 import com.assetflow.assets.CardImportLedger.ImportedRow;
 import com.assetflow.assets.card.CardContract;
+import com.assetflow.assets.card.CardReconcilePolicy;
 import com.assetflow.assets.card.CardStatementReader;
 import com.assetflow.expenses.categories.CategoryClassifier;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -42,7 +43,9 @@ import java.util.stream.Stream;
  *       ({@code ~/.local/state/assetflow/card-drop.json}, 최근 200개).</li>
  *   <li>파싱·저장에 실패한 파일은 이력에 남기지 않는다 — 파일을 고치면 다음 주기에 다시 시도한다.</li>
  *   <li>저장 뒤에는 CSV 정본 정책(§CARD-MERGE-2)에 따라 같은 카드사·같은 기간의
- *       이메일/미상 잔재를 정리한다. 재계산 가능한 합계는 저장하지 않는다(§29.7).</li>
+ *       이메일/미상 잔재를 정리한다. 단 <b>명세서 수준</b>(행 수·기간이 임계값 이상)일 때만
+ *       정리한다 — 부분 파일 하나로 다른 기간의 행이 지워지지 않게 한다.
+ *       재계산 가능한 합계는 저장하지 않는다(§29.7).</li>
  * </ul>
  *
  * <p>기본값은 <b>비활성</b>이다. 운영에서 켜려면 {@code CARD_DROP_FOLDER_ENABLED=true} 와
@@ -275,27 +278,24 @@ public class CardDropFolderImporter {
      * CARD-MERGE-2: 이 파일이 덮는 기간(같은 카드사)의 이메일/미상 잔재를 정리한다.
      * CSV 정본 행은 이 메서드로 지워지지 않는다.
      *
+     * <p>업로드 API 와 같은 정책({@link CardReconcilePolicy})을 쓴다 — 명세서 수준
+     * (행 수·기간)이 아니면 지우지 않는다. 부분 파일 하나로 다른 기간의 이메일
+     * 행이 사라지지 않게 하기 위해서다.</p>
+     *
      * @return 지운 행 수
      */
     private int reconcile(String cardCompany, List<ImportedRow> rows) {
-        String min = null;
-        String max = null;
-        for (ImportedRow row : rows) {
-            String at = row.approvedAt();
-            if (at == null || at.isBlank()) {
-                continue;
-            }
-            if (min == null || at.compareTo(min) < 0) {
-                min = at;
-            }
-            if (max == null || at.compareTo(max) > 0) {
-                max = at;
-            }
-        }
-        if (min == null) {
+        CardReconcilePolicy.CoveredRange covered = CardReconcilePolicy.range(rows).orElse(null);
+        if (covered == null) {
             return 0; // 덮는 기간이 없으면 아무것도 지우지 않는다.
         }
-        return ledger.deleteUnconfirmedInRange(cardCompany, min, max);
+        if (!covered.isStatementSized()) {
+            log.info("drop folder: reconcile skipped for {} — {}행 / {}일 (최소 {}행·{}일 필요)",
+                    cardCompany, covered.rowCount(), covered.spanDaysInclusive(),
+                    CardReconcilePolicy.MIN_ROWS, CardReconcilePolicy.MIN_SPAN_DAYS_INCLUSIVE);
+            return 0;
+        }
+        return ledger.deleteUnconfirmedInRange(cardCompany, covered.fromDate(), covered.toDate());
     }
 
     private static boolean isStatementFile(Path file) {
