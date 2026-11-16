@@ -149,7 +149,6 @@ curl http://127.0.0.1:8080/health
 ```
 
 ### 5.3 데이터 이관 (로컬 Windows → 홈서버)
-
 1. **로컬 덤프 생성** (Windows):
    ```bash
    D:/study/pgsql/pgsql/bin/pg_dump.exe -h localhost -U postgres -d assetflow \
@@ -161,6 +160,48 @@ curl http://127.0.0.1:8080/health
    PGPASSWORD='<assetflow 비밀번호>' psql -h localhost -U assetflow -d assetflow -f /tmp/assetflow-dump.sql
    ```
 3. **향후 VPS 등으로 이관할 때**: 같은 `pg_dump`/`psql` 절차 반복 — 계약 변화 없음
+
+### 5.4 카드내역 중복 정리 확인 (CARD-MERGE-1)
+
+`apps/backend/db/schema.sql` 끝에 1회성 정리 SQL 이 들어 있습니다. 배포(재기동) 때
+`spring.sql.init` 이 schema.sql 을 다시 적용하면서 함께 수행되고, 이후에는 0건입니다.
+삭제 후보는 **`source='unknown'`(출처를 모르는 기존 행)뿐**이고, 같은
+(카드사·이용일·금액) 그룹에서 가맹점명이 같거나 한쪽이 다른 쪽을 포함할 때만 지웁니다.
+새로 들어온 `csv`/`email` 행은 건드리지 않습니다 — 같은 날 같은 가맹점·금액의 정당한
+2건이 사라지지 않게 하기 위해서입니다.
+
+**정리 전 — 중복 그룹 확인** (배포 전후 어느 때나 읽기 전용):
+
+```sql
+SELECT COALESCE(card_company, '') AS card_company,
+       approved_at, gross_amount,
+       array_agg(id ORDER BY id)           AS ids,
+       array_agg(merchant_name ORDER BY id) AS merchants,
+       array_agg(source ORDER BY id)        AS sources
+FROM card_imports
+GROUP BY 1, 2, 3
+HAVING count(*) > 1
+ORDER BY approved_at, gross_amount;
+```
+
+같은 내용을 API 로도 볼 수 있습니다(삭제 없음):
+
+```bash
+curl -sk -H "Authorization: Bearer <JWT>" \
+  "https://***.ddns/api/v1/assets/card-imports/duplicates?month=2026-10"
+```
+
+**정리 후 — 출처 분포와 잔여 중복**:
+
+```sql
+-- 출처별 행 수. 기대: unknown(기존 행) / csv(업로드) / email(이메일)
+SELECT source, count(*) FROM card_imports GROUP BY source ORDER BY source;
+
+-- 위 '중복 그룹 확인' 쿼리를 다시 실행해, 남은 그룹이 모두 가맹점이 다른
+-- (합치면 안 되는) 거래인지 눈으로 확인한다.
+```
+
+정리 SQL 은 여러 번 실행해도 안전합니다(두 번째부터는 `DELETE 0`).
 
 ## 6. main 보호 규칙 (GitHub)
 

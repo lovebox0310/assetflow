@@ -68,9 +68,16 @@ public class CardImportController {
                             Long supplyExVat, Long vat, Long grossAmount,
                             String cardMasked, String expenseKind, String subCategory,
                             String businessNo, String businessCategory,
-                            String memberRelation, String cardCompany) {}
+                            String memberRelation, String cardCompany,
+                            String source) {}
 
     public record ImportRequest(List<ImportRow> rows, Map<String, MerchantRule> merchantRules) {}
+
+    /** CARD-MERGE-1 진단용: 같은 (카드사·이용일·금액) 그룹의 중복 후보. 삭제하지 않는다. */
+    public record DuplicateCardRow(String rowKey, String merchantName, String source, boolean hasCategory) {}
+
+    public record DuplicateCardGroup(String cardCompany, String approvedAt, long grossAmount,
+                                     List<DuplicateCardRow> rows) {}
 
     public record CategoryUpdate(String rowKey, String category, String subCategory) {}
 
@@ -143,6 +150,45 @@ public class CardImportController {
             throw new IllegalArgumentException("month must be YYYY-MM");
         }
         return new ApiResponse<>("OK", "Card imports loaded", ledger.inMonth(month));
+    }
+
+    /**
+     * CARD-MERGE-1 진단(읽기 전용): 한 달 안에서 (카드사·이용일·금액) 자연키가 같은
+     * 그룹 중 2건 이상인 것을 돌려준다. 아무것도 삭제·수정하지 않는다 —
+     * 정리는 사용자가 확인한 뒤에 한다.
+     */
+    @GetMapping("/card-imports/duplicates")
+    public ApiResponse<List<DuplicateCardGroup>> duplicates(@RequestParam("month") String month) {
+        if (!MONTH_PATTERN.matcher(month).matches()) {
+            throw new IllegalArgumentException("month must be YYYY-MM");
+        }
+        Map<String, List<ImportedRow>> groups = new LinkedHashMap<>();
+        for (ImportedRow row : ledger.inMonth(month)) {
+            String company = row.cardCompany() == null ? "" : row.cardCompany();
+            groups.computeIfAbsent(company + "|" + row.approvedAt() + "|" + row.grossAmount(),
+                    k -> new ArrayList<>()).add(row);
+        }
+        List<DuplicateCardGroup> out = new ArrayList<>();
+        for (List<ImportedRow> rows : groups.values()) {
+            if (rows.size() < 2) {
+                continue;
+            }
+            List<DuplicateCardRow> items = new ArrayList<>();
+            for (ImportedRow row : rows) {
+                items.add(new DuplicateCardRow(row.rowKey(), row.merchantName(),
+                        CardImportLedger.normalizeSource(row.source()), hasCategory(row)));
+            }
+            ImportedRow first = rows.get(0);
+            out.add(new DuplicateCardGroup(
+                    first.cardCompany() == null ? "" : first.cardCompany(),
+                    first.approvedAt(), first.grossAmount(), items));
+        }
+        return new ApiResponse<>("OK", "Duplicate card rows loaded", out);
+    }
+
+    private static boolean hasCategory(ImportedRow row) {
+        return row.expenseKind() != null && !row.expenseKind().isBlank()
+                && !CategoryTaxonomy.isUnset(row.expenseKind());
     }
 
     /**
@@ -390,7 +436,9 @@ public class CardImportController {
                     businessNo,
                     businessCategory,
                     memberRelation,
-                    row.cardCompany() == null ? "" : row.cardCompany().trim());
+                    row.cardCompany() == null ? "" : row.cardCompany().trim(),
+                    // CARD-MERGE-1: 업로드는 CSV 정본. 값이 없으면 csv.
+                    validSource(row.source()));
             // §29.3 공급가액+세액=공급대가 를 행마다 검사한다 — 어긋나면 저장은 하되
             // 경고를 돌려준다(현대카드의 가맹점 신고 부가세 변형이 정상 범위라 잘라내지 않는다).
             if (r.supplyExVat() + r.vat() != r.grossAmount()) {
@@ -418,6 +466,10 @@ public class CardImportController {
 
         // §29.6: 중복 rowKey 는 한 건만 반영 — 건수를 결과로 알린다
         int stored = ledger.addAll(incoming);
+        // CARD-MERGE-2: CSV 가 덮는 기간의 이메일/미상 잔재를 정리한다. 저장이 끝난 뒤에
+        // 하므로 CSV 정본 행은 이미 자리를 잡았고, 그 기간에서 이메일 표기 차이로
+        // 병합되지 못한 행만 지워진다.
+        int reconciled = reconcileEmailResidue(incoming);
         List<ImportedRow> all = ledger.all();
 
         // 합계는 행에서 재계산 (§29.7 — 스냅샷에 합계를 두지 않는다)
@@ -436,7 +488,43 @@ public class CardImportController {
                 "duplicatesInBatch", duplicatesInBatch,
                 "knownRowKeys", keys.size(),
                 "totals", Map.of("gross", gross, "vat", vat, "supplyExVat", supply),
-                "supplyInconsistentRows", supplyInconsistent));
+                "supplyInconsistentRows", supplyInconsistent,
+                "reconciled", reconciled));
+    }
+
+    /**
+     * CARD-MERGE-2: 이번 업로드의 csv 행이 덮는 기간을 카드사별로 구해,
+     * 그 기간·카드사의 이메일/미상 행을 지운다. 업로드에 csv 행이 없으면
+     * (이메일 수집 경로 등) 아무것도 하지 않는다.
+     *
+     * @return 지운 행 수 합계
+     */
+    private int reconcileEmailResidue(List<ImportedRow> incoming) {
+        // 카드사 → {min approvedAt, max approvedAt}
+        Map<String, String[]> coveredRanges = new LinkedHashMap<>();
+        for (ImportedRow row : incoming) {
+            if (!CardImportLedger.SOURCE_CSV.equals(CardImportLedger.normalizeSource(row.source()))) {
+                continue;
+            }
+            String company = row.cardCompany() == null ? "" : row.cardCompany();
+            String at = row.approvedAt();
+            String[] range = coveredRanges.get(company);
+            if (range == null) {
+                coveredRanges.put(company, new String[]{at, at});
+                continue;
+            }
+            if (at.compareTo(range[0]) < 0) {
+                range[0] = at;
+            }
+            if (at.compareTo(range[1]) > 0) {
+                range[1] = at;
+            }
+        }
+        int deleted = 0;
+        for (Map.Entry<String, String[]> entry : coveredRanges.entrySet()) {
+            deleted += ledger.deleteUnconfirmedInRange(entry.getKey(), entry.getValue()[0], entry.getValue()[1]);
+        }
+        return deleted;
     }
 
     /** 기존 카드 내역을 키워드/규칙/업종 기반으로 일괄 재분류한다 (§55.8, §55.10, §55.8.9). */
@@ -700,6 +788,20 @@ public class CardImportController {
 
     private static String safe(String value) {
         return value == null ? "" : value;
+    }
+
+    /** CARD-MERGE-1: 출처는 csv|email|unknown 만 허용한다. 값이 없으면 업로드 정본(csv). */
+    private static String validSource(String value) {
+        if (isBlank(value)) {
+            return CardImportLedger.SOURCE_CSV;
+        }
+        String source = CardImportLedger.normalizeSource(value);
+        if (!CardImportLedger.SOURCE_CSV.equals(source)
+                && !CardImportLedger.SOURCE_EMAIL.equals(source)
+                && !CardImportLedger.SOURCE_UNKNOWN.equals(source)) {
+            throw new IllegalArgumentException("source must be csv, email, or unknown");
+        }
+        return source;
     }
 
     private String requiredText(String value, String field) {

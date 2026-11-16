@@ -70,3 +70,6 @@ e2e/.auth/
 # Python 캐시 — .opencode/skills 의 검색 스크립트 실행 시 생성
 __pycache__/
 *.pyc
+
+# Playwright MCP 스냅샷(도구 산출물)
+.playwright-mcp/

@@ -453,3 +453,89 @@ CREATE TABLE IF NOT EXISTS upbit_credentials (
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_upbit_credentials_user UNIQUE (user_id)
 );
+
+-- ---------------------------------------------------------------------------
+-- CARD-MERGE-1 (2026-11-12): 카드내역 출처 컬럼 + CSV 정본 대체 정책.
+--
+-- CSV/XLSX 수동 업로드를 정본(canonical)으로 본다. 이메일 명세서와 포맷이 달라
+-- 같은 이용내역이 중복 저장되던 문제를 (카드사·이용일·금액) 자연키로 막고,
+-- 같은 자리의 행이 이미 있으면 저장 규칙(PostgresCardImportLedger.saveOne)이
+-- csv > email/unknown 순으로 값을 대체한다.
+--
+-- 출처 값: csv(업로드 정본) | email(이메일 수집) | unknown(출처를 모르는 기존 행).
+-- 컬럼을 추가한 뒤 기존 행(값이 NULL 인 행)만 unknown 으로 백필하고, 그 뒤 기본값을
+-- csv 로 바꾼다 — 재배포 때 이미 csv 로 기록된 행을 unknown 으로 되돌리지 않기 위해서다.
+--
+-- 위 4문장은 여러 번 돌려도 안전하다(멱등): ADD COLUMN IF NOT EXISTS / NULL 행만 백필 /
+-- DEFAULT·NOT NULL 재설정. spring.sql.init 은 스크립트를 세미콜론으로 쪼개므로
+-- 달러 인용(DO ... END) 블록은 조각나 실행되지 않는다 — 그래서 단일 문장으로 처리한다.
+-- ---------------------------------------------------------------------------
+ALTER TABLE card_imports ADD COLUMN IF NOT EXISTS source VARCHAR(16);
+UPDATE card_imports SET source = 'unknown' WHERE source IS NULL;
+ALTER TABLE card_imports ALTER COLUMN source SET DEFAULT 'csv';
+ALTER TABLE card_imports ALTER COLUMN source SET NOT NULL;
+
+-- 카드내역 중복 정리 — 1회성(이후 0건)이고 삭제는 안전한 경우에만 한다.
+--   · 후보는 source='unknown' 인 기존 행뿐이다. 새로 들어온 csv/email 행은
+--     절대 지우지 않는다 — 같은 날 같은 가맹점·금액의 정당한 2건을 보존한다.
+--   · 같은 (카드사·이용일·금액) 그룹에서 정규화 가맹점이 같거나 한쪽이 다른 쪽을
+--     포함(포함되는 쪽 4자 이상)할 때만, 더 나은 행이 있으면 후보를 지운다.
+--     가맹점이 다른 행은 손대지 않는다(합치면 안 되는 다른 거래일 수 있다).
+--   · 남길 우선순위: source='csv' > category_id 있음 > business_no 있음 >
+--     updated_at 최신 > id 작은 것. (16/4/1 가중치는 이 순서를 보장한다)
+WITH legacy AS (
+    SELECT c.id,
+           c.user_id,
+           COALESCE(c.card_company, '') AS company,
+           c.approved_at,
+           c.gross_amount,
+           regexp_replace(lower(c.merchant_name), '[\s.,()\[\]{}\-_/·]', '', 'g') AS norm,
+           c.source,
+           c.updated_at,
+           (CASE WHEN c.source = 'csv' THEN 16 ELSE 0 END
+            + CASE WHEN c.category_id IS NOT NULL THEN 4 ELSE 0 END
+            + CASE WHEN COALESCE(c.business_no, '') <> '' THEN 1 ELSE 0 END) AS keep_score
+    FROM card_imports c
+)
+DELETE FROM card_imports target
+USING legacy candidate, legacy better
+WHERE target.id = candidate.id
+  AND candidate.source = 'unknown'
+  AND better.id <> candidate.id
+  AND better.user_id = candidate.user_id
+  AND better.company = candidate.company
+  AND better.approved_at = candidate.approved_at
+  AND better.gross_amount = candidate.gross_amount
+  AND (
+        (better.norm = candidate.norm AND candidate.norm <> '')
+        OR (length(better.norm) >= 4 AND candidate.norm LIKE '%' || better.norm || '%')
+        OR (length(candidate.norm) >= 4 AND better.norm LIKE '%' || candidate.norm || '%')
+      )
+  AND (
+        better.keep_score > candidate.keep_score
+        OR (better.keep_score = candidate.keep_score AND better.updated_at > candidate.updated_at)
+        OR (better.keep_score = candidate.keep_score AND better.updated_at = candidate.updated_at
+            AND better.id < candidate.id)
+      );
+
+-- CARD-MERGE-2: CSV 가 덮는 기간의 이메일/미상 행 정리 — 1회성 잔재 청소(이후 0건).
+--   · 이메일 명세서와 CSV 는 금액 표기가 달라(이메일은 부가세 0, 승인번호 없음) 같은
+--     거래인데도 (카드사·이용일·금액) 자연키가 어긋나 병합되지 못한다. 그 결과 CSV 로
+--     반영된 뒤에도 이메일 행이 잔재로 남는다.
+--   · 같은 사용자·카드사의 csv 행이 덮는 기간(MIN~MAX approved_at) 안에서는 CSV 가
+--     정본이므로, 그 기간의 email/unknown 행은 잔재로 보고 지운다.
+--   · source='csv' 행은 절대 지우지 않는다. 달러 인용 없이 단일 문장으로 둔다
+--     (spring.sql.init 이 세미콜론으로 쪼개기 때문 — SchemaSqlSplitSafetyTest 참고).
+--   · 재실행하면 0건이다(멱등). 카드사 비교는 COALESCE 로 NULL/빈 문자열을 같이 본다.
+DELETE FROM card_imports stale
+USING (
+    SELECT user_id, COALESCE(card_company, '') AS company,
+           MIN(approved_at) AS lo, MAX(approved_at) AS hi
+    FROM card_imports
+    WHERE source = 'csv'
+    GROUP BY user_id, COALESCE(card_company, '')
+) covered
+WHERE stale.user_id = covered.user_id
+  AND COALESCE(stale.card_company, '') = covered.company
+  AND stale.source IN ('unknown', 'email')
+  AND stale.approved_at BETWEEN covered.lo AND covered.hi;

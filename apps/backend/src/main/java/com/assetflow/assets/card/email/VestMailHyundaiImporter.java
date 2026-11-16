@@ -183,7 +183,8 @@ public class VestMailHyundaiImporter {
                     null, // businessNo
                     null, // businessCategory
                     cardMemberRelation(cardMasked),
-                    cardCompanyLabel
+                    cardCompanyLabel,
+                    CardImportLedger.SOURCE_EMAIL
             ));
         }
         return rows;
