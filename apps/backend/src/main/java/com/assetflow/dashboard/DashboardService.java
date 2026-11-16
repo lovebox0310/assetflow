@@ -6,6 +6,7 @@ import com.assetflow.dashboard.MockDashboardSource.CashflowMonth;
 import com.assetflow.dashboard.MockDashboardSource.LiabilityRow;
 import com.assetflow.dashboard.MockDashboardSource.MonthlySummary;
 import com.assetflow.expenses.ExpenseSnapshotLedger;
+import com.assetflow.expenses.MonthlyExpenseTotals;
 import com.assetflow.investments.PortfolioService;
 import org.springframework.stereotype.Service;
 
@@ -18,7 +19,8 @@ import java.util.regex.Pattern;
  * AssetLedger 원장 한 곳에서 읽는다 — 대시보드와 자산 화면이 같은 데이터를 본다.
  * §54.3: invest 행의 value 는 예수금 + 보유종목 평가액(PortfolioService)이다 —
  * balance 만 더하면 종목이 사라지고, FE 가 둘 다 더하면 두 번 센다.
- * monthly·cashflow 는 지출 도메인이 완성되기 전까지 MockDashboardSource 모크다.
+ * monthly·cashflow 는 스냅샷이 없으면 MockDashboardSource 모크 기준선을 쓴다.
+ * 스냅샷이 있으면 수입은 확정값, 지출은 조회 시점 원장 합계(MonthlyExpenseTotals)다.
  */
 @Service
 public class DashboardService {
@@ -39,12 +41,14 @@ public class DashboardService {
     private final AssetLedger ledger;
     private final ExpenseSnapshotLedger snapshotLedger;
     private final PortfolioService portfolioService;
+    private final MonthlyExpenseTotals expenseTotals;
 
     public DashboardService(AssetLedger ledger, ExpenseSnapshotLedger snapshotLedger,
-                            PortfolioService portfolioService) {
+                            PortfolioService portfolioService, MonthlyExpenseTotals expenseTotals) {
         this.ledger = ledger;
         this.snapshotLedger = snapshotLedger;
         this.portfolioService = portfolioService;
+        this.expenseTotals = expenseTotals;
     }
 
     public DashboardSummary summary() {
@@ -60,11 +64,18 @@ public class DashboardService {
                 .map(r -> new LiabilityRow(String.valueOf(r.id()), r.name(), r.balance()))
                 .toList();
         // §34.6 단일 출처: AS_OF 월의 스냅샷이 확정돼 있으면 실데이터, 없으면 모크.
+        // 지출·필수지출은 스냅샷 확정 시점값이 아니라 조회 시점 원장 합계로 계산한다 —
+        // 확정 이후 카드내역이 바뀌어도 대시보드가 따라간다.
         ExpenseSnapshotLedger.Snapshot snap = snapshotLedger.get(MockDashboardSource.AS_OF);
-        MonthlySummary monthly = snap == null ? MockDashboardSource.monthly()
-                : new MonthlySummary(snap.income(), snap.vatSetAside(), snap.expenses(),
-                        snap.essentialExpenses(), snap.essentialComplete(),
-                        snap.income() - snap.vatSetAside() - snap.expenses());
+        MonthlySummary monthly;
+        if (snap == null) {
+            monthly = MockDashboardSource.monthly();
+        } else {
+            MonthlyExpenseTotals.Totals totals = expenseTotals.compute(MockDashboardSource.AS_OF);
+            monthly = new MonthlySummary(snap.income(), snap.vatSetAside(), totals.expenses(),
+                    totals.essential(), snap.essentialComplete(),
+                    snap.income() - snap.vatSetAside() - totals.expenses());
+        }
         return new DashboardSummary(MockDashboardSource.AS_OF, assets, liabilities, monthly);
     }
 
@@ -81,11 +92,15 @@ public class DashboardService {
             throw new IllegalArgumentException("months must be between 1 and 12");
         }
         // §34.6: 확정된 월 스냅샷이 있으면 실데이터, 없으면 mock 기준선 폴다운.
+        // income/vatSetAside 는 확정 시점값을 유지하고, expenses 는 조회 시점 원장 합계로 계산한다.
         List<ExpenseSnapshotLedger.Snapshot> snaps = snapshotLedger.recent(MockDashboardSource.AS_OF, months);
         if (!snaps.isEmpty()) {
             return snaps.stream()
-                    .map(s -> new CashflowMonth(s.month(), s.income(), s.vatSetAside(), s.expenses(),
-                            s.income() - s.vatSetAside() - s.expenses()))
+                    .map(s -> {
+                        long expenses = expenseTotals.compute(s.month()).expenses();
+                        return new CashflowMonth(s.month(), s.income(), s.vatSetAside(), expenses,
+                                s.income() - s.vatSetAside() - expenses);
+                    })
                     .toList();
         }
         List<CashflowMonth> all = MockDashboardSource.cashflow();

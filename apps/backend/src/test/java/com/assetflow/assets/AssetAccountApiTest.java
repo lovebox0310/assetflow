@@ -48,7 +48,10 @@ class AssetAccountApiTest {
         mvc = MockMvcBuilders
                 .standaloneSetup(
                         new AssetAccountController(ledger, investmentLedger),
-                        new DashboardController(new DashboardService(ledger, new InMemoryExpenseSnapshotLedger(), portfolioService)),
+                        new DashboardController(new DashboardService(ledger, new InMemoryExpenseSnapshotLedger(), portfolioService,
+                                new com.assetflow.expenses.MonthlyExpenseTotals(
+                                        new com.assetflow.assets.InMemoryCardImportLedger(),
+                                        new com.assetflow.expenses.InMemoryExpenseItemLedger()))),
                         new InvestmentController(investmentLedger, ledger, portfolioService, null,
                                 new KisAccountMappingService(ledger, kisCredentialsService), kisCredentialsService))
                 .setControllerAdvice(new ApiExceptionHandler())

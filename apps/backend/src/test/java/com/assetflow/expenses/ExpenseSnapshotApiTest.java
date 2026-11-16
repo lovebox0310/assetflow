@@ -34,7 +34,8 @@ class ExpenseSnapshotApiTest {
     @BeforeEach
     void setUp() {
         mvc = MockMvcBuilders.standaloneSetup(
-                        new ExpenseSnapshotController(snapshots, cardLedger, items, assets,
+                        new ExpenseSnapshotController(snapshots,
+                                new MonthlyExpenseTotals(cardLedger, items), assets,
                                 new com.assetflow.investments.PortfolioService(assets,
                                         new com.assetflow.investments.InMemoryInvestmentLedger())))
                 .addInterceptors(new BearerTokenInterceptor(TOKENS))
@@ -74,6 +75,38 @@ class ExpenseSnapshotApiTest {
                 .andExpect(jsonPath("$.data.income").value(9_000_000));
         mvc.perform(get("/api/v1/expenses/snapshots?month=2026-10").header("Authorization", TOKEN))
                 .andExpect(jsonPath("$.data.income").value(9_000_000));
+    }
+
+    @Test
+    void getReturnsLiveExpensesEssentialAndBalanceWhenLedgersChangedAfterConfirm() throws Exception {
+        cardLedger.addAll(java.util.List.of(
+                new CardImportLedger.ImportedRow("r1", "2026-10-01", "가맹점A", 1_000_000, 100_000, 1_100_000, "", "", "", "", "", "", "")));
+        items.create("2026-10", "임대료", 1_000_000, true, 0, "교육");
+
+        // 확정 시점: 카드 1,100,000 + 항목 1,000,000 = 2,100,000
+        mvc.perform(put("/api/v1/expenses/snapshots?month=2026-10").header("Authorization", TOKEN)
+                        .contentType("application/json")
+                        .content("{\"income\":8200000}"))
+                .andExpect(jsonPath("$.data.expenses").value(2_100_000));
+
+        // 확정 후 카드내역·항목이 바뀐다 — 재확정 없이 GET 이 라이브 값을 돌려줘야 한다.
+        cardLedger.addAll(java.util.List.of(
+                new CardImportLedger.ImportedRow("r2", "2026-10-02", "가맹점B", 900_000, 0, 900_000, "", "", "", "", "", "", "")));
+        items.create("2026-10", "기타", 300_000, false, 0, "교육");
+
+        mvc.perform(get("/api/v1/expenses/snapshots?month=2026-10").header("Authorization", TOKEN))
+                .andExpect(status().isOk())
+                // 수입·부가세이체는 저장 시점값 유지
+                .andExpect(jsonPath("$.data.income").value(8_200_000))
+                .andExpect(jsonPath("$.data.vatSetAside").value(0))
+                // 지출·필수지출·수지는 라이브 재계산
+                .andExpect(jsonPath("$.data.expenses").value(3_300_000))
+                .andExpect(jsonPath("$.data.essentialExpenses").value(1_000_000))
+                .andExpect(jsonPath("$.data.balance").value(4_900_000));
+
+        // GET 은 사본만 바꾼다 — 저장된 스냅샷(확정 시점값)은 그대로다(이력 보존).
+        org.junit.jupiter.api.Assertions.assertEquals(
+                2_100_000L, snapshots.get("2026-10").expenses());
     }
 
     @Test

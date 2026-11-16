@@ -5952,3 +5952,35 @@ Postgres 접속 불가) — 배포 후 로그에서 `column "source" does not ex
 **한계**
 - 카드사가 4개 이상이면 모바일 범례가 세로로 길어진다(넘침은 없음). 필요 시 `layout="vertical"` 검토.
 - recharts 기본 동작으로 한 카드사 안에서 `가족`이 `본인`보다 먼저 보인다(변경 전과 동일).
+
+## 108) 지출은 확정 시점이 아니라 조회 시점에 계산 (2026-11-16)
+
+**문제**
+- `monthly_snapshots.expenses` 는 **월 확정 시점에 계산해 저장한 값**이라, 이후 카드내역이 바뀌어도
+  대시보드·지출 화면이 갱신되지 않았다.
+- 실측: 2026-10 확정 시점 카드 *** + 항목 *** = *** 으로 저장 → 이후 CSV 반영으로
+  카드가 *** 이 됐지만 화면은 *** 그대로.
+
+**결정 (사용자)**
+- **확정은 수입에 관한 것**이고, **지출은 조회 시점의 월 데이터로 계산**한다.
+```
+expenses(month)  = Σ card_imports.gross_amount(그 달) + Σ monthly_expense_items.amount(그 달)
+essential(month) = Σ monthly_expense_items.amount where is_essential
+balance          = income − vatSetAside − expenses   (income/vatSetAside 는 스냅샷 값)
+```
+- 계산 단일 출처: `expenses/MonthlyExpenseTotals` (`@Service`). 대시보드 `summary`·`cashflow`,
+  스냅샷 API `GET /expenses/snapshots` 가 모두 이 클래스를 쓴다.
+- 스냅샷의 `expenses` 컬럼은 **확정 시점 이력**으로만 저장하고 조회 응답에는 쓰지 않는다.
+- 스냅샷이 없는 달은 여전히 cashflow 에 나오지 않는다(§34.6).
+
+**검증**
+- 백엔드 **342 passed**(신규 4): 재확정 없이 카드 추가가 반영됨, `expenses=카드+항목`,
+  `essential=필수 항목`, 스냅샷 GET 이 라이브 값 반환(저장값은 이력 보존), 스냅샷 없는 달 제외.
+- 기존 `cashflowUsesSnapshotDataWhenAvailable` → `cashflowUsesSnapshotIncomeAndLiveExpenses` 로 대체
+  (수입은 스냅샷, 지출은 라이브임을 검증).
+
+**트레이드오프 / 한계**
+- **과거 월 값도 현재 데이터로 재계산**된다 — 카드 행을 정리하면 지난달 지출도 줄어든다.
+  확정 시점 지출은 DB 컬럼에만 남고 API 로 노출되지 않는다.
+- `essentialComplete` 는 저장값 유지(확정 후 필수 항목이 늘어도 플래그는 그대로).
+- 월 마감 후 값을 고정하려면 `locked` 플래그가 필요하다(후속).

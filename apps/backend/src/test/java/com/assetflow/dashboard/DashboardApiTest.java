@@ -2,12 +2,16 @@ package com.assetflow.dashboard;
 
 import com.assetflow.auth.MeController;
 import com.assetflow.assets.AssetLedger;
+import com.assetflow.assets.CardImportLedger;
 import com.assetflow.assets.InMemoryAssetLedger;
+import com.assetflow.assets.InMemoryCardImportLedger;
 import com.assetflow.common.api.ApiExceptionHandler;
 import com.assetflow.auth.TokenService;
 import com.assetflow.common.web.BearerTokenInterceptor;
 import com.assetflow.expenses.ExpenseSnapshotLedger;
+import com.assetflow.expenses.InMemoryExpenseItemLedger;
 import com.assetflow.expenses.InMemoryExpenseSnapshotLedger;
+import com.assetflow.expenses.MonthlyExpenseTotals;
 import com.assetflow.settings.InMemoryUserSettingsLedger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,14 +30,19 @@ class DashboardApiTest {
 
     private MockMvc mvc;
     private InMemoryExpenseSnapshotLedger snapshotLedger;
+    private InMemoryCardImportLedger cardLedger;
+    private InMemoryExpenseItemLedger itemLedger;
 
     @BeforeEach
     void setUp() {
         snapshotLedger = new InMemoryExpenseSnapshotLedger();
+        cardLedger = new InMemoryCardImportLedger();
+        itemLedger = new InMemoryExpenseItemLedger();
         InMemoryAssetLedger assets = new InMemoryAssetLedger();
         DashboardService service = new DashboardService(assets, snapshotLedger,
                 new com.assetflow.investments.PortfolioService(assets,
-                        new com.assetflow.investments.InMemoryInvestmentLedger()));
+                        new com.assetflow.investments.InMemoryInvestmentLedger()),
+                new MonthlyExpenseTotals(cardLedger, itemLedger));
         mvc = MockMvcBuilders.standaloneSetup(new DashboardController(service), new MeController(new InMemoryUserSettingsLedger(), new com.assetflow.settings.AuthEmailResolver() {
                     @Override public String currentEmail() { return "user@example.com"; }
                 }))
@@ -81,24 +90,90 @@ class DashboardApiTest {
     }
 
     @Test
-    void cashflowUsesSnapshotDataWhenAvailable() throws Exception {
-        snapshotLedger.upsert(new ExpenseSnapshotLedger.Snapshot("2026-10", 0, 0, 9_000_000L, 0L, 5_000_000L, 0, true));
+    void cashflowUsesSnapshotIncomeAndLiveExpenses() throws Exception {
+        // 스냅샷 확정 시점 지출(5,000,000 / 4,800,000)은 이미 낡았다 — 현재 카드·항목 합계가 우선이다.
+        snapshotLedger.upsert(new ExpenseSnapshotLedger.Snapshot("2026-10", 0, 0, 9_000_000L, 1_000_000L, 5_000_000L, 0, true));
         snapshotLedger.upsert(new ExpenseSnapshotLedger.Snapshot("2026-09", 0, 0, 8_500_000L, 0L, 4_800_000L, 0, true));
+        cardLedger.addAll(java.util.List.of(card("c10", "2026-10-05", 3_000_000)));
+        itemLedger.create("2026-10", "임대료", 1_000_000, true, 0, "교육");
+        itemLedger.create("2026-10", "기타", 300_000, false, 0, "교육");
+        cardLedger.addAll(java.util.List.of(card("c09", "2026-09-05", 2_000_000)));
         String token = new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com");
 
         mvc.perform(get("/api/v1/dashboard/cashflow?months=3").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(2))
                 .andExpect(jsonPath("$.data[0].month").value("2026-10"))
+                // 수입·부가세이체는 확정 스냅샷 값 그대로
                 .andExpect(jsonPath("$.data[0].income").value(9_000_000))
-                .andExpect(jsonPath("$.data[0].vatSetAside").value(0))
-                .andExpect(jsonPath("$.data[0].expenses").value(5_000_000))
-                .andExpect(jsonPath("$.data[0].balance").value(4_000_000))
+                .andExpect(jsonPath("$.data[0].vatSetAside").value(1_000_000))
+                // 지출 = 카드 3,000,000 + 항목 1,300,000 (저장된 5,000,000 이 아니다)
+                .andExpect(jsonPath("$.data[0].expenses").value(4_300_000))
+                // 수지 = 수입 - 이체 - 지출
+                .andExpect(jsonPath("$.data[0].balance").value(3_700_000))
                 .andExpect(jsonPath("$.data[1].month").value("2026-09"))
                 .andExpect(jsonPath("$.data[1].income").value(8_500_000))
-                // 9월 지출은 9월 스냅샷 값 그대로다 — 10월 지출을 더한 누적이 아니다.
-                .andExpect(jsonPath("$.data[1].expenses").value(4_800_000))
-                .andExpect(jsonPath("$.data[1].balance").value(3_700_000));
+                // 9월 지출도 9월 라이브 합계 — 10월 값을 더한 누적이 아니다.
+                .andExpect(jsonPath("$.data[1].expenses").value(2_000_000))
+                .andExpect(jsonPath("$.data[1].balance").value(6_500_000));
+    }
+
+    @Test
+    void cashflowReflectsCardChangesWithoutReconfirming() throws Exception {
+        String token = new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com");
+        snapshotLedger.upsert(new ExpenseSnapshotLedger.Snapshot("2026-10", 0, 0, 9_000_000L, 0L, 0L, 0, true));
+        cardLedger.addAll(java.util.List.of(card("c1", "2026-10-05", 1_000_000)));
+
+        mvc.perform(get("/api/v1/dashboard/cashflow?months=1").header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.data[0].expenses").value(1_000_000));
+
+        // 월 확정을 다시 하지 않고 카드 행만 추가한다.
+        cardLedger.addAll(java.util.List.of(card("c2", "2026-10-06", 500_000)));
+
+        mvc.perform(get("/api/v1/dashboard/cashflow?months=1").header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.data[0].expenses").value(1_500_000))
+                .andExpect(jsonPath("$.data[0].balance").value(7_500_000));
+    }
+
+    @Test
+    void summaryExpensesAreCardPlusItemsAndEssentialIsEssentialItems() throws Exception {
+        String token = new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com");
+        // 저장된 지출·필수지출 값은 의도적으로 틀리게 둔다 — 라이브 재계산이 덮어써야 한다.
+        snapshotLedger.upsert(new ExpenseSnapshotLedger.Snapshot("2026-10", 0, 0, 9_000_000L, 0L, 999L, 123L, true));
+        cardLedger.addAll(java.util.List.of(
+                card("s1", "2026-10-01", 1_100),
+                card("s2", "2026-10-02", 2_200)));
+        itemLedger.create("2026-10", "임대료", 1_000_000, true, 0, "교육");
+        itemLedger.create("2026-10", "기타", 300_000, false, 0, "교육");
+
+        mvc.perform(get("/api/v1/dashboard/summary").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                // expenses = 카드 3,300 + 항목 1,300,000
+                .andExpect(jsonPath("$.data.monthly.expenses").value(1_303_300))
+                // essential = 필수 항목 1,000,000 (카드 행은 필수 여부가 없다)
+                .andExpect(jsonPath("$.data.monthly.essentialExpenses").value(1_000_000))
+                .andExpect(jsonPath("$.data.monthly.income").value(9_000_000))
+                .andExpect(jsonPath("$.data.monthly.balance").value(7_696_700));
+    }
+
+    @Test
+    void monthWithoutSnapshotIsAbsentFromCashflowEvenWithCardRows() throws Exception {
+        String token = new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com");
+        snapshotLedger.upsert(new ExpenseSnapshotLedger.Snapshot("2026-10", 0, 0, 9_000_000L, 0L, 0L, 0, true));
+        snapshotLedger.upsert(new ExpenseSnapshotLedger.Snapshot("2026-08", 0, 0, 8_000_000L, 0L, 0L, 0, true));
+        // 2026-09 는 카드 데이터가 있어도 스냅샷(월 확정)이 없으므로 cashflow 에 나오지 않는다.
+        cardLedger.addAll(java.util.List.of(card("m09", "2026-09-15", 4_000_000)));
+
+        mvc.perform(get("/api/v1/dashboard/cashflow?months=3").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].month").value("2026-10"))
+                .andExpect(jsonPath("$.data[1].month").value("2026-08"));
+    }
+
+    private static CardImportLedger.ImportedRow card(String rowKey, String approvedAt, long gross) {
+        return new CardImportLedger.ImportedRow(rowKey, approvedAt, "가맹점", gross, 0, gross,
+                "", "", "", "", "", "", "");
     }
 
     @Test

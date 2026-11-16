@@ -1,7 +1,6 @@
 package com.assetflow.expenses;
 
 import com.assetflow.assets.AssetLedger;
-import com.assetflow.assets.CardImportLedger;
 import com.assetflow.common.api.ApiResponse;
 import com.assetflow.investments.PortfolioService;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,19 +25,16 @@ public class ExpenseSnapshotController {
     private static final Pattern MONTH = Pattern.compile("\\d{4}-(0[1-9]|1[0-2])");
 
     private final ExpenseSnapshotLedger snapshots;
-    private final CardImportLedger cardLedger;
-    private final ExpenseItemLedger expenseLedger;
+    private final MonthlyExpenseTotals expenseTotals;
     private final AssetLedger assetLedger;
     private final PortfolioService portfolioService;
 
     public ExpenseSnapshotController(ExpenseSnapshotLedger snapshots,
-                                     CardImportLedger cardLedger,
-                                     ExpenseItemLedger expenseLedger,
+                                     MonthlyExpenseTotals expenseTotals,
                                      AssetLedger assetLedger,
                                      PortfolioService portfolioService) {
         this.snapshots = snapshots;
-        this.cardLedger = cardLedger;
-        this.expenseLedger = expenseLedger;
+        this.expenseTotals = expenseTotals;
         this.assetLedger = assetLedger;
         this.portfolioService = portfolioService;
     }
@@ -57,9 +53,23 @@ public class ExpenseSnapshotController {
         return month;
     }
 
+    /**
+     * 저장된 스냅샷이 있으면 지출·필수지출·수지를 조회 시점 원장 합계로 덮어쓴 사본을 돌려준다.
+     * 수입·부가세이체·자산·부채·필수지출 완료 여부는 저장 시점값을 유지한다(확정은 수입에 관한 것).
+     */
     @GetMapping("/snapshots")
     public ApiResponse<ExpenseSnapshotLedger.Snapshot> get(@RequestParam("month") String month) {
-        return new ApiResponse<>("OK", "Snapshot loaded", snapshots.get(requireMonth(month)));
+        String m = requireMonth(month);
+        ExpenseSnapshotLedger.Snapshot saved = snapshots.get(m);
+        if (saved == null) {
+            return new ApiResponse<>("OK", "Snapshot loaded", null);
+        }
+        MonthlyExpenseTotals.Totals totals = expenseTotals.compute(m);
+        ExpenseSnapshotLedger.Snapshot live = new ExpenseSnapshotLedger.Snapshot(
+                saved.month(), saved.totalAssets(), saved.totalDebts(),
+                saved.income(), saved.vatSetAside(), totals.expenses(), totals.essential(),
+                saved.essentialComplete());
+        return new ApiResponse<>("OK", "Snapshot loaded", live);
     }
 
     /** 월 확정: 수입만 받고 나머지는 원장에서 재계산해 스냅샷을 갱신한다. */
@@ -73,13 +83,6 @@ public class ExpenseSnapshotController {
         if (vatSetAside < 0 || vatSetAside > body.income()) {
             throw new IllegalArgumentException("vatSetAside must be between 0 and income");
         }
-        long cardSpend = 0;
-        for (CardImportLedger.ImportedRow r : cardLedger.inMonth(m)) cardSpend += r.grossAmount();
-        long itemSpend = 0, essential = 0;
-        for (ExpenseItemLedger.ExpenseItem it : expenseLedger.all(m)) {
-            itemSpend += it.amount();
-            if (it.isEssential()) essential += it.amount();
-        }
         long totalAssets = 0, totalDebts = 0;
         Map<Long, Long> investTotals = portfolioService.totalByAccount();
         for (AssetLedger.AssetRow a : assetLedger.all()) {
@@ -91,8 +94,10 @@ public class ExpenseSnapshotController {
                 totalAssets += a.balance();
             }
         }
+        MonthlyExpenseTotals.Totals totals = expenseTotals.compute(m);
         ExpenseSnapshotLedger.Snapshot snap = new ExpenseSnapshotLedger.Snapshot(
-                m, totalAssets, totalDebts, body.income(), vatSetAside, cardSpend + itemSpend, essential, true);
+                m, totalAssets, totalDebts, body.income(), vatSetAside,
+                totals.expenses(), totals.essential(), true);
         snapshots.upsert(snap);
         return new ApiResponse<>("OK", "Snapshot confirmed", snap);
     }
