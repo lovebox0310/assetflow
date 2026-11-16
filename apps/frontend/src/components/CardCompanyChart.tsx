@@ -1,9 +1,10 @@
 import { Typography } from "antd";
 import {
   Bar,
-  BarChart,
   CartesianGrid,
+  ComposedChart,
   Legend,
+  Line,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -12,14 +13,13 @@ import {
 import type { CardCompanyGroup } from "../api/cardImportApi";
 import { formatKrwAbbr, formatKrwExact } from "../utils/formatters";
 import { formatMonthTick, monthsBetween } from "../dashboard/expenseTrend";
+import { CARD_RELATIONS, CARD_TOTAL_KEY, cardChartSeries } from "../dashboard/cardCompany";
 
 interface CardCompanyChartProps {
   groups: CardCompanyGroup[];
   from: string;
   to: string;
 }
-
-const RELATIONS = ["본인", "가족"] as const;
 
 const RELATION_COLORS: Record<string, string> = {
   본인: "var(--af-slate)",
@@ -30,6 +30,7 @@ const RELATION_COLORS: Record<string, string> = {
  * 대시보드 카드사·소유 구분 월별 누적 막대 차트.
  * 월별로 삼성카드/현대카드 등 카드사를 그룹화하고,
  * 각 카드사 막대는 본인/가족으로 누적한다.
+ * 월별 전체 사용금액은 막대 위에 꺾은선으로 겹쳐 그린다.
  */
 export function CardCompanyChart({ groups, from, to }: CardCompanyChartProps) {
   if (groups.length === 0) {
@@ -41,65 +42,22 @@ export function CardCompanyChart({ groups, from, to }: CardCompanyChartProps) {
     return <Typography.Text type="secondary">조회 범위가 올바르지 않습니다</Typography.Text>;
   }
 
-  // 카드사 순서는 데이터가 처음 등장한 순서를 따른다.
-  const companyOrder: string[] = [];
-  const companySet = new Set<string>();
-  for (const g of groups) {
-    const company = g.cardCompany || "미확인";
-    if (!companySet.has(company)) {
-      companySet.add(company);
-      companyOrder.push(company);
-    }
-  }
-
-  // 월 → 카드사 → 관계 → 금액
-  const amounts = new Map<string, Map<string, Map<string, number>>>();
-  for (const g of groups) {
-    const company = g.cardCompany || "미확인";
-    const relation = g.memberRelation === "가족" ? "가족" : "본인";
-    const monthMap = amounts.get(g.month) ?? new Map<string, Map<string, number>>();
-    const companyMap = monthMap.get(company) ?? new Map<string, number>();
-    companyMap.set(relation, (companyMap.get(relation) ?? 0) + g.grossAmount);
-    monthMap.set(company, companyMap);
-    amounts.set(g.month, monthMap);
-  }
-
-  const dataKeys: string[] = [];
-  const points = months.map((month) => {
-    const point: Record<string, string | number> = { month };
-    const monthMap = amounts.get(month) ?? new Map<string, Map<string, number>>();
-    for (const company of companyOrder) {
-      const companyMap = monthMap.get(company) ?? new Map<string, number>();
-      for (const relation of RELATIONS) {
-        const key = `${company}|${relation}`;
-        if (!dataKeys.includes(key)) dataKeys.push(key);
-        point[key] = companyMap.get(relation) ?? 0;
-      }
-    }
-    return point;
-  });
-
-  const total = groups.reduce((acc, g) => acc + g.grossAmount, 0);
-  const selfTotal = groups
-    .filter((g) => g.memberRelation === "본인")
-    .reduce((acc, g) => acc + g.grossAmount, 0);
-  const familyTotal = groups
-    .filter((g) => g.memberRelation === "가족")
-    .reduce((acc, g) => acc + g.grossAmount, 0);
+  const { companyOrder, points, total, selfTotal, familyTotal } = cardChartSeries(groups, months);
+  const summary = `총 ${formatKrwExact(total)}, 본인 ${formatKrwExact(selfTotal)}, 가족 ${formatKrwExact(familyTotal)}`;
 
   return (
     <div style={{ width: "100%" }}>
       <figure style={{ margin: 0 }}>
         <figcaption className="sr-only" style={{ marginBottom: 8 }}>
-          {`카드별 본인·가족 사용 내역 — 총 ${formatKrwExact(total)}, 본인 ${formatKrwExact(selfTotal)}, 가족 ${formatKrwExact(familyTotal)}`}
+          {`카드별 본인·가족 사용 내역 — 월별 합계 선, ${summary}`}
         </figcaption>
         <div
           role="img"
-          aria-label={`카드별 본인·가족 사용 내역 — 총 ${formatKrwExact(total)}, 본인 ${formatKrwExact(selfTotal)}, 가족 ${formatKrwExact(familyTotal)}`}
+          aria-label={`카드별 본인·가족 사용 내역 — 월별 합계 선, ${summary}`}
           style={{ width: "100%", height: 320 }}
         >
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+            <ComposedChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
               <CartesianGrid stroke="var(--af-border)" strokeDasharray="3 3" vertical={false} />
               <XAxis
                 dataKey="month"
@@ -115,6 +73,9 @@ export function CardCompanyChart({ groups, from, to }: CardCompanyChartProps) {
               />
               <Tooltip
                 formatter={(value, name) => {
+                  if (name === CARD_TOTAL_KEY) {
+                    return [formatKrwExact(Number(value)), "월 합계"];
+                  }
                   const [company, relation] = String(name).split("|");
                   return [formatKrwExact(Number(value)), `${company} · ${relation}`];
                 }}
@@ -127,11 +88,13 @@ export function CardCompanyChart({ groups, from, to }: CardCompanyChartProps) {
                 }}
               />
               <Legend
-                formatter={(value) => String(value).replace("|", " · ")}
+                formatter={(value) =>
+                  value === CARD_TOTAL_KEY ? "월 합계" : String(value).replace("|", " · ")
+                }
                 wrapperStyle={{ color: "var(--af-foreground)" }}
               />
               {companyOrder.map((company) =>
-                RELATIONS.map((relation) => (
+                CARD_RELATIONS.map((relation) => (
                   <Bar
                     key={`${company}|${relation}`}
                     dataKey={`${company}|${relation}`}
@@ -142,7 +105,17 @@ export function CardCompanyChart({ groups, from, to }: CardCompanyChartProps) {
                   />
                 )),
               )}
-            </BarChart>
+              <Line
+                type="monotone"
+                dataKey={CARD_TOTAL_KEY}
+                name={CARD_TOTAL_KEY}
+                stroke="var(--af-primary)"
+                strokeWidth={2}
+                dot={{ r: 3 }}
+                activeDot={{ r: 5 }}
+                isAnimationActive={false}
+              />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       </figure>
@@ -167,19 +140,25 @@ export function CardCompanyChart({ groups, from, to }: CardCompanyChartProps) {
             {companyOrder.map((company) => (
               <th
                 key={company}
-                colSpan={RELATIONS.length}
+                colSpan={CARD_RELATIONS.length}
                 style={{ textAlign: "center", padding: "8px 8px 8px 0", borderBottom: "1px solid currentColor" }}
               >
                 {company}
               </th>
             ))}
+            <th
+              rowSpan={2}
+              style={{ textAlign: "right", padding: "8px 8px 8px 0", borderBottom: "1px solid currentColor" }}
+            >
+              합계
+            </th>
           </tr>
           <tr>
             <th style={{ textAlign: "left", padding: "8px 8px 8px 0", borderBottom: "1px solid currentColor" }}>
               구분
             </th>
             {companyOrder.map((company) =>
-              RELATIONS.map((relation) => (
+              CARD_RELATIONS.map((relation) => (
                 <th
                   key={`${company}|${relation}`}
                   style={{ textAlign: "right", padding: "8px 8px 8px 0", borderBottom: "1px solid currentColor" }}
@@ -195,7 +174,7 @@ export function CardCompanyChart({ groups, from, to }: CardCompanyChartProps) {
             <tr key={point.month}>
               <td style={{ textAlign: "left", padding: "8px 8px 8px 0" }}>{point.month}</td>
               {companyOrder.map((company) =>
-                RELATIONS.map((relation) => (
+                CARD_RELATIONS.map((relation) => (
                   <td
                     key={`${company}|${relation}`}
                     style={{ textAlign: "right", padding: "8px 8px 8px 0" }}
@@ -204,6 +183,9 @@ export function CardCompanyChart({ groups, from, to }: CardCompanyChartProps) {
                   </td>
                 )),
               )}
+              <td style={{ textAlign: "right", padding: "8px 8px 8px 0" }}>
+                {formatKrwExact((point as Record<string, number>)[CARD_TOTAL_KEY] ?? 0)}
+              </td>
             </tr>
           ))}
         </tbody>
