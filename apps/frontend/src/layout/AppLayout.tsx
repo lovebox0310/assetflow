@@ -9,6 +9,11 @@ interface AppLayoutProps {
   onLogout?: () => void;
   /** 헤더 좌측 내비게이션 — 브랜드 옆. 화면 전환 버튼이 여기 렌더된다. */
   nav?: ReactNode;
+  /**
+   * 콘텐츠 래퍼(#main)에 붙일 화면 한정 클래스.
+   * 화면별 스타일 스코프는 공유 클래스가 아니라 이 루트 클래스로 한정한다(§88).
+   */
+  className?: string;
   children: ReactNode;
 }
 
@@ -63,7 +68,7 @@ function SunIcon() {
  * 주의: Header 에 transform/filter/backdrop-filter/contain 을 주면 fixed 인
  * 하단 탭의 containing block 이 되어 탭이 뷰포트 아래에 붙지 않는다.
  */
-export function AppLayout({ onLogout, nav, children }: AppLayoutProps) {
+export function AppLayout({ onLogout, nav, className, children }: AppLayoutProps) {
   const screens = Grid.useBreakpoint();
   const mobile = !screens.sm;
   const { resolved, toggleTheme } = useTheme();
@@ -162,7 +167,7 @@ export function AppLayout({ onLogout, nav, children }: AppLayoutProps) {
         {/* antd Layout.Content 가 이미 <main> 을 렌더하므로 여기서는 <div> 로 두고
             id/tabIndex 만 유지한다 — main 랜드마크 중복 방지(스킵 링크의 이동 대상).
             tabIndex=-1 로 선택 시 포커스가 들어오지만 탭 순서에는 참여하지 않는다. */}
-        <div id="main" tabIndex={-1}>
+        <div id="main" tabIndex={-1} className={className}>
           {children}
         </div>
       </Content>

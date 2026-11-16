@@ -843,15 +843,34 @@ button {
   color: var(--af-badge-signal-fg);
 }
 
-/* 금액 보조 문구("이 달만 수정") — 데스크톱은 금액 옆, 모바일은 금액 아래.
- * 배지로 primary 셀에 넣으면 320px 에서 3~4줄로 접혀 행이 90px 를 넘는다. */
+/* §88 E-03 — 수동 항목은 중립 배지. 정기(recurring)는 signal 배지를 유지한다.
+ * 텍스트("수동"/"정기")는 단위 테스트가 검증하므로 바꾸지 않는다. */
+.af-badge--manual {
+  background: var(--af-secondary);
+  color: var(--af-muted-foreground);
+}
+
+/* §88 E-02 — 금액과 보조 문구를 한 기준선에 둔다. 데스크톱은 보조 문구를
+ * 금액 **왼쪽**에 두어(order:-1) 금액 텍스트의 우측 끝이 모든 행에서 같아진다.
+ * DOM 순서는 금액 먼저 → 스크린리더 읽기 순서는 그대로다. */
+.af-list__amount {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+/* 금액 보조 문구("이 달만 수정") — 데스크톱은 금액 왼쪽, 모바일은 금액 아래.
+ * 배지로 primary 셀에 넣으면 320px 에서 3~4줄로 접혀 행이 90px 를 넘는다.
+ * 간격은 부모(.af-list__amount)의 gap 이 맡는다. */
 .af-list__amount-note {
-  margin-inline-start: 6px;
-  font-size: 11px;
+  margin-inline-start: 0;
+  font-size: 12px;
   line-height: 16px;
   font-weight: 500;
   color: var(--af-muted-foreground);
   white-space: nowrap;
+  order: -1;
 }
 
 @media (max-width: 767.98px) {
@@ -883,15 +902,78 @@ button {
     margin-inline-start: 0;
   }
 
-  /* 배지 폭 40px → 28px, 높이 20 → 18px(감기는 행이 80px 를 넘지 않게). */
-  .af-list__extra .af-badge {
-    padding: 1px 3px;
+  /* 배지 폭 40px → 28px, 높이 20 → 18px(감기는 행이 80px 를 넘지 않게).
+   * §88 E-15: 12px 글자로 키워 가독성을 올리고 폭 28px 은 유지한다. */
+  .af-expenses .af-list__extra .af-badge {
+    min-width: 28px;
+    font-size: 12px;
+    padding: 1px 2px;
+    text-align: center;
+  }
+
+  /* §88 E-02 모바일 — 보조 문구는 금액 아래 한 줄. */
+  .af-list__amount {
+    display: block;
   }
 
   .af-list__amount-note {
     display: block;
     margin-inline-start: 0;
     margin-top: 2px;
+    order: 0;
+  }
+}
+
+/* ── §88 지출 화면 모바일 보정 (E-01/E-04/E-05/E-08/E-10/E-11/E-13) ────────
+ * 전부 `.af-expenses` 루트로 스코프한다 — 공유 클래스(.af-list__*, .ant-*)를
+ * 다른 화면에서 건드리지 않는다. */
+@media (max-width: 767.98px) {
+  /* E-01 카드 안쪽 여백 24 → 16. 지출 화면 카드에만 적용한다. */
+  .af-expenses .ant-card-body {
+    padding: 16px;
+  }
+
+  /* E-04 터치 타깃 44px — 체크박스 라벨과 셀렉트(MonthSelect 포함). */
+  .af-expenses .ant-checkbox-wrapper {
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .af-expenses .ant-select {
+    min-height: 44px;
+  }
+
+  /* E-08 `⋯` 히트(24px 시각 + inset -10px = 44px)가 금액 칸을 2px 침범한다.
+   * 열 간격을 벌리면 이름 자리가 줄어들므로, 히트 박스를 오른쪽으로 4px 옮겨
+   * 24 + 8 + 12 = 44px 를 유지한 채 금액 칸과의 교집합을 0 으로 만든다. */
+  .af-expenses .af-icon-btn.ant-btn::after {
+    left: -8px;
+    right: -12px;
+  }
+
+  /* E-15 배지가 있는 행에서 이름 버튼은 남는 폭만 쓰게 한다(flex-basis 0).
+   * flex 줄바꿈은 shrink 전에 일어나서, basis auto 로는 이름+배지가 4px 만
+   * 넘쳐도 배지가 다음 줄로 감긴다(320px 실측). 카드내역 Tag 행과 같은 방식. */
+  .af-expenses .af-list__cell--primary:has(.af-list__extra .af-badge) .af-list__edit {
+    flex: 1 1 0;
+  }
+
+  /* E-10 주 액션 = 100% 폭(월 확정과 같은 규칙). */
+  .af-expenses .af-item-form .ant-btn-primary {
+    width: 100%;
+    margin-top: 4px;
+  }
+
+  /* E-11 정기 폼 열기 버튼도 터치 44px. */
+  .af-expenses .af-rec-add {
+    min-height: 44px;
+  }
+
+  /* E-13 합계 줄을 목록과 구분한다(지출 화면 한정). */
+  .af-expenses .af-list__summary {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--af-border);
   }
 }
 
@@ -899,6 +981,66 @@ button {
  * 쪼개지지 않게. 이 클래스에 span 을 넘기는 화면은 지출 화면 하나다(F3). */
 .af-list__summary > span {
   word-break: keep-all;
+}
+
+/* ── §88 지출 화면 폼·확정 요약 ─────────────────────────────── */
+
+/* E-09/E-11 — 폼 블록 구분선과 라벨(13/18 muted). */
+.af-item-form,
+.af-rec-form {
+  border-top: 1px solid var(--af-border);
+  padding-top: 12px;
+  margin-top: 16px;
+}
+
+.af-rec-form {
+  margin-top: 12px;
+  /* 하단 탭에 폼이 가리지 않도록 중앙 정렬 스크롤에 여유를 둔다. */
+  scroll-margin-bottom: calc(var(--af-tabbar-h) + 16px);
+}
+
+.af-item-form__label,
+.af-rec-form__label {
+  margin-bottom: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--af-muted-foreground);
+}
+
+/* E-12 — 확정 요약은 라벨·값 2열. 지표 순서와 문구·숫자 포맷은 기존과 같다. */
+.af-snapshot {
+  margin: 8px 0 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 24px;
+}
+
+.af-snapshot > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.af-snapshot dt {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--af-muted-foreground);
+}
+
+.af-snapshot dd {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 767.98px) {
+  .af-snapshot {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
 }
 
 /* 모바일 보조줄 셀 — 데스크톱은 셀 자체를 숨긴다(열 수·열 정렬 불변, th 없음). */

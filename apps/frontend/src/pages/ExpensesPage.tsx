@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Card, Checkbox, Form, Grid, Input, InputNumber, Select, Typography } from "antd";
 import { AppLayout } from "../layout/AppLayout";
 import { StandardNav } from "../layout/StandardNav";
@@ -122,6 +122,8 @@ export function ExpensesPage({
   }, []);
 
   const [recFormInstance] = Form.useForm();
+  /** 정기 폼을 열 때 첫 입력으로 포커스를 옮기고 폼을 화면 중앙에 둔다(§88 E-11). */
+  const recFormRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (recForm && recForm !== "new") {
@@ -131,6 +133,21 @@ export function ExpensesPage({
       recFormInstance.setFieldsValue(values);
     }
   }, [recForm, recFormInstance, month]);
+
+  /*
+   * §88 E-11: 폼을 열면 폼 블록을 화면 중앙에 두고 첫 입력으로 포커스를 옮긴다.
+   * 하단 탭에 가리지 않도록 블록에 scroll-margin-bottom 을 준다(CSS .af-rec-form).
+   * jsdom 에는 scrollIntoView 가 없으므로 가드한다.
+   */
+  useEffect(() => {
+    if (!recForm) return;
+    const el = recFormRef.current;
+    if (!el) return;
+    if (typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ block: "center", behavior: "auto" });
+    }
+    el.querySelector<HTMLInputElement>("input")?.focus({ preventScroll: true });
+  }, [recForm]);
 
   useEffect(() => {
     void loadItems();
@@ -318,7 +335,10 @@ export function ExpensesPage({
   const itemPrimaryExtra = (it: ExpenseItemRow) => (
     <>
       {it.isEssential ? <span className="af-badge af-badge--essential">필수</span> : null}
-      <span className="af-badge af-badge--recurring">{it.recurringId ? "정기" : "수동"}</span>
+      {/* §88 E-03: 수동은 중립 배지(secondary), 정기는 기존 signal 유지. 텍스트는 그대로. */}
+      <span className={`af-badge ${it.recurringId ? "af-badge--recurring" : "af-badge--manual"}`}>
+        {it.recurringId ? "정기" : "수동"}
+      </span>
     </>
   );
 
@@ -330,10 +350,10 @@ export function ExpensesPage({
       numeric: true,
       mobile: "value",
       render: (it) => (
-        <>
+        <span className="af-list__amount">
           {formatKrwExact(it.amount)}
           {isMonthOnlyEdit(it) ? <span className="af-list__amount-note">이 달만 수정</span> : null}
-        </>
+        </span>
       ),
     },
     { key: "category", header: "대분류", mobile: "meta", render: (it) => it.category ?? "추이 제외" },
@@ -432,6 +452,8 @@ export function ExpensesPage({
 
   return (
     <AppLayout
+      /* §88 — 지출 화면 한정 스타일 스코프. 공유 클래스 대신 이 루트로 한정한다. */
+      className="af-expenses"
       onLogout={handleLogout}
       nav={<StandardNav current="expenses" onOpenDashboard={onOpenDashboard} onOpenAssets={onOpenAssets} onOpenSettings={onOpenSettings} />}
     >
@@ -497,7 +519,12 @@ export function ExpensesPage({
           </StateBlock>
 
           {/* 편집 중에는 편집 행이 같은 폼을 들고 있으므로 추가 폼을 숨긴다(중복 라벨 금지). */}
-          {editing ? null : <div style={{ marginTop: 16 }}>{renderItemForm("add")}</div>}
+          {editing ? null : (
+            <div className="af-item-form">
+              <div className="af-item-form__label">새 항목</div>
+              {renderItemForm("add")}
+            </div>
+          )}
         </Card>
       </section>
 
@@ -531,10 +558,11 @@ export function ExpensesPage({
                 />
               ) : null}
               <div style={{ marginTop: recurring.length > 0 ? 12 : 0 }}>
-                <Button onClick={() => setRecForm("new")}>+ 정기 항목 추가</Button>
+                <Button className="af-rec-add" onClick={() => setRecForm("new")}>+ 정기 항목 추가</Button>
               </div>
               {recForm ? (
-                <div style={{ marginTop: 12, borderTop: "1px solid var(--af-border)", paddingTop: 12 }}>
+                <div ref={recFormRef} className="af-rec-form">
+                  <div className="af-rec-form__label">{recForm === "new" ? "정기 항목 추가" : "정기 항목 편집"}</div>
                   {recForm !== "new" ? (
                     <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 8 }}>
                       이미 만들어진 달의 금액은 그 달 값으로 유지됩니다. 이름 변경은 연결된 월에 반영됩니다.
@@ -581,7 +609,7 @@ export function ExpensesPage({
       <section aria-labelledby="h-snapshot" style={{ marginBottom: 32 }}>
         <Typography.Title level={2} id="h-snapshot" style={{ fontSize: 16, margin: 0, marginBottom: 16 }}>월 기준 입력</Typography.Title>
         <Card>
-          <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--af-muted-foreground)" }}>
+          <p style={{ margin: "0 0 16px", fontSize: 14, lineHeight: "22px", color: "var(--af-muted-foreground)" }}>
             이번 달 수입과 부가세통장 이체액으로 확정합니다. 부가세통장 이체는 부가세 납부를 위해
             따로 남겨 둘 금액이며 월 수지에서 차감됩니다.
           </p>
@@ -617,13 +645,36 @@ export function ExpensesPage({
           </div>
           <div style={{ marginTop: 12 }}>
             {snapshot ? (
-              <Typography.Text type="secondary">
-                확정됨 {snapshot.month} — 부가세통장 {formatKrwExact(snapshot.vatSetAside)} ·
-                지출 {formatKrwExact(snapshot.expenses)} ·
-                수지 {formatKrwExact(snapshot.balance)} ·
-                필수 {formatKrwExact(snapshot.essentialExpenses)} ·
-                자산 {formatKrwExact(snapshot.totalAssets)} · 부채 {formatKrwExact(snapshot.totalDebts)}
-              </Typography.Text>
+              <>
+                <Typography.Text type="secondary">확정됨 {snapshot.month}</Typography.Text>
+                {/* §88 E-12: 지표 순서·문구·숫자 포맷은 기존 그대로, 2열 dl 로 정렬만 바꾼다. */}
+                <dl className="af-snapshot">
+                  <div>
+                    <dt>부가세통장</dt>
+                    <dd>{formatKrwExact(snapshot.vatSetAside)}</dd>
+                  </div>
+                  <div>
+                    <dt>지출</dt>
+                    <dd>{formatKrwExact(snapshot.expenses)}</dd>
+                  </div>
+                  <div>
+                    <dt>수지</dt>
+                    <dd>{formatKrwExact(snapshot.balance)}</dd>
+                  </div>
+                  <div>
+                    <dt>필수</dt>
+                    <dd>{formatKrwExact(snapshot.essentialExpenses)}</dd>
+                  </div>
+                  <div>
+                    <dt>자산</dt>
+                    <dd>{formatKrwExact(snapshot.totalAssets)}</dd>
+                  </div>
+                  <div>
+                    <dt>부채</dt>
+                    <dd>{formatKrwExact(snapshot.totalDebts)}</dd>
+                  </div>
+                </dl>
+              </>
             ) : (
               <Typography.Text type="secondary">아직 이 월은 확정되지 않았습니다 — 수입 입력 후 '월 확정'을 누르면 스냅샷이 갱신됩니다</Typography.Text>
             )}
