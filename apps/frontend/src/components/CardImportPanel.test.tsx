@@ -139,7 +139,7 @@ describe("CardImportPanel (§29.7 흐름 이관)", () => {
     chooseFile(HYUNDAI_TEXT);
 
     // 가맹점 그룹이 렌더된다 (샘플의 실제 가맹점)
-    await screen.findByText("가맹점");
+    await screen.findByRole("columnheader", { name: "가맹점" });
     // 미분류 상태에서 합계 안내 문구가 뜬다
     await screen.findByText(/미분류 .*곳은 어느 합계에도 들어가지 않습니다/);
 
@@ -164,7 +164,7 @@ describe("CardImportPanel (§29.7 흐름 이관)", () => {
     render(<CardImportPanel />);
     chooseFile(HYUNDAI_TEXT);
 
-    await screen.findByText("가맹점");
+    await screen.findByRole("columnheader", { name: "가맹점" });
     // 미리보기 로딩 시 /merchant-rules 가 호출된다
     const rulesCall = fetchMock.mock.calls.find((c) =>
       String(c[0]).includes("/card-imports/merchant-rules"),
@@ -225,7 +225,7 @@ describe("CardImportPanel (§29.7 흐름 이관)", () => {
     render(<CardImportPanel />);
     chooseFile(HYUNDAI_TEXT);
 
-    await screen.findByText("가맹점");
+    await screen.findByRole("columnheader", { name: "가맹점" });
     fireEvent.click(screen.getByRole("button", { name: "서버에 반영" }));
     await screen.findByText(/반영 완료/);
 
@@ -243,7 +243,7 @@ describe("CardImportPanel (§29.7 흐름 이관)", () => {
     render(<CardImportPanel />);
     chooseFile(HYUNDAI_TEXT);
 
-    await screen.findByText("가맹점");
+    await screen.findByRole("columnheader", { name: "가맹점" });
     // 미리보기 테이블에 본인/가족 태그가 함께 노출돼야 확정 전에 구분을 확인할 수 있다.
     const 본인 = screen.getAllByText((content) => content.includes("본인"));
     const 가족 = screen.getAllByText((content) => content.includes("가족"));

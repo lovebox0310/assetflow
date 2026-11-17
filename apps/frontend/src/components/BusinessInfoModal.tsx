@@ -110,8 +110,39 @@ export function BusinessInfoModal({ open, businessNo, merchantName, onClose }: B
       open={open}
       title={title}
       onCancel={onClose}
-      width={640}
+      centered
+      width="min(640px, calc(100vw - 24px))"
       destroyOnHidden
+      /*
+       * §93 모달 셸 — 컨테이너는 뷰포트 안에서만 커지고, 스크롤은 body 하나가 진다.
+       * footer 는 flex 로 두어 320px 에서 버튼이 2행으로 접혀도 뷰포트 안에 남는다.
+       */
+      styles={{
+        container: {
+          maxHeight: "calc(100dvh - 32px)",
+          display: "flex",
+          flexDirection: "column",
+          padding: 0,
+          overflow: "hidden",
+        },
+        body: {
+          overflowY: "auto",
+          flex: "1 1 auto",
+          minHeight: 0,
+          padding: "0 16px 12px",
+          overscrollBehavior: "contain",
+        },
+        footer: {
+          margin: 0,
+          flex: "0 0 auto",
+          padding: "12px 16px calc(12px + var(--af-safe-bottom))",
+          borderTop: "1px solid var(--af-border)",
+          display: "flex",
+          flexWrap: "wrap",
+          rowGap: 8,
+          justifyContent: "flex-end",
+        },
+      }}
       footer={[
         <Button key="retry" onClick={() => setAttempt((n) => n + 1)} disabled={!businessNo} loading={loading}>
           다시 조회
@@ -130,33 +161,33 @@ export function BusinessInfoModal({ open, businessNo, merchantName, onClose }: B
         </Button>,
       ]}
     >
-      <div style={{ maxHeight: "60vh", overflowY: "auto" }}>
-        {loading ? (
-          <Space style={{ padding: "24px 0", width: "100%", justifyContent: "center" }}>
-            <Spin tip="사업자 정보를 조회하는 중…">
-              <div style={{ minHeight: 60, minWidth: 200 }} />
-            </Spin>
-          </Space>
-        ) : null}
+      {loading ? (
+        <Space style={{ padding: "24px 0", width: "100%", justifyContent: "center" }}>
+          <Spin tip="사업자 정보를 조회하는 중…">
+            <div style={{ minHeight: 60, minWidth: 200 }} />
+          </Spin>
+        </Space>
+      ) : null}
 
-        {!loading && error ? <Alert type="warning" showIcon message={error} /> : null}
+      {!loading && error ? <Alert type="warning" showIcon message={error} /> : null}
 
-        {!loading && info ? (
-          <>
-            <Descriptions
-              size="small"
-              bordered
-              column={1}
-              items={items.length > 0 ? items : [{ key: "empty", label: "안내", children: "조회된 정보가 없습니다." }]}
-            />
-            <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 12, marginBottom: 0 }}>
-              출처: {info.source ?? "bizno.net"}
-              {info.cached ? " (저장된 정보)" : " (새로 조회)"}
-              {info.fetchedAt ? ` · ${info.fetchedAt.slice(0, 10)} 조회` : ""}
-            </Typography.Paragraph>
-          </>
-        ) : null}
-      </div>
+      {!loading && info ? (
+        <>
+          <Descriptions
+            size="small"
+            bordered
+            column={1}
+            /* 좁은 폭(296px)에서 라벨 열이 글자 단위로 쪼개지지 않게 한다 — 값 열이 남는 폭을 쓴다. */
+            styles={{ label: { whiteSpace: "nowrap" } }}
+            items={items.length > 0 ? items : [{ key: "empty", label: "안내", children: "조회된 정보가 없습니다." }]}
+          />
+          <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 12, marginBottom: 0 }}>
+            출처: {info.source ?? "bizno.net"}
+            {info.cached ? " (저장된 정보)" : " (새로 조회)"}
+            {info.fetchedAt ? ` · ${info.fetchedAt.slice(0, 10)} 조회` : ""}
+          </Typography.Paragraph>
+        </>
+      ) : null}
     </Modal>
   );
 }

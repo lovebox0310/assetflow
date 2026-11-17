@@ -132,11 +132,12 @@ export function CardEmailImportSettingsSection() {
     }
   };
 
+  /*
+   * D-07: 섹션 h2("카드 명세서 자동 수집")는 카드 밖 — 화면(CardExpensesPage)이
+   * 다른 섹션과 같은 패턴으로 그린다. 컴포넌트는 카드 본문만 담당한다.
+   */
   return (
     <Card>
-      <Typography.Title level={2} id="h-card-email-import" style={{ fontSize: 18, margin: 0, marginBottom: 16 }}>
-        카드 명세서 자동 수집
-      </Typography.Title>
       <StateBlock status={status} onRetry={load} errorText={errorText}>
         {message?.type === "success" && (
           <Alert type="success" showIcon message={message.text} style={{ marginBottom: 16 }} aria-live="polite" />

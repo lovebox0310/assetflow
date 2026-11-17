@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Select, Space, Table, Tag, Typography } from "antd";
 import contractJson from "../../../../samples/card/card-columns.json";
 import { detectCardCompany, inspectContainer, parserFor } from "../lib/card/detect-card.mjs";
@@ -33,6 +33,8 @@ export function CardImportPanel() {
   const [rules, setRules] = useState<Record<string, MerchantRule>>({});
   const [dupKeys, setDupKeys] = useState<Set<string>>(new Set());
   const [result, setResult] = useState<CardImportResult | null>(null);
+  /** D-02: 시각 컨트롤은 Button, 실제 input 은 화면 밖(sr-only)에 둔다. */
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // 미리보기에서 걸러뛸 이미-임포트 행 키
@@ -211,22 +213,47 @@ export function CardImportPanel() {
         {errorText ? <Alert type="error" showIcon title={errorText} aria-live="assertive" /> : null}
 
         {(phase === "idle" || phase === "error") && (
-          <label>
+          <div>
+            {/*
+             * D-02: 실제 파일 입력은 sr-only 로 숨긴다 — 브라우저 기본 컨트롤은
+             * 44 히트를 보장하지 못하고, label 로 감싸면 안내 문단까지 접근 이름에
+             * 섞인다. 입력은 탭 순서에서 빼고(tabIndex -1) 버튼만 탭으로 도달하게 한다.
+             */}
             <input
+              ref={fileInputRef}
               data-testid="card-file"
               type="file"
+              className="sr-only"
+              tabIndex={-1}
+              style={{ fontSize: 16 }}
+              aria-label="카드 명세서 파일"
+              aria-describedby="card-file-hint"
               accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) void onFile(f);
               }}
             />
-            <Typography.Text type="secondary" style={{ display: "block", marginTop: 4 }}>
+            <Button
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="카드 명세서 파일 선택"
+              aria-describedby="card-file-hint"
+              style={{
+                height: "var(--af-control-h-lg)",
+                minHeight: 44,
+                minWidth: 120,
+                fontSize: 14,
+                fontWeight: 600,
+              }}
+            >
+              카드 명세서 파일
+            </Button>
+            <Typography.Text id="card-file-hint" type="secondary" style={{ display: "block", marginTop: 4 }}>
               삼성카드/현대카드 CSV(UTF-8) 또는 평문 XLSX 를 올리면 가맹점별로 확인 후 반영합니다.
               암호화된 XLSX 는 열지 않습니다.
               원본 파일은 서버로 올라가지 않습니다.
             </Typography.Text>
-          </label>
+          </div>
         )}
 
         {(phase === "parsing" || phase === "submitting") && (
@@ -241,8 +268,13 @@ export function CardImportPanel() {
               rowKey="merchant"
               dataSource={groups}
               pagination={false}
+              /*
+               * D-01: 열 폭 합(≈649px)이 320 카드 폭보다 넓다. 문서를 넓히지 않고
+               * 표 내용만 카드 안에서 가로 스크롤하게 한다(가맹점 열은 왼쪽 고정).
+               */
+              scroll={{ x: "max-content" }}
               columns={[
-                { title: "가맹점", dataIndex: "merchant" },
+                { title: "가맹점", dataIndex: "merchant", fixed: "left" },
                 { title: "건수", dataIndex: "count", width: 70 },
                 { title: "이용금액 합계", dataIndex: "gross", width: 130, render: (v: number) => formatKrwExact(v) },
                 {
@@ -267,8 +299,15 @@ export function CardImportPanel() {
                         {[...counts.entries()].map(([rel, c]) => (
                           <Tag
                             key={rel}
-                            color={rel === "본인" ? "blue" : "purple"}
-                            style={{ fontSize: 12, margin: 0 }}
+                            /* D-08: antd 프리셋 색 대신 의미 토큰 — 본인=중립, 가족=시그널. */
+                            style={{
+                              fontSize: 12,
+                              margin: 0,
+                              borderColor: "transparent",
+                              ...(rel === "본인"
+                                ? { background: "var(--af-slate-soft)", color: "var(--af-slate)" }
+                                : { background: "var(--af-badge-signal-bg)", color: "var(--af-badge-signal-fg)" }),
+                            }}
                           >
                             {rel} {c}
                           </Tag>

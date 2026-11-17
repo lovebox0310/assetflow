@@ -77,6 +77,8 @@ export function CardExpensesPage({
   const [cardStatus, setCardStatus] = useState<SurfaceStatus>("loading");
   const [cardError, setCardError] = useState("");
   const [notice, setNotice] = useState("");
+  /** D-03: 성공·안내는 중립, 실패만 danger — 알림 톤을 문구와 함께 기억한다. */
+  const [noticeTone, setNoticeTone] = useState<"info" | "error">("info");
   const [cardLimit, setCardLimit] = useState(20);
   const [reclassifying, setReclassifying] = useState(false);
   const [unclassified, setUnclassified] = useState<UnclassifiedGroup[] | null>(null);
@@ -176,6 +178,7 @@ export function CardExpensesPage({
       const result = await reclassifyCardImports();
       const repaired = result.rulesRepaired ?? 0;
       const suffix = repaired > 0 ? ` (가맹점 규칙 ${repaired}건 복구)` : "";
+      setNoticeTone("info");
       setNotice(
         result.updated > 0
           ? `카드내역 ${result.total}건 중 ${result.updated}건을 자동 분류했습니다.${suffix}`
@@ -184,6 +187,7 @@ export function CardExpensesPage({
       loadCard();
       loadUnclassified();
     } catch (e) {
+      setNoticeTone("error");
       setNotice(e instanceof Error ? e.message : "재분류에 실패했습니다.");
     } finally {
       setReclassifying(false);
@@ -198,8 +202,10 @@ export function CardExpensesPage({
     try {
       const result = await updateCardImportCategory(row.rowKey, category, "");
       applyMerchantCategoryLocally(result.merchantName, result.category, result.subCategory);
+      setNoticeTone("info");
       setNotice(`${result.merchantName} → ${result.category} (${result.updatedRows}건 반영)`);
     } catch (e) {
+      setNoticeTone("error");
       setNotice(e instanceof Error ? e.message : "카테고리 변경에 실패했습니다.");
     }
   }, [applyMerchantCategoryLocally]);
@@ -212,8 +218,10 @@ export function CardExpensesPage({
     try {
       const result = await updateCardImportCategory(row.rowKey, row.expenseKind || "", subCategory);
       applyMerchantCategoryLocally(result.merchantName, result.category, result.subCategory);
+      setNoticeTone("info");
       setNotice(`${result.merchantName} → ${result.category}/${result.subCategory} (${result.updatedRows}건 반영)`);
     } catch (e) {
+      setNoticeTone("error");
       setNotice(e instanceof Error ? e.message : "세부 분류 변경에 실패했습니다.");
     }
   }, [applyMerchantCategoryLocally]);
@@ -226,8 +234,10 @@ export function CardExpensesPage({
       const result = await assignMerchantCategory(group.merchantName, category, "");
       applyMerchantCategoryLocally(group.merchantName, category, "");
       setUndo({ group, category });
+      setNoticeTone("info");
       setNotice(`${result.merchantName} → ${result.category} (${result.updatedRows}건 반영)`);
     } catch (e) {
+      setNoticeTone("error");
       setNotice(e instanceof Error ? e.message : "카테고리 지정에 실패했습니다.");
     }
   }, [applyMerchantCategoryLocally]);
@@ -238,9 +248,11 @@ export function CardExpensesPage({
     try {
       await assignMerchantCategory(undo.group.merchantName, "", "");
       restoreMerchantLocally(undo.group);
+      setNoticeTone("info");
       setNotice(`${undo.group.merchantName} 분류를 되돌렸습니다.`);
       setUndo(null);
     } catch (e) {
+      setNoticeTone("error");
       setNotice(e instanceof Error ? e.message : "되돌리기에 실패했습니다.");
     }
   }, [undo, restoreMerchantLocally]);
@@ -490,6 +502,7 @@ export function CardExpensesPage({
 
   return (
     <AppLayout
+      className="af-expenses"
       onLogout={handleLogout}
       nav={<StandardNav current="expenses" onOpenDashboard={onOpenDashboard} onOpenAssets={onOpenAssets} onOpenExpenses={onOpenExpenses} onOpenSettings={onOpenSettings} />}
     >
@@ -539,35 +552,11 @@ export function CardExpensesPage({
         </Card>
       </section>
 
-      {/* 이슈 #70: 변경 알림을 role=status + aria-live=polite 로 — 스크린리더가
-          화면 전환 없이도 안내를 읽는다.
-          §55.8: 작업함에서 방금 지정한 분류는 여기서 바로 되돌릴 수 있다. */}
-      {notice || undo ? (
-        <Card style={{ marginBottom: 16 }} role="status" aria-live="polite">
-          <Space wrap size={12}>
-            {notice ? <Typography.Text type="warning">{notice}</Typography.Text> : null}
-            {undo ? (
-              <>
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  {undo.group.merchantName} → {undo.category}
-                </Typography.Text>
-                <Button size="small" onClick={() => void handleUndo()}>되돌리기</Button>
-              </>
-            ) : null}
-          </Space>
-        </Card>
-      ) : null}
-
       <section aria-labelledby="h-card-upload" style={{ marginBottom: 32 }}>
         <Typography.Title level={2} id="h-card-upload" style={{ fontSize: 18, margin: 0, marginBottom: 16 }}>
           카드 내역 가져오기
         </Typography.Title>
         <CardImportPanel />
-      </section>
-
-      {/* §63/§68 카드 명세서 자동 수집은 카드내역 화면에 둔다 — h2 는 컴포넌트 안에 1개만. */}
-      <section aria-labelledby="h-card-email-import" style={{ marginBottom: 32 }}>
-        <CardEmailImportSettingsSection />
       </section>
 
       <section aria-labelledby="h-unclassified" style={{ marginBottom: 32 }}>
@@ -580,10 +569,20 @@ export function CardExpensesPage({
           </Typography.Text>
         </div>
         <Card>
+          {/* §55.8: 작업함에서 방금 지정한 분류는 이 카드 안에서 바로 되돌린다.
+              live region(role=status)은 가져온 카드내역의 알림 1개만 갖는다 — 중복 낭독 금지(D-03). */}
+          {undo ? (
+            <Space wrap size={12} style={{ marginBottom: 12 }}>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {undo.group.merchantName} → {undo.category}
+              </Typography.Text>
+              <Button size="small" className="af-tap-sm" onClick={() => void handleUndo()}>되돌리기</Button>
+            </Space>
+          ) : null}
           {unclassifiedError ? (
             <Space direction="vertical" size={8}>
               <Typography.Text type="danger">{unclassifiedError}</Typography.Text>
-              <Button size="small" onClick={loadUnclassified}>다시 시도</Button>
+              <Button size="small" className="af-tap-sm" onClick={loadUnclassified}>다시 시도</Button>
             </Space>
           ) : unclassified === null ? (
             <Typography.Text type="secondary">미분류 내역을 불러오는 중…</Typography.Text>
@@ -653,6 +652,7 @@ export function CardExpensesPage({
                           key={businessNo}
                           type="link"
                           size="small"
+                          className="af-tap-sm"
                           style={{ padding: 0, height: "auto" }}
                           onClick={() => setBusinessInfoTarget({ businessNo, merchantName: g.merchantName })}
                           aria-label={`${g.merchantName} ${formatBusinessNo(businessNo)} 사업자 정보 보기`}
@@ -660,7 +660,7 @@ export function CardExpensesPage({
                           {formatBusinessNo(businessNo)}
                         </Button>
                       ))}
-                      <Button size="small" onClick={() => setEditingMerchant(null)}>취소</Button>
+                      <Button size="small" className="af-tap-sm" onClick={() => setEditingMerchant(null)}>취소</Button>
                     </Space>
                   );
                 }}
@@ -691,6 +691,13 @@ export function CardExpensesPage({
             </Button>
           </Space>
         </div>
+        {/* D-03: 자동 분류·분류 변경 결과는 그 동작을 시작한 섹션 헤더 바로 아래에 둔다.
+            live region 은 이 알림 하나뿐 — 되돌리기 안내는 미분류 정리 카드가 갖는다. */}
+        {notice ? (
+          <div role="status" aria-live="polite" style={{ marginBottom: 16 }}>
+            <Typography.Text type={noticeTone === "error" ? "danger" : "secondary"}>{notice}</Typography.Text>
+          </div>
+        ) : null}
         <Card>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
             <Checkbox
@@ -719,32 +726,32 @@ export function CardExpensesPage({
                * aria-label 은 이 블록이 갖는다(테스트 :166 이 "표 없는" 요소를 찾는다).
                */}
               <div role="group" aria-label="이 달 카드 카테고리별 합계" style={{ marginTop: 4, padding: "8px 12px", borderTop: "1px solid var(--af-border)", fontSize: 13 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontWeight: 600 }}>
-                  <span>지출 합계 (자산 이동 제외) · {cardSpendingCount}건</span>
-                  <span>{formatKrwExact(cardSpendingTotal)}</span>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, fontWeight: 600 }}>
+                  <span style={{ minWidth: 0, overflow: "hidden" }}>지출 합계 (자산 이동 제외) · {cardSpendingCount}건</span>
+                  <span style={{ whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{formatKrwExact(cardSpendingTotal)}</span>
                 </div>
                 {cardFixedTotal > 0 ? (
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, paddingLeft: 12, color: "var(--af-muted-foreground)" }}>
-                    <span>└ 고정비</span>
-                    <span>{formatKrwExact(cardFixedTotal)}</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, paddingLeft: 12, color: "var(--af-muted-foreground)" }}>
+                    <span style={{ minWidth: 0, overflow: "hidden" }}>└ 고정비</span>
+                    <span style={{ whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{formatKrwExact(cardFixedTotal)}</span>
                   </div>
                 ) : null}
                 {cardVariableTotal > 0 ? (
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, paddingLeft: 12, color: "var(--af-muted-foreground)" }}>
-                    <span>└ 변동비</span>
-                    <span>{formatKrwExact(cardVariableTotal)}</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, paddingLeft: 12, color: "var(--af-muted-foreground)" }}>
+                    <span style={{ minWidth: 0, overflow: "hidden" }}>└ 변동비</span>
+                    <span style={{ whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{formatKrwExact(cardVariableTotal)}</span>
                   </div>
                 ) : null}
                 {cardAssetTransferTotal > 0 ? (
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, color: "var(--af-muted-foreground)" }}>
-                    <span>자산 이동 (지출 총합 제외)</span>
-                    <span>{formatKrwExact(cardAssetTransferTotal)}</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, color: "var(--af-muted-foreground)" }}>
+                    <span style={{ minWidth: 0, overflow: "hidden" }}>자산 이동 (지출 총합 제외)</span>
+                    <span style={{ whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{formatKrwExact(cardAssetTransferTotal)}</span>
                   </div>
                 ) : null}
                 {cardUnclassifiedTotal > 0 ? (
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, color: "var(--af-muted-foreground)" }}>
-                    <span>미분류</span>
-                    <span>{formatKrwExact(cardUnclassifiedTotal)}</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, color: "var(--af-muted-foreground)" }}>
+                    <span style={{ minWidth: 0, overflow: "hidden" }}>미분류</span>
+                    <span style={{ whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{formatKrwExact(cardUnclassifiedTotal)}</span>
                   </div>
                 ) : null}
               </div>
@@ -773,7 +780,17 @@ export function CardExpensesPage({
                     }
                     primaryExtra={(r) =>
                       r.memberRelation ? (
-                        <Tag color={r.memberRelation === "본인" ? "blue" : "purple"} style={{ marginLeft: 4, fontSize: 12 }}>
+                        <Tag
+                          /* D-08: antd 프리셋 색 대신 의미 토큰 — 본인=중립, 가족=시그널. */
+                          style={{
+                            marginLeft: 4,
+                            fontSize: 12,
+                            borderColor: "transparent",
+                            ...(r.memberRelation === "본인"
+                              ? { background: "var(--af-slate-soft)", color: "var(--af-slate)" }
+                              : { background: "var(--af-badge-signal-bg)", color: "var(--af-badge-signal-fg)" }),
+                          }}
+                        >
                           {r.memberRelation}
                         </Tag>
                       ) : null
@@ -809,6 +826,7 @@ export function CardExpensesPage({
                             <Button
                               type="link"
                               size="small"
+                              className="af-tap-sm"
                               style={{ padding: 0, height: "auto" }}
                               onClick={() => setBusinessInfoTarget({ businessNo, merchantName: r.merchantName })}
                               aria-label={`${r.merchantName} ${formatBusinessNo(businessNo)} 사업자 정보 보기`}
@@ -816,7 +834,7 @@ export function CardExpensesPage({
                               {formatBusinessNo(businessNo)}
                             </Button>
                           ) : null}
-                          <Button size="small" onClick={() => setEditingCardRowKey(null)}>취소</Button>
+                          <Button size="small" className="af-tap-sm" onClick={() => setEditingCardRowKey(null)}>취소</Button>
                         </Space>
                       );
                     }}
@@ -829,14 +847,30 @@ export function CardExpensesPage({
                     나머지 {visibleCardRows.length - cardLimit}건 더 보기
                   </Button>
                 ) : null}
-                <div style={{ fontWeight: 600, padding: "4px 2px" }}>
-                  <span>합계 ({visibleCardRows.length}건)</span>
-                  <span> {formatKrwExact(visibleCardRows.reduce((acc, r) => acc + r.grossAmount, 0))}</span>
+                {/*
+                 * D-06: 합계는 표 footer 로 옮기지 않는다 — 여기 합계는 cardLimit 까지
+                 * "지금 보이는 행"의 합이라, 더 보기 버튼 아래에 있어야 의미가 맞다.
+                 * 대신 금액은 한 줄 고정 + 자릿수 정렬, 라벨은 남는 폭만 쓴다.
+                 */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, fontWeight: 600, padding: "4px 2px" }}>
+                  <span style={{ minWidth: 0, overflow: "hidden" }}>합계 ({visibleCardRows.length}건)</span>
+                  <span style={{ whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                    {formatKrwExact(visibleCardRows.reduce((acc, r) => acc + r.grossAmount, 0))}
+                  </span>
                 </div>
               </div>
             ) : null}
           </StateBlock>
         </Card>
+      </section>
+
+      {/* D-07: §63/§68 카드 명세서 자동 수집은 가져온 카드내역 뒤에 둔다 —
+          수집 결과가 먼저 보이고, 설정은 그 다음이다. h2 는 카드 밖(다른 섹션과 같은 패턴). */}
+      <section aria-labelledby="h-card-email-import" style={{ marginBottom: 32 }}>
+        <Typography.Title level={2} id="h-card-email-import" style={{ fontSize: 18, margin: 0, marginBottom: 16 }}>
+          카드 명세서 자동 수집
+        </Typography.Title>
+        <CardEmailImportSettingsSection />
       </section>
 
       <BusinessInfoModal
