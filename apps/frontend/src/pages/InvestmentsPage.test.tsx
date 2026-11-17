@@ -35,6 +35,16 @@ async function selectBondClass() {
   fireEvent.click(option);
 }
 
+/**
+ * 섹션 액션 열기(INV-01). jsdom 의 matchMedia 는 `matches:false` 라 항상 좁은 화면
+ * 분기로 렌더된다 — 시세 새로고침·가격 갱신·업비트 동작은 `⋯` 메뉴 안에 있다.
+ * 보조 동작이므로 "+ 종목 추가" 는 직접 버튼으로 남는다.
+ */
+async function clickSectionMenu(label: string) {
+  fireEvent.click(screen.getByRole("button", { name: "보유종목 메뉴" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: label }));
+}
+
 function apiResponse(data: unknown, ok = true, status = 200): Response {
   const body = ok
     ? { code: "OK", message: "loaded", data }
@@ -179,14 +189,14 @@ describe("InvestmentsPage (§54 E2)", () => {
     // 예수금 합계 1,300,000 + 100,000
     expect(screen.getByText("1,400,000원")).toBeDefined();
     expect(screen.getByText("키움 투자금 · 키움증권")).toBeDefined();
-    const amounts = screen.getByRole("group", { name: "키움 투자금 계좌 금액" });
+    const amounts = screen.getByRole("group", { name: "키움 투자금 금액" });
     expect(within(amounts).getByText("1,300,000원")).toBeDefined();
     expect(within(amounts).getByText("31,000,000원")).toBeDefined();
     // 기준일은 보유종목의 최신값
     expect(screen.getByText("기준일 2026-10-24")).toBeDefined();
   });
 
-  it("'업비트' 계좌가 있으면 상단 버튼 대신 계좌 메뉴에 설정·동기화가 보인다", async () => {
+  it("'업비트' 계좌가 있으면 상단 버튼 대신 계좌 메뉴에 연결 설정·동기화가 보인다", async () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
       const path = String(input);
       if (path.includes("/integrations/upbit")) {
@@ -211,9 +221,9 @@ describe("InvestmentsPage (§54 E2)", () => {
     expect(screen.queryByRole("button", { name: "업비트 연동" })).toBeNull();
     expect(screen.queryByRole("button", { name: "업비트에서 가져오기" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "업비트 계좌 메뉴" }));
-    expect(await screen.findByText("업비트 설정")).toBeDefined();
-    expect(screen.getByText("업비트 동기화")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "업비트 메뉴" }));
+    expect(await screen.findByText("업비트 연결 설정")).toBeDefined();
+    expect(screen.getByText("잔고 동기화")).toBeDefined();
   });
 
   it("보유종목이 없으면 빈 상태를 보여 주고, 추가 폼을 열 수 있다", async () => {
@@ -757,7 +767,7 @@ describe("InvestmentsPage (§54 E2)", () => {
     render(<InvestmentsPage />);
     await screen.findByText("키움 투자금 · 키움증권");
 
-    fireEvent.click(screen.getByRole("button", { name: "키움 투자금 계좌 메뉴" }));
+    fireEvent.click(screen.getByRole("button", { name: "키움 투자금 메뉴" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "계좌 편집" }));
     fireEvent.change(await screen.findByLabelText("예수금"), { target: { value: "2000000" } });
     fireEvent.click(screen.getByRole("button", { name: "저장" }));
@@ -782,7 +792,7 @@ describe("InvestmentsPage (§54 E2)", () => {
     render(<InvestmentsPage />);
     await screen.findByText("키움 투자금 · 키움증권");
 
-    fireEvent.click(screen.getByRole("button", { name: "키움 투자금 계좌 메뉴" }));
+    fireEvent.click(screen.getByRole("button", { name: "키움 투자금 메뉴" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "계좌 삭제" }));
     expect(await screen.findByText("보유종목 3건도 함께 삭제됩니다")).toBeDefined();
 
@@ -802,7 +812,7 @@ describe("InvestmentsPage (§54 E2)", () => {
     render(<InvestmentsPage />);
     await screen.findByText("삼성전자");
 
-    fireEvent.click(screen.getByRole("button", { name: "가격 갱신" }));
+    await clickSectionMenu("가격 갱신");
     const priceInput = screen.getByLabelText("삼성전자 현재가");
     fireEvent.change(priceInput, { target: { value: "80000" } });
     fireEvent.click(screen.getByRole("button", { name: "가격 저장" }));
@@ -817,6 +827,68 @@ describe("InvestmentsPage (§54 E2)", () => {
       // 수동 시세 갱신이므로 기준일은 저장 시점(오늘)이다
       expect(body.priceAsOf).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     });
+  });
+
+  it("가격 갱신 모드의 현재가 입력은 잘리지 않는 슬롯에 있고 폭 120·기본 높이다 (INV-02)", async () => {
+    render(<InvestmentsPage />);
+    await screen.findByText("삼성전자");
+
+    await clickSectionMenu("가격 갱신");
+
+    // 4개 종목 모두 편집 입력을 갖는다 — meta 셀로 clip 되면 폭·높이가 0 이 된다.
+    const inputs = screen.getAllByLabelText(/ 현재가$/);
+    expect(inputs.length).toBe(4);
+
+    for (const input of inputs) {
+      const wrapper = input.closest(".ant-input-number") as HTMLElement;
+      expect(wrapper.style.width).toBe("120px");
+      // size="small" 이면 높이 28 이다 — 모바일 하한 36 을 지키려면 기본 크기여야 한다.
+      expect(wrapper.className).not.toContain("ant-input-number-sm");
+      // clip 되는 meta 셀은 1×1 로 잘린다. value 슬롯이어야 화면에 남는다.
+      expect((input.closest("td") as HTMLElement).className).toContain("af-list__cell--value");
+    }
+
+    // 같은 행의 평가액 셀은 반대로 meta 로 내려간다(value 슬롯은 하나만).
+    const row = inputs[0]?.closest("tr") as HTMLElement;
+    const valueCell = row.querySelector('td[data-label="평가액"]') as HTMLElement;
+    expect(valueCell.className).not.toContain("af-list__cell--value");
+  });
+
+  it("좁은 화면은 섹션 액션을 ⋯ 메뉴로 접고 '+ 종목 추가'만 남긴다 (INV-01)", async () => {
+    render(<InvestmentsPage />);
+    await screen.findByText("삼성전자");
+
+    // 기본 상태: 직접 버튼은 추가 하나뿐이다.
+    expect(screen.getByRole("button", { name: "+ 종목 추가" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "가격 갱신" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "시세 새로고침" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "보유종목 메뉴" }));
+    for (const label of ["업비트 연동", "업비트에서 가져오기", "시세 새로고침", "가격 갱신"]) {
+      expect(await screen.findByRole("menuitem", { name: label })).toBeDefined();
+    }
+  });
+
+  it("요약 카드는 좁은 화면 2열이고 값은 tabular-nums 다 (INV-04)", async () => {
+    render(<InvestmentsPage />);
+    await screen.findByText("삼성전자");
+
+    const grid = screen.getByText("총 평가액").parentElement?.parentElement as HTMLElement;
+    expect(grid.style.gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))");
+    // 값은 .af-num(자리수 정렬) + 20/700
+    const value = screen.getByText("53,100,000원");
+    expect(value.className).toContain("af-num");
+    expect(value.style.fontSize).toBe("20px");
+  });
+
+  it("자산군 비중 도넛은 role=img 요약 하나로 노출되고 application 탭 스톱이 없다 (INV-07)", async () => {
+    const { container } = render(<InvestmentsPage />);
+    await screen.findByText("삼성전자");
+
+    expect(screen.getByRole("img", { name: /자산군 비중 도넛 차트/ })).toBeDefined();
+    expect(screen.getByRole("heading", { level: 3, name: "자산군 비중" })).toBeDefined();
+    // recharts 접근성 레이어는 무명 application 랜드마크를 만든다 — 꺼야 한다.
+    expect(container.querySelector('[role="application"]')).toBeNull();
   });
 
   it("원금이 0이면 수익률을 0%가 아니라 — 로 표시한다 (§54.4)", async () => {
@@ -860,8 +932,8 @@ describe("InvestmentsPage (§54 E2)", () => {
     }));
 
     render(<InvestmentsPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "비상금 계좌 메뉴" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "한투 동기화" }));
+    fireEvent.click(await screen.findByRole("button", { name: "비상금 메뉴" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "잔고 동기화" }));
 
     expect(await screen.findByText(warning)).toBeDefined();
   });

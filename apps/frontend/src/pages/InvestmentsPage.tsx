@@ -49,6 +49,8 @@ import {
 import { deleteAccount, updateAccount, type UpsertPayload } from "../api/assetsApi";
 import { ApiError, clearInflight } from "../api/client";
 import { clearToken } from "../auth/authStore";
+import { useMinWidth } from "../hooks/useMinWidth";
+import { SPACE } from "../theme/tokens";
 import { formatKrwExact, formatPercent, formatSignedKrw } from "../utils/formatters";
 
 interface InvestmentsPageProps {
@@ -92,7 +94,7 @@ const CLASS_COLORS: Record<AssetClass, string> = {
   etf: "var(--af-grove)",
   bond: "var(--af-slate)",
   fund: "var(--af-neutral)",
-  crypto: "#b06ab3",
+  crypto: "var(--af-cat-leisure)",
 };
 
 const won = (v: number) => Math.round(v);
@@ -200,7 +202,14 @@ export function InvestmentsPage({
     accountId: number;
     action: "clear" | "delete";
   } | null>(null);
+  /** 보유종목 섹션의 `⋯` 메뉴(좁은 화면) — 한 번에 하나만 열린다. */
+  const [openSectionMenu, setOpenSectionMenu] = useState(false);
   const mountedRef = useRef(false);
+  /**
+   * §35 중단점(md=768). 미만이면 섹션 액션을 `⋯` 메뉴로 접고 요약 카드를 2열로 둔다.
+   * matchMedia 미지원 환경(jsdom)은 false — 좁은 쪽이 기본이다.
+   */
+  const wide = useMinWidth(768);
 
   const load = useCallback(async () => {
     clearInflight();
@@ -746,16 +755,23 @@ export function InvestmentsPage({
       key: "marketPrice",
       header: "현재가",
       numeric: true,
+      /*
+       * INV-02: 좁은 화면에서 meta 셀은 1×1 로 clip 된다(접근성 트리 유지용).
+       * 가격 갱신 모드에서는 편집 대상이 이 셀이므로 value 슬롯을 넘겨받아
+       * 화면에 남긴다 — 평가액 셀은 반대로 meta 로 내려간다.
+       * (exactOptionalPropertyTypes: 키 자체를 넣지 않는다)
+       */
+      ...(priceMode ? { mobile: "value" as const } : {}),
       render: (row) =>
         priceMode ? (
           <InputNumber
-            size="small"
             min={0}
             precision={4}
             aria-label={`${row.name} 현재가`}
             value={priceDrafts[row.id] ?? row.marketPrice}
             onChange={(v) => setPriceDrafts((prev) => ({ ...prev, [row.id]: v ?? 0 }))}
-            style={{ width: 110 }}
+            /* 터치 16px·높이 36 은 기본 크기와 `pointer: coarse` 규칙이 만든다. */
+            style={{ width: 120 }}
           />
         ) : (
           priceText(row.marketPrice, row.currency)
@@ -765,7 +781,7 @@ export function InvestmentsPage({
       key: "value",
       header: "평가액",
       numeric: true,
-      mobile: "value",
+      ...(priceMode ? {} : { mobile: "value" as const }),
       render: (row) => {
         const cost = costOf(row);
         const value = valueOf(row);
@@ -830,6 +846,37 @@ export function InvestmentsPage({
     return `${CLASS_LABELS[row.assetClass]} · ${row.quantity.toLocaleString("ko-KR")}주`;
   };
 
+  /**
+   * INV-01: 좁은 화면에서 섹션 액션을 모으는 `⋯` 메뉴. 핸들러와 비활성 조건은
+   * 데스크톱 버튼과 같다 — 진행 중(로딩) 상태도 같은 이유로 막는다.
+   */
+  const sectionMenuItems: NonNullable<MenuProps["items"]> = [];
+  if (!hasUpbitAccount) {
+    sectionMenuItems.push({ key: "upbit-link", label: "업비트 연동" });
+    sectionMenuItems.push({
+      key: "upbit-sync",
+      label: "업비트에서 가져오기",
+      disabled: editingId !== null || priceMode || accountEditId !== null || upbitSyncing,
+    });
+  }
+  sectionMenuItems.push({
+    key: "refresh-quotes",
+    label: "시세 새로고침",
+    disabled: editingId !== null || priceMode || accountEditId !== null || refreshingQuotes,
+  });
+  sectionMenuItems.push({
+    key: "price-mode",
+    label: "가격 갱신",
+    disabled: editingId !== null || holdings.length === 0,
+  });
+
+  const onSectionMenuClick: MenuProps["onClick"] = ({ key }) => {
+    if (key === "upbit-link") setUpbitOpen(true);
+    else if (key === "upbit-sync") void handleUpbitSync();
+    else if (key === "refresh-quotes") void refreshPrices();
+    else if (key === "price-mode") beginPriceMode();
+  };
+
   return (
     <AppLayout
       onLogout={handleLogout}
@@ -878,9 +925,17 @@ export function InvestmentsPage({
         <Typography.Title level={2} id="h-portfolio-summary" style={{ fontSize: 18, margin: 0, marginBottom: 12 }}>
           포트폴리오 요약
         </Typography.Title>
-        <Card>
+        {/* 320 에서 카드 본문 패딩 24 는 2열 값(20px)을 줄바꿈시킨다 — 좁은 폭만 16. */}
+        <Card styles={{ body: { padding: wide ? undefined : SPACE.s4 } }}>
           {portfolio ? (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 16 }}>
+            <div
+              style={{
+                display: "grid",
+                // 좁은 화면 2×2, 768px 이상 1×4 — 320 에서 카드가 4단으로 길어지지 않게.
+                gridTemplateColumns: wide ? "repeat(4, minmax(0, 1fr))" : "repeat(2, minmax(0, 1fr))",
+                gap: SPACE.s3,
+              }}
+            >
               <Summary label="총 평가액" value={formatKrwExact(totals.value)} />
               <Summary label="총 원금" value={formatKrwExact(totals.cost)} />
               <Summary
@@ -897,52 +952,123 @@ export function InvestmentsPage({
       </section>
 
       <section aria-labelledby="h-holdings">
-        <div className="af-section-head">
+        {/*
+          INV-01: 좁은 화면은 [제목][기준일][+ 종목 추가][⋯] 한 줄(≤88px).
+          나머지 액션은 `⋯` 메뉴로 접는다 — 320 에서 버튼 5개가 3줄로 흩어지던 문제.
+          768px 이상은 기존 5버튼 배치 그대로다(회귀 0).
+        */}
+        <div className="af-section-head" style={wide ? undefined : { alignItems: "center", minHeight: 44 }}>
           <Typography.Title level={2} id="h-holdings" className="af-section-head__title" style={{ fontSize: 18, margin: 0 }}>
             보유종목
           </Typography.Title>
-          <Space wrap className="af-section-head__actions">
-            {asOf ? <Typography.Text type="secondary">기준일 {asOf}</Typography.Text> : null}
-            {priceMode ? (
-              <>
-                <Button type="primary" onClick={() => void savePrices()} loading={savingPrices}>
-                  가격 저장
-                </Button>
-                <Button onClick={cancelPriceMode} disabled={savingPrices}>
-                  취소
-                </Button>
-              </>
-            ) : (
-              <>
-                {/* 부트스트랩: '업비트' 계좌가 없을 때만 상단 버튼. 계좌가 생기면 ⋯ 메뉴를 쓴다. */}
-                {!hasUpbitAccount ? (
-                  <>
-                    <Button onClick={() => setUpbitOpen(true)}>업비트 연동</Button>
-                    <Button
-                      onClick={() => void handleUpbitSync()}
-                      loading={upbitSyncing}
-                      disabled={editingId !== null || priceMode || accountEditId !== null}
-                    >
-                      업비트에서 가져오기
-                    </Button>
-                  </>
-                ) : null}
-                <Button
-                  onClick={() => void refreshPrices()}
-                  loading={refreshingQuotes}
-                  disabled={editingId !== null || priceMode || accountEditId !== null}
+          {wide ? (
+            <Space wrap className="af-section-head__actions">
+              {asOf ? (
+                <Typography.Text type="secondary" title={asOf}>
+                  기준일 {asOf.slice(0, 10)}
+                </Typography.Text>
+              ) : null}
+              {priceMode ? (
+                <>
+                  <Button type="primary" onClick={() => void savePrices()} loading={savingPrices}>
+                    가격 저장
+                  </Button>
+                  <Button onClick={cancelPriceMode} disabled={savingPrices}>
+                    취소
+                  </Button>
+                </>
+              ) : (
+                <>
+                  {/* 부트스트랩: '업비트' 계좌가 없을 때만 상단 버튼. 계좌가 생기면 ⋯ 메뉴를 쓴다. */}
+                  {!hasUpbitAccount ? (
+                    <>
+                      <Button onClick={() => setUpbitOpen(true)}>업비트 연동</Button>
+                      <Button
+                        onClick={() => void handleUpbitSync()}
+                        loading={upbitSyncing}
+                        disabled={editingId !== null || priceMode || accountEditId !== null}
+                      >
+                        업비트에서 가져오기
+                      </Button>
+                    </>
+                  ) : null}
+                  <Button
+                    onClick={() => void refreshPrices()}
+                    loading={refreshingQuotes}
+                    disabled={editingId !== null || priceMode || accountEditId !== null}
+                  >
+                    시세 새로고침
+                  </Button>
+                  <Button onClick={beginPriceMode} disabled={editingId !== null || holdings.length === 0}>
+                    가격 갱신
+                  </Button>
+                  <Button onClick={beginCreate} disabled={editingId !== null || accounts.length === 0}>
+                    + 종목 추가
+                  </Button>
+                </>
+              )}
+            </Space>
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: SPACE.s2,
+                marginInlineStart: "auto",
+                minWidth: 0,
+              }}
+            >
+              {/* INV-15: 날짜만 보이고, 원본(시각 포함)은 title 로 남긴다. */}
+              {asOf ? (
+                <Typography.Text
+                  type="secondary"
+                  title={asOf}
+                  style={{
+                    fontSize: 12,
+                    minWidth: 0,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
                 >
-                  시세 새로고침
-                </Button>
-                <Button onClick={beginPriceMode} disabled={editingId !== null || holdings.length === 0}>
-                  가격 갱신
-                </Button>
-                <Button onClick={beginCreate} disabled={editingId !== null || accounts.length === 0}>
-                  + 종목 추가
-                </Button>
-              </>
-            )}
-          </Space>
+                  기준일 {asOf.slice(0, 10)}
+                </Typography.Text>
+              ) : null}
+              {priceMode ? (
+                <>
+                  <Button type="primary" onClick={() => void savePrices()} loading={savingPrices}>
+                    가격 저장
+                  </Button>
+                  <Button onClick={cancelPriceMode} disabled={savingPrices}>
+                    취소
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button onClick={beginCreate} disabled={editingId !== null || accounts.length === 0}>
+                    + 종목 추가
+                  </Button>
+                  <Dropdown
+                    trigger={["click"]}
+                    open={openSectionMenu}
+                    onOpenChange={setOpenSectionMenu}
+                    menu={{ items: sectionMenuItems, onClick: onSectionMenuClick }}
+                  >
+                    <Button
+                      type="text"
+                      size="small"
+                      className="af-icon-btn"
+                      aria-haspopup="menu"
+                      aria-expanded={openSectionMenu}
+                      aria-label="보유종목 메뉴"
+                    >
+                      <span aria-hidden="true">⋯</span>
+                    </Button>
+                  </Dropdown>
+                </>
+              )}
+            </div>
+          )}
         </div>
         {accounts.length === 0 && status === "ready" ? (
           <Typography.Paragraph type="secondary">
@@ -982,7 +1108,13 @@ export function InvestmentsPage({
                 </div>
               ) : null}
 
-              <Space size={[8, 16]} wrap style={{ marginBottom: 12 }} aria-label="자산군 필터">
+              <Space
+                size={[8, 16]}
+                wrap
+                style={{ marginBottom: 12 }}
+                role="group"
+                aria-label="자산군 필터"
+              >
                 {filterButton("all", "전체")}
                 {CLASS_ORDER.map((cls) => filterButton(cls, CLASS_LABELS[cls]))}
               </Space>
@@ -1004,8 +1136,8 @@ export function InvestmentsPage({
                     || kisSyncingAccountId !== null || upbitSyncing;
                   const kisMenuItems: NonNullable<MenuProps["items"]> = isKisAccount
                     ? [
-                        { key: "kis", label: "KIS 설정", disabled: accountActionDisabled },
-                        { key: "sync", label: "한투 동기화", disabled: accountActionDisabled },
+                        { key: "kis", label: "한국투자 연결 설정", disabled: accountActionDisabled },
+                        { key: "sync", label: "잔고 동기화", disabled: accountActionDisabled },
                         { key: "bond-preview", label: "채권 진단", disabled: accountActionDisabled },
                         { type: "divider" },
                         { key: "clear", label: "동기화 해제", danger: true, disabled: accountActionDisabled },
@@ -1013,10 +1145,10 @@ export function InvestmentsPage({
                     : [];
                   const upbitMenuItems: NonNullable<MenuProps["items"]> = isUpbitAccount
                     ? [
-                        { key: "upbit-settings", label: "업비트 설정", disabled: accountActionDisabled },
+                        { key: "upbit-settings", label: "업비트 연결 설정", disabled: accountActionDisabled },
                         {
                           key: "upbit-sync",
-                          label: "업비트 동기화",
+                          label: "잔고 동기화",
                           disabled: accountActionDisabled || upbitSyncing,
                         },
                       ]
@@ -1055,7 +1187,7 @@ export function InvestmentsPage({
                         <div
                           className="af-account-head__amounts"
                           role="group"
-                          aria-label={`${account.accountName} 계좌 금액`}
+                          aria-label={`${account.accountName} 금액`}
                         >
                           <span className="af-account-amount">
                             <span className="af-account-amount__label">예수금</span>
@@ -1079,7 +1211,7 @@ export function InvestmentsPage({
                               className="af-icon-btn"
                               aria-haspopup="menu"
                               aria-expanded={openAccountMenu === account.accountId}
-                              aria-label={`${account.accountName} 계좌 메뉴`}
+                              aria-label={`${account.accountName} 메뉴`}
                               disabled={accountEditId === account.accountId}
                             >
                               <span aria-hidden="true">⋯</span>
@@ -1164,7 +1296,11 @@ export function InvestmentsPage({
                         </div>
                       ) : null}
                       {kisSyncingAccountId === account.accountId ? (
-                        <div style={{ marginBottom: 12, padding: 12, background: "var(--af-secondary)", borderRadius: 8 }}>
+                        <div
+                          role="status"
+                          aria-live="polite"
+                          style={{ marginBottom: 12, padding: 12, background: "var(--af-secondary)", borderRadius: 8 }}
+                        >
                           <Typography.Text type="secondary">한국투자증권 잔고를 가져오는 중...</Typography.Text>
                         </div>
                       ) : null}
@@ -1222,13 +1358,21 @@ export function InvestmentsPage({
           </Card>
 
           {status === "ready" && slices.length > 0 && sliceTotal > 0 ? (
-            <Card>
-              <Typography.Title level={3} style={{ fontSize: 14, margin: "0 0 8px" }}>
-                자산군 비중
-              </Typography.Title>
-              <div style={{ height: 200 }}>
+            <Card
+              title={<h3 style={{ margin: 0, fontSize: "1em", fontWeight: 600 }}>자산군 비중</h3>}
+              classNames={{ title: "af-card-title" }}
+            >
+              {/* INV-07: 조각은 스크린리더에 한 덩어리(요약)로만 노출한다 — 접근성
+                  레이어(recharts application 탭 스톱)는 끄고 래퍼에 이름을 준다. */}
+              <div
+                role="img"
+                aria-label={`자산군 비중 도넛 차트 — ${slices
+                  .map((s) => `${s.label} ${(s.value / sliceTotal * 100).toFixed(1)}%`)
+                  .join(", ")}`}
+                style={{ height: 200 }}
+              >
                 <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
+                  <PieChart accessibilityLayer={false}>
                     <Pie
                       data={slices.map((s) => ({ name: s.label, value: s.value }))}
                       dataKey="value"
@@ -1237,12 +1381,26 @@ export function InvestmentsPage({
                       outerRadius={78}
                       paddingAngle={2}
                       isAnimationActive={false}
+                      stroke="var(--af-card)"
+                      strokeWidth={2}
                     >
                       {slices.map((s) => (
                         <Cell key={s.cls} fill={CLASS_COLORS[s.cls]} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(v) => formatKrwExact(Number(v))} />
+                    {/* INV-08: 다른 차트와 같은 툴팁 세트 — 다크 카드 위 기본
+                        툴팁(흰 배경/검정 글자 위 흰 글자) 대비 1.15:1 을 피한다. */}
+                    <Tooltip
+                      formatter={(v) => formatKrwExact(Number(v))}
+                      contentStyle={{
+                        background: "var(--af-card)",
+                        border: "1px solid var(--af-border)",
+                        borderRadius: 8,
+                        color: "var(--af-foreground)",
+                      }}
+                      itemStyle={{ color: "var(--af-foreground)" }}
+                      labelStyle={{ color: "var(--af-muted-foreground)" }}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -1295,9 +1453,18 @@ export function InvestmentsPage({
 
 function Summary({ label, value, tone }: { label: string; value: string; tone?: "danger" }) {
   return (
-    <div>
-      <div style={{ color: "var(--af-muted-foreground)", fontSize: 13 }}>{label}</div>
-      <div style={{ fontSize: 20, fontWeight: 700, color: tone === "danger" ? "var(--af-danger, #c0392b)" : undefined }}>
+    <div style={{ minWidth: 0 }}>
+      <div style={{ color: "var(--af-muted-foreground)", fontSize: 12, lineHeight: "18px" }}>{label}</div>
+      <div
+        className="af-num"
+        style={{
+          fontSize: 20,
+          fontWeight: 700,
+          lineHeight: "26px",
+          // 손익 색은 토큰만 쓴다 — 원시 hex 폴백을 두면 다크에서 어긋난다(§28.2, INV-05).
+          color: tone === "danger" ? "var(--af-destructive)" : undefined,
+        }}
+      >
         {value}
       </div>
     </div>
@@ -1541,11 +1708,13 @@ function HoldingForm({
           <Form.Item name="symbol" label="종목번호">
             <Input style={{ width: wide ? 180 : "100%" }} placeholder="예: KR103502GA34 (없으면 비움)" />
           </Form.Item>
-          <Form.Item label=" " colon={false}>
+          {/* 라벨 없는 액션 줄 — 가짜 라벨(" ") 대신 버튼이 자기 이름을 갖는다. */}
+          <Form.Item colon={false}>
             <Button
               onClick={onFetchBondInfo}
               loading={bondInfoBusy}
               disabled={!accountId}
+              aria-label="발행정보 가져오기"
               title={!accountId ? "계좌를 먼저 선택하세요" : undefined}
             >
               발행정보 가져오기
@@ -1563,11 +1732,12 @@ function HoldingForm({
               placeholder="예: 1000000"
             />
           </Form.Item>
-          <Form.Item label=" " colon={false}>
+          <Form.Item colon={false}>
             <Button
               onClick={() => void fetchBondValue()}
               loading={bondValueBusy}
               disabled={!bondValueReady}
+              aria-label="평가단가 가져오기"
               title={
                 bondValueReady
                   ? "평균평가단가로 평가금액을 계산합니다"
@@ -1627,8 +1797,8 @@ function HoldingForm({
           <Form.Item name="symbol" label="심볼">
             <Input style={{ width: 110 }} placeholder="005930" />
           </Form.Item>
-          <Form.Item label=" " colon={false}>
-            <Button onClick={onFetchQuote} loading={fetchingQuote}>
+          <Form.Item colon={false}>
+            <Button onClick={onFetchQuote} loading={fetchingQuote} aria-label="현재가 가져오기">
               현재가 가져오기
             </Button>
           </Form.Item>

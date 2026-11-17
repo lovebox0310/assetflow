@@ -129,6 +129,8 @@ export function UpbitCredentialsModal({ open, onClose, onSaved }: Props) {
           flexDirection: "column",
           padding: 0,
         },
+        // INV-09: 제목 인셋 — 본문 패딩(16)보다 넓게 두어 제목이 붙어 보이지 않게.
+        header: { flex: "0 0 auto", padding: "20px 24px 0" },
         body: {
           overflowY: "auto",
           flex: "1 1 auto",

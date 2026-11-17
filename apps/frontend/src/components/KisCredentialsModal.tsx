@@ -136,16 +136,75 @@ export function KisCredentialsModal({ accountId, accountName, open, onClose, onS
       title={`KIS 연동 설정 · ${accountName}`}
       open={open}
       onCancel={onClose}
-      footer={null}
-      destroyOnClose
+      centered
+      destroyOnHidden
+      width="min(560px, calc(100vw - 24px))"
+      /*
+       * §93 모달 셸: 컨테이너가 높이를 제한하고 본문만 스크롤한다.
+       * 헤더/본문/푸터 분리는 320 에서 버튼이 본문과 함께 스크롤돼 사라지던
+       * 문제를 막는다(저장 버튼은 항상 보인다). 색은 기존 토큰만 쓴다.
+       */
+      styles={{
+        container: {
+          maxHeight: "calc(100dvh - 32px)",
+          display: "flex",
+          flexDirection: "column",
+          padding: 0,
+          overflow: "hidden",
+        },
+        // INV-09: 제목 인셋 — 본문 패딩(16)보다 넓게 두어 제목이 붙어 보이지 않게.
+        header: { flex: "0 0 auto", padding: "20px 24px 0" },
+        body: {
+          overflowY: "auto",
+          flex: "1 1 auto",
+          minHeight: 0,
+          overscrollBehavior: "contain",
+          padding: "12px 16px 12px",
+        },
+        footer: {
+          margin: 0,
+          flex: "0 0 auto",
+          borderTop: "1px solid var(--af-border)",
+          padding: "12px 16px calc(12px + var(--af-safe-bottom))",
+        },
+      }}
+      footer={
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+          {exists && (
+            <Button danger onClick={() => void handleDelete()} loading={saving} disabled={loading}>
+              삭제
+            </Button>
+          )}
+          {exists && (
+            <Button onClick={() => void runTest()} loading={testing} disabled={saving || loading}>
+              연결 테스트
+            </Button>
+          )}
+          <Button
+            type="primary"
+            onClick={() => form.submit()}
+            loading={saving}
+            disabled={loading || testing}
+          >
+            저장
+          </Button>
+          <Button onClick={onClose} disabled={saving}>
+            취소
+          </Button>
+        </div>
+      }
     >
       <Form
         form={form}
         layout="vertical"
         onFinish={handleSave}
         disabled={loading}
-        style={{ marginTop: 16 }}
       >
+        {/*
+         * Enter 제출 경로 유지: footer 의 버튼은 폼 밖에 있어 네이티브 제출 버튼이 아니다.
+         * 제출 버튼이 없으면 입력이 둘 이상일 때 브라우저가 implicit submission 을 하지 않는다.
+         */}
+        <button type="submit" hidden aria-hidden="true" tabIndex={-1} />
         <Form.Item
           name="baseUrl"
           label="API 환경"
@@ -187,12 +246,12 @@ export function KisCredentialsModal({ accountId, accountName, open, onClose, onS
           <Input.Password placeholder={exists ? "변경할 때만 입력" : "KIS App Secret"} />
         </Form.Item>
 
-        <Space align="start" style={{ width: "100%" }}>
+        <Space align="start" wrap style={{ width: "100%" }}>
           <Form.Item
             name="cano"
             label="CANO"
             rules={[{ required: true, message: "CANO를 입력하세요" }]}
-            style={{ width: 180 }}
+            style={{ width: 180, maxWidth: "100%" }}
           >
             <Input placeholder="계좌번호 앞 8자리" maxLength={8} />
           </Form.Item>
@@ -201,7 +260,7 @@ export function KisCredentialsModal({ accountId, accountName, open, onClose, onS
             name="acntPrdtCd"
             label="상품코드"
             rules={[{ required: true, message: "상품코드를 입력하세요" }]}
-            style={{ width: 160 }}
+            style={{ width: 160, maxWidth: "100%" }}
             extra={
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 종합 01 · 개인연금 22 · 퇴직연금(IRP) 29. IRP는 29로 입력해야 예수금이
@@ -228,25 +287,6 @@ export function KisCredentialsModal({ accountId, accountName, open, onClose, onS
             {error}
           </Typography.Paragraph>
         )}
-
-        <Space style={{ marginTop: 16 }}>
-          <Button type="primary" htmlType="submit" loading={saving}>
-            저장
-          </Button>
-          {exists && (
-            <Button onClick={() => void runTest()} loading={testing} disabled={saving}>
-              연결 테스트
-            </Button>
-          )}
-          {exists && (
-            <Button danger onClick={() => void handleDelete()} loading={saving}>
-              삭제
-            </Button>
-          )}
-          <Button onClick={onClose} disabled={saving}>
-            취소
-          </Button>
-        </Space>
       </Form>
     </Modal>
   );

@@ -37,6 +37,8 @@ const SCREENS: ScreenSpec[] = [
   { key: "expenseCards", name: "카드내역", hash: "#/expenses/cards", readyText: "한마음식당" },
   { key: "settings", name: "설정", hash: "#/settings", readyText: "김가명" },
   { key: "assets", name: "자산", hash: "#/assets", readyText: "파킹통장", openButton: "+ 자산 추가" },
+  // 투자: 좁은 화면에서 "+ 종목 추가" 만 직접 버튼이다(나머지는 ⋯ 메뉴).
+  { key: "investments", name: "투자", hash: "#/investments", readyText: "삼성전자", openButton: "+ 종목 추가" },
   { key: "dashboard", name: "대시보드", hash: "#/", readyText: "예측 비상금" },
 ];
 
