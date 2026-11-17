@@ -80,13 +80,15 @@ export function SettingsPage({ onOpenDashboard, onOpenAssets, onOpenExpenses }: 
 
   return (
     <AppLayout
+      className="af-settings"
       onLogout={handleLogout}
       nav={<StandardNav current="settings" onOpenDashboard={onOpenDashboard} onOpenAssets={onOpenAssets} onOpenExpenses={onOpenExpenses} />}
     >
       <div style={{ maxWidth: 720, width: "100%", marginInline: "auto", minWidth: 0 }}>
         {/* 이슈 #70: 페이지 h1 은 정확히 1개. 섹션은 h2. */}
         <Typography.Title level={1} id="h-settings" style={{ fontSize: 24, margin: 0, marginBottom: 8 }}>설정</Typography.Title>
-        <p style={{ fontSize: 13, color: "var(--af-muted-foreground)", margin: "0 0 24px" }}>
+        {/* S-09: 한국어는 어절 단위로 끊는다 — 좁은 폭에서 "바꿉니/다" 처럼 갈라지지 않게. */}
+        <p style={{ fontSize: 13, color: "var(--af-muted-foreground)", margin: "0 0 24px", wordBreak: "keep-all" }}>
           계정과 보안 설정입니다. 비상금 목표·카드 명세서 수집은 각 기능 화면에서 바꿉니다.
         </p>
 
@@ -144,7 +146,7 @@ export function SettingsPage({ onOpenDashboard, onOpenAssets, onOpenExpenses }: 
                 rules={[{ required: true, message: "새 비밀번호 확인을 입력하세요" }]}>
                 <Input.Password aria-label="새 비밀번호 확인" autoComplete="new-password" style={{ fontSize: 16 }} />
               </Form.Item>
-              <Button type="primary" loading={passwordSaving} onClick={() => void savePassword()}>비밀번호 변경</Button>
+              <Button type="primary" loading={passwordSaving} onClick={() => void savePassword()} style={{ minHeight: 44 }}>비밀번호 변경</Button>
             </Form>
           </Card>
         </section>

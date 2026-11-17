@@ -435,6 +435,14 @@ export function createAfTheme(mode: ResolvedTheme): ThemeConfig {
          * app.css 의 `.ant-dropdown-menu-item { min-height }` 해킹을 대체한다. */
         paddingBlock: 11,
       },
+      Button: {
+        /* S-03(디자인 감사): 버튼 아래 2px 받침 그림자를 끈다.
+         * 전 화면 파급이므로 화면별 CSS 가 아니라 토큰 단일 출처에서 끈다 —
+         * 기본/주/위험 3종 모두 같은 값이어야 한 화면에서 섞이지 않는다. */
+        defaultShadow: "none",
+        primaryShadow: "none",
+        dangerShadow: "none",
+      },
     },
   };
 }

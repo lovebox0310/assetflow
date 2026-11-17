@@ -17,8 +17,12 @@ interface AppLayoutProps {
   children: ReactNode;
 }
 
-/** D7 — 아이콘 패키지 없음. 인라인 SVG 로 직접 그린다. */
-function MoonIcon() {
+/**
+ * D7 — 아이콘 패키지 없음. 인라인 SVG 로 직접 그린다.
+ * 로그인 셸(S-05)의 테마 토글도 같은 아이콘을 쓰므로 export 한다 —
+ * 마크업·문구를 두 벌로 복제하지 않는다.
+ */
+export function MoonIcon() {
   return (
     <svg
       width="16"
@@ -37,7 +41,7 @@ function MoonIcon() {
   );
 }
 
-function SunIcon() {
+export function SunIcon() {
   return (
     <svg
       width="16"
