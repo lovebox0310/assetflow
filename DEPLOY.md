@@ -341,6 +341,42 @@ sudo systemctl daemon-reload
 - `deploy/autodeploy.sh` 자체를 고치는 커밋은 실행 중인 스크립트를 교체할 수 있다. 그런 커밋을 배포할 때는 타이머를 잠시 끄고 수동 배포하는 편이 안전하다.
 - 저장소가 **공개**라면 이 구성을 권하지 않는다. 배포 경로·계정·sudoers 규칙이 모두 공개되고, main 에 push 할 수 있는 모든 경로가 서버 실행 권한이 된다.
 
+### 7.8 운영 메뉴 스크립트 (`deploy/ops.sh`)
+
+휴대폰 SSH 에서도 짧은 명령 하나로 끝내기 위한 메뉴. 저장소 밖 어디서 실행해도 된다(`REPO=/home/redbox9/assetflow-dev` 고정).
+
+```bash
+bash deploy/ops.sh                 # 번호 메뉴 (1~5)
+bash deploy/ops.sh status          # 1) 상태 요약 — sudo 불필요
+bash deploy/ops.sh dropfolder on   # 2) 드롭 폴더 켜기 (off 로 끄기) — sudo
+bash deploy/ops.sh deploy-now      # 3) 자동 배포 1회 즉시 실행 — sudo
+bash deploy/ops.sh repo-reset      # 4) 저장소 삭제·재생성 — 파괴적
+```
+
+| 번호 | 서브커맨드 | 하는 일 |
+|---|---|---|
+| 1 | `status` | 최근 커밋 3개, 로컬/`origin/main` SHA, `assetflow.service` 상태, `/health`, `/opt/assetflow/app.jar` mtime, `assetflow-deploy.timer` 다음 실행, 마지막 배포 sha(`~/.local/state/assetflow/deployed-sha`), 최근 CI 결론(`gh run list --limit 1`) |
+| 2 | `dropfolder on\|off` | `/opt/assetflow/assetflow.env` 의 `CARD_DROP_FOLDER_ENABLED`·`CARD_DROP_FOLDER_PATH` 만 갱신(다른 줄 보존, 없으면 추가) → `systemctl restart assetflow` → 3초 대기 → `/health` 확인 |
+| 3 | `deploy-now` | `systemctl start assetflow-deploy.service` 후 `journalctl -u assetflow-deploy -n 20` 출력 |
+| 4 | `repo-reset` | 아래 경고 참고 |
+| 5 | — | 종료 |
+
+- `status` 는 `sudo` 없이 동작한다. 나머지(sudo 필요)는 스크립트가 `sudo` 를 호출하고 비밀번호는 사용자가 직접 입력한다. 토큰·비밀번호 등 비밀값은 화면에 출력하지 않는다.
+- `dropfolder` 는 **드롭 폴더 감시만** 켜고 끈다. 자동이체·부가가치세 잔액 같은 다른 설정은 이 메뉴로 바꾸지 않는다(진짜 출처를 덮지 않기 위해서).
+- 어느 단계든 실패하면 `set -e` 로 멈추고 `[중단] <단계 이름>` 을 출력한다.
+
+**`repo-reset` 경고 — 되돌릴 수 없다**
+
+원격 저장소를 삭제(`gh repo delete lovebox0310/assetflow --yes`)하고 다시 만든다. 이슈·PR·라벨·Actions 이력·브랜치 보호 규칙이 사라진다. 로컬 커밋은 그대로이고 bundle 백업 후 다시 push 한다.
+
+1. `DELETE` 를 정확히 입력해야 진행한다(그 외 입력은 취소).
+2. 백업: `~/backups/assetflow-pre-reset-<ts>.bundle`(`git bundle create --all`), `~/backups/repo-reset-<ts>/` 에 `issues.json`·`labels.json`.
+3. `delete_repo` 스코프 확인 — 없으면 `gh auth refresh -h github.com -s delete_repo` 로 승인 후 재확인.
+4. 삭제 → 생성 → `git push --all`/`--tags` → main 보호 규칙 재적용(`quality-gate`·`frontend-gate`·`backend-gate`, strict) → 라벨 복원.
+5. 검증: `refs/pull/*` 0개, `origin/main` == 로컬 HEAD, `SENSITIVE_EMAIL` 이 설정된 경우에만 새 클론에서 그 문자열이 등장하는 커밋 0개.
+
+원격이 이미 삭제된 상태에서 다시 실행하면 삭제와 이슈 export 를 건너뛰고 생성(5단계)부터 이어간다. 개인 이메일 흔적 검사는 스크립트에 값을 넣지 않고, 필요할 때만 `SENSITIVE_EMAIL` 환경변수로 넘긴다(셸 히스토리에 남기 싫으면 명령 앞에 공백을 둔다).
+
 ---
 
 ## 부록 A: Render + Vercel + Neon (역사적 참고)
