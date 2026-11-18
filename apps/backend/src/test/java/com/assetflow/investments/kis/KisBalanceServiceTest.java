@@ -483,33 +483,90 @@ class KisBalanceServiceTest {
     }
 
     @Test
-    void personalPensionUsesPensionApiFirstAndNeverTouchesStockBalance() {
+    void personalPensionUsesStockBalanceFirst() {
         List<String> paths = new ArrayList<>();
         List<String> trIds = new ArrayList<>();
         KisApiClient api = client((path, tr) -> {
             paths.add(path);
             trIds.add(tr);
             if (path.contains("pension/inquire-balance")) {
-                return json(PENSION_ETF_RESPONSE);
+                throw new KisApiException("연금 API 는 최후 수단이어야 한다: " + path);
             }
-            throw new KisApiException("위탁계좌 전용: " + path);
+            return json("""
+                    {"rt_cd":"0",
+                     "output1":[{"pdno":"069500","prdt_name":"KODEX 200","hldg_qty":"10",
+                       "pchs_avg_pric":"35000","prpr":"40000","evlu_amt":"400000",
+                       "evlu_pfls_amt":"50000"}],
+                     "output2":[{"dnca_tot_amt":"1200000"}]}
+                    """);
         });
 
         KisBalanceResponse result =
                 new KisBalanceService(api).fetchBalance(salesCredentials("22"));
 
-        // 22 는 퇴직연금(2208)만 호출한다 — 29 의 체결기준/채권 병합은 범위 밖.
-        assertThat(paths).containsExactly("/uapi/domestic-stock/v1/trading/pension/inquire-balance");
-        assertThat(trIds).containsExactly("TTTC2208R");
+        // 22 는 위탁계좌와 같은 주식잔고(TTTC8434R) 경로를 먼저 쓴다 — 연금 TR 호출 0.
+        assertThat(paths).containsExactly("/uapi/domestic-stock/v1/trading/inquire-balance");
+        assertThat(trIds).containsExactly("TTTC8434R");
+        assertThat(result.summary().dncaTotAmt()).isEqualByComparingTo(new BigDecimal("1200000"));
+        assertThat(result.holdings()).hasSize(1);
+        assertThat(result.holdings().get(0).pdno()).isEqualTo("069500");
+        assertThat(result.warning()).isNull();
+    }
+
+    @Test
+    void personalPensionUsesAccountBalanceWhenStockBalanceFails() {
+        List<String> paths = new ArrayList<>();
+        KisApiClient api = client((path, tr) -> {
+            paths.add(path);
+            if (path.contains("pension/inquire-balance")) {
+                throw new KisApiException("연금 API 는 최후 수단이어야 한다: " + path);
+            }
+            if (path.contains("inquire-account-balance")) {
+                return json("{\"rt_cd\":\"0\",\"output2\":[{\"dncl_amt\":\"880000\"}]}");
+            }
+            throw new KisApiException("주식잔고 거부");
+        });
+
+        KisBalanceResponse result =
+                new KisBalanceService(api).fetchBalance(salesCredentials("22"));
+
+        assertThat(paths).containsExactly(
+                "/uapi/domestic-stock/v1/trading/inquire-balance",
+                "/uapi/domestic-stock/v1/trading/inquire-account-balance");
+        assertThat(result.summary().dncaTotAmt()).isEqualByComparingTo(new BigDecimal("880000"));
+        assertThat(result.warning()).isNull();
+    }
+
+    @Test
+    void personalPensionUsesPensionApiOnlyAsLastResortAndWarns() {
+        List<String> paths = new ArrayList<>();
+        KisApiClient api = client((path, tr) -> {
+            paths.add(path);
+            if (path.contains("pension/inquire-balance")) return json(PENSION_ETF_RESPONSE);
+            throw new KisApiException(path.contains("inquire-account-balance")
+                    ? "계좌자산현황 거부" : "주식잔고 거부");
+        });
+
+        KisBalanceResponse result =
+                new KisBalanceService(api).fetchBalance(salesCredentials("22"));
+
+        // 두 위탁 경로가 모두 실패한 뒤에만 연금 TR 을 부른다.
+        assertThat(paths).containsExactly(
+                "/uapi/domestic-stock/v1/trading/inquire-balance",
+                "/uapi/domestic-stock/v1/trading/inquire-account-balance",
+                "/uapi/domestic-stock/v1/trading/pension/inquire-balance");
         assertThat(result.summary().dncaTotAmt()).isEqualByComparingTo(new BigDecimal("76502"));
         assertThat(result.summary().cashKnown()).isTrue();
         assertThat(result.holdings()).hasSize(1);
         assertThat(result.holdings().get(0).pdno()).isEqualTo("458730");
+        assertThat(result.warning()).contains("개인연금 계좌를 퇴직연금 잔고조회로 읽었습니다");
     }
 
     @Test
     void personalPensionFailureReportsProductCodeAndAllThreeReasons() {
+        List<String> paths = new ArrayList<>();
         KisApiClient api = client((path, tr) -> {
+            paths.add(path);
             if (path.contains("pension/inquire-balance")) {
                 throw new KisApiException("연금 TR 거부");
             }
@@ -520,9 +577,14 @@ class KisBalanceServiceTest {
         assertThatThrownBy(() -> new KisBalanceService(api).fetchBalance(salesCredentials("22")))
                 .isInstanceOf(KisApiException.class)
                 .hasMessageContaining("상품코드 22")
-                .hasMessageContaining("연금 TR 거부")
-                .hasMessageContaining("주식잔고조회")
-                .hasMessageContaining("계좌자산현황");
+                .hasMessageContaining("주식잔고 거부")
+                .hasMessageContaining("계좌자산현황 거부")
+                .hasMessageContaining("연금 TR 거부");
+        // 연금 TR 은 마지막에 한 번만 시도한다.
+        assertThat(paths).containsExactly(
+                "/uapi/domestic-stock/v1/trading/inquire-balance",
+                "/uapi/domestic-stock/v1/trading/inquire-account-balance",
+                "/uapi/domestic-stock/v1/trading/pension/inquire-balance");
     }
 
     @Test
@@ -666,7 +728,13 @@ class KisBalanceServiceTest {
 
         KisBalanceResponse result = new KisBalanceService(api).fetchBalance(salesCredentials("22"));
 
-        assertThat(paths).containsExactly("/uapi/domestic-stock/v1/trading/pension/inquire-balance");
+        // 22 는 주식잔고 → 계좌자산현황이 먼저이고, 둘 다 실패한 뒤에만 연금 TR 을 부른다.
+        assertThat(paths).containsExactly(
+                "/uapi/domestic-stock/v1/trading/inquire-balance",
+                "/uapi/domestic-stock/v1/trading/inquire-account-balance",
+                "/uapi/domestic-stock/v1/trading/pension/inquire-balance");
+        // 최후 수단으로 읽었다는 사실은 warning 으로 남긴다.
+        assertThat(result.warning()).contains("개인연금 계좌를 퇴직연금 잔고조회로 읽었습니다");
         assertThat(result.summary().cashKnown()).isTrue();
         assertThat(result.summary().dncaTotAmt()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(result.holdings()).isEmpty();

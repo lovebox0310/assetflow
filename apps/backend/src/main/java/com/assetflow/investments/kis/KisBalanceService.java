@@ -20,10 +20,13 @@ import java.util.Set;
  * - 모의투자 tr_id: VTTC8434R, 실전 tr_id: TTTC8434R
  * - 계좌번호는 CANO(앞 8자리) + ACNT_PRDT_CD(상품코드, 일반 "01") 로 구성.
  *
- * <p>CMA·연금 계좌(상품코드 21/29 등)는 주식잔고조회의 {@code dnca_tot_amt} 가
+ * <p>CMA·IRP(상품코드 29) 계좌는 주식잔고조회의 {@code dnca_tot_amt} 가
  * 0 이거나 아예 조회가 안 된다. 이때 투자계좌자산현황조회로 예수금을 다시 읽는다.
  * "성공했지만 예수금이 0" 도 실패로 보고 폴백해야 한다 — 그대로 두면 컨트롤러가
  * 기존 잔액을 0 으로 덮어쓴다(§62.3).</p>
+ *
+ * <p>개인연금(22)은 예외다 — 주식잔고로 정상 조회되므로 위탁계좌와 같은 순서를 쓰고,
+ * 그 경로가 예수금을 못 읽었을 때만 퇴직연금 잔고조회(TTTC2208R)를 마지막으로 시도한다.</p>
  */
 @Service
 public class KisBalanceService {
@@ -31,8 +34,9 @@ public class KisBalanceService {
     private static final String BALANCE_PATH = "/uapi/domestic-stock/v1/trading/inquire-balance";
     private static final String ACCOUNT_BALANCE_PATH = "/uapi/domestic-stock/v1/trading/inquire-account-balance";
     /**
-     * 퇴직연금 잔고조회 — 상품코드 29(IRP)와 22(개인연금)가 함께 쓴다.
-     * 일반 주식잔고·계좌자산현황은 위탁계좌 전용이라 연금 계좌에서는 조회가 거부된다.
+     * 퇴직연금 잔고조회 — 29(IRP)의 기본 경로이고, 22(개인연금)에서는 마지막 수단이다.
+     * 22 는 위탁계좌처럼 주식잔고(TTTC8434R) → 계좌자산현황(CTRP6548R)으로 읽고,
+     * 두 경로가 예수금을 못 읽었을 때만 이 API 를 시도한다(§62.3).
      */
     private static final String PENSION_BALANCE_PATH = "/uapi/domestic-stock/v1/trading/pension/inquire-balance";
     private static final String MOCK_TR_ID = "VTTC8434R";
@@ -44,8 +48,11 @@ public class KisBalanceService {
             "/uapi/domestic-stock/v1/trading/pension/inquire-present-balance";
     private static final String PENSION_PRESENT_TR_ID = "TTTC2202R";
     private static final String PENSION_PRODUCT_CODE = "29";
-    /** 개인연금 — 29(IRP)와 같이 퇴직연금 잔고조회(TTTC2208R)로만 읽힌다. */
+    /** 개인연금 — 주식잔고 → 계좌자산현황이 정상 경로이고, 퇴직연금 잔고조회는 최후 수단이다. */
     private static final String PERSONAL_PENSION_PRODUCT_CODE = "22";
+    /** 개인연금(22)을 표준 경로가 아닌 퇴직연금 잔고조회로 읽었을 때 남기는 안내. */
+    private static final String PERSONAL_PENSION_FALLBACK_WARNING =
+            "개인연금 계좌를 퇴직연금 잔고조회로 읽었습니다";
     /** 장내채권 잔고/현재가 — 퇴직연금 잔고(TTTC2208R)에는 채권이 오지 않는다. */
     private static final String BOND_BALANCE_PATH = "/uapi/domestic-bond/v1/trading/inquire-balance";
     private static final String BOND_PRICE_PATH = "/uapi/domestic-bond/v1/quotations/inquire-price";
@@ -92,14 +99,14 @@ public class KisBalanceService {
 
     private KisBalanceResponse baseBalance(KisCredentials credentials) {
         String productCode = normalize(credentials.acntPrdtCd());
-        // 연금 계좌(29 IRP · 22 개인연금)는 전용 API(TTTC2208R)로만 예수금/보유종목이 조회된다.
-        // 일반 주식잔고·계좌자산현황은 위탁계좌 전용이라 연금 계좌에서는 항상 실패한다.
+        // 29(IRP)만 퇴직연금 전용 API(TTTC2208R)를 먼저 쓴다 — 기존 동작.
+        // 22(개인연금)는 위탁계좌와 같은 주식잔고 → 계좌자산현황 경로가 정상이고,
+        // 연금 API 는 그 경로가 예수금을 못 읽었을 때만 마지막으로 시도한다(§62.3).
         String pensionError = null;
-        if (isPensionAccount(productCode)) {
+        if (PENSION_PRODUCT_CODE.equals(productCode)) {
             try {
                 KisBalanceResponse pension = fetchPensionBalance(credentials);
-                if ((pension.summary() != null && pension.summary().cashKnown())
-                        || !pension.holdings().isEmpty()) {
+                if (isUsablePensionBalance(pension)) {
                     return pension;
                 }
                 pensionError = "보유종목·예수금이 비어 있습니다";
@@ -108,9 +115,7 @@ public class KisBalanceService {
             }
             // 모의투자(vps)에는 연금 TR 이 없다 — 폴백해 봐야 위탁계좌 전용 오류만 쌓인다.
             if (credentials.isMock()) {
-                throw new KisApiException(
-                        "모의투자(vps)에는 연금 계좌 API가 없습니다. 실전 도메인과 실전 앱키로 설정하세요. "
-                                + "(연금 조회: " + pensionError + ")");
+                throw new KisApiException(mockPensionMessage(pensionError));
             }
         }
 
@@ -136,6 +141,12 @@ public class KisBalanceService {
             return fallback;
         }
 
+        // 개인연금(22) — 위탁 경로 두 개가 모두 예수금을 못 읽었을 때만 연금 TR 을 마지막으로 시도한다.
+        if (PERSONAL_PENSION_PRODUCT_CODE.equals(productCode)) {
+            return personalPensionLastResort(credentials, productCode,
+                    primary, primaryError, fallback, fallbackError);
+        }
+
         if (primaryError != null) {
             if (fallbackError != null) {
                 String message = "주식잔고조회: " + primaryError.getMessage()
@@ -156,7 +167,67 @@ public class KisBalanceService {
         return new KisBalanceResponse(List.of(), null);
     }
 
-    /** 연금 계좌(29 IRP · 22 개인연금) 여부 — 퇴직연금 잔고조회(TTTC2208R) 대상. */
+    /**
+     * 개인연금(22) 최후 수단 — 주식잔고(TTTC8434R)·계좌자산현황(CTRP6548R)이 모두
+     * 예수금을 주지 못했을 때만 퇴직연금 잔고조회(TTTC2208R)를 시도한다.
+     *
+     * <p>표준 경로가 아니므로 성공해도 warning 을 남긴다(컨트롤러가 부분 성공으로 보고
+     * 보유종목 삭제를 건너뛴다). 빈 연금 응답은 성공이 아니라 세 경로 사유를 합친 예외다.</p>
+     */
+    private KisBalanceResponse personalPensionLastResort(
+            KisCredentials credentials, String productCode,
+            KisBalanceResponse primary, KisApiException primaryError,
+            KisBalanceResponse fallback, KisApiException fallbackError) {
+        String stockReason = failureReason(primary, primaryError);
+        String accountReason = failureReason(fallback, fallbackError);
+        // 모의투자에는 연금 TR 이 없다 — 시도 전에 멈추고 안내한다.
+        if (credentials.isMock()) {
+            throw new KisApiException(mockPensionMessage(
+                    "주식잔고조회: " + stockReason + " | 계좌자산현황조회: " + accountReason));
+        }
+
+        String pensionReason;
+        try {
+            KisBalanceResponse pension = fetchPensionBalance(credentials);
+            if (isUsablePensionBalance(pension)) {
+                return new KisBalanceResponse(pension.holdings(), pension.summary(),
+                        PERSONAL_PENSION_FALLBACK_WARNING);
+            }
+            pensionReason = "보유종목·예수금이 비어 있습니다";
+        } catch (KisApiException e) {
+            pensionReason = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+        }
+        throw new KisApiException("상품코드 " + productCode + "(" + pensionLabel(productCode) + "): "
+                + "주식잔고조회 실패(" + stockReason + ")"
+                + " | 계좌자산현황조회 실패(" + accountReason + ")"
+                + " | 퇴직연금 잔고조회 실패(" + pensionReason + ")");
+    }
+
+    /** 모의투자 연금 계좌 안내 — 29·22 가 같은 문구를 쓴다. */
+    private static String mockPensionMessage(String reason) {
+        return "모의투자(vps)에는 연금 계좌 API가 없습니다. 실전 도메인과 실전 앱키로 설정하세요. "
+                + "(연금 조회: " + reason + ")";
+    }
+
+    /** 실패 사유 한 줄 — 예외가 있으면 그 메시지, 성공했지만 예수금이 없으면 그 사실. */
+    private static String failureReason(KisBalanceResponse response, KisApiException error) {
+        if (error != null) {
+            return error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+        }
+        return response == null ? "응답 없음" : "예수금 미확인(0원)";
+    }
+
+    /** 연금 응답을 그대로 쓸 수 있는가 — known summary 이거나 보유종목이 있으면 성공. */
+    private static boolean isUsablePensionBalance(KisBalanceResponse pension) {
+        return pension != null
+                && ((pension.summary() != null && pension.summary().cashKnown())
+                || !pension.holdings().isEmpty());
+    }
+
+    /**
+     * 연금 상품코드(29 IRP · 22 개인연금) 여부 — 진단(previewPension)에서 TTTC2208R 대상인지 판별한다.
+     * 잔고 동기화 경로는 29·22 를 다르게 다루므로 이 술어를 쓰지 않는다.
+     */
     private static boolean isPensionAccount(String productCode) {
         return PENSION_PRODUCT_CODE.equals(productCode)
                 || PERSONAL_PENSION_PRODUCT_CODE.equals(productCode);

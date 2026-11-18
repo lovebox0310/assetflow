@@ -266,8 +266,8 @@ export function KisCredentialsModal({ accountId, accountName, open, onClose, onS
                 종합 01 · 개인연금 22 · 퇴직연금(IRP) 29. IRP는 29로 입력해야 예수금이
                 조회됩니다.
                 <br />
-                개인연금(22)도 퇴직연금 잔고조회(TTTC2208R)로 읽습니다. 모의투자에는 연금
-                API가 없습니다.
+                개인연금(22)은 주식잔고로 조회하며, 안 되면 퇴직연금 조회를 시도합니다.
+                모의투자에는 연금 API가 없습니다.
               </Typography.Text>
             }
           >

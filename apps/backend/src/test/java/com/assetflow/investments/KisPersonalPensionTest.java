@@ -134,8 +134,10 @@ class KisPersonalPensionTest {
     }
 
     @Test
-    void trustworthyZeroResponseAppliesZeroAndCleansStaleHoldings() throws Exception {
-        // 총평가 0 이 명시된 "진짜 빈 계좌" 는 기존처럼 정상 0원으로 처리한다.
+    void trustworthyZeroResponseAppliesZeroOnPensionLastResortAndKeepsStaleHoldings() throws Exception {
+        // 총평가 0 이 명시된 "진짜 빈 계좌" 는 정상 0원으로 반영한다.
+        // 다만 22 는 이 응답을 최후 수단(연금 TR)으로 읽었으므로 warning 이 붙고,
+        // warning != null 이면 컨트롤러는 stale 행을 지우지 않는다(부분 성공 취급).
         wire(() -> json("{\"rt_cd\":\"0\",\"output1\":[],\"output2\":[{\"tot_evlu_amt\":\"0\"}]}"));
         seedKisHolding();
 
@@ -143,10 +145,11 @@ class KisPersonalPensionTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"accountId\":" + ACCOUNT_ID + "}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.warning").value(nullValue()));
+                .andExpect(jsonPath("$.data.warning")
+                        .value(containsString("개인연금 계좌를 퇴직연금 잔고조회로 읽었습니다")));
 
         assertThat(assets.byId(ACCOUNT_ID).balance()).isZero();
-        assertThat(accountHoldings()).extracting(HoldingRow::symbol).doesNotContain("458730");
+        assertThat(accountHoldings()).extracting(HoldingRow::symbol).contains("458730");
     }
 
     // ── 진단 API (읽기 전용) ────────────────────────────────────────────────
