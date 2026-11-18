@@ -174,6 +174,22 @@ export const AF_COLORS = {
   catEducation: { light: "#2f7f7a", dark: "#6fc0b9" },
   catUnclassified: { light: "#c9c4b8", dark: "#6f6b63" },
 
+  /*
+   * ── 카드사 시리즈 (8색 = 카드사 4 × [본인, 가족]) ─────────────
+   * 카드사 이름은 사용자 데이터라 색을 이름에 묶을 수 없다 — **순서**로 고른다.
+   * 쌍의 첫 색이 본인(어두움), 둘째가 가족(밝음). 라이트/다크 모두 같은 순서다.
+   * 실측 대비(스펙): 라이트 쌍 내부 3.13/3.13/3.08/3.11, 카드 위 3.16~13.94 /
+   * 다크 쌍 내부 3.08/3.10/3.12/3.11, 카드 위 3.12~12.34.
+   */
+  cardSeries1: { light: "#102e1d", dark: "#2a794b" },
+  cardSeries2: { light: "#2e8351", dark: "#88d5a9" },
+  cardSeries3: { light: "#1c3060", dark: "#456dc9" },
+  cardSeries4: { light: "#577bce", dark: "#c0ceed" },
+  cardSeries5: { light: "#563205", dark: "#ae6409" },
+  cardSeries6: { light: "#c4710a", dark: "#facf9a" },
+  cardSeries7: { light: "#72214a", dark: "#cb4e8c" },
+  cardSeries8: { light: "#d4699f", dark: "#f3d6e4" },
+
   /* ── 그림자 ─────────────────────────────────────────── */
   boxShadow: { light: "0 1px 2px rgba(30, 29, 26, 0.06)", dark: "0 1px 2px rgba(0, 0, 0, 0.45)" },
   boxShadowSecondary: {
@@ -243,6 +259,14 @@ export const AF_CSS_VAR_MAP = {
   "--af-cat-etc": "catEtc",
   "--af-cat-education": "catEducation",
   "--af-cat-unclassified": "catUnclassified",
+  "--af-card-series-1": "cardSeries1",
+  "--af-card-series-2": "cardSeries2",
+  "--af-card-series-3": "cardSeries3",
+  "--af-card-series-4": "cardSeries4",
+  "--af-card-series-5": "cardSeries5",
+  "--af-card-series-6": "cardSeries6",
+  "--af-card-series-7": "cardSeries7",
+  "--af-card-series-8": "cardSeries8",
   "--af-badge-signal-bg": "badgeSignalBg",
   "--af-badge-signal-fg": "badgeSignalFg",
   "--af-badge-grove-bg": "badgeGroveBg",

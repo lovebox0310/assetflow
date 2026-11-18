@@ -110,7 +110,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     stubFetch(route);
     render(<DashboardPage onLogout={() => {}} />);
     // 로딩이 끝나야 컨테이너에 실측 가능한 콘텐츠가 채워진다.
-    await findByTextContent(document.body, "6.9억");
+    await findByTextContent(document.body, "691,844,440원");
     const headings = screen.getAllByRole("heading", { level: 2 });
     const titles = headings.map((h) => h.textContent);
     expect(titles).toEqual([
@@ -152,7 +152,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
         onOpenCards={onOpenCards}
       />,
     );
-    await findByTextContent(document.body, "6.9억");
+    await findByTextContent(document.body, "691,844,440원");
 
     fireEvent.click(screen.getByRole("button", { name: "자산 화면 보기 — 자산 구성비" }));
     expect(onOpenAssets).toHaveBeenCalledTimes(1);
@@ -176,12 +176,22 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     stubFetch(route);
     render(<DashboardPage onLogout={() => {}} />);
 
-    // 순자산 691,844,440 → 6.9억 / 월 수지 +3,240,000 → +324.0만 (A-05 축약 표기)
+    // 순자산 691,844,440 → 691,844,440원 / 월 수지 +3,240,000 → +3,240,000원 (정확 표기)
     // 비상금: 통장 18,500,000 ÷ (필수 2,317,180 + 식비 평균 900,000) = 5.75 → 5.8개월
-    expect(await findByTextContent(document.body, "6.9억")).toBeDefined();
+    expect(await findByTextContent(document.body, "691,844,440원")).toBeDefined();
     // 카드와 현금흐름 표가 같은 금액 체계를 쓴다 — 두 인스턴스 모두 잡혀야 한다.
-    const balanceMatches = await findAllByTextContent(document.body, "+324.0만");
+    const balanceMatches = await findAllByTextContent(document.body, "+3,240,000원");
     expect(balanceMatches.length).toBeGreaterThanOrEqual(2);
+    // 순자산의 보조 문구는 값(순자산)을 반복하지 않고 자산·부채 구성을 보여 준다.
+    expect(
+      screen.getByText("자산 761,200,000원 · 부채 69,355,560원"),
+    ).toBeDefined();
+    const netWorthCard = screen.getByRole("heading", { name: "순자산" }).closest(".ant-card");
+    if (!netWorthCard) throw new Error("순자산 카드 없음");
+    const netWorthValue = netWorthCard.querySelector(".af-metric-value")?.textContent;
+    const netWorthHint = netWorthCard.querySelector(".af-metric-hint")?.textContent;
+    expect(netWorthValue).toBe("691,844,440원");
+    expect(netWorthHint).not.toBe(netWorthValue);
     expect(await findByTextContent(document.body, "5.75개월")).toBeDefined();
     expect(screen.getByText(/예측 비상금 19,303,080원/)).toBeDefined();
     expect(screen.getByText(/목표 6개월/)).toBeDefined();
@@ -208,9 +218,27 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     expect(within(cashflowSection).getByText(monthKey(1))).toBeDefined();
     expect(within(cashflowSection).getByText(monthKey(2))).toBeDefined();
     // 수지는 그 달 수입 − 부가세통장 이체 − 그 달 지출만 보여 준다(이전 달 누적 아님).
-    // 2026-10: 8,200,000 − 0 − 4,960,000 = +3,240,000 → +324.0만 / 2026-09: +264.0만
-    expect(within(cashflowSection).getByText("+264.0만")).toBeDefined();
-    expect(within(cashflowSection).queryByText("+588.0만")).toBeNull();
+    // 2026-10: 8,200,000 − 0 − 4,960,000 = +3,240,000 → +3,240,000원
+    // 2026-09: 7,950,000 − 0 − 5,310,000 = +2,640,000 → +2,640,000원
+    expect(within(cashflowSection).getByText("+2,640,000원")).toBeDefined();
+    expect(within(cashflowSection).queryByText("+5,880,000원")).toBeNull();
+    // 4열 모두 축약 없이 정확 표기(1,234,567원)다.
+    expect(within(cashflowSection).getAllByText("8,200,000원").length).toBeGreaterThan(0);
+    expect(within(cashflowSection).getAllByText("4,960,000원").length).toBeGreaterThan(0);
+    expect(within(cashflowSection).getAllByText("7,950,000원").length).toBeGreaterThan(0);
+    // 축약 표기는 더 이상 쓰지 않는다.
+    expect(within(cashflowSection).queryByText("820.0만")).toBeNull();
+    // 모바일 보조줄: 수입·지출이 한 줄, 부가세가 다음 줄 — 금액은 정확 표기 그대로.
+    const cashSubs = cashflowSection.querySelectorAll(".af-cash-sub");
+    expect(cashSubs.length).toBe(3);
+    const firstSub = cashSubs[0];
+    expect(firstSub?.textContent).toContain("수입 8,200,000원");
+    expect(firstSub?.textContent).toContain("지출 4,960,000원");
+    expect(firstSub?.textContent).toContain("부가세 0원");
+    // 두 번째 줄(부가세)이 별도 행이라는 구조를 DOM 으로 확인한다.
+    const subRows = firstSub?.querySelectorAll(".af-cash-sub__row");
+    expect(subRows?.length).toBe(2);
+    expect(subRows?.[1]?.textContent).toBe("부가세 0원");
 
     // 스위치를 켜면 같은 월 사용액 기준의 투자금 유지 개월(16.9개월)로 전환된다.
     const toggle = screen.getByRole("switch", { name: /비상금 유지 개월 모드 전환/ });
@@ -225,7 +253,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     stubFetch(route);
     render(<DashboardPage onLogout={() => {}} />);
 
-    await findByTextContent(document.body, "6.9억");
+    await findByTextContent(document.body, "691,844,440원");
     fireEvent.click(screen.getByRole("button", { name: "기준 설정" }));
     const modal = await screen.findByRole("dialog");
     expect(within(modal).getByText("비상금 유지 개월 기준")).toBeDefined();
@@ -239,7 +267,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     render(<DashboardPage onLogout={() => {}} />);
     expect(document.querySelectorAll(".ant-skeleton").length).toBeGreaterThan(0);
     // 아직 값은 없다
-    expect(queryByTextContent(document.body, "6.9억")).toBeNull();
+    expect(queryByTextContent(document.body, "691,844,440원")).toBeNull();
   });
 
   it("API 실패 시 카드 단위 오류 UI와 재시도가 뜬다 (§26 AC)", async () => {
@@ -249,7 +277,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
 
     // summary 만 실패: 오류 UI 표시 (카드+섹션 6개 동시 오류 → findAll)
     await screen.findAllByText("데이터를 불러오지 못했습니다");
-    expect(queryByTextContent(document.body, "6.9억")).toBeNull();
+    expect(queryByTextContent(document.body, "691,844,440원")).toBeNull();
     // cashflow 는 summary 실패와 무관하게 복구된다 (카드 단위 복구 우선)
     const cashflowSection2 = await screen.findByRole("region", { name: "월별 현금흐름" });
     expect(within(cashflowSection2).getByText(monthKey(0))).toBeDefined();
@@ -259,7 +287,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     const retry = screen.getAllByRole("button", { name: /재시도/ })[0];
     if (!retry) throw new Error("재시도 버튼 없음");
     fireEvent.click(retry);
-    await waitFor(() => expect(getByTextContent(document.body, "6.9억")).toBeDefined());
+    await waitFor(() => expect(getByTextContent(document.body, "691,844,440원")).toBeDefined());
   });
 
   it("인증 실패(401)는 네트워크 오류와 구분된 문구를 보여 준다 (§26 연동 기준)", async () => {
@@ -282,7 +310,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     );
     render(<DashboardPage onLogout={() => {}} />);
     expect((await screen.findAllByText("데이터가 없습니다")).length).toBeGreaterThan(0);
-    expect(queryByTextContent(document.body, "6.9억")).toBeNull();
+    expect(queryByTextContent(document.body, "691,844,440원")).toBeNull();
   });
 
   it("현금흐름은 6개월 창을 보여 주고 미확정 월을 명시한다 (#73 AC)", async () => {
@@ -319,7 +347,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
   it("재요청 시 진행 중 요청은 중복으로 나가지 않는다 (§26 연동 기준)", async () => {
     const fetchMock = stubFetch(route);
     render(<DashboardPage onLogout={() => {}} />);
-    await findByTextContent(document.body, "6.9억");
+    await findByTextContent(document.body, "691,844,440원");
     // mount 1회 로딩에서 summary 1회 + cashflow 1회
     const summaryCalls = fetchMock.mock.calls.filter((c) => String(c[0]).includes("/dashboard/summary")).length;
     expect(summaryCalls).toBe(1);
@@ -328,7 +356,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
   it("지출 추이는 기본 최근 12개월 범위로 1회 조회한다 (§57)", async () => {
     const fetchMock = stubFetch(route);
     render(<DashboardPage onLogout={() => {}} />);
-    await findByTextContent(document.body, "6.9억");
+    await findByTextContent(document.body, "691,844,440원");
 
     const trendCalls = fetchMock.mock.calls.filter((c) =>
       String(c[0]).includes("/card-imports/monthly-categories") &&

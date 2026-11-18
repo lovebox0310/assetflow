@@ -25,6 +25,8 @@ import {
   investTotal,
   monthlyBalance,
   netWorth,
+  totalAssets,
+  totalLiabilities,
   type CashflowMonth,
 } from "../dashboard/metrics";
 import { CashAccountCards } from "../dashboard/CashAccountCards";
@@ -34,10 +36,9 @@ import { CardCompanyChart } from "../components/CardCompanyChart";
 import { getSettings, type UserSettings } from "../api/settingsApi";
 import { DEFAULT_EMERGENCY_CATEGORIES } from "../data/expenseCategories";
 import {
-  formatKrwAbbr,
   formatKrwExact,
   formatMonths,
-  formatSignedKrwAbbr,
+  formatSignedKrw,
 } from "../utils/formatters";
 import { clearToken } from "../auth/authStore";
 
@@ -390,21 +391,21 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
 
   const cashflowColumns: AfListColumn<CashflowMonth>[] = [
     { key: "month", header: "월", mobile: "primary", render: (r) => r.month },
-    { key: "income", header: "수입", numeric: true, render: (r) => (isConfirmed(r) ? formatKrwAbbr(r.income) : "—") },
+    { key: "income", header: "수입", numeric: true, render: (r) => (isConfirmed(r) ? formatKrwExact(r.income) : "—") },
     {
       key: "vat",
       header: "부가세통장",
       numeric: true,
-      render: (r) => (isConfirmed(r) ? formatKrwAbbr(r.vatSetAside) : "—"),
+      render: (r) => (isConfirmed(r) ? formatKrwExact(r.vatSetAside) : "—"),
     },
-    { key: "expenses", header: "지출", numeric: true, render: (r) => (isConfirmed(r) ? formatKrwAbbr(r.expenses) : "—") },
+    { key: "expenses", header: "지출", numeric: true, render: (r) => (isConfirmed(r) ? formatKrwExact(r.expenses) : "—") },
     {
       key: "balance",
       header: "수지",
       numeric: true,
       mobile: "value",
-      // A-05: 카드(월 수지)와 같은 금액 체계 — 부호 + 축약(+230.0만).
-      render: (r) => (isConfirmed(r) ? formatSignedKrwAbbr(r.balance) : "미확정"),
+      // 정확 표기 + 부호 — 카드의 월 수지와 같은 체계(+1,234,567원).
+      render: (r) => (isConfirmed(r) ? formatSignedKrw(r.balance) : "미확정"),
     },
   ];
 
@@ -429,9 +430,15 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
             title="순자산"
             status={summaryStatus}
             onRetry={load}
-            hint={dataReady ? formatKrwExact(netWorth(summary)) : undefined}
+            // 값은 정확 표기(1,234,567원), 보조 문구는 구성을 보여 준다 —
+            // 값과 같은 문자열을 반복하지 않는다(중복 낭독 방지).
+            hint={
+              dataReady
+                ? `자산 ${formatKrwExact(totalAssets(summary))} · 부채 ${formatKrwExact(totalLiabilities(summary))}`
+                : undefined
+            }
           >
-            {dataReady ? formatKrwAbbr(netWorth(summary)) : "—"}
+            {dataReady ? formatKrwExact(netWorth(summary)) : "—"}
           </MetricCard>
           <MetricCard
             title="월 수지"
@@ -439,14 +446,14 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
             onRetry={load}
             hint={
               dataReady ? (
-                // A-06: 320px 에서 "지출 850.0 / 만" 으로 숫자·단위가 갈라지지 않게
+                // A-06: 320px 에서 "지출 850,000" / "원" 으로 숫자·단위가 갈라지지 않게
                 // "· " 기준 3조각으로 나누고 조각 안에서는 줄바꿈을 막는다.
                 // 구분 기호의 공백은 텍스트에 남긴다(복사·붙여넣기) — 시각 간격은 flex gap.
                 <span style={{ display: "flex", flexWrap: "wrap", columnGap: 4, rowGap: 2 }}>
                   {[
-                    `수입 ${formatKrwAbbr(summary.monthly.income)}`,
-                    `부가세 ${formatKrwAbbr(summary.monthly.vatSetAside)}`,
-                    `지출 ${formatKrwAbbr(summary.monthly.expenses)}`,
+                    `수입 ${formatKrwExact(summary.monthly.income)}`,
+                    `부가세 ${formatKrwExact(summary.monthly.vatSetAside)}`,
+                    `지출 ${formatKrwExact(summary.monthly.expenses)}`,
                   ].map((part, i, all) => (
                     <span key={part} style={{ whiteSpace: "nowrap" }}>
                       {i < all.length - 1 ? `${part} · ` : part}
@@ -456,7 +463,7 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
               ) : undefined
             }
           >
-            {dataReady ? formatSignedKrwAbbr(monthlyBalance(summary)) : "—"}
+            {dataReady ? formatSignedKrw(monthlyBalance(summary)) : "—"}
           </MetricCard>
           <MetricCard
             title={showInvestMonths ? "투자금 유지 개월" : "비상금 유지 개월"}
@@ -742,13 +749,24 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
                 </Typography.Paragraph>
                 <AfListTable
                   labelledBy="h-cashflow"
+                  className="af-cash-list"
                   rows={cashflowRows}
                   rowKey={(row) => row.month}
                   columns={cashflowColumns}
                   rowSubtitle={(row) =>
-                    isConfirmed(row)
-                      ? `수입 ${formatKrwAbbr(row.income)} · 지출 ${formatKrwAbbr(row.expenses)} · 부가세 ${formatKrwAbbr(row.vatSetAside)}`
-                      : "아직 확정하지 않은 달"
+                    isConfirmed(row) ? (
+                      <span className="af-cash-sub">
+                        <span className="af-cash-sub__row">
+                          <span>수입 {formatKrwExact(row.income)}</span>
+                          <span>지출 {formatKrwExact(row.expenses)}</span>
+                        </span>
+                        <span className="af-cash-sub__row">
+                          <span>부가세 {formatKrwExact(row.vatSetAside)}</span>
+                        </span>
+                      </span>
+                    ) : (
+                      "아직 확정하지 않은 달"
+                    )
                   }
                 />
               </>

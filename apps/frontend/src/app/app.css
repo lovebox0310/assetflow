@@ -1126,6 +1126,18 @@ button {
   }
 }
 
+/*
+ * 월별 현금흐름 표 한정 보조줄 — 금액을 정확 표기(1,234,567원)로 바꾸면서
+ * 한 줄에 다 들어가지 않는다. 2줄(수입·지출 / 부가세)로 나누고 숫자는 tabular.
+ * `.af-list` 공통 규칙은 건드리지 않는다 — 다른 5개 화면이 같은 말줄임을 쓴다.
+ */
+@media (max-width: 767.98px) {
+  .af-cash-list .af-list__sub { white-space: normal; font-variant-numeric: tabular-nums; }
+  .af-cash-list .af-cash-sub { display: grid; row-gap: 2px; }
+  .af-cash-sub__row { display: flex; justify-content: space-between; gap: 8px; min-width: 0; }
+  .af-cash-sub__row > span { white-space: nowrap; }
+}
+
 @media (max-width: 767.98px) {
   /* 카드내역 상세의 본인/가족 Tag 는 이름 옆 한 줄에 붙인다 — Tag 가 다음 줄로
    * 감기면 3행이 되어 행이 80px 를 넘는다(이 화면 목표 ≤70). 이름은 말줄임되고

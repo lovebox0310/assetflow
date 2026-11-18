@@ -8,6 +8,8 @@ import {
   investTotal,
   monthlyBalance,
   netWorth,
+  totalAssets,
+  totalLiabilities,
 } from "./metrics";
 import { DEFAULT_EMERGENCY_CATEGORIES } from "../data/expenseCategories";
 import { dashboardMock, type DashboardData } from "../data/dashboardMock";
@@ -28,6 +30,16 @@ const base: DashboardData = {
 describe("metrics (§23 표시 규칙)", () => {
   it("순자산 = 총자산 - 총부채", () => {
     expect(netWorth(base)).toBe(55_000_000);
+  });
+
+  it("총자산 = 자산 계좌 value 합계 (KPI 보조 문구의 단일 출처)", () => {
+    expect(totalAssets(base)).toBe(60_000_000);
+    expect(totalAssets({ ...base, assets: [] })).toBe(0);
+  });
+
+  it("총부채 = 부채 잔액 합계 (KPI 보조 문구의 단일 출처)", () => {
+    expect(totalLiabilities(base)).toBe(5_000_000);
+    expect(totalLiabilities({ ...base, liabilities: [] })).toBe(0);
   });
 
   it("월 수지 = 총수입 - 부가세통장 이체 - 총지출 (필수+선택 모두) (§57.9)", () => {

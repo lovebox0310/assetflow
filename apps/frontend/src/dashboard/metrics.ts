@@ -31,7 +31,17 @@ function sum(values: number[]): number {
 
 /** 순자산 = 총자산 - 총부채 */
 export function netWorth(data: DashboardData): number {
-  return sum(data.assets.map((a) => a.value)) - sum(data.liabilities.map((l) => l.balance));
+  return totalAssets(data) - totalLiabilities(data);
+}
+
+/** 총자산 = 자산 계좌 value 합계. KPI 보조 문구가 이 값을 그대로 보여 준다. */
+export function totalAssets(data: DashboardData): number {
+  return sum(data.assets.map((a) => a.value));
+}
+
+/** 총부채 = 부채 잔액 합계. */
+export function totalLiabilities(data: DashboardData): number {
+  return sum(data.liabilities.map((l) => l.balance));
 }
 
 /** 월 수지 = 월 총수입 - 부가세통장 이체 - 월 총지출 (§57.9) */
