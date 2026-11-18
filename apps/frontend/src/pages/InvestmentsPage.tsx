@@ -23,6 +23,7 @@ import { SubNav } from "../components/SubNav";
 import { AfListTable, type AfListColumn, type AfRowAction } from "../components/AfListTable";
 import { KisCredentialsModal } from "../components/KisCredentialsModal";
 import { KisBondPreviewModal } from "../components/KisBondPreviewModal";
+import { KisPensionPreviewModal } from "../components/KisPensionPreviewModal";
 import { UpbitCredentialsModal } from "../components/UpbitCredentialsModal";
 import {
   clearKisBalance,
@@ -191,6 +192,9 @@ export function InvestmentsPage({
   const [kisCredentialsAccount, setKisCredentialsAccount] = useState<{ id: number; name: string } | null>(null);
   /** KIS-BOND-2 읽기 전용 채권 원본 진단 모달. */
   const [bondPreviewAccount, setBondPreviewAccount] = useState<{ id: number; name: string } | null>(null);
+  /** 개인연금/IRP 퇴직연금 잔고 읽기 전용 원본 진단 모달. */
+  const [pensionPreviewAccount, setPensionPreviewAccount] =
+    useState<{ id: number; name: string } | null>(null);
   /** 계좌 헤더의 `⋯` 메뉴는 한 번에 하나만 열린다 — aria-expanded 도 이 값으로 동기화한다. */
   const [openAccountMenu, setOpenAccountMenu] = useState<number | null>(null);
   /**
@@ -1139,6 +1143,7 @@ export function InvestmentsPage({
                         { key: "kis", label: "한국투자 연결 설정", disabled: accountActionDisabled },
                         { key: "sync", label: "잔고 동기화", disabled: accountActionDisabled },
                         { key: "bond-preview", label: "채권 진단", disabled: accountActionDisabled },
+                        { key: "pension-preview", label: "연금 진단", disabled: accountActionDisabled },
                         { type: "divider" },
                         { key: "clear", label: "동기화 해제", danger: true, disabled: accountActionDisabled },
                       ]
@@ -1171,6 +1176,8 @@ export function InvestmentsPage({
                     else if (key === "sync") void doKisSync(account.accountId);
                     else if (key === "bond-preview")
                       setBondPreviewAccount({ id: account.accountId, name: account.accountName });
+                    else if (key === "pension-preview")
+                      setPensionPreviewAccount({ id: account.accountId, name: account.accountName });
                     else if (key === "upbit-settings") setUpbitOpen(true);
                     else if (key === "upbit-sync") void handleUpbitSync();
                     // 확인이 필요한 동작은 앵커 Popconfirm 을 연다(메뉴는 antd 가 닫는다).
@@ -1436,6 +1443,15 @@ export function InvestmentsPage({
           accountName={bondPreviewAccount.name}
           open={bondPreviewAccount !== null}
           onClose={() => setBondPreviewAccount(null)}
+        />
+      )}
+
+      {pensionPreviewAccount && (
+        <KisPensionPreviewModal
+          accountId={pensionPreviewAccount.id}
+          accountName={pensionPreviewAccount.name}
+          open={pensionPreviewAccount !== null}
+          onClose={() => setPensionPreviewAccount(null)}
         />
       )}
 

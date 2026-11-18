@@ -192,6 +192,25 @@ export function previewKisBonds(accountId: number): Promise<KisBondPreview> {
   );
 }
 
+/**
+ * 개인연금(22)/IRP(29) 퇴직연금 잔고(TTTC2208R) 원본 진단 — KIS JSON 을 변환하지 않는다.
+ * 조회 실패·자격증명 누락도 200 + error/warning 으로 내려온다(진단 목적).
+ */
+export interface KisPensionPreview {
+  balance: unknown | null;
+  warning: string | null;
+  error: string | null;
+  acntPrdtCd: string | null;
+  isMock: boolean;
+}
+
+export function previewKisPension(accountId: number): Promise<KisPensionPreview> {
+  return apiFetch<KisPensionPreview>(
+    `/api/v1/investments/accounts/${accountId}/kis-pension-preview`,
+    { method: "POST" },
+  );
+}
+
 /** BOND-SEARCH-1 채권 마스터 종목. */
 export interface BondItem {
   code: string;

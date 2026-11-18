@@ -902,6 +902,79 @@ describe("InvestmentsPage (§54 E2)", () => {
     expect(summary.textContent).not.toContain("NaN");
   });
 
+  it("KIS 계좌 메뉴에 '연금 진단'이 있고, 누르면 원본 진단 모달이 열린다", async () => {
+    const pensionPortfolio = {
+      holdings: [],
+      accounts: [
+        {
+          accountId: 4, accountName: "개인연금", institutionName: "한국투자",
+          cashBalance: 0, holdingsValue: 0, totalValue: 0,
+        },
+        {
+          accountId: 5, accountName: "미국주식", institutionName: "",
+          cashBalance: 0, holdingsValue: 0, totalValue: 0,
+        },
+      ],
+    };
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.includes("/kis-pension-preview")) {
+        return Promise.resolve(apiResponse({
+          balance: { output1: [], output2: [] },
+          warning: null,
+          error: null,
+          acntPrdtCd: "22",
+          isMock: false,
+        }));
+      }
+      if (path.includes("/integrations/upbit")) {
+        return Promise.resolve(apiResponse({ configured: false, accessKeyMasked: null }));
+      }
+      return Promise.resolve(apiResponse(pensionPortfolio));
+    }));
+
+    render(<InvestmentsPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "개인연금 메뉴" }));
+
+    // 채권 진단 옆에 연금 진단이 함께 있다.
+    expect(await screen.findByRole("menuitem", { name: "채권 진단" })).toBeDefined();
+    fireEvent.click(screen.getByRole("menuitem", { name: "연금 진단" }));
+
+    expect(await screen.findByText("연금 진단 · 개인연금")).toBeDefined();
+    expect(screen.getByLabelText("연금 계좌 요약").textContent).toContain("상품코드");
+    expect(screen.getByLabelText("연금 진단 원본 JSON").textContent).toContain('"acntPrdtCd": "22"');
+  });
+
+  it("비KIS 계좌 메뉴에는 '연금 진단'이 없다", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.includes("/integrations/upbit")) {
+        return Promise.resolve(apiResponse({ configured: false, accessKeyMasked: null }));
+      }
+      return Promise.resolve(apiResponse({
+        holdings: [],
+        accounts: [
+          {
+            accountId: 4, accountName: "개인연금", institutionName: "한국투자",
+            cashBalance: 0, holdingsValue: 0, totalValue: 0,
+          },
+          {
+            accountId: 5, accountName: "미국주식", institutionName: "",
+            cashBalance: 0, holdingsValue: 0, totalValue: 0,
+          },
+        ],
+      }));
+    }));
+
+    render(<InvestmentsPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "미국주식 메뉴" }));
+
+    expect(await screen.findByRole("menuitem", { name: "계좌 편집" })).toBeDefined();
+    expect(screen.queryByRole("menuitem", { name: "연금 진단" })).toBeNull();
+    // 채권 진단도 KIS 전용이므로 함께 없다.
+    expect(screen.queryByRole("menuitem", { name: "채권 진단" })).toBeNull();
+  });
+
   it("KIS 동기화가 예수금을 못 읽으면 서버 경고를 화면에 보여 준다 (§62.3)", async () => {
     const warning = "KIS에서 예수금을 읽지 못해 계좌 잔액을 유지했습니다.";
     const kisPortfolio = {
