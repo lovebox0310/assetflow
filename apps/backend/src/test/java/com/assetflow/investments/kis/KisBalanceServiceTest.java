@@ -469,4 +469,124 @@ class KisBalanceServiceTest {
                     .isEqualByComparingTo(holding.evluAmt());
         }
     }
+
+    // ── 상품코드 22(개인연금) · 모의투자 연금 계좌 ─────────────────────────────
+
+    private static KisCredentials salesCredentials(String productCode) {
+        return new KisCredentials(28L, "appkey", "appsecret",
+                "https://openapi.koreainvestment.com:9443", "64116780", productCode);
+    }
+
+    private static KisCredentials mockPensionCredentials() {
+        return new KisCredentials(29L, "appkey", "appsecret",
+                "https://openapivts.koreainvestment.com:29443", "64116780", "29");
+    }
+
+    @Test
+    void personalPensionUsesPensionApiFirstAndNeverTouchesStockBalance() {
+        List<String> paths = new ArrayList<>();
+        List<String> trIds = new ArrayList<>();
+        KisApiClient api = client((path, tr) -> {
+            paths.add(path);
+            trIds.add(tr);
+            if (path.contains("pension/inquire-balance")) {
+                return json(PENSION_ETF_RESPONSE);
+            }
+            throw new KisApiException("위탁계좌 전용: " + path);
+        });
+
+        KisBalanceResponse result =
+                new KisBalanceService(api).fetchBalance(salesCredentials("22"));
+
+        // 22 는 퇴직연금(2208)만 호출한다 — 29 의 체결기준/채권 병합은 범위 밖.
+        assertThat(paths).containsExactly("/uapi/domestic-stock/v1/trading/pension/inquire-balance");
+        assertThat(trIds).containsExactly("TTTC2208R");
+        assertThat(result.summary().dncaTotAmt()).isEqualByComparingTo(new BigDecimal("76502"));
+        assertThat(result.summary().cashKnown()).isTrue();
+        assertThat(result.holdings()).hasSize(1);
+        assertThat(result.holdings().get(0).pdno()).isEqualTo("458730");
+    }
+
+    @Test
+    void personalPensionFailureReportsProductCodeAndAllThreeReasons() {
+        KisApiClient api = client((path, tr) -> {
+            if (path.contains("pension/inquire-balance")) {
+                throw new KisApiException("연금 TR 거부");
+            }
+            throw new KisApiException(path.contains("inquire-account-balance")
+                    ? "계좌자산현황 거부" : "주식잔고 거부");
+        });
+
+        assertThatThrownBy(() -> new KisBalanceService(api).fetchBalance(salesCredentials("22")))
+                .isInstanceOf(KisApiException.class)
+                .hasMessageContaining("상품코드 22")
+                .hasMessageContaining("연금 TR 거부")
+                .hasMessageContaining("주식잔고조회")
+                .hasMessageContaining("계좌자산현황");
+    }
+
+    @Test
+    void mockPensionAccountFailsWithMockMessageWithoutFallback() {
+        List<String> paths = new ArrayList<>();
+        KisApiClient api = client((path, tr) -> {
+            paths.add(path);
+            throw new KisApiException("연금 API 없음");
+        });
+
+        assertThatThrownBy(() -> new KisBalanceService(api).fetchBalance(mockPensionCredentials()))
+                .isInstanceOf(KisApiException.class)
+                .hasMessageContaining("모의투자")
+                .hasMessageContaining("연금 API 없음");
+
+        // 폴백(주식잔고·계좌자산현황)을 호출하지 않는다.
+        assertThat(paths).containsExactly("/uapi/domestic-stock/v1/trading/pension/inquire-balance");
+    }
+
+    @Test
+    void realIrpStillFallsBackWhenPensionFails() {
+        List<String> paths = new ArrayList<>();
+        KisApiClient api = client((path, tr) -> {
+            paths.add(path);
+            if (path.contains("pension/inquire-balance")) {
+                throw new KisApiException("연금 TR 거부");
+            }
+            if (path.contains("inquire-present-balance")) {
+                return json("{\"rt_cd\":\"0\",\"output1\":[]}");
+            }
+            if (path.contains("domestic-bond")) {
+                return json("{\"rt_cd\":\"0\",\"output\":[]}");
+            }
+            return json("""
+                    {"rt_cd":"0","output1":[],"output2":[{"dnca_tot_amt":"3300000"}]}
+                    """);
+        });
+
+        KisBalanceResponse result =
+                new KisBalanceService(api).fetchBalance(pensionCredentials());
+
+        assertThat(paths).contains(
+                "/uapi/domestic-stock/v1/trading/pension/inquire-balance",
+                "/uapi/domestic-stock/v1/trading/inquire-balance");
+        assertThat(result.summary().dncaTotAmt()).isEqualByComparingTo(new BigDecimal("3300000"));
+    }
+
+    @Test
+    void generalAccountNeverCallsPensionApi() {
+        List<String> paths = new ArrayList<>();
+        List<String> trIds = new ArrayList<>();
+        KisApiClient api = client((path, tr) -> {
+            paths.add(path);
+            trIds.add(tr);
+            return json("""
+                    {"rt_cd":"0","output1":[],"output2":[{"dnca_tot_amt":"1200000"}]}
+                    """);
+        });
+
+        KisBalanceResponse result =
+                new KisBalanceService(api).fetchBalance(salesCredentials("01"));
+
+        assertThat(paths).containsExactly("/uapi/domestic-stock/v1/trading/inquire-balance");
+        assertThat(trIds).doesNotContain("TTTC2208R");
+        assertThat(result.summary().dncaTotAmt()).isEqualByComparingTo(new BigDecimal("1200000"));
+    }
 }

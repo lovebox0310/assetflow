@@ -29,7 +29,10 @@ public class KisBalanceService {
 
     private static final String BALANCE_PATH = "/uapi/domestic-stock/v1/trading/inquire-balance";
     private static final String ACCOUNT_BALANCE_PATH = "/uapi/domestic-stock/v1/trading/inquire-account-balance";
-    /** 퇴직연금(IRP, 상품코드 29) 전용 잔고조회 — 일반 주식잔고로는 예수금이 조회되지 않는다. */
+    /**
+     * 퇴직연금 잔고조회 — 상품코드 29(IRP)와 22(개인연금)가 함께 쓴다.
+     * 일반 주식잔고·계좌자산현황은 위탁계좌 전용이라 연금 계좌에서는 조회가 거부된다.
+     */
     private static final String PENSION_BALANCE_PATH = "/uapi/domestic-stock/v1/trading/pension/inquire-balance";
     private static final String MOCK_TR_ID = "VTTC8434R";
     private static final String REAL_TR_ID = "TTTC8434R";
@@ -40,6 +43,8 @@ public class KisBalanceService {
             "/uapi/domestic-stock/v1/trading/pension/inquire-present-balance";
     private static final String PENSION_PRESENT_TR_ID = "TTTC2202R";
     private static final String PENSION_PRODUCT_CODE = "29";
+    /** 개인연금 — 29(IRP)와 같이 퇴직연금 잔고조회(TTTC2208R)로만 읽힌다. */
+    private static final String PERSONAL_PENSION_PRODUCT_CODE = "22";
     /** 장내채권 잔고/현재가 — 퇴직연금 잔고(TTTC2208R)에는 채권이 오지 않는다. */
     private static final String BOND_BALANCE_PATH = "/uapi/domestic-bond/v1/trading/inquire-balance";
     private static final String BOND_PRICE_PATH = "/uapi/domestic-bond/v1/quotations/inquire-price";
@@ -73,17 +78,26 @@ public class KisBalanceService {
     }
 
     private KisBalanceResponse baseBalance(KisCredentials credentials) {
-        // 상품코드 29(퇴직연금 IRP)는 전용 API 로만 예수금/보유종목이 조회된다.
-        // 성공하면 그대로 쓰고, 실패하면 아래 일반 경로로 폴백한다(22 개인연금 등은 기존 유지).
-        if (PENSION_PRODUCT_CODE.equals(normalize(credentials.acntPrdtCd()))) {
+        String productCode = normalize(credentials.acntPrdtCd());
+        // 연금 계좌(29 IRP · 22 개인연금)는 전용 API(TTTC2208R)로만 예수금/보유종목이 조회된다.
+        // 일반 주식잔고·계좌자산현황은 위탁계좌 전용이라 연금 계좌에서는 항상 실패한다.
+        String pensionError = null;
+        if (isPensionAccount(productCode)) {
             try {
                 KisBalanceResponse pension = fetchPensionBalance(credentials);
                 if ((pension.summary() != null && pension.summary().cashKnown())
                         || !pension.holdings().isEmpty()) {
                     return pension;
                 }
-            } catch (KisApiException ignored) {
-                // 퇴직연금 조회가 막히면 기존 주식잔고→계좌자산현황 경로로 넘어간다.
+                pensionError = "보유종목·예수금이 비어 있습니다";
+            } catch (KisApiException e) {
+                pensionError = e.getMessage();
+            }
+            // 모의투자(vps)에는 연금 TR 이 없다 — 폴백해 봐야 위탁계좌 전용 오류만 쌓인다.
+            if (credentials.isMock()) {
+                throw new KisApiException(
+                        "모의투자(vps)에는 연금 계좌 API가 없습니다. 실전 도메인과 실전 앱키로 설정하세요. "
+                                + "(연금 조회: " + pensionError + ")");
             }
         }
 
@@ -111,8 +125,14 @@ public class KisBalanceService {
 
         if (primaryError != null) {
             if (fallbackError != null) {
-                throw new KisApiException("주식잔고조회: " + primaryError.getMessage()
-                        + " | 계좌자산현황조회: " + fallbackError.getMessage());
+                String message = "주식잔고조회: " + primaryError.getMessage()
+                        + " | 계좌자산현황조회: " + fallbackError.getMessage();
+                if (pensionError != null) {
+                    // 연금 계좌는 "왜 폴백이 전부 막혔는지"까지 한 줄에 보여 준다.
+                    message = "상품코드 " + productCode + "(" + pensionLabel(productCode)
+                            + "): 퇴직연금 잔고조회 실패(" + pensionError + ") | " + message;
+                }
+                throw new KisApiException(message);
             }
             throw primaryError;
         }
@@ -121,6 +141,16 @@ public class KisBalanceService {
         if (primary != null) return primary;
         if (fallback != null) return fallback;
         return new KisBalanceResponse(List.of(), null);
+    }
+
+    /** 연금 계좌(29 IRP · 22 개인연금) 여부 — 퇴직연금 잔고조회(TTTC2208R) 대상. */
+    private static boolean isPensionAccount(String productCode) {
+        return PENSION_PRODUCT_CODE.equals(productCode)
+                || PERSONAL_PENSION_PRODUCT_CODE.equals(productCode);
+    }
+
+    private static String pensionLabel(String productCode) {
+        return PENSION_PRODUCT_CODE.equals(productCode) ? "퇴직연금(IRP)" : "개인연금";
     }
 
     private static boolean hasCash(KisBalanceResponse response) {
