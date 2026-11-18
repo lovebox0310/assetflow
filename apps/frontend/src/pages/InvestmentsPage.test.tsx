@@ -945,6 +945,33 @@ describe("InvestmentsPage (§54 E2)", () => {
     expect(screen.getByLabelText("연금 진단 원본 JSON").textContent).toContain('"acntPrdtCd": "22"');
   });
 
+  // 이슈 #32 — 기관명은 자유 입력이라 `한국투자증권` 으로 저장하면 메뉴가 통째로
+  // 사라졌다. e2e 목도 `한국투자증권` 을 쓰므로 여기서 그 값을 그대로 박는다.
+  it("기관명이 '한국투자증권' 인 계좌에서도 KIS 메뉴가 보인다", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.includes("/integrations/upbit")) {
+        return Promise.resolve(apiResponse({ configured: false, accessKeyMasked: null }));
+      }
+      return Promise.resolve(apiResponse({
+        holdings: [],
+        accounts: [
+          {
+            accountId: 4, accountName: "개인연금", institutionName: "한국투자증권",
+            cashBalance: 0, holdingsValue: 0, totalValue: 0,
+          },
+        ],
+      }));
+    }));
+
+    render(<InvestmentsPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "개인연금 메뉴" }));
+
+    expect(await screen.findByRole("menuitem", { name: "잔고 동기화" })).toBeDefined();
+    expect(screen.getByRole("menuitem", { name: "연금 진단" })).toBeDefined();
+    expect(screen.getByRole("menuitem", { name: "한국투자 연결 설정" })).toBeDefined();
+  });
+
   it("비KIS 계좌 메뉴에는 '연금 진단'이 없다", async () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
       const path = String(input);

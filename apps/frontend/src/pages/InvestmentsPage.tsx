@@ -53,6 +53,7 @@ import { clearToken } from "../auth/authStore";
 import { useMinWidth } from "../hooks/useMinWidth";
 import { SPACE } from "../theme/tokens";
 import { formatKrwExact, formatPercent, formatSignedKrw } from "../utils/formatters";
+import { isKisInstitution } from "../utils/institutions";
 
 interface InvestmentsPageProps {
   onOpenDashboard?: () => void;
@@ -1127,7 +1128,7 @@ export function InvestmentsPage({
                 {accounts.map((account) => {
                   const rows = visible.filter((h) => h.accountId === account.accountId);
                   const accountHoldings = holdings.filter((h) => h.accountId === account.accountId);
-                  const isKisAccount = account.institutionName === "한국투자";
+                  const isKisAccount = isKisInstitution(account.institutionName);
                   const isUpbitAccount =
                     account.institutionName === "업비트" || account.accountName === "업비트";
                   /**
