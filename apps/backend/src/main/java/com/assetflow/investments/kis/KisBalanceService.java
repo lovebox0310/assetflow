@@ -89,15 +89,21 @@ public class KisBalanceService {
      * 사용자가 앱키/계좌번호/API 환경을 고칠 수 있다.
      */
     public KisBalanceResponse fetchBalance(KisCredentials credentials) {
-        KisBalanceResponse base = baseBalance(credentials);
+        Selected base = selectBalance(credentials);
         // IRP(29)는 퇴직연금 잔고에 주식·ETF·ETN 만 온다 — 장내채권은 별도 API 로 합친다.
         if (!PENSION_PRODUCT_CODE.equals(normalize(credentials.acntPrdtCd()))) {
-            return base;
+            return base.response();
         }
-        return withPensionExtras(credentials, base);
+        return withPensionExtras(credentials, base.response());
     }
 
-    private KisBalanceResponse baseBalance(KisCredentials credentials) {
+    /**
+     * 잔고 선택 결과 — 진단(previewPension)이 "동기화가 어느 경로를 쓰는지" 보여 주기 위해
+     * 경로 이름을 함께 돌려준다. 경로 규칙은 {@link #fetchBalance} 와 <b>같은 코드</b>다.
+     */
+    private record Selected(String path, KisBalanceResponse response) {}
+
+    private Selected selectBalance(KisCredentials credentials) {
         String productCode = normalize(credentials.acntPrdtCd());
         // 29(IRP)만 퇴직연금 전용 API(TTTC2208R)를 먼저 쓴다 — 기존 동작.
         // 22(개인연금)는 위탁계좌와 같은 주식잔고 → 계좌자산현황 경로가 정상이고,
@@ -107,7 +113,7 @@ public class KisBalanceService {
             try {
                 KisBalanceResponse pension = fetchPensionBalance(credentials);
                 if (isUsablePensionBalance(pension)) {
-                    return pension;
+                    return new Selected("pension", pension);
                 }
                 pensionError = "보유종목·예수금이 비어 있습니다";
             } catch (KisApiException e) {
@@ -127,7 +133,7 @@ public class KisBalanceService {
             primaryError = e;
         }
         if (primary != null && hasCash(primary)) {
-            return primary;
+            return new Selected("stock", primary);
         }
 
         KisBalanceResponse fallback = null;
@@ -138,13 +144,13 @@ public class KisBalanceService {
             fallbackError = e;
         }
         if (fallback != null && hasCash(fallback)) {
-            return fallback;
+            return new Selected("account", fallback);
         }
 
         // 개인연금(22) — 위탁 경로 두 개가 모두 예수금을 못 읽었을 때만 연금 TR 을 마지막으로 시도한다.
         if (PERSONAL_PENSION_PRODUCT_CODE.equals(productCode)) {
-            return personalPensionLastResort(credentials, productCode,
-                    primary, primaryError, fallback, fallbackError);
+            return new Selected("pension", personalPensionLastResort(credentials, productCode,
+                    primary, primaryError, fallback, fallbackError));
         }
 
         if (primaryError != null) {
@@ -162,9 +168,9 @@ public class KisBalanceService {
         }
         // 조회 자체는 성공했지만 예수금이 0 — 보유종목은 살리고 컨트롤러가
         // "예수금 미확인" 으로 판단할 수 있게 한다. null 은 돌려주지 않는다.
-        if (primary != null) return primary;
-        if (fallback != null) return fallback;
-        return new KisBalanceResponse(List.of(), null);
+        if (primary != null) return new Selected("stock", primary);
+        if (fallback != null) return new Selected("account", fallback);
+        return new Selected("unknown", new KisBalanceResponse(List.of(), null));
     }
 
     /**
@@ -245,7 +251,14 @@ public class KisBalanceService {
     }
 
     private KisBalanceResponse fetchStockBalance(KisCredentials credentials) {
-        Map<String, String> params = Map.ofEntries(
+        JsonNode root = kisApiClient.get(credentials, BALANCE_PATH,
+                stockBalanceParams(credentials), trId(credentials));
+        return parse(root);
+    }
+
+    /** TTTC8434R 파라미터 — 잔고 조회와 진단(previewPension)이 같은 값을 쓴다. */
+    private static Map<String, String> stockBalanceParams(KisCredentials credentials) {
+        return Map.ofEntries(
                 Map.entry("CANO", normalize(credentials.cano())),
                 Map.entry("ACNT_PRDT_CD", normalize(credentials.acntPrdtCd())),
                 Map.entry("AFHR_FLPR_YN", "N"),
@@ -257,18 +270,21 @@ public class KisBalanceService {
                 Map.entry("PRCS_DVSN", "00"),
                 Map.entry("CTX_AREA_FK100", ""),
                 Map.entry("CTX_AREA_NK100", ""));
-        JsonNode root = kisApiClient.get(credentials, BALANCE_PATH, params, trId(credentials));
-        return parse(root);
     }
 
     private KisBalanceResponse fetchAccountBalance(KisCredentials credentials) {
-        Map<String, String> params = Map.ofEntries(
+        JsonNode root = kisApiClient.get(credentials, ACCOUNT_BALANCE_PATH,
+                accountBalanceParams(credentials), ACCOUNT_BALANCE_TR_ID);
+        return parseAccountBalance(root);
+    }
+
+    /** CTRP6548R 파라미터 — 잔고 조회와 진단(previewPension)이 같은 값을 쓴다. */
+    private static Map<String, String> accountBalanceParams(KisCredentials credentials) {
+        return Map.ofEntries(
                 Map.entry("CANO", normalize(credentials.cano())),
                 Map.entry("ACNT_PRDT_CD", normalize(credentials.acntPrdtCd())),
                 Map.entry("INQR_DVSN_1", ""),
                 Map.entry("BSPR_BF_DT_APLY_YN", ""));
-        JsonNode root = kisApiClient.get(credentials, ACCOUNT_BALANCE_PATH, params, ACCOUNT_BALANCE_TR_ID);
-        return parseAccountBalance(root);
     }
 
     /**
@@ -619,41 +635,89 @@ public class KisBalanceService {
     }
 
     /**
-     * 개인연금(22)/IRP(29) 퇴직연금 잔고(TTTC2208R) 원본 진단.
-     * balance 가 null 이면 error 에 조회 사유가 들어 있다. warning 은 "응답이 비어 있음"·
-     * "연금 계좌가 아님" 처럼 동기화 판정에 영향을 주는 안내다.
+     * 진단용 경로 1건 — 어느 엔드포인트(tr_id)를 어떤 파라미터로 불렀고, 원본 JSON 또는
+     * 실패 사유가 무엇인지 그대로 담는다. 응답 변환·저장은 하지 않는다.
+     */
+    public record PathPreview(String path, String trId, JsonNode response, String error) {}
+
+    /**
+     * 동기화가 실제로 고른 경로의 요약 — {@code path} 는 {@code stock·account·pension·unknown}.
+     * {@code cash} 가 null 이면 예수금을 읽지 못한 것이다(0 과 구분).
+     */
+    public record BalancePreview(String path, Long cash, int holdingCount,
+                                 String warning, String error) {}
+
+    /**
+     * 개인연금(22)/IRP(29) 퇴직연금 잔고(TTTC2208R) 원본 + 세 경로 원본 진단.
+     * balance 는 pension.response() 와 같은 데이터다(기존 계약 유지 — 중복 허용).
      *
-     * @param acntPrdtCd 설정된 상품코드 (자격증명이 없으면 null)
-     * @param isMock     모의투자(vts) 자격증명 여부
+     * @param usedPath 동기화({@link #fetchBalance})가 쓸 경로: stock·account·pension·unknown
      */
     public record PensionPreview(JsonNode balance, String warning, String error,
                                  String acntPrdtCd,
-                                 @JsonProperty("isMock") boolean isMock) {}
+                                 @JsonProperty("isMock") boolean isMock,
+                                 PathPreview stock, PathPreview account, PathPreview pension,
+                                 String usedPath, BalancePreview balancePreview) {}
 
     /**
-     * 퇴직연금 잔고 원본 진단 (읽기 전용, DB 변경 없음).
+     * 퇴직연금/연금 잔고 원본 진단 (읽기 전용, DB 변경 없음).
      *
-     * <p>개인연금(22) 응답이 output1/output2 모두 비어 오는 사례를 눈으로 확인하기 위한 경로다.
-     * 조회 실패·모의투자 TR 부재도 예외 대신 {@code error} 로 돌려준다(진단 목적).</p>
+     * <p>개인연금(22) 응답이 비어 오는 사례에서 "KIS 가 0 을 보냈는지, 우리 파싱이 0 으로
+     * 만드는지"를 구분하기 위해 <b>주식잔고(TTTC8434R)·계좌자산현황(CTRP6548R)·퇴직연금
+     * (TTTC2208R)</b> 세 경로를 각각 호출해 원본을 그대로 돌려준다. 한 경로가 실패해도
+     * 예외를 전파하지 않고 그 경로의 error 에만 담는다.</p>
      */
     public PensionPreview previewPension(KisCredentials credentials) {
         String productCode = normalize(credentials.acntPrdtCd());
         String warning = isPensionAccount(productCode) ? null
                 : "상품코드 " + (productCode.isBlank() ? "(없음)" : productCode)
                         + " 는 연금 계좌(22/29)가 아닙니다 — 응답이 비어 있을 수 있습니다";
+
+        PathPreview stock = fetchPathPreview(credentials, "주식잔고조회", BALANCE_PATH,
+                stockBalanceParams(credentials), trId(credentials));
+        PathPreview account = fetchPathPreview(credentials, "계좌자산현황조회", ACCOUNT_BALANCE_PATH,
+                accountBalanceParams(credentials), ACCOUNT_BALANCE_TR_ID);
+        PathPreview pension = fetchPathPreview(credentials, "퇴직연금 잔고조회", PENSION_BALANCE_PATH,
+                pensionBalanceParams(credentials), PENSION_TR_ID);
+
+        // balance 는 기존 계약 그대로 퇴직연금 원본이다(같은 노드를 두 필드에 담는다).
+        JsonNode balance = pension.response();
+        String error = pension.error();
+        if (balance != null && !hasPensionSummary(firstNode(balance.path("output2")))) {
+            String empty = "output2 가 비어 있습니다 — 동기화는 예수금 '알 수 없음' 으로 처리합니다"
+                    + "(보유종목 삭제 없음)";
+            warning = warning == null ? empty : warning + " | " + empty;
+        }
+
+        // 동기화가 실제로 고를 경로·요약 — fetchBalance 와 같은 선택 코드(selectBalance)를 한 번 돌린다.
+        // 이 호출은 KIS 를 다시 부르지만, "sync 가 어느 경로를 쓰는지"를 추측이 아니라 실측으로 보여 준다.
+        BalancePreview balancePreview;
         try {
-            JsonNode balance = kisApiClient.get(credentials, PENSION_BALANCE_PATH,
-                    pensionBalanceParams(credentials), PENSION_TR_ID);
-            if (!hasPensionSummary(firstNode(balance.path("output2")))) {
-                String empty = "output2 가 비어 있습니다 — 동기화는 예수금 '알 수 없음' 으로 처리합니다"
-                        + "(보유종목 삭제 없음)";
-                warning = warning == null ? empty : warning + " | " + empty;
-            }
-            return new PensionPreview(balance, warning, null, productCode, credentials.isMock());
+            Selected selected = selectBalance(credentials);
+            KisBalanceResponse response = PENSION_PRODUCT_CODE.equals(productCode)
+                    ? withPensionExtras(credentials, selected.response())
+                    : selected.response();
+            Long cash = response.summary() == null || response.summary().dncaTotAmt() == null
+                    ? null : response.summary().dncaTotAmt().longValue();
+            balancePreview = new BalancePreview(selected.path(), cash, response.holdings().size(),
+                    response.warning(), null);
         } catch (RuntimeException e) {
             String reason = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-            return new PensionPreview(null, warning, "퇴직연금 잔고를 읽지 못했습니다: " + reason,
-                    productCode, credentials.isMock());
+            balancePreview = new BalancePreview("unknown", null, 0, null, reason);
+        }
+
+        return new PensionPreview(balance, warning, error, productCode, credentials.isMock(),
+                stock, account, pension, balancePreview.path(), balancePreview);
+    }
+
+    /** 경로 1건 호출 — 실패해도 예외를 던지지 않고 error 문자열로 돌려준다(진단 목적). */
+    private PathPreview fetchPathPreview(KisCredentials credentials, String label, String path,
+                                         Map<String, String> params, String trId) {
+        try {
+            return new PathPreview(path, trId, kisApiClient.get(credentials, path, params, trId), null);
+        } catch (RuntimeException e) {
+            String reason = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            return new PathPreview(path, trId, null, label + "를 읽지 못했습니다: " + reason);
         }
     }
 

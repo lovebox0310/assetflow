@@ -193,7 +193,28 @@ export function previewKisBonds(accountId: number): Promise<KisBondPreview> {
 }
 
 /**
- * 개인연금(22)/IRP(29) 퇴직연금 잔고(TTTC2208R) 원본 진단 — KIS JSON 을 변환하지 않는다.
+ * 진단용 경로 1건 — 어느 엔드포인트(tr_id)를 불렀고 원본 JSON 또는 실패 사유가 무엇인지.
+ * 응답이 null 이면 error 에 조회 사유가 들어 있다.
+ */
+export interface KisPathPreview {
+  path: string | null;
+  trId: string | null;
+  response: unknown | null;
+  error: string | null;
+}
+
+/** 동기화가 실제로 고른 경로 요약 — cash 가 null 이면 예수금을 읽지 못한 것이다(0 과 구분). */
+export interface KisBalancePreview {
+  path: string | null;
+  cash: number | null;
+  holdingCount: number;
+  warning: string | null;
+  error: string | null;
+}
+
+/**
+ * 개인연금(22)/IRP(29) 연금 잔고 원본 진단 — KIS JSON 을 변환하지 않는다.
+ * 세 경로(주식잔고·계좌자산현황·퇴직연금)를 각각 담고, usedPath 로 sync 가 쓸 경로를 알려 준다.
  * 조회 실패·자격증명 누락도 200 + error/warning 으로 내려온다(진단 목적).
  */
 export interface KisPensionPreview {
@@ -202,6 +223,11 @@ export interface KisPensionPreview {
   error: string | null;
   acntPrdtCd: string | null;
   isMock: boolean;
+  stock: KisPathPreview | null;
+  account: KisPathPreview | null;
+  pension: KisPathPreview | null;
+  usedPath: string | null;
+  balancePreview: KisBalancePreview | null;
 }
 
 export function previewKisPension(accountId: number): Promise<KisPensionPreview> {

@@ -309,7 +309,8 @@ public class InvestmentController {
         KisCredentials credentials = kisCredentialsService.findDecrypted(account.id());
         if (credentials == null) {
             return new ApiResponse<>("OK", "KIS pension preview",
-                    new KisBalanceService.PensionPreview(null, null, "KIS 자격증명이 없습니다", null, false));
+                    new KisBalanceService.PensionPreview(null, null, "KIS 자격증명이 없습니다", null, false,
+                            null, null, null, "unknown", null));
         }
         return new ApiResponse<>("OK", "KIS pension preview", kisBalanceService.previewPension(credentials));
     }

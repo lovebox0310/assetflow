@@ -157,4 +157,110 @@ describe("KisPensionPreviewModal", () => {
     fireEvent.click(document.body);
     expect(previewKisPensionMock).not.toHaveBeenCalled();
   });
+
+  it("usedPath 와 동기화 요약을 보여 주고 세 경로 원본 탭을 렌더한다", async () => {
+    previewKisPensionMock.mockResolvedValue({
+      balance: { output1: [], output2: {} },
+      warning: null,
+      error: null,
+      acntPrdtCd: "22",
+      isMock: false,
+      stock: {
+        path: "/uapi/domestic-stock/v1/trading/inquire-balance",
+        trId: "TTTC8434R",
+        response: { rt_cd: "0", output1: [], output2: [{ dnca_tot_amt: "1,000,000" }] },
+        error: null,
+      },
+      account: {
+        path: "/uapi/domestic-stock/v1/trading/inquire-account-balance",
+        trId: "CTRP6548R",
+        response: { rt_cd: "0", output1: [], output2: [{ dnca_tot_amt: "1,000,000" }] },
+        error: null,
+      },
+      pension: {
+        path: "/uapi/domestic-stock/v1/trading/pension/inquire-balance",
+        trId: "TTTC2208R",
+        response: { rt_cd: "0", output1: [], output2: {} },
+        error: null,
+      },
+      usedPath: "stock",
+      balancePreview: {
+        path: "stock",
+        cash: 1_000_000,
+        holdingCount: 1,
+        warning: null,
+        error: null,
+      },
+    });
+
+    renderModal();
+
+    // AC2 — sync 가 어느 경로를 쓰는지 + 예수금·보유 수 요약.
+    const summary = await screen.findByLabelText("동기화 경로 요약");
+    expect(summary.textContent).toContain("주식잔고");
+    expect(summary.textContent).toContain("1,000,000원");
+    expect(summary.textContent).toContain("1종목");
+
+    // AC1/AC3 — 세 경로 탭이 모두 있다.
+    expect(screen.getByRole("tab", { name: "주식잔고" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "계좌자산현황" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "퇴직연금" })).toBeDefined();
+
+    // 기본 탭은 주식잔고 원본 JSON.
+    expect(screen.getByLabelText("주식잔고 원본 JSON").textContent).toContain(
+      '"dnca_tot_amt": "1,000,000"',
+    );
+    expect(screen.getByLabelText("주식잔고 경로").textContent).toContain("TTTC8434R");
+
+    // 탭을 바꾸면 그 경로의 원본이 보인다.
+    fireEvent.click(screen.getByRole("tab", { name: "계좌자산현황" }));
+    expect(await screen.findByLabelText("계좌자산현황 원본 JSON")).toBeDefined();
+    expect(screen.getByLabelText("계좌자산현황 경로").textContent).toContain("CTRP6548R");
+  });
+
+  it("경로 하나가 실패하면 그 섹션에 사유를 보여 주고 나머지는 그대로 둔다", async () => {
+    previewKisPensionMock.mockResolvedValue({
+      balance: { output1: [], output2: {} },
+      warning: null,
+      error: null,
+      acntPrdtCd: "22",
+      isMock: false,
+      stock: {
+        path: "/uapi/domestic-stock/v1/trading/inquire-balance",
+        trId: "TTTC8434R",
+        response: null,
+        error: "주식잔고조회를 읽지 못했습니다: EGW00002",
+      },
+      account: {
+        path: "/uapi/domestic-stock/v1/trading/inquire-account-balance",
+        trId: "CTRP6548R",
+        response: { rt_cd: "0", output2: [{ dnca_tot_amt: "1,000,000" }] },
+        error: null,
+      },
+      pension: {
+        path: "/uapi/domestic-stock/v1/trading/pension/inquire-balance",
+        trId: "TTTC2208R",
+        response: { rt_cd: "0", output1: [], output2: {} },
+        error: null,
+      },
+      usedPath: "account",
+      balancePreview: {
+        path: "account",
+        cash: 1_000_000,
+        holdingCount: 0,
+        warning: null,
+        error: null,
+      },
+    });
+
+    renderModal();
+
+    expect(await screen.findByText("주식잔고 응답 없음")).toBeDefined();
+    const stockAlert = screen
+      .getByText("주식잔고 응답 없음")
+      .closest(".ant-alert") as HTMLElement;
+    expect(stockAlert.textContent).toContain("EGW00002");
+    const summary = screen.getByLabelText("동기화 경로 요약");
+    expect(summary.textContent).toContain("계좌자산현황");
+  });
 });
