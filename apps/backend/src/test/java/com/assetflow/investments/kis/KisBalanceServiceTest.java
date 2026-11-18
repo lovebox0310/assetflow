@@ -589,4 +589,86 @@ class KisBalanceServiceTest {
         assertThat(trIds).doesNotContain("TTTC2208R");
         assertThat(result.summary().dncaTotAmt()).isEqualByComparingTo(new BigDecimal("1200000"));
     }
+
+    // ── §62.3 빈 연금 응답 = "알 수 없음" (0원 성공이 아니다) ────────────────────
+
+    @Test
+    void emptyPensionOutputObjectIsUnknownAndNotZero() {
+        List<String> paths = new ArrayList<>();
+        KisApiClient api = client((path, tr) -> {
+            paths.add(path);
+            if (path.contains("pension/inquire-balance")) {
+                return json("{\"rt_cd\":\"0\",\"output1\":[],\"output2\":{}}");
+            }
+            throw new KisApiException("위탁계좌 전용: " + path);
+        });
+
+        assertThatThrownBy(() -> new KisBalanceService(api).fetchBalance(salesCredentials("22")))
+                .isInstanceOf(KisApiException.class)
+                .hasMessageContaining("비어 있습니다")
+                .hasMessageContaining("상품코드 22");
+        // 예외였으므로 "0원 성공" 으로 끝나지 않는다 — 폴백까지 실패해야 한다.
+        assertThat(paths).contains("/uapi/domestic-stock/v1/trading/inquire-balance");
+    }
+
+    @Test
+    void emptyPensionOutputArrayIsUnknownAndNotZero() {
+        KisApiClient api = client((path, tr) -> {
+            if (path.contains("pension/inquire-balance")) {
+                return json("{\"rt_cd\":\"0\",\"output1\":[],\"output2\":[]}");
+            }
+            throw new KisApiException("위탁계좌 전용: " + path);
+        });
+
+        assertThatThrownBy(() -> new KisBalanceService(api).fetchBalance(salesCredentials("22")))
+                .isInstanceOf(KisApiException.class)
+                .hasMessageContaining("비어 있습니다");
+    }
+
+    @Test
+    void emptyPensionOutputAlsoBlocksMockAccount() {
+        KisApiClient api = client((path, tr) -> json("{\"rt_cd\":\"0\",\"output1\":[],\"output2\":[]}"));
+
+        assertThatThrownBy(() -> new KisBalanceService(api).fetchBalance(mockPensionCredentials()))
+                .isInstanceOf(KisApiException.class)
+                .hasMessageContaining("모의투자")
+                .hasMessageContaining("비어 있습니다");
+    }
+
+    @Test
+    void emptyPensionOutputForIrpFallsBackAndThenFails() {
+        KisApiClient api = client((path, tr) -> {
+            if (path.contains("pension/inquire-balance")) {
+                return json("{\"rt_cd\":\"0\",\"output1\":[],\"output2\":[]}");
+            }
+            throw new KisApiException(path.contains("inquire-account-balance")
+                    ? "계좌자산현황 거부" : "주식잔고 거부");
+        });
+
+        assertThatThrownBy(() -> new KisBalanceService(api).fetchBalance(pensionCredentials()))
+                .isInstanceOf(KisApiException.class)
+                .hasMessageContaining("상품코드 29")
+                .hasMessageContaining("비어 있습니다")
+                .hasMessageContaining("주식잔고 거부");
+    }
+
+    @Test
+    void pensionZeroTotalEvaluationAloneIsTrustworthyZero() {
+        List<String> paths = new ArrayList<>();
+        KisApiClient api = client((path, tr) -> {
+            paths.add(path);
+            if (path.contains("pension/inquire-balance")) {
+                // 실제로 비어 있는 계좌 — 예수금은 없지만 총평가 0 이 명시돼 온다.
+                return json("{\"rt_cd\":\"0\",\"output1\":[],\"output2\":[{\"tot_evlu_amt\":\"0\"}]}");
+            }
+            throw new KisApiException("위탁계좌 전용: " + path);
+        });
+
+        KisBalanceResponse result = new KisBalanceService(api).fetchBalance(salesCredentials("22"));
+
+        assertThat(paths).containsExactly("/uapi/domestic-stock/v1/trading/pension/inquire-balance");
+        assertThat(result.summary().cashKnown()).isTrue();
+        assertThat(result.summary().dncaTotAmt()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(result.holdings()).isEmpty();
+    }
 }

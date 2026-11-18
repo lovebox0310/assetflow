@@ -1,5 +1,6 @@
 package com.assetflow.investments.kis;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.stereotype.Service;
 
@@ -55,6 +56,18 @@ public class KisBalanceService {
     private static final String[] CASH_FIELDS = {
             "tot_dncl_amt", "dncl_amt", "cma_evlu_amt", "dnca_tot_amt",
             "prvs_rcdl_excc_amt", "nxdy_excc_amt"
+    };
+
+    /**
+     * 퇴직연금(TTTC2208R) output2 에서 "응답이 실제로 왔다"를 판정하는 키.
+     * 기존 {@link #CASH_FIELDS} + 총평가·주식평가·당일매수/매도. 값이 0 이어도 키가 있으면 신뢰한다.
+     * 하나도 없으면 output2 가 {@code {}} / {@code []} 인 경우다 — 그건 "정상 0원" 이 아니라
+     * "읽지 못함" 이다(§62.3).
+     */
+    private static final String[] PENSION_KNOWN_FIELDS = {
+            "dnca_tot_amt", "prvs_rcdl_excc_amt", "cma_evlu_amt",
+            "tot_evlu_amt", "scts_evlu_amt", "thdt_buy_amt", "thdt_sll_amt",
+            "tot_dncl_amt", "dncl_amt", "nxdy_excc_amt"
     };
 
     private final KisApiClient kisApiClient;
@@ -193,20 +206,29 @@ public class KisBalanceService {
      * 모의투자에는 연금 상품코드가 없으므로 실전 tr_id 만 쓴다.
      */
     private KisBalanceResponse fetchPensionBalance(KisCredentials credentials) {
-        Map<String, String> params = Map.ofEntries(
+        JsonNode root = kisApiClient.get(credentials, PENSION_BALANCE_PATH,
+                pensionBalanceParams(credentials), PENSION_TR_ID);
+        return parsePension(root);
+    }
+
+    /** TTTC2208R 파라미터 — 잔고 조회와 진단(previewPension)이 같은 값을 쓴다. */
+    private static Map<String, String> pensionBalanceParams(KisCredentials credentials) {
+        return Map.ofEntries(
                 Map.entry("CANO", normalize(credentials.cano())),
                 Map.entry("ACNT_PRDT_CD", normalize(credentials.acntPrdtCd())),
                 Map.entry("ACCA_DVSN_CD", "00"),
                 Map.entry("INQR_DVSN", "00"),
                 Map.entry("CTX_AREA_FK100", ""),
                 Map.entry("CTX_AREA_NK100", ""));
-        JsonNode root = kisApiClient.get(credentials, PENSION_BALANCE_PATH, params, PENSION_TR_ID);
-        return parsePension(root);
     }
 
     /**
      * 퇴직연금 응답 파싱. output1 보유종목은 현재가(prpr)가 없을 수 있어
-     * 평가금액/수량 → 평단가 순으로 대체한다. output2 의 예수금은 0 도 신뢰한다(cashKnown).
+     * 평가금액/수량 → 평단가 순으로 대체한다.
+     *
+     * <p>output2 가 {@code {}} / {@code []} 이거나 아는 키가 하나도 없으면 <b>예외</b>다.
+     * "성공했지만 0원" 으로 넘기면 컨트롤러가 정상 완료로 보고 KIS 출처 보유종목을
+     * 삭제한다 — 실제로 개인연금(22) 계좌에서 stale 행이 지워졌다(§62.3).</p>
      */
     private KisBalanceResponse parsePension(JsonNode root) {
         List<KisBalanceResponse.Holding> holdings = new ArrayList<>();
@@ -239,6 +261,9 @@ public class KisBalanceService {
             }
         }
         JsonNode summaryNode = firstNode(root.path("output2"));
+        if (!hasPensionSummary(summaryNode)) {
+            throw new KisApiException("연금 잔고 응답이 비어 있습니다(상품코드/계좌 유형 확인)");
+        }
         BigDecimal cash = firstNonZero(summaryNode, CASH_FIELDS);
         KisBalanceResponse.Summary summary = new KisBalanceResponse.Summary(
                 cash,
@@ -248,6 +273,20 @@ public class KisBalanceService {
                 BigDecimal.ZERO,
                 true);
         return new KisBalanceResponse(holdings, summary);
+    }
+
+    /** output2 에 아는 키가 값과 함께 하나라도 있는가 — 0 도 값이다. */
+    private static boolean hasPensionSummary(JsonNode summaryNode) {
+        if (summaryNode == null) {
+            return false;
+        }
+        for (String field : PENSION_KNOWN_FIELDS) {
+            JsonNode value = summaryNode.get(field);
+            if (value != null && !value.isNull() && !value.asText("").isBlank()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** 퇴직연금 응답 item_dvsn_name → 앱 자산군. 채권/펀드는 이 응답에 드물게 오지만 매핑해 둔다. */
@@ -506,6 +545,45 @@ public class KisBalanceService {
             }
         }
         return new BondPreview(balance, prices, presentError, pensionPresent);
+    }
+
+    /**
+     * 개인연금(22)/IRP(29) 퇴직연금 잔고(TTTC2208R) 원본 진단.
+     * balance 가 null 이면 error 에 조회 사유가 들어 있다. warning 은 "응답이 비어 있음"·
+     * "연금 계좌가 아님" 처럼 동기화 판정에 영향을 주는 안내다.
+     *
+     * @param acntPrdtCd 설정된 상품코드 (자격증명이 없으면 null)
+     * @param isMock     모의투자(vts) 자격증명 여부
+     */
+    public record PensionPreview(JsonNode balance, String warning, String error,
+                                 String acntPrdtCd,
+                                 @JsonProperty("isMock") boolean isMock) {}
+
+    /**
+     * 퇴직연금 잔고 원본 진단 (읽기 전용, DB 변경 없음).
+     *
+     * <p>개인연금(22) 응답이 output1/output2 모두 비어 오는 사례를 눈으로 확인하기 위한 경로다.
+     * 조회 실패·모의투자 TR 부재도 예외 대신 {@code error} 로 돌려준다(진단 목적).</p>
+     */
+    public PensionPreview previewPension(KisCredentials credentials) {
+        String productCode = normalize(credentials.acntPrdtCd());
+        String warning = isPensionAccount(productCode) ? null
+                : "상품코드 " + (productCode.isBlank() ? "(없음)" : productCode)
+                        + " 는 연금 계좌(22/29)가 아닙니다 — 응답이 비어 있을 수 있습니다";
+        try {
+            JsonNode balance = kisApiClient.get(credentials, PENSION_BALANCE_PATH,
+                    pensionBalanceParams(credentials), PENSION_TR_ID);
+            if (!hasPensionSummary(firstNode(balance.path("output2")))) {
+                String empty = "output2 가 비어 있습니다 — 동기화는 예수금 '알 수 없음' 으로 처리합니다"
+                        + "(보유종목 삭제 없음)";
+                warning = warning == null ? empty : warning + " | " + empty;
+            }
+            return new PensionPreview(balance, warning, null, productCode, credentials.isMock());
+        } catch (RuntimeException e) {
+            String reason = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            return new PensionPreview(null, warning, "퇴직연금 잔고를 읽지 못했습니다: " + reason,
+                    productCode, credentials.isMock());
+        }
     }
 
     private static Map<String, String> pensionPresentParams(KisCredentials credentials) {

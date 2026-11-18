@@ -293,6 +293,28 @@ public class InvestmentController {
     }
 
     /**
+     * 개인연금(22)/IRP(29) 퇴직연금 잔고(TTTC2208R) 원본 진단 (읽기 전용).
+     * KIS JSON 을 그대로 돌려주며 어떤 계좌/보유종목도 변경하지 않는다.
+     * 자격증명 누락·조회 실패도 200 + error/warning 으로 진단 가능하게 한다.
+     */
+    @PostMapping("/accounts/{accountId}/kis-pension-preview")
+    public ApiResponse<KisBalanceService.PensionPreview> previewPension(@PathVariable long accountId) {
+        AssetRow account = assetLedger.byId(accountId);
+        if (account == null) {
+            throw new IllegalArgumentException("account not found: " + accountId);
+        }
+        if (!"invest".equals(account.accountType())) {
+            throw new IllegalArgumentException("account must be an invest account");
+        }
+        KisCredentials credentials = kisCredentialsService.findDecrypted(account.id());
+        if (credentials == null) {
+            return new ApiResponse<>("OK", "KIS pension preview",
+                    new KisBalanceService.PensionPreview(null, null, "KIS 자격증명이 없습니다", null, false));
+        }
+        return new ApiResponse<>("OK", "KIS pension preview", kisBalanceService.previewPension(credentials));
+    }
+
+    /**
      * §62.2 계좌별 KIS 자격증명을 삭제한다.
      */
     @DeleteMapping("/accounts/{accountId}/kis-credentials")
