@@ -1,4 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { authToken } from "./fixtures";
 import { mockScreenApi } from "./screens-mocks";
@@ -31,6 +33,41 @@ const SAMPLE_CSV = path.resolve(
 /** 검토 표의 열 폭 합(가맹점 자동 + 70 + 130 + 120 + 110 + 150 + 150)이 320 보다 넓다. */
 const REVIEW_TABLE = "가져온 카드 내역 검토";
 
+/**
+ * #34 C-01: 긴 가맹점명 케이스 — 저장소에 픽스처를 추가하지 않고(tmp 에만 쓴다)
+ * 익명화 현대카드 샘플의 가맹점 하나를 긴 상호로 바꿔 만든다.
+ * 카드사 판별은 헤더 시그니처가 하므로 가맹점 문자열은 계약에 영향이 없다.
+ */
+const LONG_MERCHANT = "합성컴퓨터전문점및서비스센터강남역지점";
+const LONG_SAMPLE_CSV = path.join(os.tmpdir(), "assetflow-long-merchant.csv");
+
+function writeLongMerchantSample() {
+  const text = fs.readFileSync(SAMPLE_CSV, "utf8");
+  if (!text.includes("합성컴퓨터")) throw new Error("샘플에 합성컴퓨터 가맹점이 없다");
+  fs.writeFileSync(LONG_SAMPLE_CSV, text.split("합성컴퓨터").join(LONG_MERCHANT), "utf8");
+  return LONG_SAMPLE_CSV;
+}
+
+/** 검색 표(검토 표)의 스크롤 상자·고정 열 기하. #34 C-01 실측용. */
+function reviewGeometry(page: Page) {
+  return page.evaluate((label) => {
+    const table = document.querySelector<HTMLElement>(`[aria-label="${label}"]`);
+    if (!table) return null;
+    const box = table.closest<HTMLElement>(".ant-table-content, .ant-table-body");
+    const th = table.querySelector<HTMLElement>("thead th");
+    if (!box || !th) return null;
+    const boxRect = box.getBoundingClientRect();
+    const thRect = th.getBoundingClientRect();
+    return {
+      stickyWidth: thRect.width,
+      // 고정 열의 오른쪽 끝(스크롤 상자 좌변 기준) — 그 오른쪽이 가시 창이다.
+      stickyRight: thRect.right - boxRect.left,
+      clientWidth: box.clientWidth,
+      scrollWidth: box.scrollWidth,
+    };
+  }, REVIEW_TABLE);
+}
+
 function overflow(page: Page) {
   return page.evaluate(() => ({
     doc: document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -38,17 +75,21 @@ function overflow(page: Page) {
   }));
 }
 
+/** 같은 URL 로 다시 들어갈 때 goto 가 해시 내비게이션(무동작)이 되지 않게 번호를 붙인다. */
+let visit = 0;
+
 async function openCardExpenses(page: Page, width: number, height: number) {
   await page.setViewportSize({ width, height });
-  await page.goto(`/?qa-card-mobile=${width}#/expenses/cards`, { waitUntil: "networkidle" });
+  visit += 1;
+  await page.goto(`/?qa-card-mobile=${width}&visit=${visit}#/expenses/cards`, { waitUntil: "networkidle" });
   await expect(page.getByRole("heading", { level: 1, name: "카드내역" })).toBeVisible();
   // 목이 행을 실제로 렌더했는지 — 빈 화면을 통과시키지 않는다.
   await expect(page.getByText("한마음식당").first()).toBeVisible();
 }
 
 /** 샘플 CSV 를 올려 검토 단계로 들어간다. */
-async function enterReview(page: Page) {
-  await page.setInputFiles('[data-testid="card-file"]', SAMPLE_CSV);
+async function enterReview(page: Page, file: string = SAMPLE_CSV) {
+  await page.setInputFiles('[data-testid="card-file"]', file);
   await expect(page.getByRole("table", { name: REVIEW_TABLE })).toBeVisible({ timeout: 15000 });
 }
 
@@ -89,8 +130,7 @@ test.describe("카드내역 모바일", () => {
     }
   });
 
-  test("파일 선택 컨트롤 — 44×120 히트, 접근 이름, input 은 탭 정지 없음", async ({ page }) => {
-    await openCardExpenses(page, 320, 800);
+  test("파일 선택 컨트롤 — 44×120 히트, 접근 이름, input 은 탭 정지 없음", async ({ page }) => {    await openCardExpenses(page, 320, 800);
 
     const button = page.getByRole("button", { name: "카드 명세서 파일 선택" });
     await expect(button).toBeVisible();
@@ -120,8 +160,7 @@ test.describe("카드내역 모바일", () => {
     expect(doc, "320px 문서 넘침").toBe(0);
   });
 
-  test("자동 분류 결과 알림 — 클릭한 위치의 뷰포트 안에 보이고 live region 1개", async ({ page }) => {
-    await page.route("**/api/v1/assets/card-imports/reclassify", (route) =>
+  test("자동 분류 결과 알림 — 클릭한 위치의 뷰포트 안에 보이고 live region 1개", async ({ page }) => {    await page.route("**/api/v1/assets/card-imports/reclassify", (route) =>
       route.fulfill({ json: { code: "OK", message: "ok", data: { total: 12, updated: 7 } } }),
     );
 
@@ -236,5 +275,192 @@ test.describe("카드내역 모바일", () => {
     await expect(
       page.locator(".ant-modal-footer").getByRole("button", { name: "닫기" }),
     ).toBeEnabled();
+  });
+
+  /**
+   * #34 C-01 (Blocker): 가맹점 열은 `fixed: "left"` 인데 폭이 내용 기반이면
+   * 긴 상호에서 고정 열(실측 318.9px)이 스크롤 상자(254px)를 넘어 나머지 열이
+   * 전부 가려진다. <768 에서는 폭을 112 로 고정하고 이름만 말줄임한다.
+   */
+  test("긴 가맹점명 — 320~430 고정 열 ≤113px, 가시 창 ≥140px (#34 C-01)", async ({ page }) => {
+    const longCsv = writeLongMerchantSample();
+
+    for (const viewport of VIEWPORTS) {
+      const samples = [
+        { label: "표준", file: SAMPLE_CSV },
+        { label: "긴 가맹점명", file: longCsv },
+      ];
+      for (const sample of samples) {
+        await openCardExpenses(page, viewport.width, viewport.height);
+        await enterReview(page, sample.file);
+
+        const g = await reviewGeometry(page);
+        expect(g, `${viewport.width}px ${sample.label} 검토 표`).not.toBeNull();
+        const at = `${viewport.width}px ${sample.label}`;
+        // 헤더 셀(고정 열) 자체가 113 이하 — 말줄임이 걸리는 폭과 같다.
+        expect(g!.stickyWidth, `${at} 고정 열 폭`).toBeLessThanOrEqual(113);
+        // 고정 열 오른쪽부터 스크롤 상자 끝까지가 실제로 보이는 창이다.
+        expect(g!.clientWidth - g!.stickyRight, `${at} 가시 창`).toBeGreaterThanOrEqual(140);
+        // 넘칠 내용은 여전히 있다(스크롤 가능) — 문서가 아니라 표 안에서만.
+        expect(g!.scrollWidth, `${at} 표 내부 스크롤`).toBeGreaterThan(g!.clientWidth);
+
+        const { doc } = await overflow(page);
+        expect(doc, `${at} 문서 넘침`).toBe(0);
+      }
+    }
+  });
+
+  /**
+   * #34 C-02 (High): 키보드로 분류 Select 에 포커스하면 브라우저가 스크롤해
+   * 컨트롤이 고정 열 아래(가로)·하단 탭바 뒤(세로)에 깔렸다.
+   * 5행(실측 y=517)을 탭바 뒤에 붙여 놓고 포커스한 뒤 실제 히트를 잰다.
+   */
+  test("320 에서 분류 Select 포커스가 고정 열·탭바에 가리지 않는다 (#34 C-02)", async ({ page }) => {
+    await openCardExpenses(page, 320, 568);
+    await enterReview(page);
+
+    // 실제 키보드 경로: 첫 대분류에 포커스한 뒤 Tab 으로 표를 내려간다.
+    // (감사 당시 5행째가 y=517 로 탭바 512~568 뒤에 깔렸다.)
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.locator('input[aria-label$=" 대분류"]').first().focus();
+    // 포커스 보정(포커스 이벤트 + 다음 프레임 보정)이 끝난 뒤 잰다.
+    await page.waitForTimeout(120);
+
+    const measured: Array<{
+      label: string;
+      top: number;
+      bottom: number;
+      relLeft: number;
+      stickyRight: number;
+      tabbarTop: number;
+      hitIsControl: boolean;
+      hitClass: string;
+    }> = [];
+
+    for (let i = 0; i < 10; i += 1) {
+      const snap = await page.evaluate(() => {
+        const el = document.activeElement as HTMLElement | null;
+        const root = (el?.closest?.(".ant-select") as HTMLElement | null) ?? el;
+        if (!root) throw new Error("포커스된 컨트롤이 없다");
+        const r = root.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + 12, r.top + 10);
+        const tabbar = document.querySelector<HTMLElement>(".af-tabbar");
+        const table = document.querySelector<HTMLElement>('[aria-label="가져온 카드 내역 검토"]');
+        const box = table?.closest<HTMLElement>(".ant-table-content, .ant-table-body");
+        const th = table?.querySelector<HTMLElement>("thead th");
+        if (!tabbar || !box || !th) throw new Error("탭바/스크롤 상자를 찾지 못했다");
+        const boxRect = box.getBoundingClientRect();
+        return {
+          label: root.getAttribute("aria-label") ?? "",
+          top: Math.round(r.top),
+          bottom: Math.round(r.bottom),
+          relLeft: Math.round(r.left - boxRect.left),
+          stickyRight: Math.round(th.getBoundingClientRect().right - boxRect.left),
+          tabbarTop: Math.round(tabbar.getBoundingClientRect().top),
+          hitIsControl: hit ? root === hit || root.contains(hit) : false,
+          hitClass: hit instanceof HTMLElement ? hit.className.toString() : String(hit),
+        };
+      });
+      measured.push(snap);
+      await page.keyboard.press("Tab");
+      await page.waitForTimeout(120);
+    }
+
+    for (const m of measured) {
+      // 가로: 좌상단 지점의 히트가 그 Select(또는 자손) — 고정 열이 덮지 않는다.
+      expect(m.hitIsControl, `${m.label} 좌상단이 ${m.hitClass} 에 가린다`).toBe(true);
+      expect(m.relLeft, `${m.label} 좌변이 고정 열(${m.stickyRight}px) 오른쪽`).toBeGreaterThanOrEqual(
+        m.stickyRight,
+      );
+      // 세로: 하단 탭바(고정 56px) 뒤로 내려가지 않는다.
+      expect(m.bottom, `${m.label} 하단이 탭바(${m.tabbarTop}px) 위`).toBeLessThanOrEqual(m.tabbarTop);
+    }
+    // 실측 좌표를 보고에 남길 수 있게 최소 1개는 표 하단(탭바 근처)까지 내려간다.
+    expect(Math.max(...measured.map((m) => m.bottom)), "탭바 근처까지 확인").toBeGreaterThan(430);
+  });
+
+  /**
+   * #34 AC-6: C-02 보정이 **포인터**에도 걸리면 탭할 때 화면이 튄다
+   * (수정 전 실측: 컨트롤 하단이 탭바에 20px 걸친 상태에서 클릭 → 28px 스크롤,
+   *  드롭다운 기준점도 그만큼 어긋난다). 클릭 전후 스크롤 변화 ≤16px 를 지킨다.
+   * 1행은 왼쪽 고정 열 아래에 30px 걸치게, 5행은 하단 탭바에 20px 걸치게 둔다 —
+   * 두 축 모두에서 보정이 일어날 수 있는 가장 나쁜 배치다.
+   */
+  test("표 컨트롤을 클릭해도 페이지가 스크롤되지 않는다 (#34 AC-6)", async ({ page }) => {
+    const cases = [
+      { width: 320, height: 800 },
+      { width: 375, height: 812 },
+    ];
+
+    for (const viewport of cases) {
+      for (const rowIndex of [0, 4]) {
+        const sample = rowIndex === 0 ? "고정 열 아래" : "탭바 뒤";
+        await openCardExpenses(page, viewport.width, viewport.height);
+        await enterReview(page);
+
+        // 클릭하기 전 상태를 만든다: 1행은 고정 열 밑으로, 5행은 탭바 뒤로.
+        const before = await page.evaluate(
+          ({ idx, mode }) => {
+            const table = document.querySelector<HTMLElement>(`[aria-label="가져온 카드 내역 검토"]`);
+            const scroller = table?.closest<HTMLElement>(".ant-table-content, .ant-table-body");
+            const th = table?.querySelector<HTMLElement>("thead th");
+            const row = document.querySelectorAll<HTMLElement>(
+              '[aria-label="가져온 카드 내역 검토"] tbody tr.ant-table-row',
+            )[idx];
+            const root = row?.querySelector<HTMLElement>('input[aria-label$=" 대분류"]')?.closest<HTMLElement>(".ant-select");
+            const tabbar = document.querySelector<HTMLElement>(".af-tabbar");
+            if (!scroller || !th || !root || !tabbar) throw new Error("검토 표 컨트롤을 찾지 못했다");
+
+            const sticky = th.getBoundingClientRect().width;
+            const boxRect = scroller.getBoundingClientRect();
+            if (mode === "sticky") {
+              /* 가로: 컨트롤 왼쪽 30px 이 고정 열 아래로 들어가게 민다. */
+              scroller.scrollLeft += root.getBoundingClientRect().left - (boxRect.left + sticky - 30);
+              window.scrollBy(0, root.getBoundingClientRect().top - 300);
+            } else {
+              /* 세로: 컨트롤 하단이 탭바에 20px 걸치게 둔다(가로는 보이게). */
+              scroller.scrollLeft += root.getBoundingClientRect().left - (boxRect.left + sticky + 8);
+              const tabbarTop = tabbar.getBoundingClientRect().top;
+              window.scrollBy(0, root.getBoundingClientRect().bottom - (tabbarTop + 20));
+            }
+
+            const r = root.getBoundingClientRect();
+            const tabbarTop = tabbar.getBoundingClientRect().top;
+            /* 고정 열·탭바에 가리지 않는 지점을 누른다(사용자가 실제로 누를 수 있는 곳). */
+            const visibleLeft = boxRect.left + sticky + 16;
+            return {
+              x: Math.round(Math.min(Math.max(r.left + 16, visibleLeft), r.right - 16)),
+              y: Math.round(Math.min(r.top + 10, tabbarTop - 6)),
+              scrollY: window.scrollY,
+              scrollTop: document.scrollingElement?.scrollTop ?? 0,
+              scrollLeft: scroller.scrollLeft,
+            };
+          },
+          { idx: rowIndex, mode: rowIndex === 0 ? "sticky" : "tabbar" },
+        );
+
+        await page.mouse.click(before.x, before.y);
+        await page.waitForTimeout(250);
+
+        const after = await page.evaluate(() => {
+          const table = document.querySelector<HTMLElement>(`[aria-label="가져온 카드 내역 검토"]`);
+          const scroller = table?.closest<HTMLElement>(".ant-table-content, .ant-table-body");
+          return {
+            scrollY: window.scrollY,
+            scrollTop: document.scrollingElement?.scrollTop ?? 0,
+            scrollLeft: scroller?.scrollLeft ?? 0,
+            /* 클릭이 실제로 그 Select 에 포커스를 줬는지 — 아니면 이 테스트는 공허하다. */
+            focused: document.activeElement?.getAttribute("aria-label") ?? "",
+          };
+        });
+
+        const at = `${viewport.width}px ${rowIndex + 1}행(${sample})`;
+        expect(after.focused, `${at} 클릭이 Select 에 포커스`).toMatch(/ 대분류$/);
+        expect(Math.abs(after.scrollY - before.scrollY), `${at} window.scrollY 변화`).toBeLessThanOrEqual(16);
+        expect(Math.abs(after.scrollTop - before.scrollTop), `${at} scrollTop 변화`).toBeLessThanOrEqual(16);
+        expect(Math.abs(after.scrollLeft - before.scrollLeft), `${at} 표 가로 스크롤 변화`).toBeLessThanOrEqual(16);
+        await page.keyboard.press("Escape");
+      }
+    }
   });
 });

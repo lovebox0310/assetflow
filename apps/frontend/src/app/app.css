@@ -1183,6 +1183,22 @@ button {
  * 합계 문구는 계좌 목록 아래 12px 간격으로만 둔다. */
 .af-cash-note { margin-top: 12px; padding-top: 0; margin-bottom: 0; }
 
+/* #34 C-02: 카드내역 "카드 내역 가져오기" 섹션 한정. 검토 표의 행으로 키보드
+ * 포커스가 갈 때 브라우저 스크롤이 행을 스크롤포트 맨 아래에 붙이면,
+ * 하단 탭바(fixed, 56px)가 그 행을 덮는다(실측 5행 y=517 / 탭바 512~568).
+ * scroll-margin-block-end 로 탭바 높이만큼 여유를 남긴다 — 표 공통 규칙
+ * (.af-list, .ant-table 전역)은 건드리지 않는다.
+ * Chrome 은 포커스 스크롤에 scroll-margin 을 적용하지 않아(실측) 실제 보정은
+ * CardImportPanel 의 포커스 핸들러가 한다. 이 규칙은 scroll-margin 을 지키는
+ * 브라우저를 위한 것이고, scroll-padding 은 일부러 두지 않는다 — scroll-padding 을
+ * 주면 클릭으로 포커스를 줄 때도 브라우저가 표를 가로로 밀어(실측 22px) 탭이 튄다
+ * (#34 AC-6). */
+@media (max-width: 767.98px) {
+  .af-cash-import .ant-table-row {
+    scroll-margin-block-end: calc(var(--af-tabbar-h, 56px) + 16px);
+  }
+}
+
 /* 대표 지표: 단위(억·만·원·개월·%)는 숫자보다 작게. */
 .af-metric-unit { font-size: 0.62em; font-weight: 500; margin-inline-start: 2px; letter-spacing: 0; }
 /* 카드 보조 문구 — 기존 Typography secondary 와 같은 값. */

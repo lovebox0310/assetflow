@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import contractJson from "../../../../samples/card/card-columns.json";
 import hyundaiCsv from "../../../../samples/card/anonymized/hyundaicard-personal-anon.csv?raw";
 import samsungCsv from "../../../../samples/card/anonymized/samsungcard-personal-anon.csv?raw";
-import { CardImportPanel } from "./CardImportPanel";
+import { CardImportPanel, categoryAriaName } from "./CardImportPanel";
 import { clearInflight } from "../api/client";
 import { detectCardCompany, inspectContainer } from "../lib/card/detect-card.mjs";
 import * as XLSX from "xlsx";
@@ -265,5 +265,88 @@ describe("CardImportPanel (§29.7 흐름 이관)", () => {
     if (!postCall) throw new Error("POST 없음");
     const sent = JSON.parse(String(postCall[1].body));
     expect(sent.rows.every((r: { memberRelation?: string }) => r.memberRelation === "본인")).toBe(true);
+  });
+
+  /**
+   * #34 C-03: 검토 표의 분류 Select 32/32 가 접근 이름이 없어 axe `label`(critical)
+   * 위반이었다. 이름 문구는 지출 화면의 기존 패턴(`${가맹점} 세부 분류`)을 따른다.
+   */
+  it("검토 행의 분류 Select 2개는 가맹점 이름을 포함한 접근 이름을 가진다 (#34 C-03)", async () => {
+    render(<CardImportPanel />);
+    chooseFile(HYUNDAI_TEXT);
+
+    await screen.findByRole("columnheader", { name: "가맹점" });
+
+    // 샘플의 실제 가맹점 — 이름이 접근 이름 앞에 붙는다.
+    expect(await screen.findByLabelText("합성카페 대분류")).toBeDefined();
+    expect(screen.getByLabelText("합성카페 세부 분류")).toBeDefined();
+    // 모든 분류 Select 가 "가맹점 + 열 이름" 형태다(이름 없는 Select 0개).
+    const categories = screen.getAllByLabelText(/ 대분류$/);
+    const subs = screen.getAllByLabelText(/ 세부 분류$/);
+    expect(categories.length).toBeGreaterThan(0);
+    expect(categories.length).toBe(subs.length);
+    for (const el of [...categories, ...subs]) {
+      const name = el.getAttribute("aria-label") ?? "";
+      expect(name).toMatch(/^(.*\S) (대분류|세부 분류)$/);
+    }
+  });
+
+  it("가맹점이 비어 있으면 접근 이름은 열 이름만 남는다 (#34 C-03 폴백)", () => {
+    expect(categoryAriaName("합성카페", "대분류")).toBe("합성카페 대분류");
+    expect(categoryAriaName("합성카페", "세부 분류")).toBe("합성카페 세부 분류");
+    // 빈 값·공백만 있는 값에서 "  대분류" 같은 이름이 생기지 않는다.
+    expect(categoryAriaName("", "대분류")).toBe("대분류");
+    expect(categoryAriaName("   ", "세부 분류")).toBe("세부 분류");
+  });
+
+  /**
+   * #34 C-01: 가맹점 열 폭은 <768 에서만 112 로 고정한다(고정 열이 가시 창을
+   * 잠식하지 않게). jsdom 기본 matchMedia 는 matches:false → 좁은 화면 경로다.
+   * 768 이상은 폭을 지정하지 않은 현행(자동)을 유지해야 한다.
+   */
+  it("768 미만에서만 가맹점(고정) 열 폭이 112 로 고정된다 (#34 C-01)", async () => {
+    const colWidths = () =>
+      [...document.querySelectorAll<HTMLTableColElement>('[aria-label="가져온 카드 내역 검토"] colgroup col')].map(
+        (c) => c.style.width || "",
+      );
+
+    render(<CardImportPanel />);
+    chooseFile(HYUNDAI_TEXT);
+    await screen.findByRole("columnheader", { name: "가맹점" });
+
+    // 좁은 화면: 첫 열(가맹점)만 112, 나머지 열은 열 정의 폭 그대로.
+    await vi.waitFor(() => {
+      const widths = colWidths();
+      expect(widths[0]).toBe("112px");
+    });
+    // 이름은 잘리되(말줄임) 전체 이름은 title 로 남는다 — hover 로 확인할 수 있다.
+    // antd 는 tbody 첫 행에 폭 측정용 measure row 를 둔다 — 실제 데이터 행을 고른다.
+    const firstCell = document.querySelector<HTMLElement>(
+      '[aria-label="가져온 카드 내역 검토"] tbody tr.ant-table-row td',
+    );
+    const firstName = firstCell?.textContent?.trim() ?? "";
+    expect(firstName).not.toBe("");
+    expect(firstCell?.className).toContain("ant-table-cell-ellipsis");
+    expect(firstCell?.getAttribute("title")).toBe(firstName);
+
+    cleanup();
+    // 넓은 화면(>=768): 가맹점 열은 폭 미지정(auto) — 현행 유지.
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("768"),
+      media: query,
+      onchange: null,
+      addListener() {},
+      removeListener() {},
+      addEventListener() {},
+      removeEventListener() {},
+      dispatchEvent: () => false,
+    }));
+    render(<CardImportPanel />);
+    chooseFile(HYUNDAI_TEXT);
+    await screen.findByRole("columnheader", { name: "가맹점" });
+    const wide = colWidths();
+    expect(wide[0]).not.toBe("112px");
+    // 다른 열 폭은 두 경우 모두 같다(열 정의 그대로).
+    expect(wide.slice(1)).toEqual(["70px", "130px", "120px", "110px", "150px", "150px"]);
   });
 });

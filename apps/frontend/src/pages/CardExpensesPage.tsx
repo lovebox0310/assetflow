@@ -552,7 +552,7 @@ export function CardExpensesPage({
         </Card>
       </section>
 
-      <section aria-labelledby="h-card-upload" style={{ marginBottom: 32 }}>
+      <section aria-labelledby="h-card-upload" className="af-cash-import" style={{ marginBottom: 32 }}>
         <Typography.Title level={2} id="h-card-upload" style={{ fontSize: 18, margin: 0, marginBottom: 16 }}>
           카드 내역 가져오기
         </Typography.Title>

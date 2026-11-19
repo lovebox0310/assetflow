@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type FocusEvent } from "react";
 import { Alert, Button, Card, Select, Space, Table, Tag, Typography } from "antd";
 import contractJson from "../../../../samples/card/card-columns.json";
 import { detectCardCompany, inspectContainer, parserFor } from "../lib/card/detect-card.mjs";
@@ -13,10 +13,27 @@ import {
 } from "../api/cardImportApi";
 import { CATEGORY_GROUP_OPTIONS, isUnclassified, subCategoryOptions } from "../data/expenseCategories";
 import { formatKrwExact } from "../utils/formatters";
+import { useMinWidth } from "../hooks/useMinWidth";
 
 const contract = contractJson as Parameters<typeof detectCardCompany>[1];
 
 type Phase = "idle" | "parsing" | "review" | "submitting" | "done" | "error";
+
+/**
+ * #34 C-03: 검토 표 분류 Select 의 접근 이름. 가맹점이 비어 있으면 열 이름만
+ * 쓴다(빈 문자열로 시작하는 이름 "  대분류" 를 만들지 않는다).
+ * 지출 화면의 기존 문구(`${merchant} 세부 분류`)와 같은 패턴을 쓴다.
+ */
+export function categoryAriaName(merchant: string, kind: "대분류" | "세부 분류"): string {
+  const label = merchant?.trim() ?? "";
+  return label ? `${label} ${kind}` : kind;
+}
+
+/**
+ * #34 C-01: 좁은 화면의 열 폭 합(가맹점 112 + 70 + 130 + 120 + 110 + 150 + 150).
+ * `scroll.x` 에 이 숫자를 주면 antd 가 `table-layout: fixed` 로 바꿔 열 폭을 지킨다.
+ */
+const NARROW_TABLE_WIDTH = 112 + 70 + 130 + 120 + 110 + 150 + 150;
 
 /**
  * 스프린트 2 #22: 카드 내역 가져오기 (§29.7 흐름의 React 이관).
@@ -35,6 +52,79 @@ export function CardImportPanel() {
   const [result, setResult] = useState<CardImportResult | null>(null);
   /** D-02: 시각 컨트롤은 Button, 실제 input 은 화면 밖(sr-only)에 둔다. */
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /**
+   * #34 C-01: 768 이상은 현행(가맹점 열 폭 자동)을 유지하고, 그 미만에서만
+   * 폭을 112 로 고정한다. `matchMedia` 구독은 `useMinWidth` 가 이미 한다
+   * (새 패키지·반응형 훅 추가 없음). jsdom 처럼 matchMedia 가 없으면 false
+   * (= 좁은 화면) — 좁은 화면 쪽이 넘침이 없는 안전한 쪽이다.
+   */
+  const wideLayout = useMinWidth(768);
+
+  /**
+   * #34 AC-6: 클릭·탭으로 들어온 포커스는 보정하지 않는다. 사용자가 이미 보고
+   * 누른 지점이라 스크롤을 만들면 화면이 튀고, 열리는 드롭다운의 기준점도 어긋난다.
+   * `:focus-visible` 로는 구분할 수 없다 — antd Select 의 입력은 `input[type=text]`
+   * 이고 브라우저는 텍스트 입력을 마우스 클릭에도 :focus-visible 로 본다(실측: 클릭·Tab
+   * 모두 true). 그래서 표 안 pointerdown 시각을 기록해 그 직후(≤700ms) 포커스만 건너뛴다.
+   * (Tab·프로그램 포커스는 pointerdown 이 없으므로 그대로 보정된다.)
+   */
+  const pointerFocusAt = useRef(0);
+
+  const markPointerFocus = useCallback(() => {
+    pointerFocusAt.current = Date.now();
+  }, []);
+
+  /**
+   * #34 C-02: 검토 표 안 컨트롤의 포커스가 가려지지 않게 두 축을 보정한다.
+   * - 가로: 왼쪽 고정 열(가맹점)이 덮으면 스크롤 상자를 그만큼 되돌린다.
+   * - 세로: 하단 탭바(고정)가 덮으면 문서를 그만큼 올린다(탭바는 실제 높이를 읽는다).
+   * 데스크톱(고정 열 폭·탭바 없음)에서는 조건이 성립하지 않아 아무 일도 하지 않는다.
+   */
+  const keepControlVisible = useCallback((e: FocusEvent<HTMLElement>) => {
+    // 방금 포인터로 눌린 포커스면 손대지 않는다(AC-6). 한 번만 소비한다.
+    if (Date.now() - pointerFocusAt.current < 700) {
+      pointerFocusAt.current = 0;
+      return;
+    }
+    const target = e.target as HTMLElement;
+    const control = target.closest<HTMLElement>(".ant-select") ?? target;
+    const scroller = control.closest<HTMLElement>(".ant-table-content, .ant-table-body");
+    if (!scroller) return;
+    const fix = () => {
+      if (!control.isConnected) return;
+      const sticky = scroller.querySelector<HTMLElement>("thead th")?.getBoundingClientRect().width ?? 0;
+      const box = scroller.getBoundingClientRect();
+      const rect = control.getBoundingClientRect();
+      /*
+       * 가로: 고정 열(왼쪽)이 덮으면 그만큼 되돌리고, 오른쪽으로 넘치면 당긴다.
+       * 여유(margin)를 두지 않는다 — 가시 창(142px)과 컨트롤(140px)의 차가 2px 뿐이라
+       * 여유를 더 주면 컨트롤 오른쪽이 스크롤 상자를 넘어 브라우저가 다시 되돌린다
+       * (실측: +8px 여유 → 포커스마다 112/106 왕복).
+       */
+      if (rect.left < box.left + sticky) {
+        scroller.scrollLeft -= box.left + sticky - rect.left;
+      } else if (rect.right > box.right) {
+        scroller.scrollLeft += rect.right - box.right;
+      }
+      // 세로: 하단 탭바(고정)가 덮으면 그만큼 올린다(탭바는 실제 높이를 읽는다). 8px 여유.
+      const tabbar = document.querySelector<HTMLElement>(".af-tabbar");
+      const inset = tabbar?.getBoundingClientRect().height ?? 0;
+      const below = control.getBoundingClientRect().bottom - (window.innerHeight - inset);
+      if (below > 0) window.scrollBy(0, below + 8);
+    };
+    fix();
+    /*
+     * Chrome 은 포커스 이벤트 뒤에 자기 스크롤을 수행한다(실측: 우리 보정 직후
+     * relLeft 120 → 다음 태스크에서 106 으로 되돌아감). 같은 프레임의 rAF 는
+     * 그보다 먼저 돌 수 있어, 두 프레임에 걸쳐 한 번 더 맞춘다(fix 는 멱등).
+     */
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => {
+        fix();
+        requestAnimationFrame(fix);
+      });
+    }
+  }, []);
 
   useEffect(() => {
     // 미리보기에서 걸러뛸 이미-임포트 행 키
@@ -271,10 +361,34 @@ export function CardImportPanel() {
               /*
                * D-01: 열 폭 합(≈649px)이 320 카드 폭보다 넓다. 문서를 넓히지 않고
                * 표 내용만 카드 안에서 가로 스크롤하게 한다(가맹점 열은 왼쪽 고정).
+               * #34 C-01: 폭을 지정하려면 table-layout 이 fixed 여야 한다 — antd 는
+               * scroll.x 가 숫자일 때만 fixed 로 바꾼다(`max-content` 는 auto 라
+               * 열 폭이 내용에 밀린다). 좁은 화면만 열 폭 합(842px)을 숫자로 준다.
                */
-              scroll={{ x: "max-content" }}
+              scroll={{ x: wideLayout ? "max-content" : NARROW_TABLE_WIDTH }}
+              /*
+               * #34 C-02: 포커스가 행으로 들어오면 고정 열(112px)·하단 탭바 뒤에
+               * 깔리지 않게 두 축을 직접 보정한다. Chrome 은 포커스 스크롤에
+               * scroll-margin 을 적용하지 않고(실측: 5행 y=506 그대로), 컨트롤이
+               * 반쯤 보이면 스크롤도 하지 않는다. 좁은 화면 전용 CSS 만으로는
+               * 재현 케이스가 남아 이 핸들러를 둔다(표 밖 위젯에는 영향 없음).
+               * #34 AC-6: 포인터로 눌러 들어온 포커스는 보정하지 않는다.
+               */
+              onRow={() => ({ onFocus: keepControlVisible, onPointerDown: markPointerFocus })}
               columns={[
-                { title: "가맹점", dataIndex: "merchant", fixed: "left" },
+                /*
+                 * #34 C-01: 좁은 화면(<768)에서 가맹점 열 폭을 고정한다. 폭을 비우면
+                 * 내용 기반(auto)으로 늘어나 고정 열이 가시 창(≈254px)을 통째로 잠식해
+                 * 나머지 열이 전부 가려진다(실측 318.9px > 254px). 이름은 말줄임으로
+                 * 자르고 전체 이름은 title(hover)·기존 행 접근 이름에 남긴다.
+                 * 768 이상은 폭을 지정하지 않은 현행(자동) 레이아웃을 유지한다.
+                 */
+                {
+                  title: "가맹점",
+                  dataIndex: "merchant",
+                  fixed: "left",
+                  ...(wideLayout ? {} : { width: 112, ellipsis: { showTitle: true } }),
+                },
                 { title: "건수", dataIndex: "count", width: 70 },
                 { title: "이용금액 합계", dataIndex: "gross", width: 130, render: (v: number) => formatKrwExact(v) },
                 {
@@ -327,6 +441,9 @@ export function CardImportPanel() {
                       value={rules[g.merchant]?.category || null}
                       onChange={(v: string) => setCategory(g.merchant, v)}
                       options={CATEGORY_GROUP_OPTIONS}
+                      /* #34 C-03: 분류 Select 2개(대분류/세부)에 접근 이름을 준다 —
+                         32/32 개가 이름 없이 axe label 위반(critical)이었다. */
+                      aria-label={categoryAriaName(g.merchant, "대분류")}
                     />
                   ),
                 },
@@ -342,6 +459,7 @@ export function CardImportPanel() {
                       onChange={(v: string) => setSubCategory(g.merchant, v)}
                       options={subCategoryOptions(rules[g.merchant]?.category)}
                       disabled={isUnclassified(rules[g.merchant]?.category)}
+                      aria-label={categoryAriaName(g.merchant, "세부 분류")}
                     />
                   ),
                 },
