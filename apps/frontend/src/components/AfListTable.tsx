@@ -111,6 +111,21 @@ export function AfListTable<T>({
   /** 편집 종료 후 포커스를 돌려줄 행 탭 버튼. */
   const editButtonRefs = useRef(new Map<string | number, HTMLButtonElement>());
   const prevEditingKey = useRef<string | number | null>(null);
+  /**
+   * 행 `⋯` 버튼. 메뉴·Popconfirm 이 닫힐 때 포커스를 되돌릴 대상이다.
+   * antd 는 Popconfirm 을 1×1 앵커에 붙이므로, 닫히면 포커스가 트리거가 아닌
+   * 앵커(포커스 불가)나 body 로 흘러간다 — 그래서 우리가 받아 온다.
+   */
+  const menuButtonRefs = useRef(new Map<string | number, HTMLButtonElement>());
+  /**
+   * `⋯` 메뉴가 **항목 선택** 때문에 닫히는 중인지.
+   *
+   * 항목 선택은 다른 UI(편집 행·모달·확인 팝업)를 여는 동작이고, 그 UI 가
+   * 자기 포커스를 관리한다. 메뉴가 스스로 닫히는 경우(Esc·바깥 클릭)에만
+   * 트리거로 포커스를 돌려준다 — 선택 직후 트리거로 포커스를 옮기면 방금 연
+   * 팝업의 키보드 조작(Esc 로 닫기)이 끊긴다.
+   */
+  const menuSelectedRef = useRef(false);
 
   /**
    * 편집 행이 닫히는 순간(값이 null 로 바뀌는 순간) 직전 행의 탭 버튼으로
@@ -125,6 +140,15 @@ export function AfListTable<T>({
       editButtonRefs.current.get(prev)?.focus();
     }
   }, [editingKey]);
+
+  /**
+   * 오버레이가 닫힌 뒤 그 행의 `⋯` 로 포커스를 돌려준다. 행이 사라졌으면
+   * (삭제 성공 등) ref 가 비어 있어 아무 일도 하지 않는다 — 남은 행을 억지로
+   * 고르지 않는다.
+   */
+  const focusMenuButton = (key: string | number) => {
+    menuButtonRefs.current.get(key)?.focus();
+  };
 
   const primaryKey = columns.find((c) => c.mobile === "primary")?.key ?? columns[0]?.key;
   const valueKey = columns.find((c) => c.mobile === "value")?.key;
@@ -217,6 +241,12 @@ export function AfListTable<T>({
             const onMenuClick: MenuProps["onClick"] = ({ key: clicked }) => {
               const action = rowActions.find((a) => a.key === clicked);
               if (!action || action.disabled) return;
+              /*
+               * 이 닫힘은 "선택"이다 — 확인 팝업·편집 행·모달이 이어서 열리고
+               * 그 UI 가 포커스를 갖는다. 그래서 트리거로 포커스를 되돌리지 않는다.
+               * (비활성 항목은 위에서 걸러지므로 플래그를 세우지 않는다.)
+               */
+              menuSelectedRef.current = true;
               // 확인이 필요한 동작은 액션 셀의 앵커 Popconfirm 을 연다.
               if (action.confirm) setConfirmTarget({ row: key, action: action.key });
               else action.onSelect();
@@ -283,7 +313,23 @@ export function AfListTable<T>({
                       <Dropdown
                         trigger={["click"]}
                         open={openKey === key}
-                        onOpenChange={(open) => setOpenKey(open ? key : null)}
+                        onOpenChange={(open) => {
+                          setOpenKey(open ? key : null);
+                          if (open) {
+                            menuSelectedRef.current = false;
+                            return;
+                          }
+                          /*
+                           * 항목 선택으로 닫혔으면 다른 UI 가 포커스를 갖는다.
+                           * Esc·바깥 클릭으로 닫혔으면 트리거(`⋯`)로 돌려준다.
+                           * (antd 가 이미 돌려주는 경우도 있다 — 같은 대상이라 무해.)
+                           */
+                          if (menuSelectedRef.current) {
+                            menuSelectedRef.current = false;
+                            return;
+                          }
+                          focusMenuButton(key);
+                        }}
                         menu={{ items: menuItems, onClick: onMenuClick }}
                       >
                         <Button
@@ -293,6 +339,10 @@ export function AfListTable<T>({
                           aria-haspopup="menu"
                           aria-expanded={openKey === key}
                           aria-label={actionsLabel ? actionsLabel(row) : undefined}
+                          ref={(el) => {
+                            if (el) menuButtonRefs.current.set(key, el as HTMLButtonElement);
+                            else menuButtonRefs.current.delete(key);
+                          }}
                         >
                           <span aria-hidden="true">⋯</span>
                         </Button>
@@ -309,11 +359,25 @@ export function AfListTable<T>({
                           onConfirm={() => {
                             setConfirmTarget(null);
                             action.onSelect();
+                            focusMenuButton(key);
                           }}
-                          onCancel={() => setConfirmTarget(null)}
+                          onCancel={() => {
+                            setConfirmTarget(null);
+                            focusMenuButton(key);
+                          }}
                           onOpenChange={(open) => {
-                            if (!open) setConfirmTarget(null);
+                            if (!open) {
+                              setConfirmTarget(null);
+                              focusMenuButton(key);
+                            }
                           }}
+                          /*
+                           * 앵커가 표 오른쪽 끝(1×1)이라 기본 `top`(가운데 정렬)은
+                           * 팝업 절반이 뷰포트 밖으로 나간다 — 320/375 실측에서
+                           * 오른쪽으로 5.6px 넘쳤다. `topRight` 는 팝업 오른쪽 끝을
+                           * 트리거(표 안, 항상 뷰포트 안)에 맞추므로 넘치지 않는다.
+                           */
+                          placement="topRight"
                           /* A12: 확인/취소는 손가락 히트 44 이상(§78). */
                           okButtonProps={{ style: { minHeight: 44, minWidth: 44 } }}
                           cancelButtonProps={{ style: { minHeight: 44, minWidth: 44 } }}
