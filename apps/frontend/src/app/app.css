@@ -965,23 +965,19 @@ button {
   }
 }
 
-/* ── §88 지출 화면 모바일 보정 (E-01/E-04/E-05/E-08/E-10/E-11/E-13) ────────
+/* ── §88 지출 화면 모바일 보정 (E-01/E-08/E-10/E-13/E-15) ────────────────
  * 전부 `.af-expenses` 루트로 스코프한다 — 공유 클래스(.af-list__*, .ant-*)를
- * 다른 화면에서 건드리지 않는다. */
+ * 다른 화면에서 건드리지 않는다.
+ *
+ * §122 C-14: 이 블록은 **모바일 레이아웃 전용**이다. 터치 타깃(44px)은 아래
+ * 991.98px 블록으로 옮겼다 — 태블릿(768~991)에서도 히트를 지키되, 카드 여백·
+ * 아이콘 히트 이동·주 액션 폭·합계 구분선처럼 768 이상에서 데스크톱 배치를
+ * 바꾸는 규칙은 여기(767.98)에 남긴다. */
 @media (max-width: 767.98px) {
-  /* E-01 카드 안쪽 여백 24 → 16. 지출 화면 카드에만 적용한다. */
+  /* E-01 카드 안쪽 여백 24 → 16. 지출 화면 카드에만 적용한다.
+   * (레이아웃 규칙 — 태블릿은 24px 여백을 유지한다.) */
   .af-expenses .ant-card-body {
     padding: 16px;
-  }
-
-  /* E-04 터치 타깃 44px — 체크박스 라벨과 셀렉트(MonthSelect 포함). */
-  .af-expenses .ant-checkbox-wrapper {
-    min-height: 44px;
-    align-items: center;
-  }
-
-  .af-expenses .ant-select {
-    min-height: 44px;
   }
 
   /* E-08 `⋯` 히트(24px 시각 + inset -10px = 44px)가 금액 칸을 2px 침범한다.
@@ -1005,16 +1001,84 @@ button {
     margin-top: 4px;
   }
 
-  /* E-11 정기 폼 열기 버튼도 터치 44px. */
-  .af-expenses .af-rec-add {
-    min-height: 44px;
-  }
-
-  /* E-13 합계 줄을 목록과 구분한다(지출 화면 한정). */
+  /* E-13 합계 줄을 목록과 구분한다(지출 화면 한정).
+   * (태블릿은 표 레이아웃이라 기본 구분선만으로 충분하다 — 넓히지 않는다.) */
   .af-expenses .af-list__summary {
     margin-top: 12px;
     padding-top: 12px;
     border-top: 1px solid var(--af-border);
+  }
+}
+
+/* ── §122 C-04~C-08/C-14: 지출·카드내역 터치 타깃 44 ─────────────────────
+ * 767.98 에서 끊기던 44px 규칙을 991.98 까지 넓힌다(C-14 — 768 태블릿 포함).
+ * 여기에는 **높이만** 바꾸는 규칙만 둔다: 카드 여백·아이콘 히트 이동·주 액션
+ * 폭·합계 구분선 같은 레이아웃 규칙은 위 767.98 블록에 남긴다.
+ *
+ * 데스크톱(≥992)은 §78 의 md(36) 를 그대로 쓴다 — 1024/1280 배치를 바꾸지
+ * 않는다. 높이는 토큰(--af-control-h-lg = 44, §78) 하나만 쓰고, 화면 스코프는
+ * `.af-expenses` 뿐이다(`.af-settings`·공통 셀렉터는 건드리지 않는다). */
+@media (max-width: 991.98px) {
+  /* E-04 체크박스 라벨(필수 지출 등) — 22 → 44, 글자는 세로 가운데. */
+  .af-expenses .ant-checkbox-wrapper {
+    min-height: var(--af-control-h-lg);
+    align-items: center;
+  }
+
+  /* E-04 셀렉트(MonthSelect 포함). */
+  .af-expenses .ant-select {
+    min-height: var(--af-control-h-lg);
+  }
+
+  /* E-11 정기 폼 열기 버튼. */
+  .af-expenses .af-rec-add {
+    min-height: var(--af-control-h-lg);
+  }
+
+  /* C-05/C-07 입력·검색 상자. */
+  .af-expenses .ant-input,
+  .af-expenses .ant-input-affix-wrapper {
+    min-height: var(--af-control-h-lg);
+  }
+
+  /* affix 래퍼 안쪽 input 은 높이를 래퍼가 정한다 — 안쪽까지 44 를 주면
+   * 래퍼가 44 + 상하 패딩(6+6) + 테두리(1+1) = 58 로 부풀어 검색 상자만
+   * 커진다(실측 58). 안쪽은 원래대로 두고 래퍼의 44 만 남긴다. */
+  .af-expenses .ant-input-affix-wrapper > .ant-input {
+    min-height: 0;
+  }
+
+  /* C-04 카드사 Radio 버튼(antd Radio.Group optionType=button) — 84×36 → 44. */
+  .af-expenses .ant-radio-button-wrapper {
+    min-height: var(--af-control-h-lg);
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* C-05/C-08 아이콘 히트 44 — 시각 크기는 그대로 두고 ::after 로만 넓힌다.
+   * antd v6 아이콘 실측: 비밀번호 토글 14px → inset 15×2 = 44,
+   * clear 12px → inset 16×2 = 44. (`.af-settings` 의 같은 보정을 이 화면에도
+   * 적용하는 것 — 전역으로 올리지 않는다.) */
+  .af-expenses .ant-input-password-icon,
+  .af-expenses .ant-input-clear-icon {
+    position: relative;
+  }
+
+  .af-expenses .ant-input-password-icon::after {
+    content: "";
+    position: absolute;
+    inset: -15px;
+  }
+
+  .af-expenses .ant-input-clear-icon::after {
+    content: "";
+    position: absolute;
+    inset: -16px;
+  }
+
+  /* C-06 오류 알림의 재시도(ant-btn-sm) — 55×28 → 높이 44. */
+  .af-expenses .ant-alert .ant-btn-sm {
+    min-height: var(--af-control-h-lg);
   }
 }
 

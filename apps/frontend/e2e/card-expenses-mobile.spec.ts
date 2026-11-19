@@ -464,3 +464,115 @@ test.describe("카드내역 모바일", () => {
     }
   });
 });
+
+/**
+ * #34 묶음 B — 터치 타깃 44 (`app.css` 의 `.af-expenses` 규칙).
+ *
+ * 대상 6종: 카드사 Radio 버튼(C-04), Gmail 주소 입력(C-05), 비밀번호 표시 토글(C-05),
+ * 오류 알림 재시도(C-06), 미분류 검색 상자(C-07), 검색 clear(C-08).
+ * 768(태블릿)까지 같은 44 를 유지한다(C-14). 아이콘 2종은 시각 크기를 키우지 않고
+ * `::after` 로만 히트를 넓히므로, `getBoundingClientRect` 가 아니라
+ * `elementFromPoint` 로 0.5px 씩 바깥으로 밀어 실제 히트 높이를 잰다.
+ */
+const TOUCH_VIEWPORTS = [320, 375, 390, 430, 768];
+const TOUCH_MIN = 44;
+
+/** 폼 컨트롤의 시각 높이(px)와 문서 가로 넘침. */
+function measureBoxes(page: Page) {
+  return page.evaluate(() => {
+    const height = (el: Element | null | undefined) => {
+      if (!el) return null;
+      return Math.round(el.getBoundingClientRect().height * 10) / 10;
+    };
+    const search = document.querySelector<HTMLElement>('input[aria-label="미분류 가맹점 검색"]');
+    return {
+      radio: height(document.querySelector(".af-expenses .ant-radio-button-wrapper")),
+      gmail: height(document.querySelector('input[placeholder="example@gmail.com"]')),
+      search: height(search?.closest(".ant-input-affix-wrapper")),
+      alertRetry: height(document.querySelector(".af-expenses .ant-alert .ant-btn-sm")),
+      overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    };
+  });
+}
+
+/**
+ * 시각 rect 바깥으로 0.5px 씩 밀어 보며 elementFromPoint 가 그 요소(또는 자손)인
+ * 최대 거리를 구한다 — `::after` 로 넓힌 히트를 실제로 확인하는 방법.
+ */
+function measureHit(page: Page, selector: string) {
+  return page.evaluate((sel) => {
+    const el = document.querySelector<HTMLElement>(sel);
+    if (!el) return null;
+    el.scrollIntoView({ block: "center" });
+    const r = el.getBoundingClientRect();
+    const owned = (node: Element | null) => !!node && (node === el || el.contains(node));
+    const cx = r.left + r.width / 2;
+    const along = (dir: -1 | 1) => {
+      let max = 0;
+      for (let d = 0.5; d <= 24; d += 0.5) {
+        const y = dir === -1 ? r.top - d : r.bottom + d;
+        if (owned(document.elementFromPoint(cx, y))) max = d;
+        else if (max > 0) break;
+      }
+      return max;
+    };
+    return {
+      visual: Math.round(r.height * 10) / 10,
+      hit: Math.round((r.height + along(-1) + along(1)) * 10) / 10,
+    };
+  }, selector);
+}
+
+test.describe("카드내역 터치 타깃 44", () => {
+  test.beforeEach(async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "chromium-desktop", "뷰포트를 직접 지정한다 — desktop 프로젝트 전용");
+
+    await page.addInitScript((token) => {
+      localStorage.setItem("assetflow.token", token);
+      localStorage.setItem("assetflow.theme", "light");
+    }, authToken());
+    await mockScreenApi(page, "expenseCards");
+  });
+
+  test("대상 6종 높이 ≥44 — 320/375/390/430/768 (#34 C-04~C-08, C-14)", async ({ page }) => {
+    for (const width of TOUCH_VIEWPORTS) {
+      await openCardExpenses(page, width, 1000);
+      // 비밀번호 토글은 값이 있을 때만, clear 는 입력값이 있을 때만 렌더된다.
+      await page.locator('input[placeholder="abcd efgh ijkl mnop"]').fill("abcd");
+      await page.locator('input[aria-label="미분류 가맹점 검색"]').fill("한");
+
+      const box = await measureBoxes(page);
+      const at = `${width}px`;
+      expect(box.radio, `${at} 카드사 Radio 버튼`).not.toBeNull();
+      expect(box.radio!, `${at} 카드사 Radio 버튼 높이`).toBeGreaterThanOrEqual(TOUCH_MIN);
+      expect(box.gmail!, `${at} Gmail 주소 입력 높이`).toBeGreaterThanOrEqual(TOUCH_MIN);
+      expect(box.search!, `${at} 미분류 검색 상자 높이`).toBeGreaterThanOrEqual(TOUCH_MIN);
+
+      // 아이콘 2종 — 시각 크기는 그대로, 히트만 44.
+      const password = await measureHit(page, ".af-expenses .ant-input-password-icon");
+      expect(password, `${at} 비밀번호 토글`).not.toBeNull();
+      expect(password!.visual, `${at} 비밀번호 토글 시각 크기 유지`).toBeLessThan(TOUCH_MIN);
+      expect(password!.hit, `${at} 비밀번호 토글 히트 높이`).toBeGreaterThanOrEqual(TOUCH_MIN);
+
+      const clear = await measureHit(page, ".af-expenses .ant-input-clear-icon");
+      expect(clear, `${at} 검색 clear`).not.toBeNull();
+      expect(clear!.visual, `${at} 검색 clear 시각 크기 유지`).toBeLessThan(TOUCH_MIN);
+      expect(clear!.hit, `${at} 검색 clear 히트 높이`).toBeGreaterThanOrEqual(TOUCH_MIN);
+
+      expect(box.overflow, `${at} 문서 넘침`).toBe(0);
+    }
+
+    // C-06: 설정 로딩 실패 → StateBlock 오류 알림의 재시도 버튼. 라우트는 나중에
+    // 등록한 쪽이 먼저 매칭되므로(§80 목 규칙) 위 목을 덮는다.
+    await page.route("**/api/v1/card-email-import-settings/**", (route) =>
+      route.fulfill({ status: 500, json: { code: "SERVER_ERROR", message: "boom", data: null } }),
+    );
+    for (const width of TOUCH_VIEWPORTS) {
+      await openCardExpenses(page, width, 1000);
+      await expect(page.locator(".af-expenses .ant-alert .ant-btn-sm")).toBeVisible();
+      const box = await measureBoxes(page);
+      expect(box.alertRetry!, `${width}px 오류 알림 재시도 높이`).toBeGreaterThanOrEqual(TOUCH_MIN);
+      expect(box.overflow, `${width}px 오류 상태 문서 넘침`).toBe(0);
+    }
+  });
+});
