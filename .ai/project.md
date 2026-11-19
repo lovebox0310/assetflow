@@ -6287,3 +6287,38 @@ state 경로가 홈 고정(홈 보호 유닛이면 warn).
 - `.af-settings` 비밀번호 토글 히트는 42px(antd v6 아이콘 14px) — 1줄 수정 대상.
 
 **검증**: 프론트 305, e2e 214(62 skipped), 디자인 스냅샷 102(갱신 0), a11y 12.
+
+## 125) 투자 2차 감사 — 항목 표 (2026-11-20)
+
+9개 상태 × 7뷰포트 × 라이트/다크, 레이아웃 51회 + 상호작용 30여 회 + axe 12회. 새 ID `I-NN`.
+
+**통과(수치)**: 문서 가로 넘침 0(14/14), 모달 넘침 0, §93 셸 footer bottom = vh−16,
+320/390 터치 44 실패 0, 텍스트 대비 위반 0, axe 12/12 clean,
+**#33 오버레이 회귀 없음**, **#124 편집 진입/복귀 회귀 없음**.
+
+| ID | 상태 | 문제 | file:line | 실측 | 심각도 |
+|---|---|---|---|---|---|
+| I-01 | 빈(계좌0·보유0) | 빈 화면이 **비활성 버튼을 지시** — 계좌 안내가 `status==="ready"` 조건이라 도달 불가 | `InvestmentsPage.tsx:1078-1082,1090` | "투자 계좌가 없습니다" 0회, `+ 종목 추가` disabled | High |
+| I-02 | 모달(긴 계좌명) | 제목이 닫기 버튼과 **22px 겹침**(2줄일 때 글자 가림) | `KisCredentialsModal.tsx:156` 외 3파일 | overlap +22px, title h=48 | High |
+| I-03 | 모달 닫기 | Esc/× 후 포커스가 **BODY**(⋯ 항목 소실로 복귀 대상 없음) | `InvestmentsPage.tsx:1431-1457` | afterClose=active BODY | High |
+| I-04 | 자격증명 모달 | API 환경 Radio **22px** | `KisCredentialsModal.tsx:220-223` | 58×22 / 84×22 | High |
+| I-05 | 기본·긴 이름 | 종목명 가시 폭 67~103px → 9자도 잘림 | `InvestmentsPage.tsx:746` + `app.css:649-657` | "KODEX 200" → 67px | Medium |
+| I-06 | 긴 계좌명 | 계좌명 잘림 + `title` 없음 | `app.css:766-775`, `:1191-1193` | 400→186px, title null | Medium |
+| I-07 | 큰 금액 | 요약 카드에서 "원" 단위 분리(2줄) | `InvestmentsPage.tsx:1471-1489` | h=52(2줄), 열 121px | Medium |
+| I-08 | 기본 | 손익 열 금액 우측 끝 6.6px 어긋남(% 폭 차) | `InvestmentsPage.tsx:804-820` | 편차 6.6px, 헤더 Δ46px | Medium |
+| I-09 | 가격 갱신 | 현재가 입력이 `75000.0000`(천단위·원 없음) | `InvestmentsPage.tsx:770-783` | 96×34, 표는 `75,000원` | Medium |
+| I-10 | 연금 진단 | 경로 탭 **22px** | `KisPensionPreviewModal.tsx:280` | 52×22, 78×22 | Medium |
+| I-11 | 도넛 | 주식 조각 **2.05:1**(라이트) | `InvestmentsPage.tsx:94-100,1392` | `#f0a008` on `#faf9f6` | Medium |
+| I-12 | 종목 폼 | Input/Select **36px**(히트 35) | `InvestmentsPage.tsx:1632-1850` | 9개 전부 36 | Medium |
+| I-13 | 기본(768) | 요약 4열 162.5px에서 손익 2줄 | `InvestmentsPage.tsx:940` | 카드 120 vs 94 | Low |
+| I-14 | 모바일 행 | 행 77px(가격 모드 99px) | `app.css:626-636,841-854` | 4행 308px | Low |
+| I-15 | 320 헤더 | 섹션 헤더 66.8px(2줄) | `app.css:818-838` | 375+ 44 | Low |
+| I-16 | 자격증명 모달 | footer 4버튼 → `취소` 단독 행(가림 0) | `KisCredentialsModal.tsx:171-195` | footer 84px | Low |
+| I-17 | 768 도넛 | 카드 736 vs 차트 200 → 여백 과다 | `InvestmentsPage.tsx:1375-1414` | 외경 156 | Low |
+| I-18 | 요약 | "총 평가액"(예수금 제외) vs 계좌 "총액"(포함) 혼용, 예수금 2회 노출 | `InvestmentsPage.tsx:944-951,1200-1207` | 동일 값 2회 | Medium |
+| I-19 | 320 필터 | 6칩 2줄(292 > 288) | `InvestmentsPage.tsx:1116-1125` | 초과 4px | Low |
+| I-20 | 빈+계좌 | 보유 0인데 필터 6칩 노출 | `InvestmentsPage.tsx:1116-1125` | 행 0 | Low |
+
+**적용 순서**: 묶음 A(I-01/I-20) → B(I-02/I-03) → C(I-04/I-10/I-12).
+**다음 차수**: I-05/06/07/08(밀도·금액 정책 결정 필요), I-09, I-13~I-19.
+**보류/별도**: I-11(새 토큰 필요), I-07 근본(자릿수 정책), 768 공통 히트(전 화면 공통).
