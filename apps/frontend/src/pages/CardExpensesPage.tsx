@@ -727,7 +727,10 @@ export function CardExpensesPage({
                */}
               <div role="group" aria-label="이 달 카드 카테고리별 합계" style={{ marginTop: 4, padding: "8px 12px", borderTop: "1px solid var(--af-border)", fontSize: 13 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, fontWeight: 600 }}>
-                  <span style={{ minWidth: 0, overflow: "hidden" }}>지출 합계 (자산 이동 제외) · {cardSpendingCount}건</span>
+                  <span style={{ minWidth: 0, overflow: "hidden", wordBreak: "keep-all" }}>
+                    지출 합계 (자산 이동 제외){" "}
+                    <span style={{ whiteSpace: "nowrap" }}>· {cardSpendingCount}건</span>
+                  </span>
                   <span style={{ whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{formatKrwExact(cardSpendingTotal)}</span>
                 </div>
                 {cardFixedTotal > 0 ? (

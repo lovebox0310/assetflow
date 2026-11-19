@@ -576,3 +576,107 @@ test.describe("카드내역 터치 타깃 44", () => {
     }
   });
 });
+
+/**
+ * #34 C-10/C-12 — 카드 상세 표(공용 `AfListTable`)의 편집 행 포커스와
+ * 회원 Tag 행의 가맹점명 폭.
+ */
+test.describe("카드내역 상세 표 편집·폭", () => {
+  test.beforeEach(async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "chromium-desktop", "뷰포트를 직접 지정한다 — desktop 프로젝트 전용");
+
+    await page.addInitScript((token) => {
+      localStorage.setItem("assetflow.token", token);
+      localStorage.setItem("assetflow.theme", "light");
+    }, authToken());
+    await mockScreenApi(page, "expenseCards");
+  });
+
+  /**
+   * C-10: 종전에는 편집을 연 행 탭 버튼이 DOM 에서 사라지며 포커스가 body 로
+   * 떨어져 첫 Esc 가 무동작이었다(activeElement=BODY, 편집 유지).
+   */
+  test("편집 진입 포커스가 편집 셀 안 — Esc 1회로 종료·행 버튼 복귀 (#34 C-10)", async ({ page }) => {
+    await openCardExpenses(page, 320, 800);
+    const rowButton = page.getByRole("button", { name: "한마음식당 분류 편집" });
+    await rowButton.click();
+
+    const focused = await page.evaluate(() => {
+      const el = document.activeElement as HTMLElement | null;
+      const rect = el?.getBoundingClientRect();
+      const tabbar = document.querySelector<HTMLElement>(".af-tabbar");
+      return {
+        tag: el?.tagName ?? null,
+        label: el?.getAttribute("aria-label") ?? null,
+        inEditorCell: Boolean(el?.closest?.(".af-list__cell--editor")),
+        bottom: rect ? Math.round(rect.bottom) : null,
+        tabbarTop: tabbar ? Math.round(tabbar.getBoundingClientRect().top) : null,
+      };
+    });
+    expect(focused.tag, "편집 진입 포커스가 body 로 떨어지면 안 된다").not.toBe("BODY");
+    expect(focused.inEditorCell, `포커스 ${focused.tag}[${focused.label}] 가 편집 셀 밖이다`).toBe(true);
+    // 편집 UI 가 하단 탭바(고정 56px) 뒤로 깔리지 않는다.
+    expect(focused.bottom!).toBeLessThanOrEqual(focused.tabbarTop!);
+
+    // Esc **한 번** — 드롭다운을 열지 않은 상태다.
+    await page.keyboard.press("Escape");
+
+    await expect(page.locator(".af-list__cell--editor")).toHaveCount(0);
+    expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? null)).toBe(
+      "한마음식당 분류 편집",
+    );
+  });
+
+  /**
+   * C-12: 회원 Tag 가 있으면 320 에서 이름 가시 폭이 56.1px(금액 10억대)까지
+   * 짜부라졌다. 이름이 최소 96px 를 먼저 쓰고, 자리가 없으면 Tag 가 다음 줄로
+   * 감긴다 — 금액 열과 겹치지 않아야 한다.
+   */
+  test("회원 Tag 행 가맹점명 가시 폭 ≥96px, 금액 겹침 0 (#34 C-12)", async ({ page }) => {
+    const bigRow = {
+      rowKey: "qa-big",
+      approvedAt: "2026-11-02",
+      merchantName: "한마음식당",
+      supplyExVat: 112_233_445,
+      vat: 11_223_345,
+      grossAmount: 1_234_567_890,
+      cardMasked: "1234-****-5678",
+      expenseKind: "식비",
+      subCategory: "외식",
+      businessNo: "123-45-67890",
+      businessCategory: "음식점",
+      memberRelation: "본인",
+      cardCompany: "현대카드",
+    };
+    // 목은 나중에 등록한 라우트가 먼저 매칭된다(§80) — 화면 목을 덮는다.
+    // 글롭은 쿼리까지 매칭하므로 경로 정규식으로 건다(월 파라미터가 붙는다).
+    await page.route(/\/api\/v1\/assets\/card-imports(\?|$)/, (route) =>
+      route.fulfill({ json: { code: "OK", message: "ok", data: [bigRow] } }),
+    );
+    await page.route(/\/api\/v1\/assets\/card-imports\/row-keys/, (route) =>
+      route.fulfill({ json: { code: "OK", message: "ok", data: [bigRow.rowKey] } }),
+    );
+
+    await openCardExpenses(page, 320, 800);
+
+    const geo = await page.evaluate(() => {
+      const tr = document.querySelector<HTMLElement>('table[aria-labelledby="h-card-imports"] tbody tr');
+      const name = tr?.querySelector<HTMLElement>(".af-list__cell--primary .af-list__edit");
+      const amount = tr?.querySelector<HTMLElement>(".af-list__cell--value");
+      const tag = tr?.querySelector<HTMLElement>(".af-list__extra .ant-tag");
+      if (!tr || !name || !amount || !tag) return null;
+      const n = name.getBoundingClientRect();
+      const a = amount.getBoundingClientRect();
+      return {
+        nameW: Math.round(n.width * 10) / 10,
+        // 이름 오른쪽과 금액 왼쪽 사이 — 음수면 겹친다.
+        gap: Math.round((a.left - n.right) * 10) / 10,
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      };
+    });
+    expect(geo, "카드 상세 행을 찾지 못했다").not.toBeNull();
+    expect(geo!.nameW, "가맹점명 가시 폭").toBeGreaterThanOrEqual(96);
+    expect(geo!.gap, "이름과 금액 겹침").toBeGreaterThanOrEqual(0);
+    expect(geo!.overflow, "320px 문서 넘침").toBe(0);
+  });
+});

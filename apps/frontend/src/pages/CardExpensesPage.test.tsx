@@ -304,6 +304,29 @@ describe("CardExpensesPage (§58 카드내역 탭)", () => {
     expect(screen.getByText("가맹점1")).toBeDefined();
   });
 
+  it("총계 라벨의 건수는 nowrap 으로 묶여 '건' 만 다음 줄에 남지 않는다 (#34 C-11)", async () => {
+    stubFetch((path) => {
+      if (path.includes("/card-imports/row-keys")) return apiResponse([]);
+      if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
+      if (path.includes("/card-imports/statements")) return apiResponse([]);
+      if (path.includes("/assets/card-imports")) return apiResponse([
+        { rowKey: "k1", approvedAt: "2026-10-01", merchantName: "우아한형제들", supplyExVat: 37_273, vat: 3_727, grossAmount: 41_000, expenseKind: "식비" },
+        { rowKey: "k2", approvedAt: "2026-10-02", merchantName: "GS25", supplyExVat: 2_909, vat: 291, grossAmount: 3_200, expenseKind: "식비" },
+      ]);
+      return apiResponse({}, false, 500);
+    });
+    renderPage();
+
+    const summary = await screen.findByLabelText("이 달 카드 카테고리별 합계");
+    const label = summary.querySelector("div > span");
+    expect(label?.textContent).toContain("지출 합계");
+    // 라벨은 어절 단위로만 끊고, "· 2건" 은 한 덩어리로 둔다.
+    expect((label as HTMLElement).style.wordBreak).toBe("keep-all");
+    const count = label?.querySelector("span");
+    expect(count?.textContent).toBe("· 2건");
+    expect((count as HTMLElement).style.whiteSpace).toBe("nowrap");
+  });
+
   it("카드 업로드 패널이 카드내역 탭에 있다 (§58)", async () => {
     stubFetch((path) => {
       if (path.includes("/card-imports/row-keys")) return apiResponse([]);

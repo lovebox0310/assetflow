@@ -1,4 +1,5 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AfListTable } from "./AfListTable";
@@ -183,5 +184,76 @@ describe("AfListTable 행 오버레이 포커스", () => {
       expect(anchor.getAttribute("tabindex")).toBeNull();
       expect((anchor as HTMLElement).tabIndex).toBe(-1);
     });
+  });
+});
+
+/**
+ * #34 C-10: 편집 행을 열면 포커스가 편집 셀 **안** 으로 가야 첫 Esc 가 편집 종료로
+ * 이어진다. 종전에는 편집을 연 행 탭 버튼이 DOM 에서 사라지며 포커스가 body 로
+ * 흘러가, Esc 1회 + Tab 1회가 필요했다.
+ */
+function EditHarness({ editor }: { editor?: (row: Row) => ReactNode }) {
+  const [editing, setEditing] = useState<number | null>(null);
+  return (
+    <AfListTable
+      labelledBy="h-test"
+      rows={rows}
+      rowKey={(r) => r.id}
+      columns={columns}
+      onActivate={(r) => setEditing(r.id)}
+      activateLabel={(r) => `${r.name} 분류 편집`}
+      editingKey={editing}
+      editorLabel={(r) => `${r.name} 편집 중`}
+      renderEditor={editor ?? ((r) => <input aria-label={`${r.name} 이름 입력`} />)}
+      onCancelEdit={() => setEditing(null)}
+    />
+  );
+}
+
+describe("AfListTable 편집 행 포커스 (#34 C-10)", () => {
+  it("편집 진입 시 편집 셀의 첫 포커서블로 포커스가 간다", async () => {
+    render(<EditHarness />);
+
+    fireEvent.click(screen.getByRole("button", { name: "둘 분류 편집" }));
+
+    const input = await screen.findByLabelText("둘 이름 입력");
+    await waitFor(() => expect(document.activeElement).toBe(input));
+    // 편집 셀 안이어야 행의 Esc 캡처 핸들러가 그 키를 받는다.
+    expect(document.activeElement?.closest(".af-list__cell--editor")).not.toBeNull();
+  });
+
+  it("Esc 한 번으로 편집이 끝나고 포커스가 그 행 버튼으로 돌아온다", async () => {
+    render(<EditHarness />);
+
+    fireEvent.click(screen.getByRole("button", { name: "둘 분류 편집" }));
+    const input = await screen.findByLabelText("둘 이름 입력");
+    await waitFor(() => expect(document.activeElement).toBe(input));
+
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    await waitFor(() => expect(screen.queryByLabelText("둘 이름 입력")).toBeNull());
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "둘 분류 편집" })),
+    );
+  });
+
+  it("포커서블이 없는 편집 내용이면 편집 컨테이너(role=group)가 포커스를 받는다", async () => {
+    render(<EditHarness editor={() => <span>읽기 전용</span>} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "둘 분류 편집" }));
+
+    await waitFor(() => {
+      const active = document.activeElement as HTMLElement | null;
+      expect(active?.getAttribute("role")).toBe("group");
+      expect(active?.getAttribute("aria-label")).toBe("둘 편집 중");
+      expect(active?.tabIndex).toBe(-1);
+      expect(active?.closest(".af-list__cell--editor")).not.toBeNull();
+    });
+
+    // 컨테이너로 받아도 Esc 1회 종료는 같다.
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "둘 분류 편집" })),
+    );
   });
 });

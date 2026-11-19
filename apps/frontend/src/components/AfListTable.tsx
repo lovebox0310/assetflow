@@ -127,18 +127,36 @@ export function AfListTable<T>({
    */
   const menuSelectedRef = useRef(false);
 
+  /** 편집 셀의 `role="group"` — 열 때 안쪽 첫 포커서블을 찾는 기준점. */
+  const editorGroupRef = useRef<HTMLDivElement | null>(null);
+
   /**
-   * 편집 행이 닫히는 순간(값이 null 로 바뀌는 순간) 직전 행의 탭 버튼으로
-   * 포커스를 되돌린다. 편집 진입 시 그 버튼이 DOM 에서 사라지므로,
-   * 복귀 렌더가 커밋된 뒤(effect) 새로 붙은 버튼을 찾아 focus 한다.
+   * 편집 행 전환에 맞춰 포커스를 옮긴다.
+   *
+   * - **진입**(null → 값): 편집 셀 안의 첫 포커서블(입력·Select)로 옮긴다.
+   *   그러지 않으면 편집을 연 행 탭 버튼이 DOM 에서 사라진 뒤 포커스가 body 로
+   *   흘러가, 첫 Esc 가 아무 일도 하지 않는다(§122 C-10). 포커서블이 없으면
+   *   `role="group"`(tabIndex -1)로 받는다.
+   * - **종료**(값 → null): 직전 행의 탭 버튼으로 되돌린다. 복귀 렌더가 커밋된
+   *   뒤(effect) 새로 붙은 버튼을 찾아 focus 한다 — 그래야 Esc 1회로 끝난다.
+   *
+   * 스크롤은 브라우저 기본 동작에 맡긴다(편집 UI 가 뷰포트에 보여야 한다).
    */
   useEffect(() => {
     const prev = prevEditingKey.current;
     const next = editingKey ?? null;
     prevEditingKey.current = next;
-    if (prev !== null && next === null) {
-      editButtonRefs.current.get(prev)?.focus();
+    if (prev === next) return;
+    if (next === null) {
+      if (prev !== null) editButtonRefs.current.get(prev)?.focus();
+      return;
     }
+    const group = editorGroupRef.current;
+    if (!group) return;
+    const firstFocusable = group.querySelector<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    );
+    (firstFocusable ?? group).focus();
   }, [editingKey]);
 
   /**
@@ -223,7 +241,7 @@ export function AfListTable<T>({
                 >
                   {/* 편집 행은 셀 하나(colSpan) — actions 열과 겹치지 않는다. */}
                   <td role="cell" className="af-list__cell af-list__cell--editor" colSpan={columnCount}>
-                    <div role="group" aria-label={editorLabel ? editorLabel(row) : undefined}>
+                    <div role="group" tabIndex={-1} ref={editorGroupRef} aria-label={editorLabel ? editorLabel(row) : undefined}>
                       {renderEditor ? renderEditor(row) : null}
                     </div>
                   </td>
