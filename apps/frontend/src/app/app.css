@@ -1527,3 +1527,56 @@ button {
     align-items: center;
   }
 }
+
+/* ── §128 이슈 #36 P2 — AS-05: 자산 폼·은행 모달 터치 44 ──────────────
+ * coarse 에서 자산 폼 Input·InputNumber·Select 36, 은행 모달 컨트롤 36 이었다
+ * (감사 실측 잔액 214×34 · 투자 화면은 44). 조건은 `pointer: coarse` 하나 —
+ * 마우스는 §78 md(36) 그대로.
+ *
+ * 범위를 좁히는 이유: `.af-item-form` 은 지출 화면도 쓰고, 모달은 body 로
+ * 포털돼 화면 클래스가 닿지 않는다. 그래서 화면 루트(`.af-assets`)와 모달
+ * rootClassName(`.af-bank-modal`)으로만 잡는다 — 전역 `.ant-input` 금지.
+ * 높이는 기존 토큰(--af-control-h-lg = 44, §78)만 쓴다. */
+@media (pointer: coarse) {
+  .af-assets .af-item-form .ant-input,
+  .af-assets .af-item-form .ant-input-number,
+  .af-assets .af-item-form .ant-select,
+  .af-bank-modal .ant-input,
+  .af-bank-modal .ant-input-number,
+  .af-bank-modal .ant-select,
+  .af-bank-modal .ant-input-affix-wrapper {
+    min-height: var(--af-control-h-lg);
+  }
+
+  /* 비밀번호 입력은 affix 래퍼가 높이를 정한다 — 안쪽 input 에 44 를 그대로
+   * 주면 래퍼 패딩이 더해져 52 로 부푼다(다른 컨트롤과 어긋난다). */
+  .af-bank-modal .ant-input-affix-wrapper > input.ant-input {
+    min-height: 0;
+  }
+
+  /* 높이만 키우면 값·화살표가 위에 붙는다 — §125 와 같은 이유로 세로 가운데. */
+  .af-assets .af-item-form .ant-select,
+  .af-bank-modal .ant-select {
+    align-items: center;
+  }
+}
+
+/* ── §128 이슈 #36 P2 — AS-06: 터치 태블릿(≥768) 행 이름 탭 44 ─────────
+ * 행 전체 확장(::after inset 0)이 모바일(<768) 블록에만 있어, 768 터치에서
+ * 이름 탭 대상은 글자 높이(22px)뿐이었다. 같은 방식(::after)으로 넓힌다.
+ *
+ * 기준 상자는 **이름 셀**이다(행 전체가 아니다). 행 전체로 넓히면 오른쪽 끝을
+ * 액션 열 앞에서 끊어야 하는데, 액션 열 실측 폭이 52(패딩 16+12 + 버튼 24)라
+ * 44 로 끊으면 `⋯` 44×44 히트와 2px 겹쳤다(실측). 셀 기준이면 교집합이 0 이고,
+ * 금액 열 탭이 편집을 여는 동작도 새로 생기지 않는다(다른 4개 화면 회귀 방지). */
+@media (pointer: coarse) and (min-width: 768px) {
+  .af-list__cell--primary {
+    position: relative;
+  }
+
+  .af-list__cell--primary .af-list__edit::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+}

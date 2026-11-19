@@ -96,6 +96,8 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
   const [editingId, setEditingId] = useState<number | "new" | null>(null);
   const [form] = Form.useForm<UpsertPayload>();
   const mountedRef = useRef(false);
+  /** 추가 폼 블록 — 열릴 때 첫 입력으로 포커스를 옮기는 기준점(§128 AS-04). */
+  const addFormRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback((silent = false) => {
     clearInflight(); // 앞선 요청의 dedupe 잔여를 비우고 새로 읽는다
@@ -135,10 +137,36 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
   const totalAssets = assets.reduce((acc, r) => acc + displayValue(r), 0);
   const totalLiabilities = liabilities.reduce((acc, r) => acc + r.balance, 0);
 
-  const beginCreate = () => {
+  const beginCreate = (isDebt = false) => {
     setEditingId("new");
-    form.setFieldsValue({ accountType: "cash", name: "", institutionName: "", balance: 0, isDebt: false });
+    form.setFieldsValue({
+      accountType: isDebt ? "realty" : "cash",
+      name: "",
+      institutionName: "",
+      balance: 0,
+      isDebt,
+    });
   };
+
+  /**
+   * §128 AS-04: "+ 자산 추가"/"+ 부채 추가" 를 누르면 그 버튼이 disabled 되며
+   * 포커스가 body 로 사라졌다(activeElement=BODY). 폼이 렌더된 뒤(효과) 첫
+   * 입력인 이름으로 옮긴다 — 편집 행 진입과 같은 규칙이다(§124, AfListTable).
+   *
+   * 추가 폼은 하나만 렌더되므로(자산/부채 분기) ref 도 그 하나를 가리킨다.
+   * 이름 input 을 먼저 찾고, 없으면 폼 안 첫 포커서블로 물러난다.
+   */
+  useEffect(() => {
+    if (editingId !== "new") return;
+    const group = addFormRef.current;
+    if (!group) return;
+    const first =
+      group.querySelector<HTMLElement>('input[aria-label="자산 이름"], input[aria-label="부채 이름"]') ??
+      group.querySelector<HTMLElement>(
+        'input:not([type="hidden"]):not([disabled]), select:not([disabled]), button:not([disabled])',
+      );
+    first?.focus();
+  }, [editingId]);
 
   const beginEdit = (row: AssetAccountRow) => {
     // §54.3: invest 행의 balance 는 예수금이다. 이 화면에서 총액을 편집하면
@@ -228,8 +256,15 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
    * 폼이 화면에 나오지 않는다.
    */
   const addFormBlock = (isDebt: boolean) => (
-    /* 카드 첫 블록이라 구분선은 두지 않는다 — `.af-item-form` 의 라벨·간격만 쓴다. */
-    <div className="af-item-form" style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
+    /* 카드 첫 블록이라 구분선은 두지 않는다 — `.af-item-form` 의 라벨·간격만 쓴다.
+       role="group" + 이름: 이 블록이 방금 열린 "추가 폼"임을 AT 에도 알린다(§128). */
+    <div
+      className="af-item-form"
+      role="group"
+      aria-label={isDebt ? "부채 추가 폼" : "자산 추가 폼"}
+      ref={addFormRef}
+      style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}
+    >
       <div className="af-item-form__label">{isDebt ? "새 부채" : "새 자산"}</div>
       <EditForm form={form} isDebt={isDebt} wide={wide} />
       {formActions}
@@ -311,6 +346,9 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
 
   return (
     <AppLayout
+      /* §128 AS-05: 터치에서 폼 컨트롤 높이를 이 화면 폭으로만 좁혀 올린다
+         (`.af-item-form` 은 지출 화면도 쓰므로 화면 루트 클래스가 필요하다 — §88/§125). */
+      className="af-assets"
       onLogout={handleLogout}
       nav={
         <StandardNav current="assets" onOpenDashboard={onBack} onOpenExpenses={onOpenExpenses} onOpenSettings={onOpenSettings} />
@@ -342,7 +380,7 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
         ) : null}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
           <Typography.Title level={2} id="h-assets" style={{ fontSize: 18, margin: 0 }}>금융자산</Typography.Title>
-          <Button onClick={beginCreate} disabled={editingId !== null}>+ 자산 추가</Button>
+          <Button onClick={() => beginCreate()} disabled={editingId !== null}>+ 자산 추가</Button>
         </div>
         <Card>
           {editingId === "new" && debtFormOpen === false ? addFormBlock(false) : null}
@@ -380,10 +418,7 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
           <Typography.Title level={2} id="h-liab" style={{ fontSize: 18, margin: 0 }}>부채</Typography.Title>
           <Button
-            onClick={() => {
-              setEditingId("new");
-              form.setFieldsValue({ accountType: "realty", name: "", institutionName: "", balance: 0, isDebt: true });
-            }}
+            onClick={() => beginCreate(true)}
             disabled={editingId !== null}
           >
             + 부채 추가

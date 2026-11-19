@@ -196,6 +196,42 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
     });
   });
 
+  /**
+   * #36 AS-04: "+ 자산 추가" 를 누르면 그 버튼이 disabled 되면서 포커스가
+   * body 로 사라졌다(실측 activeElement=BODY). 폼이 열리면 첫 입력인 이름으로
+   * 포커스를 옮긴다 — 편집 행 진입과 같은 규칙(§124).
+   */
+  describe("#36 AS-04 추가 폼 포커스", () => {
+    it("`+ 자산 추가` 는 새 폼의 이름 input 으로 포커스를 옮긴다", async () => {
+      vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(apiResponse(seedAccounts()))));
+      render(<AssetsPage onBack={() => {}} />);
+      await screen.findByText("우리 파킹통장");
+
+      fireEvent.click(screen.getByRole("button", { name: "+ 자산 추가" }));
+
+      // 폼 블록은 이름을 갖는다 — 폼이 열렸다는 사실을 AT 에도 알린다.
+      const group = await screen.findByRole("group", { name: "자산 추가 폼" });
+      const nameInput = await screen.findByPlaceholderText("자산 이름");
+      const name = findInnerInput(nameInput);
+      await waitFor(() => expect(document.activeElement).toBe(name));
+      expect(group.contains(document.activeElement)).toBe(true);
+    });
+
+    it("`+ 부채 추가` 도 같은 방식으로 부채 이름 input 에 포커스를 준다", async () => {
+      vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(apiResponse(seedAccounts()))));
+      render(<AssetsPage onBack={() => {}} />);
+      await screen.findByText("주택담보대출");
+
+      fireEvent.click(screen.getByRole("button", { name: "+ 부채 추가" }));
+
+      const group = await screen.findByRole("group", { name: "부채 추가 폼" });
+      const nameInput = await screen.findByPlaceholderText("부채 이름");
+      const name = findInnerInput(nameInput);
+      await waitFor(() => expect(document.activeElement).toBe(name));
+      expect(group.contains(document.activeElement)).toBe(true);
+    });
+  });
+
   it("부채가 비면 비어 있는 것이 정상이라는 문구를 보여 준다 (§31.4)", async () => {
     const seed = seedAccounts().filter((r) => !r.isDebt);
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(apiResponse(seed))));

@@ -364,6 +364,10 @@ export function BankLinkSection({ accounts, accountsReady = true, onSynced }: Ba
        * (형제 구현 CompositionBasisModal 과 같은 값).
        */}
       <Modal
+        /* §128 AS-05: 모달은 body 로 포털돼 화면 클래스(`.af-assets`)가 닿지 않는다.
+           터치 컨트롤 44 를 이 루트 클래스로만 좁힌다(§125 `.af-modal-touch` 방식).
+           투자 모달과 클래스를 나눠 두는 이유: `.ant-input` 규칙이 그쪽까지 번지지 않게. */
+        rootClassName="af-bank-modal"
         open={linkOpen}
         title={target ? `${target.name} 은행 연결` : "은행 연결"}
         onCancel={closeLink}
@@ -473,6 +477,7 @@ export function BankLinkSection({ accounts, accountsReady = true, onSynced }: Ba
       </Modal>
 
       <Modal
+        rootClassName="af-bank-modal"
         open={syncOpen}
         title={target ? `${target.name} 잔액 가져오기` : "잔액 가져오기"}
         onCancel={closeSync}
