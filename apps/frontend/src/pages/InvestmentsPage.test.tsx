@@ -259,6 +259,49 @@ describe("InvestmentsPage (§54 E2)", () => {
     expect(screen.getAllByText("이 계좌에 해당 자산군 종목이 없습니다.").length).toBe(2);
   });
 
+  /* ── 이슈 #35 I-01 / I-20: 빈 화면이 막다른 길 ─────────────────── */
+
+  it("계좌 0·보유 0 이면 계좌 추가를 안내하고, 비활성 '+ 종목 추가'를 지시하지 않는다 (I-01)", async () => {
+    vi.stubGlobal("fetch", vi.fn(() =>
+      Promise.resolve(apiResponse({ holdings: [], accounts: [] })),
+    ));
+    render(<InvestmentsPage />);
+
+    // status 는 "empty" 다 — 예전에는 ready 조건이라 안내가 도달하지 못했다.
+    expect(
+      await screen.findByText('투자 계좌가 없습니다 — 자산 → 계좌 추가(유형 "투자")'),
+    ).toBeDefined();
+    // 빈 상태 문구도 '+ 종목 추가'가 아니라 계좌 추가를 가리킨다.
+    expect(screen.getByText(/투자 계좌를 먼저 추가하세요/)).toBeDefined();
+    expect(screen.queryByText("보유종목이 없습니다 — '+ 종목 추가'로 시작하세요")).toBeNull();
+
+    // 근거: 계좌가 없으면 그 버튼은 눌러도 아무 일이 없는 비활성 상태다.
+    const addButton = screen.getByRole("button", { name: "+ 종목 추가" }) as HTMLButtonElement;
+    expect(addButton.disabled).toBe(true);
+  });
+
+  it("보유종목이 0이면 자산군 필터 그룹을 남기지 않는다 (I-20)", async () => {
+    vi.stubGlobal("fetch", vi.fn(() =>
+      Promise.resolve(apiResponse({
+        holdings: [],
+        accounts: [
+          {
+            accountId: 4, accountName: "키움 투자금", institutionName: "키움증권",
+            cashBalance: 0, holdingsValue: 0, totalValue: 0,
+          },
+        ],
+      })),
+    ));
+    render(<InvestmentsPage />);
+
+    // 계좌는 있으니 상태는 ready — 필터를 좁힐 대상이 없으므로 칩도 없다.
+    expect(
+      await screen.findByText("보유종목이 없습니다 — '+ 종목 추가'로 시작하세요"),
+    ).toBeDefined();
+    expect(screen.queryByRole("group", { name: "자산군 필터" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "코인" })).toBeNull();
+  });
+
   it("종목 추가는 POST 로 저장하고 목록을 다시 읽는다", async () => {
     render(<InvestmentsPage />);
     await screen.findByText("삼성전자");
@@ -1036,5 +1079,106 @@ describe("InvestmentsPage (§54 E2)", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "잔고 동기화" }));
 
     expect(await screen.findByText(warning)).toBeDefined();
+  });
+
+  /* ── 이슈 #35 I-03: 계좌 모달을 닫으면 그 계좌 `⋯` 로 포커스가 돌아온다 ──── */
+
+  /**
+   * KIS 계좌 2개 — 계좌 메뉴에 연결 설정·채권/연금 진단이 모두 있다.
+   * 자격증명 GET 은 404 로 두어 모달이 '신규 입력' 상태로 열린다(폼은 열린 채다).
+   */
+  function stubTwoKisAccounts() {
+    const portfolio = {
+      holdings: [],
+      accounts: [
+        {
+          accountId: 4, accountName: "개인연금", institutionName: "한국투자증권",
+          cashBalance: 0, holdingsValue: 0, totalValue: 0,
+        },
+        {
+          accountId: 5, accountName: "IRP", institutionName: "한국투자증권",
+          cashBalance: 0, holdingsValue: 0, totalValue: 0,
+        },
+      ],
+    };
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.includes("/kis-credentials")) return Promise.resolve(apiResponse({}, false, 404));
+      if (path.includes("/kis-bond-preview")) {
+        return Promise.resolve(apiResponse({ balance: null, prices: [], error: null }));
+      }
+      if (path.includes("/kis-pension-preview")) {
+        return Promise.resolve(apiResponse({
+          balance: null, warning: null, error: null, acntPrdtCd: "22", isMock: false,
+          stock: null, account: null, pension: null, usedPath: null, balancePreview: null,
+        }));
+      }
+      return Promise.resolve(apiResponse(portfolio));
+    }));
+  }
+
+  /**
+   * 계좌 `⋯` 메뉴를 열어 항목 하나를 고른다. jsdom 은 닫힌 드롭다운의 hidden 클래스가
+   * 늦게 붙어 같은 이름의 메뉴가 여럿 남으므로 **가장 나중에 만들어진 팝업**에서 고른다.
+   */
+  async function openAccountMenu(name: string, item: string) {
+    fireEvent.click(await screen.findByRole("button", { name: `${name} 메뉴` }));
+    const dropdown = await waitFor(() => {
+      const all = [...document.querySelectorAll<HTMLElement>(".ant-dropdown")];
+      const el = all.at(-1);
+      if (!el) throw new Error("열린 계좌 메뉴를 찾지 못했습니다");
+      return el;
+    });
+    fireEvent.click(await within(dropdown).findByRole("menuitem", { name: item }));
+  }
+
+  /**
+   * jsdom 한정 주의: antd Dropdown 은 닫힘 모션이 끝나지 않아 Esc 등록이 남고,
+   * 그 뒤로 Esc 가 모달에 닿지 않는다(브라우저에서는 모션이 끝나며 해제된다).
+   * 그래서 Esc 경로는 e2e(investments-modal-focus)와 모달 단위 테스트가 검증하고,
+   * 여기서는 같은 `onClose` 로 모이는 × · 바깥 클릭 2경로를 실행한다.
+   */
+  it("모달 닫힘(×·바깥 클릭) 후 그 계좌 `⋯` 로 포커스가 돌아온다 (I-03)", async () => {
+    stubTwoKisAccounts();
+    render(<InvestmentsPage />);
+
+    const menuButton = await screen.findByRole("button", { name: "개인연금 메뉴" });
+
+    // 1) × 버튼
+    await openAccountMenu("개인연금", "한국투자 연결 설정");
+    expect(await screen.findByText("KIS 연동 설정 · 개인연금")).toBeDefined();
+    fireEvent.click(document.querySelector<HTMLElement>(".ant-modal-close")!);
+    await waitFor(() => expect(document.activeElement).toBe(menuButton));
+    expect(document.activeElement).not.toBe(document.body);
+
+    // 2) 바깥(오버레이) 클릭 — antd 는 mask 에서 mousedown 이 시작돼야 닫는다.
+    await openAccountMenu("개인연금", "한국투자 연결 설정");
+    await screen.findByText("KIS 연동 설정 · 개인연금");
+    const wrap = document.querySelector<HTMLElement>(".ant-modal-wrap")!;
+    fireEvent.mouseDown(wrap);
+    fireEvent.click(wrap);
+    await waitFor(() => expect(document.activeElement).toBe(menuButton));
+  });
+
+  it("모달을 연 계좌로 돌아간다 — 다른 계좌 모달을 열고 닫아도 엉뚱한 행으로 가지 않는다 (I-03)", async () => {
+    stubTwoKisAccounts();
+    render(<InvestmentsPage />);
+
+    const first = await screen.findByRole("button", { name: "개인연금 메뉴" });
+    const second = await screen.findByRole("button", { name: "IRP 메뉴" });
+
+    // 계좌 4 의 채권 진단 → 닫기
+    await openAccountMenu("개인연금", "채권 진단");
+    expect(await screen.findByText("채권 진단 · 개인연금")).toBeDefined();
+    fireEvent.click(document.querySelector<HTMLElement>(".ant-modal-close")!);
+    await waitFor(() => expect(document.activeElement).toBe(first));
+
+    // 곧바로 계좌 5 의 연금 진단 → 닫기: 대상 계좌가 바뀌어도 그 계좌로 돌아간다.
+    await openAccountMenu("IRP", "연금 진단");
+    expect(await screen.findByText("연금 진단 · IRP")).toBeDefined();
+    const wrap = document.querySelector<HTMLElement>(".ant-modal-wrap")!;
+    fireEvent.mouseDown(wrap);
+    fireEvent.click(wrap);
+    await waitFor(() => expect(document.activeElement).toBe(second));
   });
 });

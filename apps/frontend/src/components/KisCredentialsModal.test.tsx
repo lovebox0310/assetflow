@@ -101,4 +101,17 @@ describe("KisCredentialsModal (§62.2 · §93 셸)", () => {
     expect(await screen.findByText("App Key를 입력하세요")).toBeDefined();
     expect(saveKisCredentials).not.toHaveBeenCalled();
   });
+
+  /**
+   * I-03: Esc 는 antd 가 onCancel(=이 컴포넌트의 onClose)로 보낸다 — InvestmentsPage
+   * 는 이 한 경로에서만 포커스를 되돌리므로, Esc 가 onClose 에 닿는지 여기서 고정한다.
+   * (화면 단위 jsdom 테스트는 드롭다운 모션 때문에 Esc 를 재현할 수 없다 — e2e 담당.)
+   */
+  it("Esc 로 닫으면 onClose 를 한 번 부른다", async () => {
+    const { onClose } = renderModal();
+    await waitFor(() => expect(getKisCredentials).toHaveBeenCalledTimes(1));
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
 });

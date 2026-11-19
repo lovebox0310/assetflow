@@ -199,6 +199,17 @@ export function InvestmentsPage({
   /** 계좌 헤더의 `⋯` 메뉴는 한 번에 하나만 열린다 — aria-expanded 도 이 값으로 동기화한다. */
   const [openAccountMenu, setOpenAccountMenu] = useState<number | null>(null);
   /**
+   * I-03: 계좌 헤더 `⋯` 버튼의 ref 지도(AfListTable.menuButtonRefs 와 같은 방식).
+   * 모달을 열면 메뉴 항목이 사라져 antd 가 포커스를 되돌릴 대상이 없어져 BODY 로
+   * 떨어졌다 — 닫힌 뒤 이 지도에서 그 계좌의 `⋯` 를 찾아 포커스를 돌려준다.
+   */
+  const accountMenuButtonRefs = useRef(new Map<number, HTMLButtonElement>());
+  /**
+   * 닫히는 모달이 돌려줄 계좌. 모달 상태는 곧바로 null 이 되므로 대상 계좌를
+   * 여기에 따로 남긴다 — 모달이 다른 계좌로 바뀌어도 엉뚱한 행으로 가지 않는다.
+   */
+  const [focusReturnAccountId, setFocusReturnAccountId] = useState<number | null>(null);
+  /**
    * 확인이 필요한 계좌 동작(Popconfirm)의 대상. 메뉴 항목을 누르면 메뉴가 닫히며
    * 그 안의 앵커가 사라지므로, 헤더에 1×1 앵커를 따로 두고 `open` 을 제어한다
    * (AfListTable 의 confirmTarget 과 같은 방식).
@@ -215,6 +226,27 @@ export function InvestmentsPage({
    * matchMedia 미지원 환경(jsdom)은 false — 좁은 쪽이 기본이다.
    */
   const wide = useMinWidth(768);
+
+  /**
+   * I-03: 모달이 닫힌 뒤 연 계좌의 `⋯` 로 포커스를 되돌린다. 모달 컴포넌트를
+   * 조건부 렌더로 즉시 unmount 하므로 antd 의 afterClose/focusTriggerAfterClose 는
+   * 불리지 않는다 — DOM 이 사라진 다음 커밋의 이 효과가 **한 번만** 이동시킨다.
+   *
+   * 저장 직후(연결 테스트 성공 → 닫힘)처럼 목록이 다시 로딩 중이면 `⋯` 버튼이
+   * 아직 DOM 에 없다. 그때는 대상을 남겨 두고 로딩이 끝난 커밋에서 한 번 더
+   * 시도하며, 준비 상태에서도 대상이 없으면(계좌 삭제 등) 포기한다 — 남은 대상이
+   * 나중에 엉뚱한 시점에 포커스를 훔치지 않게.
+   */
+  useEffect(() => {
+    if (focusReturnAccountId === null) return;
+    const button = accountMenuButtonRefs.current.get(focusReturnAccountId);
+    if (button) {
+      button.focus({ preventScroll: true });
+      setFocusReturnAccountId(null);
+      return;
+    }
+    if (status !== "loading") setFocusReturnAccountId(null);
+  }, [focusReturnAccountId, status]);
 
   const load = useCallback(async () => {
     clearInflight();
@@ -332,6 +364,16 @@ export function InvestmentsPage({
     .filter((d): d is string => Boolean(d))
     .sort()
     .at(-1);
+
+  /**
+   * I-03: 계좌 모달(KIS 연결 설정·채권 진단·연금 진단)의 닫힘 3경로(Esc · × ·
+   * 바깥 클릭)는 모두 컴포넌트의 `onClose` 로 모인다. 포커스 되돌리기를 여기 한
+   * 곳에서만 걸어 두 경로가 겹쳐 두 번 이동하는 일을 막는다.
+   */
+  const closeAccountModal = (accountId: number, close: () => void) => {
+    setFocusReturnAccountId(accountId);
+    close();
+  };
 
   const beginCreate = () => {
     setActionError("");
@@ -1075,9 +1117,15 @@ export function InvestmentsPage({
             </div>
           )}
         </div>
-        {accounts.length === 0 && status === "ready" ? (
+        {/*
+          I-01: 계좌가 0이면 상태(empty/ready)와 무관하게 안내한다. 예전 조건은
+          `status === "ready"` 라서 계좌 0·보유 0(empty)일 때 도달하지 못했고,
+          화면은 비활성 '+ 종목 추가'만 가리켰다. 로딩 전(portfolio === null)에는
+          아직 알 수 없으므로 띄우지 않는다 — 새로고침 때 깜빡이지 않게.
+        */}
+        {portfolio !== null && accounts.length === 0 ? (
           <Typography.Paragraph type="secondary">
-            투자 계좌가 없습니다 — 자산 화면에서 유형을 "투자"로 계좌를 먼저 추가하세요.
+            투자 계좌가 없습니다 — 자산 → 계좌 추가(유형 "투자")
           </Typography.Paragraph>
         ) : null}
 
@@ -1087,7 +1135,15 @@ export function InvestmentsPage({
               status={editingId !== null ? "ready" : status}
               onRetry={load}
               errorText={errorText}
-              emptyText="보유종목이 없습니다 — '+ 종목 추가'로 시작하세요"
+              /*
+                I-01: 계좌가 없으면 '+ 종목 추가'가 비활성이라 그 버튼을 지시하면
+                막다른 길이 된다. 계좌 없음/보유 없음으로 문구를 나눈다.
+              */
+              emptyText={
+                accounts.length === 0
+                  ? "투자 계좌를 먼저 추가하세요 — 자산 화면의 계좌 추가에서 유형 \"투자\""
+                  : "보유종목이 없습니다 — '+ 종목 추가'로 시작하세요"
+              }
             >
               {/* 행 편집은 표의 편집 행(renderEditor)이 맡는다 — 여기는 새 종목 폼만. */}
               {editingId === "new" ? (
@@ -1113,16 +1169,19 @@ export function InvestmentsPage({
                 </div>
               ) : null}
 
-              <Space
-                size={[8, 16]}
-                wrap
-                style={{ marginBottom: 12 }}
-                role="group"
-                aria-label="자산군 필터"
-              >
-                {filterButton("all", "전체")}
-                {CLASS_ORDER.map((cls) => filterButton(cls, CLASS_LABELS[cls]))}
-              </Space>
+              {/* I-20: 보유종목이 0이면 결과를 좁힐 대상이 없다 — 필터 6칩을 남기지 않는다. */}
+              {holdings.length > 0 ? (
+                <Space
+                  size={[8, 16]}
+                  wrap
+                  style={{ marginBottom: 12 }}
+                  role="group"
+                  aria-label="자산군 필터"
+                >
+                  {filterButton("all", "전체")}
+                  {CLASS_ORDER.map((cls) => filterButton(cls, CLASS_LABELS[cls]))}
+                </Space>
+              ) : null}
 
               <div>
                 {accounts.map((account) => {
@@ -1221,6 +1280,11 @@ export function InvestmentsPage({
                               aria-expanded={openAccountMenu === account.accountId}
                               aria-label={`${account.accountName} 메뉴`}
                               disabled={accountEditId === account.accountId}
+                              ref={(el) => {
+                                // I-03: 모달이 닫힌 뒤 포커스를 되돌릴 대상.
+                                if (el) accountMenuButtonRefs.current.set(account.accountId, el as HTMLButtonElement);
+                                else accountMenuButtonRefs.current.delete(account.accountId);
+                              }}
                             >
                               <span aria-hidden="true">⋯</span>
                             </Button>
@@ -1433,7 +1497,9 @@ export function InvestmentsPage({
           accountId={kisCredentialsAccount.id}
           accountName={kisCredentialsAccount.name}
           open={kisCredentialsAccount !== null}
-          onClose={() => setKisCredentialsAccount(null)}
+          onClose={() =>
+            closeAccountModal(kisCredentialsAccount.id, () => setKisCredentialsAccount(null))
+          }
           onSaved={() => void load()}
         />
       )}
@@ -1443,7 +1509,7 @@ export function InvestmentsPage({
           accountId={bondPreviewAccount.id}
           accountName={bondPreviewAccount.name}
           open={bondPreviewAccount !== null}
-          onClose={() => setBondPreviewAccount(null)}
+          onClose={() => closeAccountModal(bondPreviewAccount.id, () => setBondPreviewAccount(null))}
         />
       )}
 
@@ -1452,7 +1518,9 @@ export function InvestmentsPage({
           accountId={pensionPreviewAccount.id}
           accountName={pensionPreviewAccount.name}
           open={pensionPreviewAccount !== null}
-          onClose={() => setPensionPreviewAccount(null)}
+          onClose={() =>
+            closeAccountModal(pensionPreviewAccount.id, () => setPensionPreviewAccount(null))
+          }
         />
       )}
 

@@ -7,6 +7,7 @@ import {
 } from "../api/investmentsApi";
 import { ApiError } from "../api/client";
 import { formatKrwExact } from "../utils/formatters";
+import { modalHeaderStyle } from "../theme/modalShell";
 
 interface Props {
   accountId: number;
@@ -166,7 +167,8 @@ export function KisPensionPreviewModal({ accountId, accountName, open, onClose }
           padding: 0,
           overflow: "hidden",
         },
-        header: { flex: "0 0 auto", padding: "20px 24px 0" },
+        // I-02: 헤더는 공통 셸을 쓴다 — 오른쪽에 닫기 버튼 자리를 비워 둔다.
+        header: modalHeaderStyle,
         body: {
           overflowY: "auto",
           overflowX: "hidden",
