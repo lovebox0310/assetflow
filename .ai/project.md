@@ -6214,3 +6214,35 @@ state 경로가 홈 고정(홈 보호 유닛이면 warn).
 직접 요청·다운로드한다. 폴더에 파일이 자동으로 도착하는 경로가 없으므로 **드롭 폴더는 보류**한다
 (코드 유지, 기본 비활성). 재개 조건: 자동 다운로드 경로가 생기거나 수동 업로드가 반복적으로
 불편해질 때. CP949·동시성 항목도 그때 함께 처리한다(이슈 #41).
+
+## 122) 카드내역 2차 감사 — 항목 표 (2026-11-19)
+
+§116 1차 이후 보류였던 항목(D-09, D-11~D-19)의 상세가 유실되어 **재감사**했다.
+7 뷰포트 × 라이트/다크 × 5 상태, 레이아웃 38회 + 상호작용 20여 회 + axe. 새 ID는 `C-NN`.
+
+| ID | 상태 | 문제 | file:line | 실측 | 심각도 |
+|---|---|---|---|---|---|
+| C-01 | 업로드 검토 | 가맹점 고정 열이 auto 폭 → 좁은 화면에서 가시 창 잠식, 긴 이름이면 **다른 열이 전부 안 보임**(hard-clip) | `CardImportPanel.tsx:275-277` | 고정열 179.1px/컨테이너 254(가시 75px), 긴 이름 318.9px → 가시 **−64.9px** | **Blocker** |
+| C-02 | 검토(키보드) | Select 포커스 시 고정 열 아래로 깔리고, 5행째 y=517 로 하단 탭바(512) 뒤 | `CardImportPanel.tsx:277` + `app.css:649-676` | `elementFromPoint` → TD / BUTTON.af-tabbar | High |
+| C-03 | 검토 | 분류 Select 32/32 **접근 이름 없음**(axe label critical) | `CardImportPanel.tsx:322-347` | role=combobox 32, 이름 0 | High |
+| C-04 | 이메일 설정 | 카드사 Radio 버튼 84×36 (44 미만) | `CardEmailImportSettingsSection.tsx:149-157` | 84×36 ×2 | High |
+| C-05 | 이메일 설정 | Gmail 입력 36px, 비밀번호 토글 16×16 (`.af-settings` 스코프만 44 적용) | `CardEmailImportSettingsSection.tsx:182-210` | 254×36 / 16×16 | High |
+| C-06 | 오류 | 재시도 버튼 55×28 | `StateBlock.tsx:41-48` | 55×28 | High |
+| C-07 | 기본 | 미분류 검색 입력 36px | `CardExpensesPage.tsx:611-618` | 219×36 | Medium |
+| C-08 | 기본 | 검색 clear 12×12, 접근 이름 `close-circle` | `CardExpensesPage.tsx:612` | 12×12 | Medium |
+| C-09 | 기본 | 검색 버튼 36×36, 접근 이름 `search` | `CardExpensesPage.tsx:611` | 36×36 | Low |
+| C-10 | 기본 | **편집 행 진입 시 포커스가 body** → 첫 Esc 무동작 | `AfListTable.tsx:201-231` | activeElement=BODY, Esc 후 editing 유지 | High |
+| C-11 | 기본 | 총계 라벨이 단어 중간에서 쪼개짐("건" 단독 행) | `CardExpensesPage.tsx:730` | 2행 41px, 2행 폭 12px | Medium |
+| C-12 | 기본 | 회원 Tag 있으면 이름 가시 폭 85px(금액 10억대 69px) | `CardExpensesPage.tsx:781-797` | 106.1 → 85.3 → 69 | Medium |
+| C-13 | 기본 | 긴 카드사명 3줄(행 99px) | `CardExpensesPage.tsx:394` | 99 vs 65 | Low |
+| C-14 | 이메일(768) | 44px 규칙이 767.98 에서 끊겨 태블릿에서 22/36/36 | `app.css:971-1000` | 768 실측 22·36·36 | Medium |
+| C-15 | 전역 | 스킵 링크 38px | `app.css:309-325` | 137.9×38 | Low |
+| C-16 | 업로드 완료 | **부분 업로드(reconcile) 경고 UI 없음** — 서버는 내려주지만 타입·화면에 없음 | `CardImportPanel.tsx:192-206` | 노출 0회 | High |
+| C-17 | 기본 | 2행 보조줄 말줄임에 title 없음 | `app.css:689-700` | sub.scrollWidth > clientWidth | Low |
+
+**통과 항목**: 문서 가로 넘침 38/38 = 0px, 대비 전수 통과(최소 light 4.99 / dark 4.85),
+금액 우측 정렬 편차 0.0px, 모달 §93 셸 7/7 준수, 행 오버레이(#33) 회귀 없음.
+
+**적용 순서**: 묶음 A(C-01/02/03, Blocker) → 묶음 B(C-04/05/06/07/08/14, 터치 44) → 묶음 C(C-10/11/12).
+**보류**: C-16(계약·문구 결정 필요), C-13(정보 손실), C-09(antd 내부 노드), C-15(전 화면 공통), C-17(공용 prop 설계).
+**미측정**: iOS 실기기 safe-area·키보드, 실제 스크린리더 낭독, 1024 검토 표.
