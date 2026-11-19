@@ -1431,3 +1431,40 @@ button {
   outline: 2px solid var(--af-ring);
   outline-offset: 2px;
 }
+
+/* ── §125 묶음 C: 투자 모달 Radio/Tabs · 종목 폼 터치 44 ────────────
+ * I-04(자격증명 모달 Radio 22) · I-10(연금 진단 Tabs 38) · I-12(종목 폼 36).
+ * 조건은 `pointer: coarse` 하나다 — 마우스(데스크톱 ≥992)는 §78 md(36) 그대로.
+ * 모달은 body 로 포털되므로 화면 클래스로 잡히지 않는다. 두 모달의
+ * rootClassName(`.af-modal-touch`)으로만 좁히고, 전역 `.ant-radio-wrapper`/
+ * `.ant-tabs-tab` 은 건드리지 않는다(다른 화면 회귀 방지).
+ * 높이는 기존 토큰(--af-control-h-lg = 44, §78)만 쓴다.
+ *
+ * antd 6 은 Select 내부 클래스가 `.ant-select-selector` 가 아니라
+ * `.ant-select`(루트)+`.ant-select-content` 다 — 루트에 min-height 를 준다.
+ * (지시서의 `.ant-select-selector` 는 v6 에서 매칭되지 않는다.) */
+@media (pointer: coarse) {
+  .af-modal-touch .ant-radio-wrapper {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--af-control-h-lg);
+  }
+
+  .af-modal-touch .ant-tabs-tab {
+    display: flex;
+    align-items: center;
+    min-height: var(--af-control-h-lg);
+  }
+
+  .af-investments .ant-input,
+  .af-investments .ant-input-number,
+  .af-investments .ant-select {
+    min-height: var(--af-control-h-lg);
+  }
+
+  /* 늘어난 높이만큼 셀렉트 값·화살표를 세로 가운데로 — 기본값 flex-start 면
+   * 값이 위에 붙어 아래가 비어 보인다. */
+  .af-investments .ant-select {
+    align-items: center;
+  }
+}

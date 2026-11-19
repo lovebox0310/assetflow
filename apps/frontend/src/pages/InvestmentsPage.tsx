@@ -817,7 +817,7 @@ export function InvestmentsPage({
             aria-label={`${row.name} 현재가`}
             value={priceDrafts[row.id] ?? row.marketPrice}
             onChange={(v) => setPriceDrafts((prev) => ({ ...prev, [row.id]: v ?? 0 }))}
-            /* 터치 16px·높이 36 은 기본 크기와 `pointer: coarse` 규칙이 만든다. */
+            /* 터치 16px·높이 44 는 `pointer: coarse` 규칙(§125 I-12), 데스크톱은 36. */
             style={{ width: 120 }}
           />
         ) : (
@@ -926,6 +926,7 @@ export function InvestmentsPage({
 
   return (
     <AppLayout
+      className="af-investments"
       onLogout={handleLogout}
       nav={
         <StandardNav

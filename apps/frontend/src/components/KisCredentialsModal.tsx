@@ -139,6 +139,9 @@ export function KisCredentialsModal({ accountId, accountName, open, onClose, onS
       onCancel={onClose}
       centered
       destroyOnHidden
+      /* §125 I-04: 터치 44 스코프. 모달은 body 로 포털되므로 화면 클래스
+       * (`.af-investments`)로 잡을 수 없다 — 이 루트 클래스로만 좁힌다. */
+      rootClassName="af-modal-touch"
       width="min(560px, calc(100vw - 24px))"
       /*
        * §93 모달 셸: 컨테이너가 높이를 제한하고 본문만 스크롤한다.

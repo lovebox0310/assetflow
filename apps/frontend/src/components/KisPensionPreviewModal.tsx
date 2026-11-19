@@ -158,6 +158,8 @@ export function KisPensionPreviewModal({ accountId, accountName, open, onClose }
       onCancel={onClose}
       centered
       destroyOnHidden
+      /* §125 I-10: 터치 44 스코프 — 포털 모달이라 루트 클래스로만 좁힌다. */
+      rootClassName="af-modal-touch"
       width="min(720px, calc(100vw - 24px))"
       styles={{
         container: {
