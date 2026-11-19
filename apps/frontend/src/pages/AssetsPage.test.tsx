@@ -205,6 +205,40 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
   });
 
   /**
+   * #36 AS-02: 조회가 실패하면 부채 카드가 2px 빈 판으로 남아 "부채 없음"처럼
+   * 보였다. 카드 안에 실패 문구와 재시도를 두고, 빈 상태 문구(정상)와
+   * 절대 겹치지 않게 한다.
+   */
+  it("조회 실패 시 부채 카드는 빈 판이 아니라 문구 + 재시도를 보여 준다 (#36 AS-02)", async () => {
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
+      Promise.resolve(apiResponse(null, false, 500)),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AssetsPage onBack={() => {}} />);
+
+    await screen.findAllByText("데이터를 불러오지 못했습니다");
+    // 부채 섹션 안에서만 확인한다 — 금융자산 카드의 알림과 섞지 않는다.
+    const debtSection = document.querySelector("#h-liab")?.closest("section");
+    expect(debtSection).not.toBeNull();
+    expect(debtSection?.textContent).toContain("부채를 불러오지 못했습니다");
+    // 정상 빈 상태 문구가 함께 뜨면 "부채 없음"으로 오독된다.
+    expect(screen.queryByText(/등록된 부채가 없습니다/)).toBeNull();
+
+    const debtRetry = Array.from(debtSection?.querySelectorAll("button") ?? []).find(
+      (b) => b.textContent?.trim() === "재시도",
+    );
+    expect(debtRetry).toBeDefined();
+    expect(debtRetry?.className).toContain("af-retry-btn");
+
+    // 재시도는 실제로 다시 읽는다 (자산 1회 + 부채 카드 1회 = GET 2회)
+    const gets = () =>
+      fetchMock.mock.calls.filter((c) => String(c[0]).includes("/assets/accounts")).length;
+    expect(gets()).toBe(1);
+    fireEvent.click(debtRetry as HTMLElement);
+    await waitFor(() => expect(gets()).toBe(2));
+  });
+
+  /**
    * #68: 유형이 숨은 필드였을 때는 저장된 값을 읽을 수도 바꿀 수도 없었고,
    * `invest` 유형이 하나도 없어 §28.7 비상금 유지 개월이 0.0 이 나왔다.
    * 아래 3건은 그 입력 경로가 실제로 열렸는지를 고정한다.

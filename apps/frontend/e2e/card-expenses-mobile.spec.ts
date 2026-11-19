@@ -489,7 +489,7 @@ function measureBoxes(page: Page) {
       radio: height(document.querySelector(".af-expenses .ant-radio-button-wrapper")),
       gmail: height(document.querySelector('input[placeholder="example@gmail.com"]')),
       search: height(search?.closest(".ant-input-affix-wrapper")),
-      alertRetry: height(document.querySelector(".af-expenses .ant-alert .ant-btn-sm")),
+      alertRetry: height(document.querySelector(".af-expenses .ant-alert .af-retry-btn")),
       overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     };
   });
@@ -564,12 +564,14 @@ test.describe("카드내역 터치 타깃 44", () => {
 
     // C-06: 설정 로딩 실패 → StateBlock 오류 알림의 재시도 버튼. 라우트는 나중에
     // 등록한 쪽이 먼저 매칭되므로(§80 목 규칙) 위 목을 덮는다.
+    // #36 AS-03: 재시도는 `size="small"`(28) 대신 기본 크기 + `.af-retry-btn`
+    // (min-height 44)이 됐다 — 히트 44 계약은 그대로이고 클래스만 바뀌었다.
     await page.route("**/api/v1/card-email-import-settings/**", (route) =>
       route.fulfill({ status: 500, json: { code: "SERVER_ERROR", message: "boom", data: null } }),
     );
     for (const width of TOUCH_VIEWPORTS) {
       await openCardExpenses(page, width, 1000);
-      await expect(page.locator(".af-expenses .ant-alert .ant-btn-sm")).toBeVisible();
+      await expect(page.locator(".af-expenses .ant-alert .af-retry-btn")).toBeVisible();
       const box = await measureBoxes(page);
       expect(box.alertRetry!, `${width}px 오류 알림 재시도 높이`).toBeGreaterThanOrEqual(TOUCH_MIN);
       expect(box.overflow, `${width}px 오류 상태 문서 넘침`).toBe(0);

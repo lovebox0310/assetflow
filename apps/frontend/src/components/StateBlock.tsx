@@ -28,6 +28,10 @@ export function StateBlock({ status, onRetry, emptyText = "데이터가 없습�
   if (status === "error") {
     return (
       <Alert
+        /* 이슈 #36 AS-01: 좁은 화면(≤430)에서만 액션을 문구 아래로 내린다.
+           배치 규칙은 app.css 의 `.af-alert` 블록이 갖고, 여기서는 그 훅만 단다
+           (데스크톱은 antd 기본 인라인 배치 그대로). */
+        className="af-alert"
         type="error"
         showIcon
         title="데이터를 불러오지 못했습니다"
@@ -37,7 +41,10 @@ export function StateBlock({ status, onRetry, emptyText = "데이터가 없습�
         aria-live="assertive"
         action={
           onRetry ? (
-            <Button size="small" onClick={onRetry}>
+            /* 이슈 #36 AS-03: size="small"(28)은 전역 히트 확장 규칙에서
+               제외돼 28 로 남았다 — 기본 크기 + min-height 44 로 실제 박스를
+               44 로 만든다(전 화면 공통). */
+            <Button className="af-retry-btn" onClick={onRetry}>
               재시도
             </Button>
           ) : undefined

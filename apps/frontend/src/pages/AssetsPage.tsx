@@ -391,8 +391,27 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
         </div>
         <Card>
           {editingId === "new" && debtFormOpen ? addFormBlock(true) : null}
-          {/* P4: 조회 실패 알림은 금융자산 카드 한 곳에서만 낸다 — 부채 카드는 상태 없이 비워 둔다. */}
-          {status === "error" ? null : (
+          {/* P4: 조회 실패 알림은 금융자산 카드 한 곳에서만 낸다 — 부채 카드가
+              같은 오류를 큰 알림으로 한 번 더 내지 않는다.
+              이슈 #36 AS-02: 대신 카드를 비워 두지 않는다. 빈 판(2px)은 "부채
+              없음"으로 오독되므로, 한 줄 문구 + 재시도를 카드 안에 둔다.
+              자산/부채는 listAccounts 한 번의 결과를 같이 쓰므로 상태도 같다. */}
+          {status === "error" ? (
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: SPACE.s3,
+              }}
+            >
+              <Typography.Text type="secondary">부채를 불러오지 못했습니다</Typography.Text>
+              <Button className="af-retry-btn" onClick={() => load()}>
+                재시도
+              </Button>
+            </div>
+          ) : (
             <StateBlock status={status} onRetry={() => load()} errorText={errorText} emptyText={DEBT_EMPTY_TEXT}>
               {liabilities.length === 0 ? (
                 /* D5: 스펙 번호 대신 사용자가 할 일을 적는다 (§31.4 — 빈 부채는 정상). */
