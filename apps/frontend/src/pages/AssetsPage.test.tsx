@@ -384,4 +384,194 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
       expect(onOpenInvestments).toHaveBeenCalled();
     });
   });
+
+  /**
+   * A7-1: 현금성·예적금 행 `⋯` 메뉴에 은행 동작 3개.
+   *
+   * 모달·API 구현은 은행 섹션 하나만 갖는다 — 여기서는 (1) 대상 계좌에만
+   * 항목이 붙고 (2) disabled 규칙이 연결 상태를 따르고 (3) 해제가 실제
+   * DELETE 로 이어지고 (4) 연결 목록 조회가 페이지 로드당 1회인지만 본다.
+   */
+  describe("A7-1 은행 동작 행 메뉴", () => {
+    const bankRows = [
+      { id: 1, accountType: "cash" as const, name: "생활비", institutionName: "우리은행", balance: 1_000_000, isDebt: false, openedAt: null },
+      { id: 2, accountType: "deposit" as const, name: "정기예금", institutionName: "국민은행", balance: 30_000_000, isDebt: false, openedAt: null },
+      { id: 3, accountType: "invest" as const, name: "주식 계좌", institutionName: "한국투자증권", balance: 1_200_000, isDebt: false, openedAt: null },
+    ];
+    const bankLink = {
+      accountId: 1,
+      bankCode: "WR",
+      bankLabel: "우리은행",
+      accountNumberMasked: "1002-***-123456",
+      accountType: "personal" as const,
+      lastSyncedAt: null,
+      lastBalance: 1_000_000,
+    };
+
+    function stub(links: unknown[] = [], options: { pendingLinks?: boolean } = {}) {
+      const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("/assets/bank-links")) {
+          // 로딩 상태를 붙잡아 두는 모드 — 연결 정보를 모르는 동안의 메뉴를 본다.
+          return options.pendingLinks ? new Promise<Response>(() => {}) : Promise.resolve(apiResponse(links));
+        }
+        if (url.includes("/assets/bank/banks")) return Promise.resolve(apiResponse([]));
+        if (url.includes("/investments/holdings")) {
+          return Promise.resolve(apiResponse({ holdings: [], accounts: [] }));
+        }
+        if (url.includes("/bank-link") && init?.method === "DELETE") return Promise.resolve(apiResponse(1));
+        return Promise.resolve(apiResponse(bankRows));
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      return fetchMock;
+    }
+
+    /** antd Menu 의 비활성 표식은 클래스와 aria-disabled 둘 다 확인한다(버전 차이 방어). */
+    const isDisabled = (el: HTMLElement) =>
+      el.getAttribute("aria-disabled") === "true" || el.className.includes("disabled");
+
+    /** 은행 섹션이 연결 목록을 읽어 "연결 안 됨"을 말할 때까지 — 그 전에는 3개 모두 disabled 다. */
+    async function waitForLinks() {
+      await screen.findAllByText(/연결 안 됨/);
+    }
+
+    it("cash 계좌 메뉴에 3개 항목이 있고, 연결 안 됐으면 잔액·해제가 disabled 다", async () => {
+      stub([]);
+      render(<AssetsPage onBack={() => {}} />);
+      await screen.findByText("생활비");
+      await waitForLinks();
+
+      fireEvent.click(screen.getByRole("button", { name: "생활비 행 메뉴" }));
+
+      const linkItem = await screen.findByRole("menuitem", { name: "은행 연결" });
+      const syncItem = await screen.findByRole("menuitem", { name: "잔액 가져오기" });
+      const unlinkItem = await screen.findByRole("menuitem", { name: "연결 해제" });
+      expect(isDisabled(linkItem)).toBe(false);
+      expect(isDisabled(syncItem)).toBe(true);
+      expect(isDisabled(unlinkItem)).toBe(true);
+      // 삭제는 그대로 남는다 — 기존 동작을 잃지 않는다.
+      expect(screen.getByRole("menuitem", { name: "삭제" })).toBeDefined();
+    });
+
+    it("deposit 계좌도 같은 3개를 주고, invest 계좌에는 은행 항목이 없다", async () => {
+      stub([]);
+      render(<AssetsPage onBack={() => {}} />);
+      await screen.findByText("정기예금");
+      await waitForLinks();
+
+      // invest 행은 동작 메뉴 자체가 없다(§54.3) — 은행 항목도 당연히 없다.
+      expect(screen.queryByRole("button", { name: "주식 계좌 행 메뉴" })).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: "정기예금 행 메뉴" }));
+      const linkItem = await screen.findByRole("menuitem", { name: "은행 연결" });
+      expect(isDisabled(linkItem)).toBe(false);
+      expect(isDisabled(screen.getByRole("menuitem", { name: "잔액 가져오기" }))).toBe(true);
+      expect(isDisabled(screen.getByRole("menuitem", { name: "연결 해제" }))).toBe(true);
+    });
+
+    it("연결 정보를 읽는 동안에는 3개 모두 disabled 다 — 연결 여부를 단정하지 않는다", async () => {
+      stub([], { pendingLinks: true });
+      render(<AssetsPage onBack={() => {}} />);
+      await screen.findByText("생활비");
+
+      fireEvent.click(screen.getByRole("button", { name: "생활비 행 메뉴" }));
+
+      for (const name of ["은행 연결", "잔액 가져오기", "연결 해제"]) {
+        expect(isDisabled(await screen.findByRole("menuitem", { name }))).toBe(true);
+      }
+      // 삭제는 연결 정보와 무관하다 — 로딩 중에도 남는다.
+      expect(isDisabled(screen.getByRole("menuitem", { name: "삭제" }))).toBe(false);
+    });
+
+    it("연결된 계좌는 `연결 해제` 가 활성이고, 고르면 unlink(DELETE) 를 보낸다", async () => {
+      const fetchMock = stub([bankLink]);
+      render(<AssetsPage onBack={() => {}} />);
+      await screen.findByText("생활비");
+      await screen.findAllByText(/마지막 동기화|동기화 전/);
+
+      fireEvent.click(screen.getByRole("button", { name: "생활비 행 메뉴" }));
+      const unlinkItem = await screen.findByRole("menuitem", { name: "연결 해제" });
+      expect(isDisabled(unlinkItem)).toBe(false);
+      // 연결된 계좌는 잔액 가져오기가 열린다. 재연결(은행 연결)은 섹션 UI 와 같이 막는다.
+      expect(isDisabled(screen.getByRole("menuitem", { name: "잔액 가져오기" }))).toBe(false);
+      expect(isDisabled(screen.getByRole("menuitem", { name: "은행 연결" }))).toBe(true);
+
+      fireEvent.click(unlinkItem);
+      // 해제는 확인을 거친다 — 섹션의 Popconfirm 과 같은 문구.
+      expect(await screen.findByText("은행 연결을 해제할까요?")).toBeDefined();
+      fireEvent.click(await screen.findByRole("button", { name: /OK/i }));
+
+      await waitFor(() => {
+        const del = fetchMock.mock.calls.find(
+          (call) => String(call[0]).includes("/assets/accounts/1/bank-link") && call[1]?.method === "DELETE",
+        );
+        expect(del).toBeDefined();
+      });
+    });
+
+    it("`은행 연결` 항목은 은행 섹션의 연결 모달을 그대로 연다(구현 복제 없음)", async () => {
+      stub([]);
+      render(<AssetsPage onBack={() => {}} />);
+      await screen.findByText("생활비");
+      await waitForLinks();
+
+      fireEvent.click(screen.getByRole("button", { name: "생활비 행 메뉴" }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "은행 연결" }));
+
+      // 제목이 `{계좌} 은행 연결` — BankLinkSection 의 모달 그 자체다.
+      expect(await screen.findByText("생활비 은행 연결")).toBeDefined();
+      // 연결 폼의 고유 입력(계좌번호)이 있어야 같은 모달임이 분명해진다.
+      expect(await screen.findByLabelText("계좌번호")).toBeDefined();
+    });
+
+    it("행 메뉴로 연 모달을 닫으면 그 행 `⋯` 로 포커스가 돌아온다(1회)", async () => {
+      stub([bankLink]);
+      render(<AssetsPage onBack={() => {}} />);
+      const trigger = await screen.findByRole("button", { name: "생활비 행 메뉴" });
+      await screen.findAllByText(/마지막 동기화|동기화 전/);
+
+      fireEvent.click(trigger);
+      fireEvent.click(await screen.findByRole("menuitem", { name: "잔액 가져오기" }));
+      expect(await screen.findByText("생활비 잔액 가져오기")).toBeDefined();
+
+      // 닫힘 경로는 ×·Esc·바깥 클릭 모두 afterClose 로 모인다 — 여기서는 × 로 닫는다.
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+      await waitFor(() => {
+        expect(document.activeElement?.getAttribute("aria-label")).toBe("생활비 행 메뉴");
+      });
+      expect(document.activeElement).toBe(trigger);
+    });
+
+    it("섹션 버튼으로 연 모달은 닫혀도 행 `⋯` 로 포커스를 빼앗지 않는다", async () => {
+      stub([bankLink]);
+      render(<AssetsPage onBack={() => {}} />);
+      await screen.findAllByText(/마지막 동기화|동기화 전/);
+
+      // 행 메뉴가 아니라 은행 섹션의 버튼으로 연다 — 기존 경로의 포커스 복귀는 그대로.
+      fireEvent.click(screen.getByRole("button", { name: "잔액 가져오기" }));
+      expect(await screen.findByText("생활비 잔액 가져오기")).toBeDefined();
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+      // 닫힘 알림은 행 메뉴 경로에서만 돈다 — 표 위 `⋯` 로 포커스가 튀지 않는다.
+      expect(document.activeElement?.getAttribute("aria-label") ?? "").not.toBe("생활비 행 메뉴");
+    });
+
+    it("연결 목록 조회(listBankLinks)는 페이지 로드당 1회다", async () => {
+      const fetchMock = stub([bankLink]);
+      render(<AssetsPage onBack={() => {}} />);
+      await screen.findByText("생활비");
+      await waitForLinks();
+
+      // 메뉴를 열어도 조회를 다시 하지 않는다 — 상태는 섹션이 올려 준 사본이다.
+      fireEvent.click(screen.getByRole("button", { name: "생활비 행 메뉴" }));
+      await screen.findByRole("menuitem", { name: "잔액 가져오기" });
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+
+      const linkGets = () =>
+        fetchMock.mock.calls.filter((call) => String(call[0]).includes("/assets/bank-links")).length;
+      expect(linkGets()).toBe(1);
+      await waitFor(() => expect(linkGets()).toBe(1));
+    });
+  });
 });

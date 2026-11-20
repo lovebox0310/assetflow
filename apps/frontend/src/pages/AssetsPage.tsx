@@ -28,7 +28,12 @@ import {
 import { getPortfolio, type Portfolio } from "../api/investmentsApi";
 import { clearInflight } from "../api/client";
 import { clearToken } from "../auth/authStore";
-import { BankLinkSection } from "../components/BankLinkSection";
+import {
+  BankLinkSection,
+  type BankLinkSectionHandle,
+  type BankLinksState,
+} from "../components/BankLinkSection";
+import type { BankLink } from "../api/bankApi";
 import { formatKrwExact } from "../utils/formatters";
 import { SPACE } from "../theme/tokens";
 
@@ -98,6 +103,22 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
   const mountedRef = useRef(false);
   /** 추가 폼 블록 — 열릴 때 첫 입력으로 포커스를 옮기는 기준점(§128 AS-04). */
   const addFormRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * A7-1: 자산 행 `⋯` 메뉴의 은행 동작은 **은행 섹션의 함수**를 부른다.
+   * 모달·API 는 그쪽 하나만 갖고 있고, 이 ref 는 그 문을 여는 손잡이다.
+   */
+  const bankSectionRef = useRef<BankLinkSectionHandle | null>(null);
+  /**
+   * 은행 섹션의 연결 목록을 올려 받은 사본. 행 메뉴의 `잔액 가져오기`·
+   * `연결 해제` disabled 판단에만 쓴다(조회는 섹션이 페이지 로드당 1회).
+   * 로딩·실패 동안에는 아무것도 단정하지 않고 3개 모두 disabled 다.
+   */
+  const [bankLinks, setBankLinks] = useState<{ links: BankLink[]; state: BankLinksState }>({
+    links: [],
+    state: "loading",
+  });
+  /** 모달이 닫힌 뒤 포커스를 되돌릴 계좌 id (§125 I-03 규칙). */
+  const [focusReturnAccountId, setFocusReturnAccountId] = useState<number | null>(null);
 
   const load = useCallback((silent = false) => {
     clearInflight(); // 앞선 요청의 dedupe 잔여를 비우고 새로 읽는다
@@ -131,6 +152,38 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
   const bankAccounts = assets.filter((r) => r.accountType === "cash" || r.accountType === "deposit");
   const liabilities = rows?.filter((r) => r.isDebt) ?? [];
   const investTotals = new Map((portfolio?.accounts ?? []).map((a) => [a.accountId, a.totalValue]));
+
+  /**
+   * 은행 섹션이 올린 연결 목록. 화면이 소유한 값이 아니라 **사본**이라
+   * 행 메뉴의 disabled 판단에만 쓴다 — 조회(listBankLinks)는 섹션이 1회 한다.
+   */
+  const handleLinksChanged = useCallback((links: BankLink[], state: BankLinksState) => {
+    setBankLinks((prev) => (prev.state === state && prev.links === links ? prev : { links, state }));
+  }, []);
+
+  /**
+   * 모달이 닫히면 그 행의 `⋯` 로 포커스를 되돌린다(§125 I-03 과 같은 규칙).
+   * 모달을 연 주체가 메뉴 항목이라 항목은 이미 사라졌고, 남은 복귀 지점은
+   * `⋯` 뿐이다. 행이 사라졌으면 아무것도 하지 않는다 — 남은 행을 억지로 고르지 않는다.
+   *
+   * `AfListTable` 은 손대지 않는다(actions 계약 그대로). 표가 그 버튼에 붙인
+   * 접근 이름(`{이름} 행 메뉴`)이 유일한 공개 표식이라 그것으로 찾는다.
+   * 이동은 **한 번만** 한다 — 상태를 곧바로 비워 다음 커밋에서 다시 훔치지 않게.
+   */
+  useEffect(() => {
+    if (focusReturnAccountId === null) return;
+    const row = rows?.find((r) => r.id === focusReturnAccountId);
+    const table = document.querySelector<HTMLTableElement>('table[aria-labelledby="h-assets"]');
+    const button =
+      row && table
+        ? Array.from(table.querySelectorAll<HTMLButtonElement>("button.af-icon-btn")).find(
+            (b) => b.getAttribute("aria-label") === `${row.name} 행 메뉴`,
+          )
+        : undefined;
+    button?.focus({ preventScroll: true });
+    setFocusReturnAccountId(null);
+  }, [focusReturnAccountId, rows]);
+
   /** §54.3: invest 행은 예수금이 아니라 계좌 총액(예수금+평가액)을 보여 준다. */
   const displayValue = (row: AssetAccountRow) =>
     row.accountType === "invest" ? investTotals.get(row.id) ?? row.balance : row.balance;
@@ -272,20 +325,60 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
   );
 
   /**
+   * A7-1: 현금성·예적금 계좌 행에만 은행 동작 3개를 더한다. 모달·API 는
+   * 은행 섹션이 갖고 있으므로 여기서는 그 손잡이(`bankSectionRef`)만 부른다.
+   *
+   * disabled 규칙은 섹션이 보여 주는 버튼과 같다:
+   * - 연결 정보를 모르는 동안(로딩·실패) → 3개 모두 disabled ("연결 안 됨"을 단정하지 않는다)
+   * - 연결됨 → `잔액 가져오기`·`연결 해제` 만, 연결 안 됨 → `은행 연결` 만 활성
+   */
+  const bankActions = (row: AssetAccountRow): AfRowAction[] => {
+    const ready = bankLinks.state === "ready";
+    const linked = ready && bankLinks.links.some((link) => link.accountId === row.id);
+    return [
+      {
+        key: "bank-link",
+        label: "은행 연결",
+        disabled: !ready || linked,
+        onSelect: () => bankSectionRef.current?.openLink(row),
+      },
+      {
+        key: "bank-sync",
+        label: "잔액 가져오기",
+        disabled: !ready || !linked,
+        onSelect: () => bankSectionRef.current?.openSync(row),
+      },
+      {
+        key: "bank-unlink",
+        label: "연결 해제",
+        disabled: !ready || !linked,
+        /* 잔액은 그대로 남고 자동 조회만 끊긴다 — 섹션의 확인 문구와 같은 말. */
+        confirm: "은행 연결을 해제할까요?",
+        onSelect: () => bankSectionRef.current?.unlink(row.id),
+      },
+    ];
+  };
+
+  /**
    * 투자 행은 이 화면에서 편집하지 않는다(§54.3): balance 가 예수금이라
    * 총액을 여기서 저장하면 이중 계상된다. 그래서 동작 메뉴도 주지 않는다.
+   *
+   * 부채 행에는 은행 동작을 주지 않는다 — 부채는 잔액을 가져올 대상이 아니다
+   * (`accountType` 이 cash 여도 `isDebt` 면 제외).
    */
-  const assetActions = (row: AssetAccountRow): AfRowAction[] =>
-    row.accountType === "invest"
-      ? []
-      : [{
-          key: "delete",
-          label: "삭제",
-          danger: true,
-          /* A11: 어느 행을 지우는지 확인 문구에 계좌명을 넣는다 — 표에서 한 줄만 보고도 판단되게. */
-          confirm: `${row.name} 계좌를 삭제할까요?`,
-          onSelect: () => void removeRow(row.id),
-        }];
+  const assetActions = (row: AssetAccountRow): AfRowAction[] => {
+    if (row.accountType === "invest") return [];
+    const isBankAccount = !row.isDebt && (row.accountType === "cash" || row.accountType === "deposit");
+    const deleteAction: AfRowAction = {
+      key: "delete",
+      label: "삭제",
+      danger: true,
+      /* A11: 어느 행을 지우는지 확인 문구에 계좌명을 넣는다 — 표에서 한 줄만 보고도 판단되게. */
+      confirm: `${row.name} 계좌를 삭제할까요?`,
+      onSelect: () => void removeRow(row.id),
+    };
+    return isBankAccount ? [...bankActions(row), deleteAction] : [deleteAction];
+  };
 
   const activateRow = (row: AssetAccountRow) => {
     if (row.accountType === "invest") {
@@ -407,13 +500,6 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
         </Card>
       </section>
 
-      {/* §61: 은행 잔액 자동 갱신 — 표의 편집 동작과 섞지 않도록 별도 섹션. */}
-      <BankLinkSection
-        accounts={bankAccounts}
-        accountsReady={rows !== null && status !== "error"}
-        onSynced={() => load(true)}
-      />
-
       <section aria-labelledby="h-liab" style={{ marginBottom: 24 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 }}>
           <Typography.Title level={2} id="h-liab" style={{ fontSize: 18, margin: 0 }}>부채</Typography.Title>
@@ -480,6 +566,20 @@ export function AssetsPage({ onBack, onOpenInvestments, onOpenExpenses, onOpenSe
           )}
         </Card>
       </section>
+
+      {/* §61: 은행 잔액 자동 갱신 — 표의 편집 동작과 섞이지 않도록 별도 섹션.
+          A10-A: 읽는 순서는 금융자산 → 부채 → 은행 → 다른 화면이다(부채를 은행
+          앞으로). 앵커 id(`h-bank-sync`)·제목·`aria-labelledby` 는 그대로다.
+          자산 행 `⋯` 메뉴의 은행 동작도 이 섹션의 함수를 ref 로 부른다 — 모달을
+          복제하지 않는다. */}
+      <BankLinkSection
+        ref={bankSectionRef}
+        accounts={bankAccounts}
+        accountsReady={rows !== null && status !== "error"}
+        onSynced={() => load(true)}
+        onLinksChanged={handleLinksChanged}
+        onModalClosed={setFocusReturnAccountId}
+      />
 
       <section aria-labelledby="h-expense-owned" style={{ marginBottom: 24 }}>
         <Typography.Title level={2} id="h-expense-owned" style={{ fontSize: 18, margin: 0, marginBottom: 16 }}>
