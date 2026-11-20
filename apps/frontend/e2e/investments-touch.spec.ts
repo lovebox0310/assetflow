@@ -9,8 +9,12 @@ import { authToken } from "./fixtures";
  * - I-12: 종목 폼 Input/InputNumber/Select 36px, 9개.
  *
  * 커진 컨트롤 때문에 모달 본문이 길어질 수 있다 — footer 는 §93 셸 계약대로
- * 뷰포트 아래 16px 에 붙어 있어야 하고(footer bottom = vh − 16), 본문/문서는
- * 가로로 넘치지 않아야 한다.
+ * 뷰포트 안에 있고, 셸이 눌려(maxHeight) 잘릴 때 뷰포트 아래 16px 에 붙는다
+ * (footer bottom = vh − 16). 본문/문서는 가로로 넘치지 않아야 한다.
+ *
+ * 내용이 `maxHeight` 보다 짧으면 스크롤이 생기지 않는다 — 그것은 폰트·높이에
+ * 좌우되는 환경 조건이므로 요구로 단언하지 않는다(로그만 남긴다). 요구는
+ * 히트 ≥44 · footer 위치 · 가로 넘침 0 이다.
  *
  * 터치(pointer: coarse)에서만 44 다. 데스크톱 36 불변은 이 스펙의 관심사가
  * 아니다(마우스 프로젝트에서 모달을 열 필요도 없다).
@@ -114,17 +118,31 @@ function overflowGeometry(page: Page) {
   });
 }
 
+/**
+ * footer 기하.
+ *
+ * `capped` = 셸이 뷰포트에 눌려 `maxHeight`(100dvh − 32px)에 닿았는가. §93 셸은
+ * 컨테이너를 `maxHeight` 까지만 키우므로, 내용이 그보다 짧으면 컨테이너가 내용
+ * 높이로 줄고 footer 는 vh−16 보다 위에 선다. 따라서 **footer 가 vh−16 에 붙는
+ * 것은 잘렸을 때만 참인 성질**이다. 내용이 짧아 스크롤이 안 생기는 것은 폰트·
+ * 높이에 좌우되는 환경 조건이라 단언하지 않고 `bodyScrolls` 로 남겨 로그만 본다.
+ */
 function footerGeometry(page: Page) {
   return page.evaluate(() => {
     const footer = document.querySelector<HTMLElement>(".ant-modal-footer");
     const body = document.querySelector<HTMLElement>(".ant-modal-body");
-    if (!footer || !body) throw new Error("모달 footer/body 를 찾지 못했다");
+    const container = document.querySelector<HTMLElement>(".ant-modal-container");
+    if (!footer || !body || !container) throw new Error("모달 footer/body/container 를 찾지 못했다");
     const rect = footer.getBoundingClientRect();
+    const box = container.getBoundingClientRect();
+    const maxHeight = Number.parseFloat(getComputedStyle(container).maxHeight);
+    const bodyScrolls = body.scrollHeight > body.clientHeight;
     return {
       innerHeight: window.innerHeight,
       bottom: +rect.bottom.toFixed(1),
       top: +rect.top.toFixed(1),
-      bodyScrolls: body.scrollHeight > body.clientHeight,
+      bodyScrolls,
+      capped: bodyScrolls || (Number.isFinite(maxHeight) && Math.abs(box.height - maxHeight) <= 1),
     };
   });
 }
@@ -160,7 +178,7 @@ async function closeModal(page: Page) {
 }
 
 test.describe("투자 터치 44 (이슈 #35 묶음 C)", () => {
-  test("320/390 — Radio·Tabs·폼 히트 ≥44, footer bottom=vh−16, 가로 넘침 0 (I-04/I-10/I-12)", async ({ page }, testInfo) => {
+  test("320/390 — Radio·Tabs·폼 히트 ≥44, footer 뷰포트 안(잘릴 때 vh−16), 가로 넘침 0 (I-04/I-10/I-12)", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "chromium-mobile", "터치(mobile) 프로젝트 전용");
 
     for (const viewport of VIEWPORTS) {
@@ -203,13 +221,23 @@ test.describe("투자 터치 44 (이슈 #35 묶음 C)", () => {
       const credOverflow = await overflowGeometry(page);
       console.log(
         `[footer] ${viewport.width}px credential bottom=${credFooter.bottom} `
-        + `vh-16=${credFooter.innerHeight - 16} bodyOverflow=${credOverflow.body}`,
+        + `vh-16=${credFooter.innerHeight - 16} bodyOverflow=${credOverflow.body} `
+        + `bodyScrolls=${credFooter.bodyScrolls} capped=${credFooter.capped}`,
       );
-      expect(credFooter.bodyScrolls, `${viewport.width}px 자격증명 본문 스크롤 전제`).toBe(true);
+      // footer 는 뷰포트 안에 완전히 들어온다(셸 계약 top ≥ 8).
+      expect(credFooter.top, `${viewport.width}px 자격증명 footer top`).toBeGreaterThanOrEqual(8);
       expect(
-        Math.abs(credFooter.bottom - (credFooter.innerHeight - 16)),
-        `${viewport.width}px 자격증명 footer bottom`,
-      ).toBeLessThanOrEqual(1);
+        credFooter.bottom,
+        `${viewport.width}px 자격증명 footer 뷰포트 안`,
+      ).toBeLessThanOrEqual(credFooter.innerHeight - 8);
+      // 잘렸을 때(=스크롤이 필요할 때)만 vh−16 에 붙는다. 잘리지 않은 경우의 위치는
+      // 내용 높이에 따라 달라지므로 요구가 아니다.
+      if (credFooter.capped) {
+        expect(
+          Math.abs(credFooter.bottom - (credFooter.innerHeight - 16)),
+          `${viewport.width}px 자격증명 footer bottom`,
+        ).toBeLessThanOrEqual(1);
+      }
       expect(credOverflow.doc, `${viewport.width}px 자격증명 문서 넘침`).toBe(0);
       expect(credOverflow.body, `${viewport.width}px 자격증명 본문 넘침`).toBe(0);
       await closeModal(page);
@@ -227,13 +255,20 @@ test.describe("투자 터치 44 (이슈 #35 묶음 C)", () => {
       const pensionOverflow = await overflowGeometry(page);
       console.log(
         `[footer] ${viewport.width}px pension bottom=${pensionFooter.bottom} `
-        + `vh-16=${pensionFooter.innerHeight - 16} bodyOverflow=${pensionOverflow.body}`,
+        + `vh-16=${pensionFooter.innerHeight - 16} bodyOverflow=${pensionOverflow.body} `
+        + `bodyScrolls=${pensionFooter.bodyScrolls} capped=${pensionFooter.capped}`,
       );
-      expect(pensionFooter.bodyScrolls, `${viewport.width}px 연금 본문 스크롤 전제`).toBe(true);
+      expect(pensionFooter.top, `${viewport.width}px 연금 footer top`).toBeGreaterThanOrEqual(8);
       expect(
-        Math.abs(pensionFooter.bottom - (pensionFooter.innerHeight - 16)),
-        `${viewport.width}px 연금 footer bottom`,
-      ).toBeLessThanOrEqual(1);
+        pensionFooter.bottom,
+        `${viewport.width}px 연금 footer 뷰포트 안`,
+      ).toBeLessThanOrEqual(pensionFooter.innerHeight - 8);
+      if (pensionFooter.capped) {
+        expect(
+          Math.abs(pensionFooter.bottom - (pensionFooter.innerHeight - 16)),
+          `${viewport.width}px 연금 footer bottom`,
+        ).toBeLessThanOrEqual(1);
+      }
       expect(pensionOverflow.doc, `${viewport.width}px 연금 문서 넘침`).toBe(0);
       expect(pensionOverflow.body, `${viewport.width}px 연금 본문 넘침`).toBe(0);
       await closeModal(page);

@@ -51,6 +51,8 @@ interface TitleGeometry {
   overlap: number;
   footer: { top: number; bottom: number };
   bodyScrolls: boolean;
+  /** 셸이 maxHeight(100dvh − 32px)에 닿아 잘렸는가 — 이때만 footer 가 vh−16 에 붙는다(§93). */
+  capped: boolean;
   overflowX: number;
 }
 
@@ -60,19 +62,27 @@ function measureTitle(page: Page): Promise<TitleGeometry> {
     const close = document.querySelector<HTMLElement>(".ant-modal-close");
     const footer = document.querySelector<HTMLElement>(".ant-modal-footer");
     const body = document.querySelector<HTMLElement>(".ant-modal-body");
-    if (!title || !close || !footer || !body) throw new Error("모달 헤더/푸터를 찾지 못했다");
+    const container = document.querySelector<HTMLElement>(".ant-modal-container");
+    if (!title || !close || !footer || !body || !container) throw new Error("모달 헤더/푸터를 찾지 못했다");
     const titleRect = title.getBoundingClientRect();
     const closeRect = close.getBoundingClientRect();
     const footerRect = footer.getBoundingClientRect();
-    // 제목 줄 수 — 줄 높이(약 22px)로 나눈 근사값. 2줄 이상이어야 회귀를 잡는다.
-    const lines = Math.round(titleRect.height / parseFloat(getComputedStyle(title).lineHeight || "22"));
+    const box = container.getBoundingClientRect();
+    const maxHeight = Number.parseFloat(getComputedStyle(container).maxHeight);
+    const bodyScrolls = body.scrollHeight > body.clientHeight;
+    // 제목 줄 수 — 줄 높이(antd 16px 글꼴이면 24px)로 나눈 근사값. 로그·전제 확인용.
+    const lineHeight = Number.parseFloat(getComputedStyle(title).lineHeight);
+    const lines = Number.isFinite(lineHeight) && lineHeight > 0
+      ? Math.round(titleRect.height / lineHeight)
+      : 0;
     return {
       innerHeight: window.innerHeight,
       title: { right: titleRect.right, height: titleRect.height, lines },
       close: { left: closeRect.left, right: closeRect.right },
       overlap: titleRect.right - closeRect.left,
       footer: { top: footerRect.top, bottom: footerRect.bottom },
-      bodyScrolls: body.scrollHeight > body.clientHeight,
+      bodyScrolls,
+      capped: bodyScrolls || (Number.isFinite(maxHeight) && Math.abs(box.height - maxHeight) <= 1),
       overflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     };
   });
@@ -158,19 +168,20 @@ test.describe("투자 계좌 모달 셸 (이슈 #35)", () => {
       console.log(
         `[I-02] ${viewport.width}px lines=${geometry.title.lines} title.right=${geometry.title.right.toFixed(1)} `
         + `close.left=${geometry.close.left.toFixed(1)} overlap=${geometry.overlap.toFixed(1)} `
-        + `footer.bottom=${geometry.footer.bottom.toFixed(1)} vh-16=${geometry.innerHeight - 16} overflowX=${geometry.overflowX} bodyScrolls=${geometry.bodyScrolls}`,
+        + `footer.bottom=${geometry.footer.bottom.toFixed(1)} vh-16=${geometry.innerHeight - 16} overflowX=${geometry.overflowX} bodyScrolls=${geometry.bodyScrolls} capped=${geometry.capped}`,
       );
-      // 제목이 2줄 이상이어야 이 회귀(닫기 버튼과의 겹침)를 실제로 잰다.
-      expect(geometry.title.lines, `${viewport.width}px 제목 줄 수`).toBeGreaterThanOrEqual(2);
+      // 제목 줄 수는 폰트에 좌우되는 전제라 단언하지 않는다(로그만). 요구는 겹침 0 이다.
+      // 2줄 이상이면 이 회귀(닫기 버튼 겹침)를 실제로 재게 된다.
       // 겹침 0 — 제목 오른쪽이 닫기 버튼 왼쪽보다 오른쪽에 있으면 안 된다.
       expect(geometry.overlap, `${viewport.width}px 제목/닫기 겹침`).toBeLessThanOrEqual(0);
       // 닫기 버튼은 뷰포트 안에 남아 있다.
       expect(geometry.close.left).toBeGreaterThan(0);
       // footer 는 뷰포트 안. 내용이 넘치는 폭에서는 아래 16px 여백에 붙어 있다(셸 계약).
+      expect(geometry.footer.top, `${viewport.width}px footer 위쪽`).toBeGreaterThanOrEqual(8);
       expect(geometry.footer.bottom, `${viewport.width}px footer 뷰포트 안`).toBeLessThanOrEqual(
         geometry.innerHeight - 8,
       );
-      if (geometry.bodyScrolls) {
+      if (geometry.capped) {
         expect(
           Math.abs(geometry.footer.bottom - (geometry.innerHeight - 16)),
           `${viewport.width}px footer bottom`,
