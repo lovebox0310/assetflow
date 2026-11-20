@@ -475,8 +475,13 @@ button {
   border-bottom: 0;
 }
 
+/* §128 이슈 #36 P3 — AS-07: 데스크톱(≥768) 금액 14/400 이 이름 15/600 보다
+ * 약해 위계가 뒤집혀 있었다(합계 16/600 과도 3단). 굵기만 600 으로 맞춘다 —
+ * 크기(14)와 셀 높이(44)는 그대로라 행 높이는 변하지 않는다. 모바일 값 칸은
+ * 이미 15/600 이라 이 규칙과 어긋나지 않는다. */
 .af-list__cell--num {
   text-align: right;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
   white-space: nowrap;
@@ -1578,5 +1583,30 @@ button {
     content: "";
     position: absolute;
     inset: 0;
+  }
+}
+
+/* ── §128 이슈 #36 P3 — AS-08: 자산 화면 긴 계좌명 2줄 ─────────────────
+ * 320px 에서 이름 칸이 117px 이라 긴 이름이 한 줄로는 30~47% 만 보였다.
+ * 말줄임은 유지하되 줄 수만 2로 늘린다 — 2줄이면 같은 폭에서 노출률이 90% 를
+ * 넘는다(실측: 251px 이름 → 234px 노출).
+ *
+ * 범위는 `.af-assets` 하나다. 지출·카드내역·투자·대시보드 표는 1줄을 유지한다
+ * (행 높이 65 가 그 화면들의 기준이다).
+ *
+ * `-webkit-box` 로 두는 이유는 `-webkit-line-clamp` 가 그 display 에서만
+ * 동작하기 때문이다. 버튼은 여전히 flex 아이템이라 `flex: 1 1 auto`·`min-width: 0`
+ * 로 폭을 줄이고, 행 전체 탭 확장(`::after inset 0`)의 기준 상자는 그대로
+ * 행(`.af-list__row` — position: relative)이다.
+ *
+ * 말줄임은 clamp 가 직접 붙이므로 `text-overflow: ellipsis`(한 줄 전용)를 끈다 —
+ * 그대로 두면 둘째 줄에 말줄임이 두 번 겹친다. */
+@media (max-width: 767.98px) {
+  .af-assets .af-list__cell--primary .af-list__edit {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    text-overflow: clip;
   }
 }

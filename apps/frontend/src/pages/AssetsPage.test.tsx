@@ -8,6 +8,11 @@ import { dashboardMock } from "../data/dashboardMock";
 /**
  * §31/§40 AC: 행 편집·추가·삭제가 API 에 반영되고 화면에 반영된다.
  * fetch 대역은 §38/§40 표준 포맷. §36.2 기준선 시드를 가정한다.
+ *
+ * §128 AS-09: 은행 섹션의 계좌명이 `이름 · 기관` 한 줄에서 **이름 1줄 + 기관 1줄**
+ * 로 바뀌어, 현금성·예적금 이름이 자산 표 행 버튼과 은행 섹션 이름 줄 두 곳에
+ * 있다. 화면 로드 대기는 `findAllByText` 로 "하나 이상"을 본다(단일 요소를
+ * 요구하면 정상 동작이 실패한다).
  */
 function apiResponse(data: unknown, ok = true, status = 200): Response {
   const body = ok
@@ -62,7 +67,7 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(apiResponse(seedAccounts()))));
     render(<AssetsPage onBack={() => {}} />);
 
-    expect(await screen.findByText("우리 파킹통장")).toBeDefined();
+    expect(await screen.findAllByText("우리 파킹통장")).toBeDefined();
     // 합계 = 시드 행의 합 (재계산 — 화면이 값을 소유하지 않는다)
     expect(screen.getAllByText(/합계 761,200,000원/).length).toBeGreaterThan(0);
     // 부채 표: 주택담보대출
@@ -78,7 +83,7 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     render(<AssetsPage onBack={() => {}} />);
-    await screen.findByText("우리 파킹통장");
+    await screen.findAllByText("우리 파킹통장");
 
     fireEvent.click(screen.getByRole("button", { name: "+ 자산 추가" }));
     const nameInput = await screen.findByPlaceholderText("자산 이름");
@@ -103,7 +108,7 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     render(<AssetsPage onBack={() => {}} />);
-    await screen.findByText("우리 파킹통장");
+    await screen.findAllByText("우리 파킹통장");
 
     // 행 탭 = 행 이름이 붙은 편집 버튼
     fireEvent.click(screen.getByRole("button", { name: "우리 파킹통장 편집" }));
@@ -121,7 +126,7 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
     const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => Promise.resolve(apiResponse(seedAccounts())));
     vi.stubGlobal("fetch", fetchMock);
     render(<AssetsPage onBack={() => {}} />);
-    await screen.findByText("우리 파킹통장");
+    await screen.findAllByText("우리 파킹통장");
 
     // 행 동작은 ⋯ 메뉴 → 삭제 → Popconfirm 확인 순서다.
     fireEvent.click(screen.getByRole("button", { name: "우리 파킹통장 행 메뉴" }));
@@ -161,7 +166,7 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
       });
       vi.stubGlobal("fetch", fetchMock);
       render(<AssetsPage onBack={() => {}} />);
-      await screen.findByText("우리 파킹통장");
+      await screen.findAllByText("우리 파킹통장");
 
       fireEvent.click(screen.getByRole("button", { name: "우리 파킹통장 편집" }));
       await screen.findByRole("combobox", { name: "계정 유형" });
@@ -182,7 +187,7 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
       });
       vi.stubGlobal("fetch", fetchMock);
       render(<AssetsPage onBack={() => {}} />);
-      await screen.findByText("우리 파킹통장");
+      await screen.findAllByText("우리 파킹통장");
 
       fireEvent.click(screen.getByRole("button", { name: "우리 파킹통장 행 메뉴" }));
       fireEvent.click(await screen.findByRole("menuitem", { name: "삭제" }));
@@ -192,7 +197,7 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
       const alert = await screen.findByRole("alert");
       expect(alert.textContent).toBeTruthy();
       // 실패했으므로 행이 사라지면 안 된다
-      expect(screen.getByText("우리 파킹통장")).toBeDefined();
+      expect(screen.getAllByText("우리 파킹통장").length).toBeGreaterThan(0);
     });
   });
 
@@ -205,7 +210,7 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
     it("`+ 자산 추가` 는 새 폼의 이름 input 으로 포커스를 옮긴다", async () => {
       vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(apiResponse(seedAccounts()))));
       render(<AssetsPage onBack={() => {}} />);
-      await screen.findByText("우리 파킹통장");
+      await screen.findAllByText("우리 파킹통장");
 
       fireEvent.click(screen.getByRole("button", { name: "+ 자산 추가" }));
 
@@ -236,7 +241,7 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
     const seed = seedAccounts().filter((r) => !r.isDebt);
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(apiResponse(seed))));
     render(<AssetsPage onBack={() => {}} />);
-    await screen.findByText("우리 파킹통장");
+    await screen.findAllByText("우리 파킹통장");
     expect(screen.getByText("등록된 부채가 없습니다. 빌린 돈이 없다면 그대로 두세요.")).toBeDefined();
   });
 
@@ -283,7 +288,7 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
     it("편집 폼에 계정 유형 Select 가 보이고 현재 저장값을 선택하고 있다", async () => {
       vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(apiResponse(seedAccounts()))));
       render(<AssetsPage onBack={() => {}} />);
-      await screen.findByText("우리 파킹통장");
+      await screen.findAllByText("우리 파킹통장");
 
       fireEvent.click(screen.getByRole("button", { name: "우리 파킹통장 편집" }));
 
@@ -306,7 +311,7 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
       });
       vi.stubGlobal("fetch", fetchMock);
       render(<AssetsPage onBack={() => {}} />);
-      await screen.findByText("우리 파킹통장");
+      await screen.findAllByText("우리 파킹통장");
 
       fireEvent.click(screen.getByRole("button", { name: "우리 파킹통장 편집" }));
 
@@ -438,7 +443,7 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
     it("cash 계좌 메뉴에 3개 항목이 있고, 연결 안 됐으면 잔액·해제가 disabled 다", async () => {
       stub([]);
       render(<AssetsPage onBack={() => {}} />);
-      await screen.findByText("생활비");
+      await screen.findAllByText("생활비");
       await waitForLinks();
 
       fireEvent.click(screen.getByRole("button", { name: "생활비 행 메뉴" }));
@@ -456,7 +461,7 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
     it("deposit 계좌도 같은 3개를 주고, invest 계좌에는 은행 항목이 없다", async () => {
       stub([]);
       render(<AssetsPage onBack={() => {}} />);
-      await screen.findByText("정기예금");
+      await screen.findAllByText("정기예금");
       await waitForLinks();
 
       // invest 행은 동작 메뉴 자체가 없다(§54.3) — 은행 항목도 당연히 없다.
@@ -472,7 +477,7 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
     it("연결 정보를 읽는 동안에는 3개 모두 disabled 다 — 연결 여부를 단정하지 않는다", async () => {
       stub([], { pendingLinks: true });
       render(<AssetsPage onBack={() => {}} />);
-      await screen.findByText("생활비");
+      await screen.findAllByText("생활비");
 
       fireEvent.click(screen.getByRole("button", { name: "생활비 행 메뉴" }));
 
@@ -486,7 +491,7 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
     it("연결된 계좌는 `연결 해제` 가 활성이고, 고르면 unlink(DELETE) 를 보낸다", async () => {
       const fetchMock = stub([bankLink]);
       render(<AssetsPage onBack={() => {}} />);
-      await screen.findByText("생활비");
+      await screen.findAllByText("생활비");
       await screen.findAllByText(/마지막 동기화|동기화 전/);
 
       fireEvent.click(screen.getByRole("button", { name: "생활비 행 메뉴" }));
@@ -512,7 +517,7 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
     it("`은행 연결` 항목은 은행 섹션의 연결 모달을 그대로 연다(구현 복제 없음)", async () => {
       stub([]);
       render(<AssetsPage onBack={() => {}} />);
-      await screen.findByText("생활비");
+      await screen.findAllByText("생활비");
       await waitForLinks();
 
       fireEvent.click(screen.getByRole("button", { name: "생활비 행 메뉴" }));
@@ -560,7 +565,7 @@ describe("AssetsPage (§31 이관, §40 CRUD)", () => {
     it("연결 목록 조회(listBankLinks)는 페이지 로드당 1회다", async () => {
       const fetchMock = stub([bankLink]);
       render(<AssetsPage onBack={() => {}} />);
-      await screen.findByText("생활비");
+      await screen.findAllByText("생활비");
       await waitForLinks();
 
       // 메뉴를 열어도 조회를 다시 하지 않는다 — 상태는 섹션이 올려 준 사본이다.

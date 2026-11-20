@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ForwardedRef,
 } from "react";
 import {
@@ -103,6 +104,24 @@ function formatWhen(iso: string | null): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
   return date.toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" });
+}
+
+/**
+ * 계좌 행의 이름·기관 한 줄 스타일(AS-09).
+ *
+ * 블록으로 두어야 줄 수가 폭에 따라 늘지 않고 말줄임이 걸린다. 부모 flex 아이템의
+ * `minWidth: 0` 이 있어야 실제로 줄어들어 말줄임이 동작한다(부모에 이미 있다).
+ */
+const ONE_LINE: CSSProperties = {
+  display: "block",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+/** 이름 줄에 붙던 기관/유형 문구 — 이제 기관 줄이 쓴다(문구는 그대로). */
+function institutionOf(account: AssetAccountRow): string {
+  return account.institutionName || (account.accountType === "deposit" ? "예적금" : "현금성");
 }
 
 /**
@@ -358,6 +377,7 @@ function BankLinkSectionImpl(
           <Space direction="vertical" size={8} style={{ width: "100%" }}>
             {accounts.map((account) => {
               const link = linkByAccount.get(account.id);
+              const institution = institutionOf(account);
               return (
                 <div
                   key={account.id}
@@ -373,11 +393,24 @@ function BankLinkSectionImpl(
                 >
                   <div style={{ minWidth: 0 }}>
                     {/*
-                     * 기존 자산 표와 같은 이름이 정확히 겹치지 않도록 항상 기관 또는 유형을
-                     * 같은 문자열에 붙인다 — 화면 낭독기에서도 어느 계좌인지 분명해진다.
+                     * §128 이슈 #36 P3 — AS-09: `이름 · 기관` 을 한 줄에 두면 이름이 길수록
+                     * 그 줄이 2~3줄로 감겨 섹션이 부풀었다(실측: 320px 에서 480px 이름이
+                     * 2줄 38px, 그보다 길면 3줄). 이름 1줄 + 기관 1줄로 나누고 각각
+                     * 말줄임해 이 영역을 이름 길이와 무관하게 2줄(22 + 16 = 38px)로 고정한다.
+                     *
+                     * 기관은 연결 정보 줄과 같은 12px 보조로 내려 이름(14 strong)과 위계를
+                     * 나눈다. 기관을 이름에서 분리해도 "어느 계좌인지"는 유지된다(기존과 같은
+                     * 기관 또는 유형 문구). 잘린 전체 문구는 `title` 로 마우스에서 읽는다.
                      */}
-                    <Typography.Text strong>
-                      {`${account.name} · ${account.institutionName || (account.accountType === "deposit" ? "예적금" : "현금성")}`}
+                    <Typography.Text strong title={account.name} style={ONE_LINE}>
+                      {account.name}
+                    </Typography.Text>
+                    <Typography.Text
+                      type="secondary"
+                      title={institution}
+                      style={{ ...ONE_LINE, fontSize: 12, lineHeight: "16px" }}
+                    >
+                      {institution}
                     </Typography.Text>
                     <div>
                       <Typography.Text type="secondary" style={{ fontSize: 12 }}>

@@ -121,7 +121,12 @@ describe("BankLinkSection (§61)", () => {
     await screen.findByText("생활비 은행 연결");
 
     fireEvent.mouseDown(screen.getByRole("combobox", { name: "은행" }));
-    fireEvent.click(await screen.findByTitle("우리은행"));
+    /* §128 AS-09: 기관 줄도 `title` 을 갖는다 — 계좌의 기관이 "우리은행" 이면
+     * Select 옵션과 title 이 겹친다. 옵션(클래스)으로 골라 흔들리지 않게 한다. */
+    const bankOption = (await screen.findAllByTitle("우리은행")).find((el) =>
+      el.className.includes("ant-select-item-option"),
+    );
+    fireEvent.click(bankOption!);
     fireEvent.change(screen.getByLabelText("계좌번호"), {
       target: { value: "1002-345-678901" },
     });
