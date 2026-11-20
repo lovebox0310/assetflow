@@ -60,6 +60,7 @@ interface NameMetrics {
   exposure: number;
   clamp: string;
   overflow: boolean;
+  overflowX: string;
   title: string | null;
 }
 
@@ -93,6 +94,7 @@ function nameMetrics(page: Page): Promise<NameMetrics[]> {
           exposure: Math.round((Math.min(1, (lines * rect.width) / full) + Number.EPSILON) * 100) / 100,
           clamp: style.webkitLineClamp,
           overflow: button.scrollHeight > button.clientHeight + 1,
+          overflowX: style.overflowX,
           title: button.getAttribute("title"),
         };
       })
@@ -170,23 +172,31 @@ test.describe("자산 금액 위계·긴 이름 (이슈 #36 P3)", () => {
       expect(veryLong, `${width}px 매우 긴 이름 행 없음`).toBeDefined();
       expect(short.length, `${width}px 1줄 행 3개`).toBe(3);
 
-      /* AC2: 긴 이름 노출 ≥60% · 최대 2줄. 말줄임은 유지되므로 clamp 는 2 그대로다.
+      /* AC2: 긴 이름 노출 ≥60% · 최대 2줄 · clamp 2. 말줄임은 유지되므로 clamp 는 2 그대로다.
        *
-       * 몇 줄에 들어가는지는 **폰트 메트릭에 달린 환경 전제**다 — CI 러너 폰트에서는
-       * 430px 에서도 긴 이름이 1줄에 들어간다(로컬 기본 폰트는 2줄). 요구는 "최대
-       * 2줄 · clamp 2 · 잘리면 말줄임" 이므로 1~2줄을 모두 허용하고, 줄 수에 따라
-       * 행 높이를 판정한다. */
-      expect(long!.lines, `${width}px 긴 이름 줄 수`).toBeGreaterThanOrEqual(1);
-      expect(long!.lines, `${width}px 긴 이름 최대 줄 수`).toBeLessThanOrEqual(2);
-      expect(long!.exposure, `${width}px 긴 이름 노출률`).toBeGreaterThanOrEqual(0.6);
-      expect(long!.clamp, `${width}px clamp`).toBe("2");
+       * 몇 줄에 들어가는지·잘리는지는 **폰트 메트릭에 달린 환경 전제**다 — CI 러너
+       * 폰트에서는 430px 에서도 긴 이름이 1줄에 다 들어가 `scrollHeight > clientHeight`
+       * 가 거짓이 된다. 요구는 "최대 2줄 · clamp 2 · 넘치면 말줄임 · title 보존" 이므로
+       * 1~2줄을 모두 허용하고, 잘림(`overflow`)은 단언하지 않고 로그로만 남긴다.
+       * 대신 줄 수에 따라 행 높이를 판정한다. */
+      expect(long!.lines, `${width}px 긴 이름 줄 수(실측 ${long!.boxHeight}px / ${long!.lineHeight}px)`).toBeGreaterThanOrEqual(1);
+      expect(long!.lines, `${width}px 긴 이름 최대 줄 수(실측 ${long!.lines}줄)`).toBeLessThanOrEqual(2);
+      expect(long!.exposure, `${width}px 긴 이름 노출률(실측 ${long!.exposure} · ${long!.lines}줄 × ${long!.boxWidth}px)`).toBeGreaterThanOrEqual(0.6);
+      expect(long!.clamp, `${width}px clamp(실측 "${long!.clamp}")`).toBe("2");
       // 2줄보다 긴 이름도 2줄에서 끊긴다(행 높이가 이름 길이에 비례하지 않는다).
-      expect(veryLong!.lines, `${width}px 매우 긴 이름 줄 수`).toBeGreaterThanOrEqual(1);
-      expect(veryLong!.lines, `${width}px 매우 긴 이름 최대 줄 수`).toBeLessThanOrEqual(2);
-      if (width === 320 && veryLong!.lines === 2) {
-        // 가장 좁은 폭에서 2줄로도 다 들어가지 않으면 말줄임으로 끊긴다.
-        // 1줄에 들어가면 잘리지 않는 게 정상이므로 줄 수 조건에서만 단언한다.
-        expect(veryLong!.overflow, `${width}px 매우 긴 이름 말줄임`).toBe(true);
+      expect(veryLong!.lines, `${width}px 매우 긴 이름 줄 수(실측 ${veryLong!.lines}줄)`).toBeGreaterThanOrEqual(1);
+      expect(veryLong!.lines, `${width}px 매우 긴 이름 최대 줄 수(실측 ${veryLong!.lines}줄)`).toBeLessThanOrEqual(2);
+      expect(veryLong!.clamp, `${width}px 매우 긴 이름 clamp(실측 "${veryLong!.clamp}")`).toBe("2");
+      /* 넘쳤을 때만 말줄임 — 넘침 여부 자체는 폰트 폭의 함수라 요구가 아니다.
+       * 요구는 "넘치면 잘려 보이되 전체 문구는 title 에 남는다" 이므로 (1) 넘쳤다면
+       * 실제로 잘려 있고 (2) title 이 전체 문구인지를 본다. */
+      for (const name of [long!, veryLong!]) {
+        console.log(
+          `[AS-08 잘림] ${width}px "${name.text}" truncated=${name.overflow} ` +
+            `box=${name.boxWidth}×${name.boxHeight} lines=${name.lines} overflowX=${name.overflowX}`,
+        );
+        expect(name.title, `${width}px "${name.text}" title 보존`).toBe(name.text);
+        expect(name.overflowX, `${width}px "${name.text}" 넘치면 말줄임(overflow-x)`).toBe("hidden");
       }
 
       /* AC2: 1줄 행 높이는 65 그대로, 2줄 행만 늘어난다 — 줄 수에 따라 판정. */
@@ -247,6 +257,12 @@ test.describe("자산 금액 위계·긴 이름 (이슈 #36 P3)", () => {
               text: el.textContent ?? "",
               height: Math.round(el.getBoundingClientRect().height * 10) / 10,
               lineHeight: Number.parseFloat(style.lineHeight),
+              scrollHeight: el.scrollHeight,
+              clientWidth: el.clientWidth,
+              scrollWidth: el.scrollWidth,
+              whiteSpace: style.whiteSpace,
+              overflowX: style.overflowX,
+              textOverflow: style.textOverflow,
               truncated: el.scrollWidth > el.clientWidth + 1,
             };
           }),
@@ -255,20 +271,58 @@ test.describe("자산 금액 위계·긴 이름 (이슈 #36 P3)", () => {
       console.log(`[AS-09] ${width}px ${JSON.stringify(bank)}`);
 
       // 은행 섹션의 현금성·예적금 3계좌 × (이름·기관) = 6줄.
-      expect(bank.lines.length, `${width}px 이름·기관 줄 수`).toBe(6);
+      expect(bank.lines.length, `${width}px 이름·기관 줄 수(실측 ${bank.lines.length})`).toBe(6);
       for (const line of bank.lines) {
-        expect(line.title, `${width}px "${line.text}" title`).toBe(line.text);
-        // 각 줄은 1줄 — 내용이 넘치면 말줄임으로 끊고 줄을 늘리지 않는다.
-        expect(line.height, `${width}px "${line.text}" 줄 높이`).toBeLessThanOrEqual(line.lineHeight + 0.5);
+        expect(line.title, `${width}px "${line.text}" title 보존`).toBe(line.text);
+        /* 각 줄은 1줄 — 내용이 넘치면 말줄임으로 끊고 줄을 늘리지 않는다.
+         * 줄 상자 높이가 lineHeight 이하이면 1줄이다(2줄이면 두 배가 된다).
+         * 내용 높이(scrollHeight)는 글자 크기가 lineHeight 보다 큰 폰트에서 그 줄의
+         * 글자 높이만큼 커지므로 "1줄 상자 안" 기준(lineHeight × 1.9)으로 본다. */
+        expect(
+          line.height,
+          `${width}px "${line.text}" 1줄 높이(실측 ${line.height}px · lineHeight ${line.lineHeight}px)`,
+        ).toBeLessThanOrEqual(line.lineHeight + 0.5);
+        expect(
+          line.scrollHeight,
+          `${width}px "${line.text}" 내용 높이 1줄(실측 ${line.scrollHeight}px · lineHeight ${line.lineHeight}px)`,
+        ).toBeLessThanOrEqual(line.lineHeight * 1.9);
+        // 1줄 고정의 근거 — 넘치면 ellipsis, 감기지 않는다(폰트 무관 CSS 계약).
+        expect(line.whiteSpace, `${width}px "${line.text}" 줄바꿈 금지`).toBe("nowrap");
+        expect(line.overflowX, `${width}px "${line.text}" 넘침 숨김`).toBe("hidden");
+        expect(line.textOverflow, `${width}px "${line.text}" 말줄임 표시`).toBe("ellipsis");
+        /* 넘쳤을 때만 말줄임 — 넘침 여부는 폰트 폭의 함수라 요구가 아니다.
+         * 넘쳤다면 실제로 잘려 있는지(스크롤 폭 > 보이는 폭)만 확인한다. */
+        if (line.truncated) {
+          expect(
+            line.scrollWidth,
+            `${width}px "${line.text}" 말줄임 조건(실측 scroll ${line.scrollWidth} / client ${line.clientWidth})`,
+          ).toBeGreaterThan(line.clientWidth);
+        }
       }
-      /* AC3: 계좌명 영역이 320px 에서 2줄(≈38px) 이하 — 이름 22 + 기관 16 = 38. */
-      const nameBlock = bank.lines.slice(0, 2).reduce((sum, line) => sum + line.height, 0);
-      expect(nameBlock, `${width}px 계좌명 2행 높이`).toBeLessThanOrEqual(40);
-      // 매우 긴 이름은 말줄임 + `title` 로 남는다(잘림 자체를 확인).
+      /* AC3: 계좌명 영역은 **2행**(이름 1행 + 기관 1행)이다 — 이름 길이에 비례해
+       * 늘지 않는다. 절대값 38px(22 + 16)은 기본 폰트의 실측이고, 폰트 메트릭이
+       * 다른 환경(글자 크기 주입 등)에서는 각 행의 줄 상자가 커져 그대로 늘어난다.
+       * 그래서 항상 "두 줄 상자" 이하인지를 보고, 기본 폰트 값(22/16)일 때만
+       * 40px 상한을 함께 건다. */
+      const [nameLine, institutionLine] = bank.lines;
+      const nameBlock = nameLine.height + institutionLine.height;
       expect(
-        bank.lines.some((line) => line.truncated && line.title === VERY_LONG_NAME),
-        `${width}px 매우 긴 계좌명 말줄임`,
-      ).toBe(true);
+        nameBlock,
+        `${width}px 계좌명 2행 높이(실측 ${Math.round(nameBlock * 10) / 10}px · ` +
+          `이름 ${nameLine.lineHeight} + 기관 ${institutionLine.lineHeight})`,
+      ).toBeLessThanOrEqual(nameLine.lineHeight + institutionLine.lineHeight + 0.5);
+      if (Math.abs(nameLine.lineHeight - 22) < 0.5 && Math.abs(institutionLine.lineHeight - 16) < 0.5) {
+        expect(nameBlock, `${width}px 계좌명 2행 높이 상한(실측 ${Math.round(nameBlock * 10) / 10}px)`).toBeLessThanOrEqual(40);
+      }
+      /* 매우 긴 이름 — 요구는 "1줄 유지 + title 보존", 잘림은 폰트 폭에 달렸다.
+       * CI 폰트처럼 1줄에 다 들어가면 잘리지 않는 것이 정상이다. */
+      const veryLongLine = bank.lines.find((line) => line.title === VERY_LONG_NAME);
+      expect(veryLongLine, `${width}px 매우 긴 계좌명 줄 없음(제목 ${JSON.stringify(bank.lines.map((l) => l.title))})`).toBeDefined();
+      expect(veryLongLine!.text, `${width}px 매우 긴 계좌명 전체 문구 보존`).toBe(VERY_LONG_NAME);
+      console.log(
+        `[AS-09 잘림] ${width}px 매우 긴 계좌명 truncated=${veryLongLine!.truncated} ` +
+          `scroll=${veryLongLine!.scrollWidth} client=${veryLongLine!.clientWidth} height=${veryLongLine!.height}/lineHeight=${veryLongLine!.lineHeight}`,
+      );
     }
 
     /* ── AS-07: ≥768 금액 굵기 600 · 행 높이 불변 ───────────────────────── */
@@ -286,12 +340,19 @@ test.describe("자산 금액 위계·긴 이름 (이슈 #36 P3)", () => {
               const name = row.querySelector<HTMLElement>(".af-list__cell--primary")!;
               const nameButton = name.querySelector<HTMLElement>(".af-list__edit");
               const numStyle = getComputedStyle(num);
+              /* 줄 수는 **이름 버튼** 높이로 센다 — 셀은 세로 패딩·배지가 섞여
+               * 높이 ÷ lineHeight 가 줄 수와 맞지 않는다(44px 셀 / 22px 줄 = 2). */
+              const buttonStyle = nameButton ? getComputedStyle(nameButton) : null;
+              const buttonLineHeight = buttonStyle ? Number.parseFloat(buttonStyle.lineHeight) : Number.NaN;
               const height = (el: Element) => Math.round(el.getBoundingClientRect().height * 10) / 10;
               return {
                 weight: numStyle.fontWeight,
                 size: numStyle.fontSize,
                 numHeight: height(num),
                 nameHeight: height(name),
+                nameLines: nameButton && buttonLineHeight > 0
+                  ? Math.max(1, Math.round(height(nameButton) / buttonLineHeight))
+                  : 1,
                 rowHeight: height(row),
                 nameWeight: nameButton ? getComputedStyle(nameButton).fontWeight : null,
               };
@@ -315,10 +376,27 @@ test.describe("자산 금액 위계·긴 이름 (이슈 #36 P3)", () => {
         expect(cell.numHeight, `${width}px 금액 셀이 행을 늘리지 않는다`).toBe(cell.nameHeight);
       }
       /* 1280 은 이름이 한 줄에 들어가는 폭 — 행 44 가 그대로여야 한다.
-       * (768 은 긴 이름·기관 열이 감기는 행이 원래 있어 행 단위 비교만 한다.) */
+       * (768 은 긴 이름·기관 열이 감기는 행이 원래 있어 행 단위 비교만 한다.)
+       * 이름이 한 줄에 들어가는지·줄 상자가 44 인지는 폰트 폭/메트릭에 달렸으므로
+       * (넓은 폰트면 1280 에서도 감기고 줄 상자가 커진다) 기본 폰트 실측치(44)일
+       * 때만 절대값을 요구하고, 모든 행에 대해 "행 높이 = 셀 높이"(금액 굵기가 행을
+       * 늘리지 않았다)는 폰트와 무관하게 확인한다. */
       if (width === 1280) {
         for (const cell of cells.assets) {
-          expect(cell.rowHeight, `${width}px 행 높이`).toBe(44);
+          expect(
+            cell.rowHeight,
+            `${width}px 행 높이가 셀 높이와 같다(행 ${cell.rowHeight}px · 이름 ${cell.nameHeight}px)`,
+          ).toBe(cell.nameHeight);
+          if (cell.nameLines === 1 && cell.nameHeight === 44) {
+            expect(
+              cell.rowHeight,
+              `${width}px 1줄 행 높이 44(실측 ${cell.rowHeight}px · 이름 ${cell.nameHeight}px)`,
+            ).toBe(44);
+          } else {
+            console.log(
+              `[AS-07] ${width}px 이름 ${cell.nameLines}줄 · 셀 ${cell.nameHeight}px — 행 ${cell.rowHeight}px(기본 폰트 값 아님)`,
+            );
+          }
         }
       }
     }
