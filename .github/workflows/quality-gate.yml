@@ -128,6 +128,16 @@ jobs:
         run: corepack enable
       - name: 의존성 설치 (lock 고정)
         run: pnpm install --frozen-lockfile
+      # 로컬(개발 머신)에는 Noto Sans CJK 가 있고 CI 러너에는 없다. 그 차이로
+      # 텍스트 폭·줄바꿈이 달라져 "요구가 아닌 환경 전제" 단언이 실패했다
+      # (§130: 430px 에서 2줄/1줄, 390px 에서 잘림/안 잘림). 폰트를 맞춰
+      # 메트릭 차이 자체를 없앤다. 스냅샷 비교는 여전히 하지 않는다(§76).
+      - name: 한글 폰트 설치 (텍스트 메트릭을 로컬과 맞춘다)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+          fc-cache -f >/dev/null
+          fc-list :lang=ko | head -3
       - name: Playwright 브라우저 설치
         run: pnpm exec playwright install chromium
       # 스냅샷 베이스라인은 한국어 폰트(Noto Sans CJK)가 설치된 개발 머신에서
