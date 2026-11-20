@@ -170,24 +170,36 @@ test.describe("자산 금액 위계·긴 이름 (이슈 #36 P3)", () => {
       expect(veryLong, `${width}px 매우 긴 이름 행 없음`).toBeDefined();
       expect(short.length, `${width}px 1줄 행 3개`).toBe(3);
 
-      /* AC2: 긴 이름 노출 ≥60% (2줄). 말줄임은 유지되므로 clamp 는 2 그대로다. */
-      expect(long!.lines, `${width}px 긴 이름 줄 수`).toBe(2);
+      /* AC2: 긴 이름 노출 ≥60% · 최대 2줄. 말줄임은 유지되므로 clamp 는 2 그대로다.
+       *
+       * 몇 줄에 들어가는지는 **폰트 메트릭에 달린 환경 전제**다 — CI 러너 폰트에서는
+       * 430px 에서도 긴 이름이 1줄에 들어간다(로컬 기본 폰트는 2줄). 요구는 "최대
+       * 2줄 · clamp 2 · 잘리면 말줄임" 이므로 1~2줄을 모두 허용하고, 줄 수에 따라
+       * 행 높이를 판정한다. */
+      expect(long!.lines, `${width}px 긴 이름 줄 수`).toBeGreaterThanOrEqual(1);
+      expect(long!.lines, `${width}px 긴 이름 최대 줄 수`).toBeLessThanOrEqual(2);
       expect(long!.exposure, `${width}px 긴 이름 노출률`).toBeGreaterThanOrEqual(0.6);
       expect(long!.clamp, `${width}px clamp`).toBe("2");
       // 2줄보다 긴 이름도 2줄에서 끊긴다(행 높이가 이름 길이에 비례하지 않는다).
-      expect(veryLong!.lines, `${width}px 매우 긴 이름 줄 수`).toBe(2);
-      if (width === 320) {
-        // 가장 좁은 폭에서는 2줄에도 다 들어가지 않는다 — 말줄임 유지 확인.
-        expect(veryLong!.overflow, `${width}px 매우 긴 이름이 잘린다`).toBe(true);
+      expect(veryLong!.lines, `${width}px 매우 긴 이름 줄 수`).toBeGreaterThanOrEqual(1);
+      expect(veryLong!.lines, `${width}px 매우 긴 이름 최대 줄 수`).toBeLessThanOrEqual(2);
+      if (width === 320 && veryLong!.lines === 2) {
+        // 가장 좁은 폭에서 2줄로도 다 들어가지 않으면 말줄임으로 끊긴다.
+        // 1줄에 들어가면 잘리지 않는 게 정상이므로 줄 수 조건에서만 단언한다.
+        expect(veryLong!.overflow, `${width}px 매우 긴 이름 말줄임`).toBe(true);
       }
 
-      /* AC2: 1줄 행 높이는 65 그대로, 2줄 행만 늘어난다. */
+      /* AC2: 1줄 행 높이는 65 그대로, 2줄 행만 늘어난다 — 줄 수에 따라 판정. */
       for (const row of short) {
         expect(row.rowHeight, `${width}px 1줄 행 높이(${row.text})`).toBe(ONE_LINE_ROW);
       }
       for (const row of [long!, veryLong!]) {
-        expect(row.rowHeight, `${width}px 2줄 행 높이(${row.text})`).toBeGreaterThan(ONE_LINE_ROW);
-        expect(row.rowHeight, `${width}px 2줄 행 높이(${row.text})`).toBeLessThanOrEqual(TWO_LINE_ROW_MAX);
+        if (row.lines === 1) {
+          expect(row.rowHeight, `${width}px 1줄 행 높이(${row.text})`).toBe(ONE_LINE_ROW);
+        } else {
+          expect(row.rowHeight, `${width}px 2줄 행 높이(${row.text})`).toBeGreaterThan(ONE_LINE_ROW);
+          expect(row.rowHeight, `${width}px 2줄 행 높이(${row.text})`).toBeLessThanOrEqual(TWO_LINE_ROW_MAX);
+        }
       }
 
       /* AC2: 탭 히트 — 2줄이 되어도 `::after` 가 행 전체를 덮는다. */
