@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Button, Card, Checkbox, Input, Progress, Select, Space, Tag, Typography } from "antd";
+import type { InputRef } from "antd";
 import { AppLayout } from "../layout/AppLayout";
 import { StandardNav } from "../layout/StandardNav";
 import { SubNav } from "../components/SubNav";
@@ -37,6 +38,40 @@ function monthsAgo(month: string, back: number): string {
   const m = Number(month.slice(5, 7));
   const date = new Date(year, m - 1 - back, 1);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
+ * 이슈 #46 — 미분류 검색의 두 버튼 아이콘.
+ *
+ * 종전 `Input.Search`(allowClear)는 두 조작의 접근 이름이 antd 내부 아이콘
+ * (`close-circle`/`search`)이었고, clear 의 `::after` 히트가 인접 검색 버튼 rect 와
+ * 가로로 5px 겹쳤다(§124 는 그 결과를 가로 38.5 로 기록 — 이 빌드 재실측은 44).
+ * 버튼을 직접 그리면서 이름을 한국어로 주고, 히트 44 는 CSS
+ * (`.af-unclassified-search`)가 각 버튼 박스로 만든다.
+ * `@ant-design/icons` 는 새 의존성이라 들이지 않는다 — DashboardPage 톱니와
+ * 같은 인라인 SVG 방식이다.
+ */
+function ClearGlyph() {
+  return (
+    <svg width="12" height="12" viewBox="64 64 896 896" fill="currentColor" aria-hidden="true" focusable="false">
+      <path d="M512 64c247.4 0 448 200.6 448 448S759.4 960 512 960 64 759.4 64 512 264.6 64 512 64zm127.98 274.82h-.04l-.08.06L512 466.75 384.14 338.88c-.04-.05-.06-.06-.08-.06a.12.12 0 00-.07 0c-.03 0-.05.01-.09.05l-45.02 45.02a.2.2 0 00-.05.09.12.12 0 000 .07v.02a.27.27 0 00.06.06L466.75 512 338.88 639.86c-.05.04-.06.06-.06.08a.12.12 0 000 .07c0 .03.01.05.05.09l45.02 45.02a.2.2 0 00.09.05.12.12 0 00.07 0c.02 0 .04-.01.08-.05L512 557.25l127.86 127.87c.04.04.06.05.08.05a.12.12 0 00.07 0c.03 0 .05-.01.09-.05l45.02-45.02a.2.2 0 00.05-.09.12.12 0 000-.07v-.02a.27.27 0 00-.05-.06L557.25 512l127.87-127.86c.04-.04.05-.06.05-.08a.12.12 0 000-.07c0-.03-.01-.05-.05-.09l-45.02-45.02a.2.2 0 00-.09-.05.12.12 0 00-.07 0z" />
+    </svg>
+  );
+}
+
+/**
+ * 미분류 검색 옆 버튼의 아이콘 — **되돌리기(초기화)**. 필터는 입력 즉시 걸리므로
+ * (§55.8) 이 버튼은 검색이 아니라 "더 보기로 늘어난 표시 수를 처음으로 되돌리기"다.
+ * 돋보기를 쓰면 동작을 오해하게 되므로 반시계 화살표(rotate-ccw)로 둔다.
+ */
+function ResetGlyph() {
+  return (
+    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <polyline points="1 4 1 10 7 10" />
+      <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+    </svg>
+  );
 }
 
 interface CardExpensesPageProps {
@@ -95,6 +130,21 @@ export function CardExpensesPage({
   /** 가져온 카드내역: 분류 편집 행(rowKey). */
   const [editingCardRowKey, setEditingCardRowKey] = useState<string | null>(null);
 
+  /** 이슈 #46: clear 후 포커스를 입력으로 되돌린다(종전 antd clear 와 같은 동작). */
+  const unclassifiedSearchRef = useRef<InputRef>(null);
+  /** 이슈 #46 후속: 이 버튼은 **검색이 아니다**. 필터는 입력 즉시(§55.8 — onChange) 걸리므로
+   * "더 보기"로 늘어난 표시 수를 첫 묶음(10)으로 되돌리는 동작만 한다 — 이름도 그에 맞춘다.
+   * Enter 는 아무 동작도 하지 않는다(이미 즉시 적용됨). */
+  const resetUnclassifiedDisplay = useCallback(() => {
+    setUnclassifiedLimit(10);
+  }, []);
+  /** 이슈 #46: 값 비우기 + 포커스 유지(clear 버튼이 사라지므로 입력으로 되돌린다). */
+  const clearUnclassifiedSearch = useCallback(() => {
+    setUnclassifiedSearch("");
+    setUnclassifiedLimit(10);
+    unclassifiedSearchRef.current?.focus();
+  }, []);
+
   const loadCard = useCallback(() => {
     clearInflight();
     setCardStatus("loading");
@@ -113,15 +163,27 @@ export function CardExpensesPage({
   // §72 명세서가 있으면 승인일 기준 합계와 함께 명세서 금액을 보여 준다.
   // 선택한 달에 명세서가 없을 때를 대비해 최근 3개월치를 함께 읽는다.
   const [statements, setStatements] = useState<CardStatement[]>([]);
+  /**
+   * 이슈 #51: 명세서 조회 결과(로딩/실패)를 구분한다 — 실패를 "명세서 없음"으로 읽으면
+   * 없는 근거로 "추정" 배지를 띄우게 된다. 실패면 배지를 그리지 않는다.
+   */
+  const [statementStatus, setStatementStatus] = useState<SurfaceStatus>("loading");
   useEffect(() => {
     let cancelled = false;
     const from = monthsAgo(month, 2);
+    setStatementStatus("loading");
     listCardStatements(from, month)
       .then((rows) => {
-        if (!cancelled) setStatements(rows);
+        if (!cancelled) {
+          setStatements(rows);
+          setStatementStatus("ready");
+        }
       })
       .catch(() => {
-        if (!cancelled) setStatements([]);
+        if (!cancelled) {
+          setStatements([]);
+          setStatementStatus("error");
+        }
       });
     return () => {
       cancelled = true;
@@ -336,6 +398,19 @@ export function CardExpensesPage({
     () => statements.filter((s) => s.usageMonth === month),
     [statements, month],
   );
+  /**
+   * 이슈 #51 — 이 달 카드 금액의 근거.
+   * 서버(MonthlyExpenseTotals)와 같은 규칙을 쓴다: usage_month 가 이 달이고 kind='billing' 인
+   * 명세서가 하나라도 있으면 명세서 기준, 없으면 승인일 기준(추정). 계산의 단일 출처는 서버이고,
+   * 이 화면은 "무엇을 근거로 보는지"만 같은 규칙으로 표시한다. 조회 전·실패(null)에는 배지를
+   * 그리지 않는다 — 없는 근거로 "추정"이라고 단정하지 않는다.
+   */
+  const cardSource: "statement" | "approval" | null =
+    statementStatus !== "ready"
+      ? null
+      : monthStatements.some((s) => s.kind === "billing")
+        ? "statement"
+        : "approval";
   const latestStatementByCompany = useMemo(() => {
     const map = new Map<string, CardStatement>();
     for (const s of statements) {
@@ -608,14 +683,38 @@ export function CardExpensesPage({
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>금액 큰 순</Typography.Text>
                 </Space>
               </div>
-              <Input.Search
-                allowClear
-                placeholder="가맹점 이름으로 찾기"
-                aria-label="미분류 가맹점 검색"
-                value={unclassifiedSearch}
-                onChange={(e) => { setUnclassifiedSearch(e.target.value); setUnclassifiedLimit(10); }}
-                style={{ maxWidth: 320 }}
-              />
+              <div className="af-unclassified-search">
+                <Input
+                  ref={unclassifiedSearchRef}
+                  placeholder="가맹점 이름으로 찾기"
+                  aria-label="미분류 가맹점 검색"
+                  value={unclassifiedSearch}
+                  onChange={(e) => { setUnclassifiedSearch(e.target.value); setUnclassifiedLimit(10); }}
+                  suffix={
+                    /* 슬롯 span 을 항상 렌더한다 — suffix 가 null 이면 antd 가 affix 래퍼를
+                     * 통째로 다시 만들어 입력 DOM 이 교체되고 clear 직후 포커스가 body 로
+                     * 떨어진다(실측). 슬롯을 유지하면 입력 노드가 그대로라 포커스가 남는다. */
+                    <span className="af-search-clear-slot">
+                      {unclassifiedSearch ? (
+                        <button
+                          type="button"
+                          className="af-search-clear"
+                          aria-label="검색어 지우기"
+                          onClick={clearUnclassifiedSearch}
+                        >
+                          <ClearGlyph />
+                        </button>
+                      ) : null}
+                    </span>
+                  }
+                />
+                <Button
+                  className="af-search-reset"
+                  aria-label="표시 초기화"
+                  icon={<ResetGlyph />}
+                  onClick={resetUnclassifiedDisplay}
+                />
+              </div>
               <AfListTable
                 labelledBy="h-unclassified"
                 rows={visibleUnclassifiedGroups.slice(0, unclassifiedLimit)}
@@ -730,6 +829,19 @@ export function CardExpensesPage({
                   <span style={{ minWidth: 0, overflow: "hidden", wordBreak: "keep-all" }}>
                     지출 합계 (자산 이동 제외){" "}
                     <span style={{ whiteSpace: "nowrap" }}>· {cardSpendingCount}건</span>
+                    {/*
+                     * 이슈 #51: 명세서가 없는 달은 승인일 합계로 계산한 값이다 — 숨기지 않고
+                     * "추정"으로 표시한다. 명세서가 있으면 배지 없이 기존 표기를 유지하고,
+                     * 카드사별 사용금액 표의 "명세서 금액" 열이 청구액을 보여 준다.
+                     */}
+                    {cardSource === "approval" ? (
+                      <span
+                        className="af-badge af-badge--estimate"
+                        title="카드 명세서가 없어 승인일 기준으로 계산했습니다"
+                      >
+                        추정
+                      </span>
+                    ) : null}
                   </span>
                   <span style={{ whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{formatKrwExact(cardSpendingTotal)}</span>
                 </div>

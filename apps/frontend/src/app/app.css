@@ -897,6 +897,14 @@ button {
   color: var(--af-muted-foreground);
 }
 
+/* 이슈 #51 — 명세서가 없어 승인일 기준으로 계산한 카드 금액에 붙는 "추정" 배지.
+ * 경고는 아니고 근거 안내라 signal(앰버) 톤을 쓴다 — 색은 토큰만 참조한다(§28.2). */
+.af-badge--estimate {
+  margin-left: 4px;
+  background: var(--af-badge-signal-bg);
+  color: var(--af-badge-signal-fg);
+}
+
 /* §88 E-02 — 금액과 보조 문구를 한 기준선에 둔다. 데스크톱은 보조 문구를
  * 금액 **왼쪽**에 두어(order:-1) 금액 텍스트의 우측 끝이 모든 행에서 같아진다.
  * DOM 순서는 금액 먼저 → 스크린리더 읽기 순서는 그대로다. */
@@ -1061,12 +1069,11 @@ button {
     align-items: center;
   }
 
-  /* C-05/C-08 아이콘 히트 44 — 시각 크기는 그대로 두고 ::after 로만 넓힌다.
-   * antd v6 아이콘 실측: 비밀번호 토글 14px → inset 15×2 = 44,
-   * clear 12px → inset 16×2 = 44. (`.af-settings` 의 같은 보정을 이 화면에도
-   * 적용하는 것 — 전역으로 올리지 않는다.) */
-  .af-expenses .ant-input-password-icon,
-  .af-expenses .ant-input-clear-icon {
+  /* C-05 아이콘 히트 44 — 시각 크기는 그대로 두고 ::after 로만 넓힌다.
+   * antd v6 아이콘 실측: 비밀번호 토글 14px → inset 15×2 = 44.
+   * (`.af-settings` 의 같은 보정을 이 화면에도 적용하는 것 — 전역으로 올리지
+   * 않는다. clear 는 이슈 #46 에서 자체 44 버튼(`.af-search-clear`)으로 분리했다.) */
+  .af-expenses .ant-input-password-icon {
     position: relative;
   }
 
@@ -1076,14 +1083,78 @@ button {
     inset: -15px;
   }
 
-  .af-expenses .ant-input-clear-icon::after {
-    content: "";
-    position: absolute;
-    inset: -16px;
-  }
-
   /* C-06 오류 알림의 재시도(ant-btn-sm) — 55×28 → 높이 44. */
   .af-expenses .ant-alert .ant-btn-sm {
+    min-height: var(--af-control-h-lg);
+  }
+}
+
+/* ── 이슈 #46: 카드내역 미분류 검색 — clear·초기화 버튼을 각자 44 박스로 분리 ──
+ * 종전 `Input.Search`(allowClear + 내장 버튼)의 두 한계를 함께 고친다.
+ * 1) 접근 이름이 antd 내부 아이콘(`close-circle`/`search`)이었다(C-08/C-09).
+ * 2) clear 의 `::after` 히트가 바로 옆 버튼 rect 와 가로로 5px 겹쳤다
+ *    (§124 는 그 결과를 가로 38.5 로 기록, 이 빌드 elementFromPoint 재실측은 44).
+ *    z-index 로 덮는 방법은 옆 버튼의 탭을 뺏으므로 쓰지 않는다. 대신 두 버튼을
+ *    **분리된 실제 박스**로 두고 사이를 8px 띄운다 — clear 박스는 입력 상자의
+ *    안쪽(패딩 11 + 테두리 1)에서 끝나므로 실제 간격은 20px 이다.
+ * 화면 스코프는 `.af-unclassified-search` 하나다 — 이 화면에만 있는 검색 상자다. */
+.af-unclassified-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 320px;
+}
+
+.af-unclassified-search .ant-input-affix-wrapper {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* clear 는 지우기, 오른쪽 버튼은 **표시 수 초기화**(검색이 아니다 — 필터는 입력 즉시).
+ * 초기화 버튼은 데스크톱에서도 §78 md(36) 폭을 유지한다(히트 확장은 아래 미디어에서). */
+.af-unclassified-search .af-search-reset {
+  min-width: var(--af-control-h, 36px);
+}
+
+.af-unclassified-search .af-search-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--af-muted-foreground);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.af-unclassified-search .af-search-clear:hover {
+  color: var(--af-foreground);
+}
+
+.af-unclassified-search .af-search-clear:focus-visible {
+  outline: 2px solid var(--af-ring);
+  outline-offset: 2px;
+}
+
+/* 터치 폭(≤991.98)에서만 히트 44 — 데스크톱은 §78 md(36) 그대로다.
+ * 입력 상자 높이를 44 로 **고정**하는 이유: 44 박스를 suffix 에 넣으면
+ * affix 래퍼가 44 + 상하 패딩(6+6) + 테두리(2) = 58 로 부푼다. 높이를 고정하면
+ * 30px 콘텐츠에 44 박스가 세로로 7px 씩 넘칠 뿐 래퍼는 44 를 유지한다. */
+@media (max-width: 991.98px) {
+  .af-unclassified-search .ant-input-affix-wrapper {
+    height: var(--af-control-h-lg);
+  }
+
+  .af-unclassified-search .af-search-clear {
+    flex: 0 0 var(--af-control-h-lg);
+    width: var(--af-control-h-lg);
+    height: var(--af-control-h-lg);
+  }
+
+  .af-unclassified-search .af-search-reset {
+    min-width: var(--af-control-h-lg);
     min-height: var(--af-control-h-lg);
   }
 }
@@ -1479,8 +1550,10 @@ button {
 }
 
 /* ── S-02/S-12 설정 화면: 비밀번호 표시 토글 히트 44 ─────────────
- * antd 의 표시 토글 아이콘은 16px 이라 손끝 히트가 작다. ::after 로 사방 14px
- * 확장해 16 + 28 = 44px 을 만든다(시각 크기는 그대로).
+ * antd 의 표시 토글 아이콘 박스가 작아 손끝 히트가 좁다. ::after 로 사방을
+ * 넓혀 **하한 44** 를 만든다(시각 크기는 그대로).
+ * 아이콘 박스 실측: 이 빌드 16px → 16 + 15×2 = 46, 14px 인 구성(이슈 #46 보고값
+ * — 종전 -14 로 42)에서도 14 + 30 = 44. 어느 쪽이든 44 이상이다.
  * 화면 스코프는 AppLayout className(§88 화면 한정 클래스)으로만 한정한다 —
  * 다른 화면의 Input.Password 히트를 함께 키우지 않는다. */
 .af-settings .ant-input-password-icon {
@@ -1489,7 +1562,7 @@ button {
 .af-settings .ant-input-password-icon::after {
   content: "";
   position: absolute;
-  inset: -14px;
+  inset: -15px;
 }
 /* 키보드 포커스 링 — 기존 토큰(--af-ring, UI 3:1)만 쓴다. */
 .af-settings .ant-input-password-icon:focus-visible {

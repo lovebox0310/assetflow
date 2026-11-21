@@ -523,6 +523,39 @@ function measureHit(page: Page, selector: string) {
   }, selector);
 }
 
+/**
+ * 이슈 #46 — 가로·세로를 함께 재는 히트 박스. rect 중심에서 사방으로 0.5px 씩
+ * 밀어 elementFromPoint 가 그 요소(또는 자손)인 최대 거리를 더한다. `::after` 로
+ * 넓힌 히트와 실제 44 박스 모두 같은 방식으로 잰다(최대 48px 까지 확인).
+ */
+function measureHitBox(page: Page, selector: string) {
+  return page.evaluate((sel) => {
+    const el = document.querySelector<HTMLElement>(sel);
+    if (!el) return null;
+    el.scrollIntoView({ block: "center" });
+    const r = el.getBoundingClientRect();
+    const owned = (node: Element | null) => !!node && (node === el || el.contains(node));
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    const along = (dx: number, dy: number) => {
+      let max = 0;
+      for (let d = 0.5; d <= 24; d += 0.5) {
+        if (owned(document.elementFromPoint(cx + dx * d, cy + dy * d))) max = d;
+        else if (max > 0) break;
+      }
+      return max;
+    };
+    return {
+      box: { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height },
+      // 중심에서 잰 양쪽 거리의 합 = 히트 박스 크기(rect 폭을 더하면 두 번 센다).
+      hit: {
+        width: Math.round((along(-1, 0) + along(1, 0)) * 10) / 10,
+        height: Math.round((along(0, -1) + along(0, 1)) * 10) / 10,
+      },
+    };
+  }, selector);
+}
+
 test.describe("카드내역 터치 타깃 44", () => {
   test.beforeEach(async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "chromium-desktop", "뷰포트를 직접 지정한다 — desktop 프로젝트 전용");
@@ -554,10 +587,20 @@ test.describe("카드내역 터치 타깃 44", () => {
       expect(password!.visual, `${at} 비밀번호 토글 시각 크기 유지`).toBeLessThan(TOUCH_MIN);
       expect(password!.hit, `${at} 비밀번호 토글 히트 높이`).toBeGreaterThanOrEqual(TOUCH_MIN);
 
-      const clear = await measureHit(page, ".af-expenses .ant-input-clear-icon");
+      // #46: clear 는 antd 아이콘(`::after` 확장)이 아니라 **자체 44×44 버튼**이
+      // 됐다(옆 버튼에 히트를 뺏기지 않게). 시각 아이콘(12px)은 그대로이므로
+      // 히트는 버튼에서, "시각 크기 유지"는 안쪽 svg 로 확인한다.
+      const clear = await measureHit(page, ".af-expenses .af-search-clear");
       expect(clear, `${at} 검색 clear`).not.toBeNull();
-      expect(clear!.visual, `${at} 검색 clear 시각 크기 유지`).toBeLessThan(TOUCH_MIN);
       expect(clear!.hit, `${at} 검색 clear 히트 높이`).toBeGreaterThanOrEqual(TOUCH_MIN);
+      const clearIcon = await page.evaluate(() => {
+        const svg = document.querySelector(".af-expenses .af-search-clear svg");
+        if (!svg) return null;
+        const r = svg.getBoundingClientRect();
+        return Math.round(Math.max(r.width, r.height) * 10) / 10;
+      });
+      expect(clearIcon, `${at} 검색 clear 아이콘 시각 크기 유지`).not.toBeNull();
+      expect(clearIcon!, `${at} 검색 clear 아이콘 시각 크기 유지`).toBeLessThan(TOUCH_MIN);
 
       expect(box.overflow, `${at} 문서 넘침`).toBe(0);
     }
@@ -575,6 +618,54 @@ test.describe("카드내역 터치 타깃 44", () => {
       const box = await measureBoxes(page);
       expect(box.alertRetry!, `${width}px 오류 알림 재시도 높이`).toBeGreaterThanOrEqual(TOUCH_MIN);
       expect(box.overflow, `${width}px 오류 상태 문서 넘침`).toBe(0);
+    }
+  });
+
+  /**
+   * 이슈 #46 — 잔여 3건. (실측은 이 빌드 기준 — 설정 토글 아이콘 박스는 16px 이라
+   * 종전 값 -14 에서도 44 였고, 지금은 -15 로 46 이다. 14px 아이콘 구성이면 44.)
+   * (a) 설정 비밀번호 표시 토글 히트 ≥44 (320/390).
+   * (b) 미분류 검색 clear 히트 가로·세로 ≥44, 옆 버튼과 교집합 0(사이 8px 이상).
+   * (c) 옆 버튼의 접근 이름이 동작과 일치한다 — "표시 초기화"(검색이 아니다).
+   */
+  test("설정 토글·검색 clear 히트 44, 초기화 버튼 이름 (#46)", async ({ page }) => {
+    for (const width of [320, 390]) {
+      // (a) 설정 — `.af-settings` 스코프의 Input.Password 토글.
+      await page.setViewportSize({ width, height: 1000 });
+      visit += 1;
+      await page.goto(`/?qa-settings=${width}&visit=${visit}#/settings`, { waitUntil: "networkidle" });
+      await expect(page.getByText("김가명").first()).toBeVisible();
+      const toggle = await measureHitBox(page, ".af-settings .ant-input-password-icon");
+      expect(toggle, `${width}px 설정 비밀번호 토글`).not.toBeNull();
+      expect(toggle!.hit.width, `${width}px 설정 토글 히트 가로`).toBeGreaterThanOrEqual(TOUCH_MIN);
+      expect(toggle!.hit.height, `${width}px 설정 토글 히트 세로`).toBeGreaterThanOrEqual(TOUCH_MIN);
+
+      // (b) 카드내역 미분류 검색 — 값이 있어야 clear 버튼이 렌더된다.
+      await openCardExpenses(page, width, 1000);
+      await page.locator('input[aria-label="미분류 가맹점 검색"]').fill("한");
+      const clear = await measureHitBox(page, ".af-expenses .af-search-clear");
+      const reset = await measureHitBox(page, ".af-expenses .af-search-reset");
+      expect(clear, `${width}px 검색 clear`).not.toBeNull();
+      expect(reset, `${width}px 표시 초기화 버튼`).not.toBeNull();
+      expect(clear!.hit.width, `${width}px clear 히트 가로`).toBeGreaterThanOrEqual(TOUCH_MIN);
+      expect(clear!.hit.height, `${width}px clear 히트 세로`).toBeGreaterThanOrEqual(TOUCH_MIN);
+      expect(reset!.box.width, `${width}px 초기화 버튼 폭`).toBeGreaterThanOrEqual(TOUCH_MIN);
+      expect(reset!.box.height, `${width}px 초기화 버튼 높이`).toBeGreaterThanOrEqual(TOUCH_MIN);
+      // 두 버튼은 각자 44 박스이고 사이가 8px 이상 벌어진다 → 히트 교집합 0.
+      // (초기화 버튼의 히트는 가로로 rect 그대로다 — `.ant-btn::after` 는 세로만 5px.)
+      expect(clear!.box.right, `${width}px clear 우변 → 초기화 버튼 좌변`).toBeLessThanOrEqual(
+        reset!.box.left - 8,
+      );
+      const overlapX = Math.min(clear!.box.right, reset!.box.right) - Math.max(clear!.box.left, reset!.box.left);
+      const overlapY = Math.min(clear!.box.bottom, reset!.box.bottom) - Math.max(clear!.box.top, reset!.box.top);
+      expect(Math.max(0, overlapX) * Math.max(0, overlapY), `${width}px clear·초기화 버튼 히트 교집합`).toBe(0);
+
+      // (c) 접근 이름은 동작과 일치한다 — "표시 초기화". "검색" 버튼은 없어야 한다
+      // (필터는 입력 즉시라 검색 버튼이라는 오해를 남기지 않는다).
+      await expect(page.getByRole("button", { name: "표시 초기화", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "검색어 지우기" })).toBeVisible();
+      expect(await page.getByRole("button", { name: "검색", exact: true }).count()).toBe(0);
+      expect(await page.getByRole("button", { name: "search", exact: true }).count()).toBe(0);
     }
   });
 });

@@ -38,6 +38,20 @@ function notFound(): Response {
   } as Response;
 }
 
+/**
+ * 미분류 작업함만 채운 응답 — #46 검색 버튼 테스트 공용.
+ * 카드 원장·명세서는 빈 배열로 둬 분류 편집 버튼이 작업함에만 생기게 한다.
+ */
+function unclassifiedStub(groups: unknown[]) {
+  return (path: string) => {
+    if (path.includes("/card-imports/row-keys")) return apiResponse([]);
+    if (path.includes("/assets/card-imports/unclassified")) return apiResponse(groups);
+    if (path.includes("/card-imports/statements")) return apiResponse([]);
+    if (path.includes("/assets/card-imports")) return apiResponse([]);
+    return apiResponse({}, false, 500);
+  };
+}
+
 function renderPage(overrides: Partial<Parameters<typeof CardExpensesPage>[0]> = {}) {
   return render(
     <CardExpensesPage
@@ -119,6 +133,45 @@ describe("CardExpensesPage (§58 카드내역 탭)", () => {
     expect(within(table).getByText("2026-10-02 ~ 2026-11-03")).toBeDefined();
     expect(within(table).getByText(/최근 수집 890,156원/)).toBeDefined();
     expect(within(table).getByText(/최근 2026-10-21/)).toBeDefined();
+  });
+
+  it("카드 명세서가 없으면 카드 금액 옆에 '추정' 배지를 붙인다 (이슈 #51)", async () => {
+    stubFetch((path) => {
+      if (path.includes("/card-imports/row-keys")) return apiResponse([]);
+      if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
+      if (path.includes("/card-imports/statements")) return apiResponse([]);
+      if (path.includes("/assets/card-imports")) return apiResponse([
+        { rowKey: "k1", approvedAt: "2026-10-01", merchantName: "우아한형제들", supplyExVat: 37_273, vat: 3_727, grossAmount: 41_000, expenseKind: "식비", subCategory: "배달" },
+      ]);
+      return apiResponse({}, false, 500);
+    });
+    renderPage();
+
+    const badge = await screen.findByText("추정");
+    expect(badge.getAttribute("title")).toBe("카드 명세서가 없어 승인일 기준으로 계산했습니다");
+  });
+
+  it("명세서 기준이면 '추정' 배지가 없다 (이슈 #51)", async () => {
+    stubFetch((path) => {
+      if (path.includes("/card-imports/row-keys")) return apiResponse([]);
+      if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
+      if (path.includes("/card-imports/statements")) return apiResponse([
+        {
+          id: 1, cardCompany: "현대카드", kind: "billing", usageMonth: "2026-10",
+          periodStart: "2026-10-02", periodEnd: "2026-11-03", totalAmount: 3_326_643,
+        },
+      ]);
+      if (path.includes("/assets/card-imports")) return apiResponse([
+        { rowKey: "k1", approvedAt: "2026-10-01", merchantName: "우아한형제들", supplyExVat: 37_273, vat: 3_727, grossAmount: 41_000, expenseKind: "식비", subCategory: "배달" },
+      ]);
+      return apiResponse({}, false, 500);
+    });
+    renderPage();
+
+    // 명세서가 화면에 반영된 뒤(카드사별 표의 명세서 금액) 배지가 없음을 확인한다.
+    const table = await screen.findByRole("table", { name: /카드사별 승인일 기준/ });
+    expect(within(table).getAllByText("3,326,643원").length).toBeGreaterThan(0);
+    expect(screen.queryByText("추정")).toBeNull();
   });
 
   it("카드 원장이 실패하면 카드 단위 오류와 재시도가 뜬다 (§26 재사용)", async () => {
@@ -220,6 +273,74 @@ describe("CardExpensesPage (§58 카드내역 탭)", () => {
     // 되돌리면 묶음이 작업함에 다시 나타난다
     expect(await screen.findByText("남은 가맹점 1개")).toBeDefined();
     expect(screen.queryByRole("button", { name: "되돌리기" })).toBeNull();
+  });
+
+  it("미분류 검색 버튼 이름은 동작과 일치한다 — clear·표시 초기화, '검색' 버튼은 없다 (#46)", async () => {
+    stubFetch(unclassifiedStub([
+      { merchantName: "네이버페이", count: 2, grossTotal: 30_000, firstApprovedAt: "2026-09-01", lastApprovedAt: "2026-10-01" },
+      { merchantName: "동네세탁", count: 1, grossTotal: 12_000, firstApprovedAt: "2026-09-02", lastApprovedAt: "2026-10-02" },
+    ]));
+    renderPage();
+
+    const input = (await screen.findByLabelText("미분류 가맹점 검색")) as HTMLInputElement;
+    // 값이 없으면 clear 버튼은 렌더되지 않는다(antd allowClear 와 같은 동작).
+    expect(screen.queryByRole("button", { name: "검색어 지우기" })).toBeNull();
+
+    // 오른쪽 버튼은 검색이 아니라 "표시 수 초기화"다 — 이 이름이 곧 계약이다.
+    const reset = screen.getByRole("button", { name: "표시 초기화" });
+    expect(reset.className).toContain("af-search-reset");
+    // "검색" 이라는 이름의 버튼은 없어야 한다(필터는 입력 즉시 — 오해 방지).
+    expect(screen.queryByRole("button", { name: "검색" })).toBeNull();
+
+    // 입력 즉시 거르는 동작은 그대로다(§55.8).
+    fireEvent.change(input, { target: { value: "네이버" } });
+    await waitFor(() => expect(screen.queryByText("동네세탁")).toBeNull());
+    expect(screen.getByText("남은 가맹점 2개")).toBeDefined();
+
+    // clear 버튼: 한국어 이름 + 자체 44 박스 훅(히트는 e2e 실측).
+    const clear = screen.getByRole("button", { name: "검색어 지우기" });
+    expect(clear.className).toContain("af-search-clear");
+
+    fireEvent.click(clear);
+    // 값 비우기 + 포커스 유지(버튼이 사라지므로 입력으로 되돌린다).
+    expect(input.value).toBe("");
+    expect(document.activeElement).toBe(input);
+    expect(screen.queryByRole("button", { name: "검색어 지우기" })).toBeNull();
+    expect(await screen.findByText("동네세탁")).toBeDefined();
+  });
+
+  /*
+   * #46 후속: Enter 는 아무 동작도 하지 않고, "표시 초기화"는 더 보기로 늘어난
+   * 표시 수만 첫 묶음(10)으로 되돌린다. 검색어를 바꾸지 않는다.
+   */
+  it("Enter 는 무동작이고 표시 초기화만 표시 수를 10 으로 되돌린다 (#46)", async () => {
+    const groups = Array.from({ length: 12 }, (_, i) => ({
+      merchantName: `가맹점${i + 1}`,
+      count: 1,
+      grossTotal: 10_000 * (12 - i),
+      firstApprovedAt: "2026-09-01",
+      lastApprovedAt: "2026-10-01",
+    }));
+    stubFetch(unclassifiedStub(groups));
+    renderPage();
+
+    const input = (await screen.findByLabelText("미분류 가맹점 검색")) as HTMLInputElement;
+    const rows = () => screen.queryAllByRole("button", { name: / 분류 편집$/ }).length;
+    await waitFor(() => expect(rows()).toBe(10));
+
+    fireEvent.click(screen.getByRole("button", { name: /더 보기/ }));
+    expect(rows()).toBe(12);
+
+    // Enter — 표시 수·검색어 어느 것도 바뀌지 않는다.
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+    fireEvent.keyUp(input, { key: "Enter", code: "Enter" });
+    expect(rows()).toBe(12);
+    expect(input.value).toBe("");
+
+    fireEvent.click(screen.getByRole("button", { name: "표시 초기화" }));
+    expect(rows()).toBe(10);
+    // 초기화는 검색어를 지우지 않는다(그건 clear 버튼의 일이다).
+    expect(input.value).toBe("");
   });
 
   it("미분류만 보기 필터는 분류된 행을 숨긴다 (§55.8)", async () => {
