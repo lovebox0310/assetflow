@@ -183,6 +183,67 @@ test.describe("카드내역 모바일", () => {
     expect(box.y + box.height, "알림 하단이 뷰포트 안").toBeLessThanOrEqual(innerHeight);
   });
 
+  /**
+   * #44 (감사 C-16): 부분 업로드라 자동 정리를 건너뛴 사실을 숨기지 않는다.
+   * 서버가 `reconcileSkipped` 를 내려주면 320 에서도 경고가 보이고 문서는 넘치지 않는다.
+   */
+  test("부분 업로드 경고 — 320 에서 보이고 넘침 0, live region 1개 (#44)", async ({ page }) => {
+    // 목은 나중에 등록한 라우트가 먼저 매칭된다(§80) — 반영(POST)만 축소 응답으로 덮는다.
+    await page.route("**/api/v1/assets/card-imports", (route) => {
+      if (route.request().method() !== "POST") return route.fallback();
+      return route.fulfill({
+        json: {
+          code: "OK",
+          message: "ok",
+          data: {
+            stored: 12,
+            received: 12,
+            totalRows: 40,
+            duplicatesInBatch: 0,
+            knownRowKeys: 12,
+            totals: { gross: 1_000_000, vat: 30_000, supplyExVat: 970_000 },
+            supplyInconsistentRows: 0,
+            reconciled: 0,
+            reconcileSkipped: 1,
+          },
+        },
+      });
+    });
+
+    await openCardExpenses(page, 320, 800);
+    await enterReview(page);
+    const submit = page.getByRole("button", { name: "서버에 반영" });
+    await submit.scrollIntoViewIfNeeded();
+    await submit.click();
+
+    const warning = page.getByText("1개 카드사 그룹은 기간이 겹쳐 자동 정리를 건너뛰었습니다");
+    await expect(warning).toBeVisible();
+    await expect(page.getByText(/부분 업로드로 판단했습니다/)).toBeVisible();
+    // 성공 알림은 그대로 — 정리 건수를 붙이지 않는다(정리한 행 0).
+    await expect(page.getByText(/반영 완료 — 새로 저장 12건/)).toBeVisible();
+    await expect(page.getByText(/· 정리 \d+건/)).toHaveCount(0);
+
+    // live region 은 한 시점에 1개 — 성공·경고를 따로 낭독하지 않는다.
+    expect(await page.locator('[role="status"][aria-live="polite"]').count()).toBe(1);
+
+    const { doc, viewport } = await overflow(page);
+    expect(doc, "320px 문서 넘침").toBe(0);
+    expect(viewport, "320px scrollWidth vs innerWidth").toBeLessThanOrEqual(0);
+
+    // 경고 상자가 카드(=뷰포트) 폭을 넘지 않는다.
+    const box = (await warning.boundingBox())!;
+    const innerWidth = await page.evaluate(() => window.innerWidth);
+    expect(box.x, "경고 좌변").toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width, "경고 우변").toBeLessThanOrEqual(innerWidth);
+
+    // 390 에서도 같은 자리에 보이고 넘치지 않는다.
+    await openCardExpenses(page, 390, 844);
+    await enterReview(page);
+    await page.getByRole("button", { name: "서버에 반영" }).click();
+    await expect(warning).toBeVisible();
+    expect((await overflow(page)).doc, "390px 문서 넘침").toBe(0);
+  });
+
   test("사업자 모달 320×568 — footer 가 뷰포트 안, 스크롤은 body", async ({ page }) => {
     // 모달 본문이 스크롤될 만큼 긴 응답을 준다(마지막 등록 라우트가 우선).
     await page.route("**/api/v1/assets/business-info/**", (route) =>

@@ -280,17 +280,43 @@ export function CardImportPanel() {
   }, []);
 
   if (phase === "done" && result) {
+    /*
+     * #44 / §113 (감사 C-16): 서버는 정리 결과를 함께 내려준다.
+     * - `reconciled` > 0: 업로드 기간에서 지운 이메일/미상 잔재 행 수 — 성공 알림 끝에 덧붙인다.
+     * - `reconcileSkipped` > 0: 부분 업로드라 자동 정리를 건너뛴 카드사 그룹 수 — 경고로 알린다.
+     * 필드가 없으면(구서버·이메일 수집 경로) 0 으로 본다 — 0 이면 아무 알림도 늘리지 않는다.
+     */
+    const reconciled = result.reconciled ?? 0;
+    const reconcileSkipped = result.reconcileSkipped ?? 0;
     return (
       <Card>
-        <Space direction="vertical" style={{ width: "100%" }} size={12}>
-          <Alert
-            type="success"
-            showIcon
-            title={`반영 완료 — 새로 저장 ${result.stored}건 / 받은 ${result.received}건 (총 원장 ${result.totalRows}행)`}
-            description={`합계(행에서 재계산): 이용금액 ${formatKrwExact(result.totals.gross)} · 부가세 ${formatKrwExact(result.totals.vat)}${result.supplyInconsistentRows > 0 ? ` · 공급가액+세액 불일치 경고 ${result.supplyInconsistentRows}행` : ""}`}
-          />
-          <Button onClick={resetToIdle}>다른 파일 가져오기</Button>
-        </Space>
+        {/*
+         * live region 은 이 하나뿐이다(#44 / D-03 과 같은 규칙). antd Alert 는 스스로
+         * role="alert" 를 붙이므로 그대로 두면 같은 결과를 두 번 낭독한다 —
+         * 안쪽 Alert 의 role 만 지우고(presentation) 바깥에서 한 번만 polite 로 읽는다.
+         * '다른 파일 가져오기' 버튼은 region 밖에 둔다(낭독 대상이 아니다).
+         */}
+        <div role="status" aria-live="polite">
+          <Space direction="vertical" style={{ width: "100%" }} size={12}>
+            <Alert
+              type="success"
+              showIcon
+              role="presentation"
+              title={`반영 완료 — 새로 저장 ${result.stored}건 / 받은 ${result.received}건 (총 원장 ${result.totalRows}행)${reconciled > 0 ? ` · 정리 ${reconciled}건` : ""}`}
+              description={`합계(행에서 재계산): 이용금액 ${formatKrwExact(result.totals.gross)} · 부가세 ${formatKrwExact(result.totals.vat)}${result.supplyInconsistentRows > 0 ? ` · 공급가액+세액 불일치 경고 ${result.supplyInconsistentRows}행` : ""}`}
+            />
+            {reconcileSkipped > 0 && (
+              <Alert
+                type="warning"
+                showIcon
+                role="presentation"
+                title={`${reconcileSkipped}개 카드사 그룹은 기간이 겹쳐 자동 정리를 건너뛰었습니다`}
+                description="부분 업로드로 판단했습니다 — 명세서 전체 기간을 올리면 자동 정리가 실행됩니다"
+              />
+            )}
+          </Space>
+        </div>
+        <Button style={{ marginTop: 12 }} onClick={resetToIdle}>다른 파일 가져오기</Button>
       </Card>
     );
   }

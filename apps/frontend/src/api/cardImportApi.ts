@@ -32,6 +32,16 @@ export interface CardImportResult {
   knownRowKeys: number;
   totals: { gross: number; vat: number; supplyExVat: number };
   supplyInconsistentRows: number;
+  /**
+   * §105·§113 CARD-MERGE-2: 이번 업로드 기간에서 정리한 이메일/미상 잔재 행 수.
+   * 구서버나 정리 대상이 없으면 없거나 0 이다.
+   */
+  reconciled?: number;
+  /**
+   * §113: 기간이 겹쳐 자동 정리를 건너뛴 **카드사 그룹 수**(부분 업로드 판정).
+   * 0 보다 크면 화면이 경고로 알린다 — 정리를 못 했다는 사실을 숨기지 않는다.
+   */
+  reconcileSkipped?: number;
 }
 
 /** 미리보기에서 이미 임포트된 행을 걸러 보여 주기 위한 키 목록. */

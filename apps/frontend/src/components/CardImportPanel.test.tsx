@@ -268,6 +268,89 @@ describe("CardImportPanel (§29.7 흐름 이관)", () => {
   });
 
   /**
+   * #44 (감사 C-16): 서버는 업로드 결과에 정리 결과를 함께 내려준다
+   * (`reconciled` = 지운 이메일/미상 잔재 행 수, `reconcileSkipped` = 부분 업로드라
+   * 정리를 건너뛴 카드사 그룹 수). 화면은 둘 다 사용자에게 보여야 한다 —
+   * 정리를 못 했다는 사실을 숨기면 사용자는 잔재가 남은 걸 모른다.
+   */
+  describe("부분 업로드(reconcile) 결과 알림 (#44)", () => {
+    /** 반영(POST) 응답만 바꾼다 — 업로드·분류 경로는 기존 대역 그대로. */
+    function mockResult(extra: Record<string, number>) {
+      fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        if (path.includes("/card-imports/row-keys")) return Promise.resolve(apiResponse([]));
+        if (path.includes("/card-imports/merchant-rules")) return Promise.resolve(apiResponse({}));
+        if (init?.method === "POST") {
+          return Promise.resolve(apiResponse({
+            stored: 75, received: 75, totalRows: 75, duplicatesInBatch: 0, knownRowKeys: 75,
+            totals: { gross: 47_533_063, vat: 1_487_321, supplyExVat: 46_045_742 },
+            supplyInconsistentRows: 0,
+            ...extra,
+          }));
+        }
+        return Promise.resolve(apiResponse({}, false, 500));
+      });
+      vi.stubGlobal("fetch", fetchMock);
+    }
+
+    /** 샘플 CSV 업로드 → 반영 클릭 → 완료 화면. */
+    async function submitHyundai() {
+      render(<CardImportPanel />);
+      chooseFile(HYUNDAI_TEXT);
+      await screen.findByRole("columnheader", { name: "가맹점" });
+      fireEvent.click(screen.getByRole("button", { name: "서버에 반영" }));
+      await screen.findByText(/반영 완료 — 새로 저장 75건/);
+    }
+
+    it("정리를 건너뛴 카드사 그룹 수를 경고로 알린다 (AC1)", async () => {
+      mockResult({ reconciled: 0, reconcileSkipped: 2 });
+      await submitHyundai();
+
+      // 승인된 문구 그대로 — 숫자·어미를 바꾸지 않는다.
+      expect(
+        await screen.findByText("2개 카드사 그룹은 기간이 겹쳐 자동 정리를 건너뛰었습니다"),
+      ).toBeDefined();
+      expect(
+        screen.getByText("부분 업로드로 판단했습니다 — 명세서 전체 기간을 올리면 자동 정리가 실행됩니다"),
+      ).toBeDefined();
+      // 경고이지 성공이 아니다 — 정리 건수는 붙지 않는다.
+      expect(screen.queryByText(/· 정리 /)).toBeNull();
+    });
+
+    it("정리한 잔재가 있으면 성공 알림 끝에 '· 정리 N건' 을 붙인다 (AC2)", async () => {
+      mockResult({ reconciled: 5, reconcileSkipped: 0 });
+      await submitHyundai();
+
+      expect(await screen.findByText(/· 정리 5건/)).toBeDefined();
+      // 문구는 기존 성공 알림 하나에 이어 붙는다 — 별도 알림을 만들지 않는다.
+      expect(screen.queryByText(/자동 정리를 건너뛰었습니다/)).toBeNull();
+    });
+
+    it("정리 결과가 0/없음이면 추가 알림이 없다 (AC3 회귀)", async () => {
+      // 필드를 아예 내려주지 않는 응답(구서버·이메일 수집 경로)도 같은 경로를 탄다.
+      await submitHyundai();
+
+      expect(screen.queryByText(/자동 정리를 건너뛰었습니다/)).toBeNull();
+      expect(screen.queryByText(/· 정리 /)).toBeNull();
+    });
+
+    it("경고가 있어도 live region 은 1개다 (AC4)", async () => {
+      mockResult({ reconciled: 3, reconcileSkipped: 1 });
+      await submitHyundai();
+      await screen.findByText("1개 카드사 그룹은 기간이 겹쳐 자동 정리를 건너뛰었습니다");
+
+      const live = [...document.querySelectorAll('[role="status"], [role="alert"], [aria-live]')];
+      expect(live.length).toBe(1);
+      expect(live[0]?.getAttribute("aria-live")).toBe("polite");
+      // Alert 자체는 role 을 갖지 않는다(바깥 region 이 한 번만 읽는다).
+      expect(document.querySelector('[role="alert"]')).toBeNull();
+      // 한 region 안에 성공·경고가 함께 있다 — 낭독도 한 번에 끝난다.
+      expect(live[0]?.textContent).toMatch(/반영 완료/);
+      expect(live[0]?.textContent).toMatch(/자동 정리를 건너뛰었습니다/);
+    });
+  });
+
+  /**
    * #34 C-03: 검토 표의 분류 Select 32/32 가 접근 이름이 없어 axe `label`(critical)
    * 위반이었다. 이름 문구는 지출 화면의 기존 패턴(`${가맹점} 세부 분류`)을 따른다.
    */
