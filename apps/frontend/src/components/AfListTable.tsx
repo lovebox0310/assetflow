@@ -17,6 +17,39 @@ import type { MenuProps } from "antd";
  */
 export type AfMobileSlot = "primary" | "value" | "meta";
 
+/**
+ * 편집 셀이 하단 고정 탭바에 가리지 않게 문서 스크롤을 보정한다(#45).
+ *
+ * Chrome 은 포커스 스크롤에 `scroll-margin` 을 적용하지 않는다(§122 C-02 실측).
+ * 그래서 초점을 받은 입력(작다)만 뷰포트에 맞춰지고, 편집 셀의 아래쪽은 탭바
+ * 뒤에 남는다(실측 320×568: 셀 462~572, 탭바 511~568 → 59px 가림).
+ *
+ * - 탭바 높이는 CSS 변수가 아니라 **실제 높이**를 읽는다. 탭바가 없는
+ *   데스크톱(768+)은 0 이고, 그때 셀이 이미 뷰포트 안이면 초과분 ≤ 0 이라
+ *   스크롤하지 않는다 — 마우스 클릭 진입이 튀지 않는 이유다(§122 AC-6).
+ * - 멱등이다. Chrome 이 포커스 이벤트 뒤에 자기 스크롤을 수행할 수 있어
+ *   (카드내역 C-02 와 같은 이유) rAF 두 프레임에 걸쳐 다시 맞춘다.
+ */
+function keepEditorCellVisible(group: HTMLElement | null) {
+  if (!group) return;
+  const fix = () => {
+    if (!group.isConnected) return;
+    // 셀 자체의 아래쪽이 기준이다 — `role="group"` 은 셀 안쪽 여백만큼 작다.
+    const cell = group.closest("td") ?? group;
+    const tabbar = document.querySelector<HTMLElement>(".af-tabbar");
+    const inset = tabbar?.getBoundingClientRect().height ?? 0;
+    const below = cell.getBoundingClientRect().bottom - (window.innerHeight - inset);
+    if (below > 0) window.scrollBy(0, below + 8);
+  };
+  fix();
+  if (typeof requestAnimationFrame === "function") {
+    requestAnimationFrame(() => {
+      fix();
+      requestAnimationFrame(fix);
+    });
+  }
+}
+
 export interface AfListColumn<T> {
   key: string;
   /** `<th scope="col">` 텍스트. 모바일에서는 `data-label` 로도 붙는다. */
@@ -140,7 +173,9 @@ export function AfListTable<T>({
    * - **종료**(값 → null): 직전 행의 탭 버튼으로 되돌린다. 복귀 렌더가 커밋된
    *   뒤(effect) 새로 붙은 버튼을 찾아 focus 한다 — 그래야 Esc 1회로 끝난다.
    *
-   * 스크롤은 브라우저 기본 동작에 맡긴다(편집 UI 가 뷰포트에 보여야 한다).
+   * 가로 스크롤은 브라우저 기본 동작에 맡긴다(입력이 뷰포트에 보여야 한다).
+   * 세로는 그것으로 부족하다 — 초점은 입력에만 가고 편집 셀 하단은 하단 탭바에
+   * 가리므로, 셀 기준으로 한 번 더 맞춘다(`keepEditorCellVisible`, #45).
    */
   useEffect(() => {
     const prev = prevEditingKey.current;
@@ -157,6 +192,7 @@ export function AfListTable<T>({
       'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
     );
     (firstFocusable ?? group).focus();
+    keepEditorCellVisible(group);
   }, [editingKey]);
 
   /**
