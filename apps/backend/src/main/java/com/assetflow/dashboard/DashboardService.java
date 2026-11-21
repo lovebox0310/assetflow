@@ -74,7 +74,8 @@ public class DashboardService {
             MonthlyExpenseTotals.Totals totals = expenseTotals.compute(MockDashboardSource.AS_OF);
             monthly = new MonthlySummary(snap.income(), snap.vatSetAside(), totals.expenses(),
                     totals.essential(), snap.essentialComplete(),
-                    snap.income() - snap.vatSetAside() - totals.expenses());
+                    snap.income() - snap.vatSetAside() - totals.expenses(),
+                    totals.cardSource(), totals.cardStatementTotal(), totals.statementCount());
         }
         return new DashboardSummary(MockDashboardSource.AS_OF, assets, liabilities, monthly);
     }

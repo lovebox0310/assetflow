@@ -20,9 +20,14 @@ public final class MockDashboardSource {
 /**
      * @param vatSetAside 부가세통장 적립 이체(§57.9) — 지출이 아님.
      * @param balance     그 달 수지 = income - vatSetAside - expenses.
+     * @param cardSource  이슈 #51 — 카드 금액 출처("statement"|"approval"). 모크 기준선은 카드
+     *                    원장을 읽지 않으므로 null 이다 — 화면은 null 을 "표시 없음"으로 본다.
+     * @param cardStatementTotal 그 달 billing 명세서 합계(모크는 0).
+     * @param statementCount     그 달 billing 명세서 건수(모크는 0).
      */
     public record MonthlySummary(long income, long vatSetAside, long expenses, long essentialExpenses,
-                                 boolean essentialComplete, long balance) {}
+                                 boolean essentialComplete, long balance,
+                                 String cardSource, long cardStatementTotal, int statementCount) {}
     /**
      * @param vatSetAside 부가세통장 적립 이체(§57.9) — 지출이 아님.
      * @param balance     그 달 수지 = income - vatSetAside - expenses.
@@ -35,7 +40,8 @@ public final class MockDashboardSource {
 
     public static MonthlySummary monthly() {
         // §36.2 기준선과 동일: 총수입 820.0만, 부가세 0, 지출 496.0만, 필수 2,317,180, 수지 324.0만
-        return new MonthlySummary(8_200_000L, 0L, 4_960_000L, 2_317_180L, true, 3_240_000L);
+        // 카드 금액 출처는 null — 모크는 카드 원장·명세서를 읽지 않는다(화면은 배지를 그리지 않는다).
+        return new MonthlySummary(8_200_000L, 0L, 4_960_000L, 2_317_180L, true, 3_240_000L, null, 0L, 0);
     }
 
     /** 최근 월 순(desc). 2026-10 은 기준선, 이전 월은 연동 데모용 가짜 값. */

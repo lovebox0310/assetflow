@@ -33,17 +33,19 @@ class DashboardApiTest {
     private InMemoryExpenseSnapshotLedger snapshotLedger;
     private InMemoryCardImportLedger cardLedger;
     private InMemoryExpenseItemLedger itemLedger;
+    private com.assetflow.assets.InMemoryCardStatementLedger statementLedger;
 
     @BeforeEach
     void setUp() {
         snapshotLedger = new InMemoryExpenseSnapshotLedger();
         cardLedger = new InMemoryCardImportLedger();
         itemLedger = new InMemoryExpenseItemLedger();
+        statementLedger = new com.assetflow.assets.InMemoryCardStatementLedger();
         InMemoryAssetLedger assets = new InMemoryAssetLedger();
         DashboardService service = new DashboardService(assets, snapshotLedger,
                 new com.assetflow.investments.PortfolioService(assets,
                         new com.assetflow.investments.InMemoryInvestmentLedger()),
-                new MonthlyExpenseTotals(cardLedger, itemLedger));
+                new MonthlyExpenseTotals(cardLedger, itemLedger, statementLedger));
         mvc = MockMvcBuilders.standaloneSetup(new DashboardController(service), new MeController(new InMemoryUserSettingsLedger(), new com.assetflow.settings.AuthEmailResolver() {
                     @Override public String currentEmail() { return "user@example.com"; }
                 }))
@@ -188,7 +190,30 @@ class DashboardApiTest {
                 // essential = 필수 항목 1,000,000 (카드 행은 필수 여부가 없다)
                 .andExpect(jsonPath("$.data.monthly.essentialExpenses").value(1_000_000))
                 .andExpect(jsonPath("$.data.monthly.income").value(9_000_000))
-                .andExpect(jsonPath("$.data.monthly.balance").value(7_696_700));
+                .andExpect(jsonPath("$.data.monthly.balance").value(7_696_700))
+                // 이슈 #51: 명세서가 없는 달은 승인일 폴백 — 화면이 "추정" 배지를 그린다.
+                .andExpect(jsonPath("$.data.monthly.cardSource").value("approval"))
+                .andExpect(jsonPath("$.data.monthly.cardStatementTotal").value(0))
+                .andExpect(jsonPath("$.data.monthly.statementCount").value(0));
+    }
+
+    @Test
+    void summaryUsesBillingStatementsForCardSpend() throws Exception {
+        String token = new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com");
+        snapshotLedger.upsert(new ExpenseSnapshotLedger.Snapshot("2026-10", 0, 0, 9_000_000L, 0L, 0L, 0, true));
+        // 승인일 합계(4,396,489)와 실제 청구(4,185,664)가 다르다 — 명세서가 이긴다.
+        cardLedger.addAll(java.util.List.of(card("x1", "2026-10-05", 4_396_489)));
+        statementLedger.upsert(new com.assetflow.assets.CardStatementLedger.StatementRow(
+                0, "현대카드", "billing", "2026-10", "2026-10-02", "2026-11-03", 3_326_643));
+        statementLedger.upsert(new com.assetflow.assets.CardStatementLedger.StatementRow(
+                0, "삼성카드", "billing", "2026-10", "2026-09-03", "2026-10-02", 859_021));
+
+        mvc.perform(get("/api/v1/dashboard/summary").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.monthly.expenses").value(4_185_664))
+                .andExpect(jsonPath("$.data.monthly.cardSource").value("statement"))
+                .andExpect(jsonPath("$.data.monthly.cardStatementTotal").value(4_185_664))
+                .andExpect(jsonPath("$.data.monthly.statementCount").value(2));
     }
 
     @Test

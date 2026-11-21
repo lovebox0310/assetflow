@@ -30,12 +30,14 @@ class ExpenseSnapshotApiTest {
     private final InMemoryCardImportLedger cardLedger = new InMemoryCardImportLedger();
     private final InMemoryExpenseItemLedger items = new InMemoryExpenseItemLedger();
     private final InMemoryAssetLedger assets = new InMemoryAssetLedger();
+    private final com.assetflow.assets.InMemoryCardStatementLedger statementLedger =
+            new com.assetflow.assets.InMemoryCardStatementLedger();
 
     @BeforeEach
     void setUp() {
         mvc = MockMvcBuilders.standaloneSetup(
                         new ExpenseSnapshotController(snapshots,
-                                new MonthlyExpenseTotals(cardLedger, items), assets,
+                                new MonthlyExpenseTotals(cardLedger, items, statementLedger), assets,
                                 new com.assetflow.investments.PortfolioService(assets,
                                         new com.assetflow.investments.InMemoryInvestmentLedger())))
                 .addInterceptors(new BearerTokenInterceptor(TOKENS))
