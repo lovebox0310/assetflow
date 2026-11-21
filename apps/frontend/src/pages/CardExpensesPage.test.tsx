@@ -149,6 +149,9 @@ describe("CardExpensesPage (§58 카드내역 탭)", () => {
 
     const badge = await screen.findByText("추정");
     expect(badge.getAttribute("title")).toBe("카드 명세서가 없어 승인일 기준으로 계산했습니다");
+    // A안: 명세서가 없으면 청구액·차이 행 자체가 없다.
+    expect(screen.queryByText(/카드 청구액/)).toBeNull();
+    expect(screen.queryByText(/기간 차이/)).toBeNull();
   });
 
   it("명세서 기준이면 '추정' 배지가 없다 (이슈 #51)", async () => {
@@ -169,9 +172,115 @@ describe("CardExpensesPage (§58 카드내역 탭)", () => {
     renderPage();
 
     // 명세서가 화면에 반영된 뒤(카드사별 표의 명세서 금액) 배지가 없음을 확인한다.
+    // 표는 카드 원장만으로 먼저 뜰 수 있다 — 명세서 금액은 조회가 끝난 뒤 채워지므로 기다린다.
     const table = await screen.findByRole("table", { name: /카드사별 승인일 기준/ });
-    expect(within(table).getAllByText("3,326,643원").length).toBeGreaterThan(0);
+    expect((await within(table).findAllByText("3,326,643원")).length).toBeGreaterThan(0);
     expect(screen.queryByText("추정")).toBeNull();
+  });
+
+  /*
+   * A안 — 명세서가 있는 달은 청구액을 지출 합계 아래에 함께 둔다(합계를 교체하지 않는다).
+   * 차이의 기준은 승인일 기준 **전체 행 합계**다(명세서 총액과 같은 구성).
+   */
+  it("명세서가 있으면 지출 합계 아래에 카드 청구액 행과 차이를 보여 준다 (A안)", async () => {
+    stubFetch((path) => {
+      if (path.includes("/card-imports/row-keys")) return apiResponse([]);
+      if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
+      if (path.includes("/card-imports/statements")) return apiResponse([
+        {
+          id: 1, cardCompany: "현대카드", kind: "billing", usageMonth: "2026-10",
+          periodStart: "2026-10-02", periodEnd: "2026-11-03", totalAmount: 130_000,
+        },
+      ]);
+      if (path.includes("/assets/card-imports")) return apiResponse([
+        {
+          rowKey: "k1", approvedAt: "2026-10-01", merchantName: "우아한형제들",
+          supplyExVat: 90_909, vat: 9_091, grossAmount: 100_000, expenseKind: "식비",
+        },
+      ]);
+      return apiResponse({}, false, 500);
+    });
+    renderPage();
+
+    // 합계 블록은 카드 원장이 준비되는 즉시 뜬다 — 청구액 행은 **명세서 조회가 끝나야**
+    // 나타나므로(지연 표시는 의도된 동작) 그 행을 먼저 기다린 뒤에 센다.
+    const summary = await screen.findByLabelText("이 달 카드 카테고리별 합계");
+    expect(await within(summary).findByText("카드 청구액 (명세서)")).toBeDefined();
+    await waitFor(() => {
+      expect(within(summary).getByText("130,000원")).toBeDefined();
+      // 승인일 합계 100,000원과 다르므로 차이 줄이 붙는다 — 명세서 130,000 − 승인일 100,000.
+      expect(within(summary).getByText("차이 (기간 차이)")).toBeDefined();
+      expect(within(summary).getByText("30,000원")).toBeDefined();
+    });
+    expect(screen.queryByText("추정")).toBeNull();
+  });
+
+  it("명세서 총액이 승인일 합계와 같으면 차이 줄을 생략한다 (A안)", async () => {
+    stubFetch((path) => {
+      if (path.includes("/card-imports/row-keys")) return apiResponse([]);
+      if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
+      if (path.includes("/card-imports/statements")) return apiResponse([
+        {
+          id: 1, cardCompany: "현대카드", kind: "billing", usageMonth: "2026-10",
+          periodStart: "2026-10-02", periodEnd: "2026-11-03", totalAmount: 100_000,
+        },
+      ]);
+      if (path.includes("/assets/card-imports")) return apiResponse([
+        {
+          rowKey: "k1", approvedAt: "2026-10-01", merchantName: "통신요금",
+          supplyExVat: 36_364, vat: 3_636, grossAmount: 40_000, expenseKind: "주거/통신", subCategory: "통신비",
+        },
+        {
+          rowKey: "k2", approvedAt: "2026-10-02", merchantName: "동네마트",
+          supplyExVat: 54_546, vat: 5_454, grossAmount: 60_000, expenseKind: "식비", subCategory: "장보기",
+        },
+      ]);
+      return apiResponse({}, false, 500);
+    });
+    renderPage();
+
+    const summary = await screen.findByLabelText("이 달 카드 카테고리별 합계");
+    expect(await within(summary).findByText("카드 청구액 (명세서)")).toBeDefined();
+    // 지출 합계와 청구액이 같은 금액으로 두 번 보인다 — 합계를 교체하지 않는다는 뜻이다.
+    await waitFor(() => expect(within(summary).getAllByText("100,000원").length).toBe(2));
+    // 청구액 행이 확정된 뒤에 본다 — "아직 안 렌더됨"과 "정말 없음"을 구분한다.
+    expect(within(summary).queryByText(/차이/)).toBeNull();
+  });
+
+  it("차이는 미분류·자산 이동까지 포함한 승인일 전체 합계 기준이다 (A안)", async () => {
+    stubFetch((path) => {
+      if (path.includes("/card-imports/row-keys")) return apiResponse([]);
+      if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
+      if (path.includes("/card-imports/statements")) return apiResponse([
+        {
+          id: 1, cardCompany: "현대카드", kind: "billing", usageMonth: "2026-10",
+          periodStart: "2026-10-02", periodEnd: "2026-11-03", totalAmount: 55_000,
+        },
+      ]);
+      if (path.includes("/assets/card-imports")) return apiResponse([
+        {
+          rowKey: "k1", approvedAt: "2026-10-01", merchantName: "통신요금",
+          supplyExVat: 22_727, vat: 2_273, grossAmount: 25_000, expenseKind: "주거/통신", subCategory: "통신비",
+        },
+        {
+          rowKey: "k2", approvedAt: "2026-10-01", merchantName: "우아한형제들",
+          supplyExVat: 27_273, vat: 2_727, grossAmount: 30_000, expenseKind: "식비", subCategory: "장보기",
+        },
+        {
+          rowKey: "k3", approvedAt: "2026-10-02", merchantName: "미분류상점",
+          supplyExVat: 40_909, vat: 4_091, grossAmount: 45_000, expenseKind: "",
+        },
+      ]);
+      return apiResponse({}, false, 500);
+    });
+    renderPage();
+
+    const summary = await screen.findByLabelText("이 달 카드 카테고리별 합계");
+    expect(await within(summary).findByText("카드 청구액 (명세서)")).toBeDefined();
+    // 지출 합계(55,000)와 청구액(55,000)은 같지만, 승인일 전체 합계(100,000)와는 다르다.
+    await waitFor(() => expect(within(summary).getAllByText("55,000원").length).toBe(2));
+    expect(within(summary).getByText("차이 (기간 차이)")).toBeDefined();
+    expect(within(summary).getByText("-45,000원")).toBeDefined();
   });
 
   it("카드 원장이 실패하면 카드 단위 오류와 재시도가 뜬다 (§26 재사용)", async () => {

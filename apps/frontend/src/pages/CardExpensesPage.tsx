@@ -411,6 +411,24 @@ export function CardExpensesPage({
       : monthStatements.some((s) => s.kind === "billing")
         ? "statement"
         : "approval";
+  /**
+   * A안: 이 달 billing 명세서의 **청구액 합계**. 승인일 합계와는 기간이 달라 금액이
+   * 다를 수 있으므로 합계를 교체하지 않고 두 숫자를 라벨로 구분해 함께 보여 준다.
+   * 저장하지 않고 명세서 목록에서 매번 재계산한다(§34.6 — 저장값은 행 편집과 어긋난다).
+   */
+  const statementBillingTotal = useMemo(
+    () => monthStatements.filter((s) => s.kind === "billing").reduce((acc, s) => acc + s.totalAmount, 0),
+    [monthStatements],
+  );
+  /**
+   * 차이의 기준은 **승인일 기준 전체 행 합계**다 — 명세서 총액도 미분류·자산 이동 행을
+   * 포함하므로, "지출 합계(자산 이동 제외)"와 비교하면 분류 제외분이 기간 차이로 섞인다.
+   */
+  const cardGrossTotal = useMemo(
+    () => (cardRows ?? []).reduce((acc, r) => acc + r.grossAmount, 0),
+    [cardRows],
+  );
+  const statementBillingDiff = statementBillingTotal - cardGrossTotal;
   const latestStatementByCompany = useMemo(() => {
     const map = new Map<string, CardStatement>();
     for (const s of statements) {
@@ -832,7 +850,8 @@ export function CardExpensesPage({
                     {/*
                      * 이슈 #51: 명세서가 없는 달은 승인일 합계로 계산한 값이다 — 숨기지 않고
                      * "추정"으로 표시한다. 명세서가 있으면 배지 없이 기존 표기를 유지하고,
-                     * 카드사별 사용금액 표의 "명세서 금액" 열이 청구액을 보여 준다.
+                     * 청구액은 바로 아래 "카드 청구액 (명세서)" 행과 카드사별 표의
+                     * "명세서 금액" 열이 보여 준다(A안 — 합계를 교체하지 않는다).
                      */}
                     {cardSource === "approval" ? (
                       <span
@@ -845,6 +864,46 @@ export function CardExpensesPage({
                   </span>
                   <span style={{ whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{formatKrwExact(cardSpendingTotal)}</span>
                 </div>
+                {/*
+                 * A안: 명세서가 있는 달은 청구액을 **지출 합계 바로 아래**에 함께 둔다.
+                 * 두 숫자의 의미(승인일 vs 명세서 이용기간)가 달라 합계를 교체하지 않는다.
+                 */}
+                {cardSource === "statement" ? (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+                      <Typography.Text
+                        type="secondary"
+                        style={{ fontSize: 12, minWidth: 0, overflow: "hidden", wordBreak: "keep-all" }}
+                        title="카드사 명세서 이용기간 총액입니다. 승인일 기준 합계와 기간이 달라 금액이 다를 수 있습니다."
+                      >
+                        카드 청구액 (명세서)
+                      </Typography.Text>
+                      <Typography.Text
+                        type="secondary"
+                        style={{ fontSize: 12, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}
+                      >
+                        {formatKrwExact(statementBillingTotal)}
+                      </Typography.Text>
+                    </div>
+                    {statementBillingDiff !== 0 ? (
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, paddingLeft: 12 }}>
+                        <Typography.Text
+                          type="secondary"
+                          style={{ fontSize: 12, minWidth: 0, overflow: "hidden", wordBreak: "keep-all" }}
+                          title="승인일 기준 합계(미분류·자산 이동 포함)와 명세서 총액의 차이입니다."
+                        >
+                          차이 (기간 차이)
+                        </Typography.Text>
+                        <Typography.Text
+                          type="secondary"
+                          style={{ fontSize: 12, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}
+                        >
+                          {formatKrwExact(statementBillingDiff)}
+                        </Typography.Text>
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
                 {cardFixedTotal > 0 ? (
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, paddingLeft: 12, color: "var(--af-muted-foreground)" }}>
                     <span style={{ minWidth: 0, overflow: "hidden" }}>└ 고정비</span>

@@ -244,6 +244,36 @@ test.describe("카드내역 모바일", () => {
     expect((await overflow(page)).doc, "390px 문서 넘침").toBe(0);
   });
 
+  /**
+   * A안: 명세서가 있는 달은 승인일 합계를 교체하지 않고 청구액을 함께 보여 준다.
+   * 320 에서 청구액·차이 줄이 보이고, 문서 넘침 0, 금액은 한 줄(nowrap)로 남는다.
+   */
+  test("명세서 청구액 행 — 320 에서 보이고 넘침 0, 금액 nowrap (A안)", async ({ page }) => {
+    await openCardExpenses(page, 320, 800);
+
+    const summary = page.getByRole("group", { name: "이 달 카드 카테고리별 합계" });
+    await expect(summary.getByText("카드 청구액 (명세서)")).toBeVisible();
+    // 목의 현대카드 billing 412,300원. 승인일 전체 합계(126,400원)와 달라 차이 줄이 붙는다
+    // (412,300 − 126,400 = 285,900).
+    const amount = summary.getByText("412,300원");
+    await expect(amount).toBeVisible();
+    await expect(summary.getByText("차이 (기간 차이)")).toBeVisible();
+    await expect(summary.getByText("285,900원")).toBeVisible();
+
+    const style = await amount.evaluate((el) => {
+      const s = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      return { whiteSpace: s.whiteSpace, height: Math.round(r.height) };
+    });
+    expect(style.whiteSpace, "금액 nowrap").toBe("nowrap");
+    // 12px 글자 한 줄(줄 높이 ≈ 20) — 줄바꿈으로 금액이 쪼개지지 않는다.
+    expect(style.height, "금액 한 줄").toBeLessThan(24);
+
+    const { doc, viewport } = await overflow(page);
+    expect(doc, "320px 문서 넘침").toBe(0);
+    expect(viewport, "320px scrollWidth vs innerWidth").toBeLessThanOrEqual(0);
+  });
+
   test("사업자 모달 320×568 — footer 가 뷰포트 안, 스크롤은 body", async ({ page }) => {
     // 모달 본문이 스크롤될 만큼 긴 응답을 준다(마지막 등록 라우트가 우선).
     await page.route("**/api/v1/assets/business-info/**", (route) =>
