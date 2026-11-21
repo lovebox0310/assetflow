@@ -216,6 +216,18 @@ export function KisPensionPreviewModal({ accountId, accountName, open, onClose }
 
       {data ? (
         <>
+          {/* §119 — 경로별로 갈리는 `MCI전송 오류` 는 유량 제한일 수 있다. 요약보다 먼저 알린다. */}
+          {data.transient ? (
+            <Alert
+              type="warning"
+              showIcon
+              title="일시적 오류일 수 있습니다"
+              description="동기화 요약을 먼저 확인하세요. 유량 제한이면 잠시 뒤 다시 시도하면 됩니다."
+              style={{ marginTop: 0, marginBottom: 12 }}
+              aria-live="polite"
+            />
+          ) : null}
+
           <Typography.Paragraph style={{ marginTop: 0 }} aria-label="연금 계좌 요약">
             상품코드 <b>{productCode}</b> · <b>{data.isMock ? "모의투자" : "실전"}</b>
           </Typography.Paragraph>

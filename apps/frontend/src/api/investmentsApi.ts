@@ -228,6 +228,8 @@ export interface KisPensionPreview {
   pension: KisPathPreview | null;
   usedPath: string | null;
   balancePreview: KisBalancePreview | null;
+  /** 서버가 유량 제한·일시 장애 문구(`MCI전송 오류` 등)를 감지했는가. */
+  transient?: boolean;
 }
 
 export function previewKisPension(accountId: number): Promise<KisPensionPreview> {

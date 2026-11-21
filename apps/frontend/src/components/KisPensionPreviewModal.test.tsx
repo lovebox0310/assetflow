@@ -218,6 +218,70 @@ describe("KisPensionPreviewModal", () => {
     expect(screen.getByLabelText("계좌자산현황 경로").textContent).toContain("CTRP6548R");
   });
 
+  it("transient 이면 '일시적 오류' 안내를 요약 위에 보여 준다 (§119)", async () => {
+    previewKisPensionMock.mockResolvedValue({
+      balance: { output1: [], output2: {} },
+      warning: null,
+      error: null,
+      acntPrdtCd: "22",
+      isMock: false,
+      stock: {
+        path: "/uapi/domestic-stock/v1/trading/inquire-balance",
+        trId: "TTTC8434R",
+        response: null,
+        error: "주식잔고조회를 읽지 못했습니다: MCI전송 오류",
+      },
+      account: {
+        path: "/uapi/domestic-stock/v1/trading/inquire-account-balance",
+        trId: "CTRP6548R",
+        response: { rt_cd: "0", output2: [{ dnca_tot_amt: "1,000,000" }] },
+        error: null,
+      },
+      pension: {
+        path: "/uapi/domestic-stock/v1/trading/pension/inquire-balance",
+        trId: "TTTC2208R",
+        response: { rt_cd: "0", output1: [], output2: {} },
+        error: null,
+      },
+      usedPath: "account",
+      balancePreview: {
+        path: "account",
+        cash: 1_000_000,
+        holdingCount: 0,
+        warning: null,
+        error: null,
+      },
+      transient: true,
+    });
+
+    renderModal();
+
+    expect(await screen.findByText("일시적 오류일 수 있습니다")).toBeDefined();
+    const alert = screen
+      .getByText("일시적 오류일 수 있습니다")
+      .closest(".ant-alert") as HTMLElement;
+    expect(alert.textContent).toContain("동기화 요약을 먼저 확인하세요");
+
+    // 진단 자체는 계속 보여 준다 — 경로 요약·원본을 막지 않는다.
+    expect(screen.getByLabelText("동기화 경로 요약").textContent).toContain("계좌자산현황");
+    expect(screen.getByLabelText("연금 진단 원본 JSON").textContent).toContain("MCI전송");
+  });
+
+  it("transient 가 없으면 일시적 오류 안내를 띄우지 않는다", async () => {
+    previewKisPensionMock.mockResolvedValue({
+      balance: balanceFixture,
+      warning: null,
+      error: null,
+      acntPrdtCd: "22",
+      isMock: false,
+    });
+
+    renderModal();
+
+    expect(await screen.findByLabelText("연금 계좌 요약")).toBeDefined();
+    expect(screen.queryByText("일시적 오류일 수 있습니다")).toBeNull();
+  });
+
   it("경로 하나가 실패하면 그 섹션에 사유를 보여 주고 나머지는 그대로 둔다", async () => {
     previewKisPensionMock.mockResolvedValue({
       balance: { output1: [], output2: {} },
