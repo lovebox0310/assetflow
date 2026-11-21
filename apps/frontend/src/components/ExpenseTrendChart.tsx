@@ -65,13 +65,9 @@ export function ExpenseTrendChart({
   return (
     <div style={{ width: "100%" }}>
       <figure style={{ margin: 0 }}>
-        <figcaption className="sr-only" style={{ marginBottom: 8 }}>
-          {`수입·지출 추이 — ${from}부터 ${to}까지 월별 실수입·부가세통장 스택 막대와 대분류 스택 지출 막대, 지출 총 ${formatKrwExact(grandTotal)}${
-            hasIncome
-              ? `, 확정 실수입 총 ${formatKrwExact(disposableIncomeTotal)}, 부가세통장 총 ${formatKrwExact(vatSetAsideTotal)}`
-              : ""
-          }`}
-        </figcaption>
+        {/* A-07 후속: 캡션 요소를 두지 않는다. figcaption 은 aria-hidden 이어도
+            HTML-AAM 이 figure 의 이름으로 쓰기 때문에 같은 요약이 두 번 노출된다
+            (실측 ariaSnapshot). 이름은 아래 차트 래퍼(role="img")가 단독으로 갖는다. */}
         <div
           role="img"
           aria-label={`수입·지출 추이 — ${from}부터 ${to}까지 월별 실수입·부가세통장 스택 막대와 대분류 스택 지출 막대, 지출 총 ${formatKrwExact(grandTotal)}${

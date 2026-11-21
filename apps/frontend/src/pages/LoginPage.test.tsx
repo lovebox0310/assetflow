@@ -138,4 +138,48 @@ describe("LoginPage", () => {
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
     expect(isAuthenticated()).toBe(true);
   });
+
+  // S-08 후속(#38-2): 전역 오류는 제출 버튼 **뒤**(카드 안)에 있고, 슬롯 높이를 예약해
+  // 카드 높이가 변하지 않는다. jsdom 에는 레이아웃이 없으므로 구조로 고정하고,
+  // 실제 y·높이 불변은 e2e(login-error-layout.spec.ts)에서 측정한다.
+  it("전역 오류 슬롯은 버튼 뒤에서 높이를 예약한다 (S-08)", async () => {
+    render(<LoginPage onSuccess={() => {}} />);
+    const form = screen.getByRole("button", { name: "로그인" }).closest("form") as HTMLFormElement;
+    const submitButton = screen.getByRole("button", { name: "로그인" });
+
+    // 오류가 버튼 위에 있으면 버튼이 밀린다 — 슬롯은 제출 버튼 바로 다음(폼의 마지막 자식).
+    const slot = form.lastElementChild as HTMLElement;
+    expect(slot).not.toBe(submitButton);
+    expect(slot.previousElementSibling).toBe(submitButton);
+    // 카드 밖으로 빼지 않는다(absolute 금지) — 흐름 안에서 높이만 예약한다.
+    expect(slot.style.position).toBe("");
+    // 41px = 오류 문구 2줄 × 줄 높이 20.4286px(실측)의 올림.
+    expect(slot.style.minHeight).toBe("41px");
+    // 폼 grid gap(16px) 중 8px 만 상쇄 → 버튼과 문구 사이 8px, 슬롯 총 점유 49px.
+    expect(slot.style.marginTop).toBe("-8px");
+    expect(slot.querySelector(".form-error")).toBeNull();
+
+    loginMock.mockRejectedValueOnce(new Error("Invalid credentials"));
+    fill("a@b.com", "password1");
+    submit();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.className).toBe("form-error");
+    // 오류가 떠도 같은 슬롯이 감싼다 — 카드 높이가 바뀌지 않는다.
+    expect(alert.parentElement).toBe(slot);
+    expect(slot.style.minHeight).toBe("41px");
+  });
+
+  it("로그인 실패 알림은 role=alert 로 남는다 (§21 유지)", async () => {
+    loginMock.mockRejectedValueOnce(new Error("Invalid credentials"));
+    render(<LoginPage onSuccess={() => {}} />);
+    fill("a@b.com", "password1");
+    submit();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.getAttribute("role")).toBe("alert");
+    expect(alert.textContent).toBe(
+      "이메일 또는 비밀번호를 확인해 주세요. 입력하신 정보가 맞지 않습니다.",
+    );
+  });
 });

@@ -106,7 +106,8 @@ button {
 
 .auth-page label {
   display: block;
-  margin-bottom: 4px; /* SPACE.s1 */
+  /* 라벨↔입력 간격은 .auth-field 의 grid gap(6px) 하나로 통일한다.
+     여기 margin 4px 를 더하면 10px 이 되어 같은 폼 안에서 6·10 이 섞였다. */
   font-size: 14px;
   font-weight: 600;
 }

@@ -188,9 +188,11 @@ export function CompositionDonut({
         width: 240,
       }}
     >
-      <figcaption className="sr-only" style={{ marginBottom: 8 }}>
-        {chartSummary}
-      </figcaption>
+      {/* A-07 후속: 요약 문구는 아래 role="img" 의 이름 하나만 쓴다.
+          `<figcaption>` 은 aria-hidden 으로도 낭독에서 빠지지 않는다 —
+          HTML-AAM 이 figure 의 이름을 figcaption 에서 가져와(aria-hidden 무시)
+          같은 요약이 figure + img 두 번 노출된다(실측: ariaSnapshot).
+          그래서 캡션 요소를 두지 않는다. 시각 변화 0(sr-only 텍스트). */}
       {/* figure 에 role="img" 는 ARIA-in-HTML 상 허용되지 않는다(axe aria-allowed-role).
           다른 두 차트처럼 차트 래퍼 div 에 role="img" + 요약 이름을 준다. */}
       <div role="img" aria-label={chartSummary} style={{ width: "100%", height: 240, margin: "0 auto" }}>

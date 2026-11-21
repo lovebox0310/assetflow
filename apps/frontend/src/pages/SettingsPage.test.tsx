@@ -116,4 +116,46 @@ describe("SettingsPage (스프린트 3 #37)", () => {
 
     expect(await screen.findByText("비밀번호가 일치하지 않습니다")).toBeDefined();
   });
+
+  // #38-3: 비밀번호 표시 토글(눈 아이콘)은 Tab 으로 도달하고, 상태를 이름과
+  // aria-pressed 로 노출해야 한다. antd Input.Password 내부 span 이 이미
+  // role=button / tabindex=0 / aria-pressed / aria-label(표시·숨기기) 를 준다 —
+  // 이 계약이 깨지면 여기서 잡는다. 히트 44 는 CSS(.af-settings :after)라 e2e 에서 잰다.
+  it("비밀번호 표시 토글은 탭 도달 + 상태(이름·aria-pressed)를 노출한다 (#38-3)", async () => {
+    stubFetch((path) => {
+      if (path.includes("/settings")) return apiResponse({ id: 1, email: "user@example.com", displayName: "AssetFlow", targetMonths: 6 });
+      return apiResponse({}, false, 500);
+    });
+    render(<SettingsPage onOpenDashboard={() => {}} onOpenAssets={() => {}} onOpenExpenses={() => {}} />);
+
+    await screen.findByText("AssetFlow");
+    const toggles = Array.from(
+      document.querySelectorAll<HTMLElement>(".af-settings .ant-input-password-icon"),
+    );
+    expect(toggles.length).toBe(3);
+    for (const toggle of toggles) {
+      expect(toggle.getAttribute("role")).toBe("button");
+      expect(toggle.getAttribute("tabindex")).toBe("0");
+      expect(toggle.getAttribute("aria-pressed")).toBe("false");
+      expect((toggle.getAttribute("aria-label") ?? "").trim().length).toBeGreaterThan(0);
+      toggle.focus();
+      expect(document.activeElement).toBe(toggle);
+    }
+
+    const first = toggles[0] as HTMLElement;
+    const labelBefore = first.getAttribute("aria-label");
+    const input = document.getElementById("currentPassword") as HTMLInputElement;
+    expect(input.type).toBe("password");
+
+    // Enter / Space 둘 다 동작하고, 이름과 aria-pressed 가 함께 바뀐다.
+    fireEvent.keyDown(first, { key: "Enter" });
+    await waitFor(() => expect(first.getAttribute("aria-pressed")).toBe("true"));
+    expect(first.getAttribute("aria-label")).not.toBe(labelBefore);
+    expect((document.getElementById("currentPassword") as HTMLInputElement).type).toBe("text");
+
+    fireEvent.keyDown(first, { key: " " });
+    await waitFor(() => expect(first.getAttribute("aria-pressed")).toBe("false"));
+    expect(first.getAttribute("aria-label")).toBe(labelBefore);
+    expect((document.getElementById("currentPassword") as HTMLInputElement).type).toBe("password");
+  });
 });

@@ -132,12 +132,22 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
               ) : null}
             </div>
           </div>
-          {error ? (
-            <p className="form-error" role="alert">
-              {error}
-            </p>
-          ) : null}
           <button type="submit">로그인</button>
+          {/* S-08 후속(#38-2/#38-3): 전역 오류는 제출 버튼 **아래** 카드 안에 둔다.
+              - 앞 요소(입력·버튼) 뒤에 오므로 오류가 떠도 버튼/입력 y 가 변하지 않는다.
+                (원래 문제는 오류가 버튼 위에 있어 버튼이 28px 밀리던 것)
+              - 슬롯 높이 41px 을 항상 예약해 카드 높이도 두 상태에서 같다.
+                41 = 오류 문구 2줄 × 줄 높이 20.4286px(실측 320~1280)의 올림.
+              - `marginTop:-8` 은 폼 grid gap(16px) 중 8px 만 상쇄한다 —
+                8px = 버튼과 오류 문구의 최소 숨 쉴 공간(가독성), 나머지 8px gap 은 상쇄.
+                슬롯 총 점유 = 8 + 41 = 49px (폼 gap 이 16px 이 아니게 바뀌면 이 값도 고친다). */}
+          <div style={{ minHeight: 41, marginTop: -8 }}>
+            {error ? (
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+            ) : null}
+          </div>
         </form>
       </Card>
     </main>

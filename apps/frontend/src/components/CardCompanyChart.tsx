@@ -68,9 +68,9 @@ export function CardCompanyChart({ groups, from, to }: CardCompanyChartProps) {
   return (
     <div style={{ width: "100%" }}>
       <figure style={{ margin: 0 }}>
-        <figcaption className="sr-only" style={{ marginBottom: 8 }}>
-          {`카드별 본인·가족 사용 내역 — 월별 합계 선, ${summary}`}
-        </figcaption>
+        {/* A-07 후속: 캡션 요소를 두지 않는다. figcaption 은 aria-hidden 이어도
+            HTML-AAM 이 figure 의 이름으로 쓰기 때문에 같은 요약이 두 번 노출된다
+            (실측 ariaSnapshot). 이름은 아래 차트 래퍼(role="img")가 단독으로 갖는다. */}
         <div
           role="img"
           aria-label={`카드별 본인·가족 사용 내역 — 월별 합계 선, ${summary}`}
