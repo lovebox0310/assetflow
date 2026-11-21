@@ -88,6 +88,22 @@ public class ApiExceptionHandler {
                         "code=" + code + "; " + e.getMessage()));
     }
 
+    /** 이슈 #55 토스증권 연동: 비활성·미설정은 503, 토스 서버/권한 오류는 502. 자격증명은 노출하지 않는다. */
+    @ExceptionHandler(com.assetflow.investments.toss.TossNotConfiguredException.class)
+    public ResponseEntity<ErrorResponse> tossNotConfigured(
+            com.assetflow.investments.toss.TossNotConfiguredException e) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ErrorResponse.of("TOSS_NOT_CONFIGURED", "Toss is not configured", e.getMessage()));
+    }
+
+    @ExceptionHandler(com.assetflow.investments.toss.TossApiException.class)
+    public ResponseEntity<ErrorResponse> tossApi(com.assetflow.investments.toss.TossApiException e) {
+        String code = e.code() == null || e.code().isBlank() ? "TOSS_API_ERROR" : e.code();
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(ErrorResponse.of("TOSS_API_ERROR", "Toss API request failed",
+                        "code=" + code + "; " + e.getMessage()));
+    }
+
     /** GET 으로 POST 전용 API 를 호출하는 경우(브라우저 주소창 접속 등) — 500 이 아니라 405 다. */
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<ErrorResponse> methodNotSupported(HttpRequestMethodNotSupportedException e) {

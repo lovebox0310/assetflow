@@ -47,6 +47,15 @@ app:
     base-url: ${KIS_BASE_URL:https://openapivts.koreainvestment.com:29443}
     # 한국투자증권 접근토큰 유효기간(초). 기본 24시간 — 재발급 직전 10분 여유를 둔다.
     token-expiry-seconds: ${KIS_TOKEN_EXPIRY_SECONDS:86400}
+  # 이슈 #55 토스증권 Open API 연동(Stage 1 — 자격증명만).
+  # client id/secret 은 사용자별로 DB(toss_credentials)에 암호화 저장한다.
+  # enabled=false 이면 연결 테스트(POST /integrations/toss/test)는
+  # 503(TOSS_NOT_CONFIGURED) 을 돌려준다.
+  # 실제 호출 전에 토스증권 WTS → 설정 → Open API → 허용 IP 관리에
+  # 이 서버의 공인 IP 를 등록해야 한다(미등록 시 ip-not-allowed).
+  toss:
+    enabled: ${TOSS_ENABLED:false}
+    base-url: ${TOSS_BASE_URL:https://openapi.tossinvest.com}
   # §63 현대카드 VestMail 이메일 명세서 자동 수집
   card:
     # AES/GCM 암호화 키. 비우면 JWT_SECRET, 둘 다 없으면 기동마다 랜덤(개발 편의).

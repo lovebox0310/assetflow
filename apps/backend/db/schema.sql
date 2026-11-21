@@ -539,3 +539,25 @@ WHERE stale.user_id = covered.user_id
   AND COALESCE(stale.card_company, '') = covered.company
   AND stale.source IN ('unknown', 'email')
   AND stale.approved_at BETWEEN covered.lo AND covered.hi;
+
+-- ---------------------------------------------------------------------------
+-- toss_credentials: 토스증권 Open API 자격증명 (이슈 #55 Stage 1 — 2026-11-22).
+-- client_id/client_secret 은 AES/GCM 암호화 문자열로 저장하고 평문은 남기지 않는다.
+-- KIS(kis_account_credentials)처럼 계좌별 1행이며, account_id 가 NULL 인 행
+-- (아직 자산 계좌를 고르지 않은 상태)도 허용한다. toss_account_seq 는 토스 계좌
+-- 식별자(X-Tossinvest-Account)다.
+-- 여러 번 돌려도 안전하다(IF NOT EXISTS) — spring.sql.init 은 기동마다 실행한다.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS toss_credentials (
+    id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id           BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    account_id        BIGINT REFERENCES asset_accounts (id) ON DELETE CASCADE,
+    client_id_enc     TEXT NOT NULL,
+    client_secret_enc TEXT NOT NULL,
+    toss_account_seq  VARCHAR(32),
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_toss_credentials_account UNIQUE (account_id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_toss_credentials_user ON toss_credentials (user_id);
