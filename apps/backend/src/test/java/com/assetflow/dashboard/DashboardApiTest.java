@@ -18,6 +18,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.time.Clock;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -29,11 +33,24 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class DashboardApiTest {
 
+    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
+    /**
+     * 이슈 #57: 기존 기대값(asOf "2026-10", §36.2 기준선)은 10월 확정 상태의 화면이다.
+     * 하드코딩을 없애도 의미가 유지되는지 보려면 시계를 2026-10 으로 고정한다.
+     */
+    private static final Clock OCTOBER_2026 = fixedClock(2026, 10, 15);
+    /** 이슈 #57 회귀: 다음 달(2026-11) 시계 — asOf·cashflow 가 따라와야 한다. */
+    private static final Clock NOVEMBER_2026 = fixedClock(2026, 11, 23);
+
     private MockMvc mvc;
     private InMemoryExpenseSnapshotLedger snapshotLedger;
     private InMemoryCardImportLedger cardLedger;
     private InMemoryExpenseItemLedger itemLedger;
     private com.assetflow.assets.InMemoryCardStatementLedger statementLedger;
+
+    private static Clock fixedClock(int year, int month, int day) {
+        return Clock.fixed(ZonedDateTime.of(year, month, day, 12, 0, 0, 0, SEOUL).toInstant(), SEOUL);
+    }
 
     @BeforeEach
     void setUp() {
@@ -41,12 +58,17 @@ class DashboardApiTest {
         cardLedger = new InMemoryCardImportLedger();
         itemLedger = new InMemoryExpenseItemLedger();
         statementLedger = new com.assetflow.assets.InMemoryCardStatementLedger();
+        mvc = mvcWith(OCTOBER_2026);
+    }
+
+    /** 시계만 갈아 끼운 대시보드 API — 이슈 #57 은 "이번 달"이 시계에서 오는지가 핵심이다. */
+    private MockMvc mvcWith(Clock clock) {
         InMemoryAssetLedger assets = new InMemoryAssetLedger();
         DashboardService service = new DashboardService(assets, snapshotLedger,
                 new com.assetflow.investments.PortfolioService(assets,
                         new com.assetflow.investments.InMemoryInvestmentLedger()),
-                new MonthlyExpenseTotals(cardLedger, itemLedger, statementLedger));
-        mvc = MockMvcBuilders.standaloneSetup(new DashboardController(service), new MeController(new InMemoryUserSettingsLedger(), new com.assetflow.settings.AuthEmailResolver() {
+                new MonthlyExpenseTotals(cardLedger, itemLedger, statementLedger), clock);
+        return MockMvcBuilders.standaloneSetup(new DashboardController(service), new MeController(new InMemoryUserSettingsLedger(), new com.assetflow.settings.AuthEmailResolver() {
                     @Override public String currentEmail() { return "user@example.com"; }
                 }))
                 .setControllerAdvice(new ApiExceptionHandler())
@@ -70,6 +92,47 @@ class DashboardApiTest {
                 .andExpect(jsonPath("$.data.monthly.vatSetAside").value(0))
                 .andExpect(jsonPath("$.data.monthly.balance").value(3_240_000))
                 .andExpect(jsonPath("$.data.monthly.essentialExpenses").value(2_317_180));
+    }
+
+    @Test
+    void summaryAsOfFollowsTheInjectedClock() throws Exception {
+        // 이슈 #57: 11월 스냅샷을 확정하면 11월 시계에서 반영돼야 한다.
+        snapshotLedger.upsert(new ExpenseSnapshotLedger.Snapshot("2026-11", 0, 0, 9_500_000L, 0L, 0L, 0, true));
+        cardLedger.addAll(java.util.List.of(card("n11", "2026-11-03", 2_000_000)));
+        String token = new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com");
+
+        mvcWith(NOVEMBER_2026).perform(get("/api/v1/dashboard/summary").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.asOf").value("2026-11"))
+                .andExpect(jsonPath("$.data.monthly.income").value(9_500_000))
+                .andExpect(jsonPath("$.data.monthly.expenses").value(2_000_000));
+
+        // 같은 데이터·10월 시계: 라벨이 10월이고, 10월 스냅샷이 없으니 모크 기준선으로 폴다운한다.
+        // (하드코딩 시절에는 위 두 경우가 똑같이 10월이었다 — 여기서 값이 갈리는 것이 제거 증명이다.)
+        mvc.perform(get("/api/v1/dashboard/summary").header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.data.asOf").value("2026-10"))
+                .andExpect(jsonPath("$.data.monthly.income").value(8_200_000));
+    }
+
+    @Test
+    void cashflowIncludesNovemberOnceConfirmed() throws Exception {
+        snapshotLedger.upsert(new ExpenseSnapshotLedger.Snapshot("2026-11", 0, 0, 9_500_000L, 0L, 0L, 0, true));
+        snapshotLedger.upsert(new ExpenseSnapshotLedger.Snapshot("2026-10", 0, 0, 9_000_000L, 0L, 0L, 0, true));
+        cardLedger.addAll(java.util.List.of(card("n11", "2026-11-03", 2_000_000)));
+        String token = new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com");
+
+        mvcWith(NOVEMBER_2026).perform(get("/api/v1/dashboard/cashflow?months=2").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].month").value("2026-11"))
+                .andExpect(jsonPath("$.data[0].income").value(9_500_000))
+                .andExpect(jsonPath("$.data[0].expenses").value(2_000_000))
+                .andExpect(jsonPath("$.data[1].month").value("2026-10"));
+
+        // 10월 시계에서는 11월이 조회 범위(asOf 이하) 밖이다 — 결과가 시계에 따라 달라진다.
+        mvc.perform(get("/api/v1/dashboard/cashflow?months=2").header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].month").value("2026-10"));
     }
 
     @Test

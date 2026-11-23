@@ -10,6 +10,8 @@ import com.assetflow.expenses.MonthlyExpenseTotals;
 import com.assetflow.investments.PortfolioService;
 import org.springframework.stereotype.Service;
 
+import java.time.Clock;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -42,13 +44,25 @@ public class DashboardService {
     private final ExpenseSnapshotLedger snapshotLedger;
     private final PortfolioService portfolioService;
     private final MonthlyExpenseTotals expenseTotals;
+    /**
+     * 이슈 #57: "이번 달"의 유일한 출처. 상수(옛 모크 기준선 라벨)를 쓰면
+     * 월이 바뀌어도 대시보드가 따라가지 않는다 — 새 달 스냅샷을 확정해도 반영되지 않았다.
+     */
+    private final Clock clock;
 
     public DashboardService(AssetLedger ledger, ExpenseSnapshotLedger snapshotLedger,
-                            PortfolioService portfolioService, MonthlyExpenseTotals expenseTotals) {
+                            PortfolioService portfolioService, MonthlyExpenseTotals expenseTotals,
+                            Clock clock) {
         this.ledger = ledger;
         this.snapshotLedger = snapshotLedger;
         this.portfolioService = portfolioService;
         this.expenseTotals = expenseTotals;
+        this.clock = clock;
+    }
+
+    /** YYYY-MM — 주입된 시계의 이번 달. 테스트는 고정 시계로 이 값을 결정한다. */
+    static String currentMonth(Clock clock) {
+        return YearMonth.now(clock).toString();
     }
 
     public DashboardSummary summary() {
@@ -63,21 +77,22 @@ public class DashboardService {
                 .filter(AssetRow::isDebt)
                 .map(r -> new LiabilityRow(String.valueOf(r.id()), r.name(), r.balance()))
                 .toList();
-        // §34.6 단일 출처: AS_OF 월의 스냅샷이 확정돼 있으면 실데이터, 없으면 모크.
+        // §34.6 단일 출처: 이번 달(asOf) 스냅샷이 확정돼 있으면 실데이터, 없으면 모크.
         // 지출·필수지출은 스냅샷 확정 시점값이 아니라 조회 시점 원장 합계로 계산한다 —
         // 확정 이후 카드내역이 바뀌어도 대시보드가 따라간다.
-        ExpenseSnapshotLedger.Snapshot snap = snapshotLedger.get(MockDashboardSource.AS_OF);
+        String asOf = currentMonth(clock);
+        ExpenseSnapshotLedger.Snapshot snap = snapshotLedger.get(asOf);
         MonthlySummary monthly;
         if (snap == null) {
             monthly = MockDashboardSource.monthly();
         } else {
-            MonthlyExpenseTotals.Totals totals = expenseTotals.compute(MockDashboardSource.AS_OF);
+            MonthlyExpenseTotals.Totals totals = expenseTotals.compute(asOf);
             monthly = new MonthlySummary(snap.income(), snap.vatSetAside(), totals.expenses(),
                     totals.essential(), snap.essentialComplete(),
                     snap.income() - snap.vatSetAside() - totals.expenses(),
                     totals.cardSource(), totals.cardStatementTotal(), totals.statementCount());
         }
-        return new DashboardSummary(MockDashboardSource.AS_OF, assets, liabilities, monthly);
+        return new DashboardSummary(asOf, assets, liabilities, monthly);
     }
 
     /** §54.3: invest 계좌는 예수금 + 보유종목 평가액. 그 외 계좌는 balance 그대로. */
@@ -93,8 +108,11 @@ public class DashboardService {
             throw new IllegalArgumentException("months must be between 1 and 12");
         }
         // §34.6: 확정된 월 스냅샷이 있으면 실데이터, 없으면 mock 기준선 폴다운.
+        // 이슈 #57: 이번 달(currentMonth) 기준으로 최근 months 개를 찾는다 — 상수 월로 찾으면
+        // 새 달 스냅샷이 조회 범위에 들어오지 않는다.
+        // snaps 가 비어 있지 않으면 모크를 섞지 않는다(스냅샷 없는 달은 행이 없다 — §34.6).
         // income/vatSetAside 는 확정 시점값을 유지하고, expenses 는 조회 시점 원장 합계로 계산한다.
-        List<ExpenseSnapshotLedger.Snapshot> snaps = snapshotLedger.recent(MockDashboardSource.AS_OF, months);
+        List<ExpenseSnapshotLedger.Snapshot> snaps = snapshotLedger.recent(currentMonth(clock), months);
         if (!snaps.isEmpty()) {
             return snaps.stream()
                     .map(s -> {

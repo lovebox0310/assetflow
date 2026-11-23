@@ -52,7 +52,10 @@ class AssetAccountApiTest {
                                 new com.assetflow.expenses.MonthlyExpenseTotals(
                                         new com.assetflow.assets.InMemoryCardImportLedger(),
                                         new com.assetflow.expenses.InMemoryExpenseItemLedger(),
-                                        new com.assetflow.assets.InMemoryCardStatementLedger()))),
+                                        new com.assetflow.assets.InMemoryCardStatementLedger()),
+                                // 이슈 #57: 현재 월은 Clock 에서 온다. 이 테스트는 시각에 기대지 않도록 고정한다.
+                                java.time.Clock.fixed(java.time.Instant.parse("2026-10-15T03:00:00Z"),
+                                        java.time.ZoneId.of("Asia/Seoul")))),
                         new InvestmentController(investmentLedger, ledger, portfolioService, null,
                                 new KisAccountMappingService(ledger, kisCredentialsService), kisCredentialsService))
                 .setControllerAdvice(new ApiExceptionHandler())
