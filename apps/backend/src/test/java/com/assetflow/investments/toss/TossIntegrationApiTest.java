@@ -1,9 +1,12 @@
 package com.assetflow.investments.toss;
 
 import com.assetflow.auth.TokenService;
+import com.assetflow.assets.InMemoryAssetLedger;
 import com.assetflow.assets.card.CardImportCipher;
 import com.assetflow.common.api.ApiExceptionHandler;
 import com.assetflow.common.web.BearerTokenInterceptor;
+import com.assetflow.investments.InMemoryInvestmentLedger;
+import com.assetflow.investments.PortfolioService;
 import com.assetflow.settings.AuthEmailResolver;
 import com.assetflow.settings.InMemoryUserSettingsLedger;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,6 +49,21 @@ class TossIntegrationApiTest {
         public void verify(TossCredentials credentials) {
             calls.add(credentials);
         }
+
+        @Override
+        public List<TossAccount> accounts(TossCredentials credentials) {
+            throw new UnsupportedOperationException("not used in this test");
+        }
+
+        @Override
+        public TossHoldings holdings(TossCredentials credentials) {
+            throw new UnsupportedOperationException("not used in this test");
+        }
+
+        @Override
+        public java.math.BigDecimal usdKrwRate(TossCredentials credentials) {
+            throw new UnsupportedOperationException("not used in this test");
+        }
     }
 
     private InMemoryTossCredentialsLedger ledger;
@@ -61,8 +79,13 @@ class TossIntegrationApiTest {
         client = new FakeTossApiClient();
         properties = new TossProperties();
         properties.setEnabled(true);
+        InMemoryAssetLedger assets = new InMemoryAssetLedger();
+        InMemoryInvestmentLedger holdings = new InMemoryInvestmentLedger();
         mvc = MockMvcBuilders
-                .standaloneSetup(new TossIntegrationController(credentials, client, properties,
+                .standaloneSetup(new TossIntegrationController(credentials, client,
+                        new TossSyncService(credentials, client, assets, holdings,
+                                new PortfolioService(assets, holdings)),
+                        properties,
                         new InMemoryUserSettingsLedger(), new AuthEmailResolver()))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .addInterceptors(new BearerTokenInterceptor(new TokenService(JWT_SECRET)))
