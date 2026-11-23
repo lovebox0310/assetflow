@@ -234,9 +234,20 @@ public class HttpTossApiClient implements TossApiClient {
     String errorCode(int status, String body) {
         if (body != null && !body.isBlank()) {
             try {
-                String code = text(mapper.readTree(body).path("error"), "code");
+                JsonNode error = mapper.readTree(body).path("error");
+                // 표준 envelope: {"error":{"code":"ip-not-allowed", ...}}
+                String code = text(error, "code");
                 if (code != null) {
                     return code;
+                }
+                // OAuth2 형식: {"error":"access_denied","error_description":"..."}
+                // 토큰 발급(POST /oauth2/token)은 이 형식으로 응답한다 — 허용 IP 미등록이면
+                // 403 + access_denied 다(토스 문서: "토큰 발급은 OAuth2 형식의 access_denied").
+                if (error.isTextual()) {
+                    String textual = error.asText(null);
+                    if (textual != null && !textual.isBlank()) {
+                        return textual.trim();
+                    }
                 }
             } catch (Exception ignored) {
                 // 본문이 JSON 이 아니면 상태 기반 코드를 쓴다.

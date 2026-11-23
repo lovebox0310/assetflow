@@ -113,6 +113,14 @@ class TossPayloadParsingTest {
     }
 
     @Test
+    void readsOAuthErrorStringFromTokenEndpoint() {
+        // 토큰 발급은 {"error":"access_denied"} 처럼 error 가 **문자열**이다(문서 명시).
+        // 예전 파서는 이 형식을 못 읽어 403 을 http-403 으로 뭉갰다.
+        assertThat(client.errorCode(403, "{\"error\":\"access_denied\"}")).isEqualTo("access_denied");
+        assertThat(client.errorCode(401, "{\"error\":\"invalid_client\"}")).isEqualTo("invalid_client");
+    }
+
+    @Test
     void rejectsInvalidJsonAsApiError() {
         assertThatThrownBy(() -> client.parseHoldings("not-json"))
                 .isInstanceOf(TossApiException.class);

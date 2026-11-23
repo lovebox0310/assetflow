@@ -15,6 +15,13 @@ final class TossErrorMessages {
             Map.entry("ip-not-allowed",
                     "허용 IP 가 등록되지 않았습니다. 토스증권 WTS → 설정 → Open API → "
                             + "허용 IP 관리에서 서버 IP 를 등록하세요."),
+            // 토큰 발급(POST /oauth2/token)은 OAuth2 형식으로 응답한다 — 허용 IP 미등록이면
+            // 403 + access_denied 다(토스 문서 명시). 같은 조치를 안내한다.
+            Map.entry("access_denied",
+                    "허용 IP 가 등록되지 않았거나 자격증명이 올바르지 않습니다. 토스증권 WTS → "
+                            + "설정 → Open API → 허용 IP 관리에서 서버 IP 를 등록하고, "
+                            + "Client ID/Secret 을 확인하세요."),
+            Map.entry("invalid_client", "Client ID/Secret 이 올바르지 않습니다. 다시 확인해 주세요."),
             Map.entry("invalid-token", "토스 인증이 만료되었습니다. 다시 시도해 주세요."),
             Map.entry("expired-token", "토스 인증이 만료되었습니다. 다시 시도해 주세요."),
             Map.entry("token-revoked", "토스 인증이 만료되었습니다. 다시 시도해 주세요."),

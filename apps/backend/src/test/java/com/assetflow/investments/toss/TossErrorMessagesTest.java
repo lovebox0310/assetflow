@@ -44,4 +44,12 @@ class TossErrorMessagesTest {
         assertThat(TossErrorMessages.message(null))
                 .isEqualTo("토스 연동 요청이 실패했습니다. 잠시 후 다시 시도해 주세요.");
     }
+
+    @org.junit.jupiter.api.Test
+    void oauthAccessDeniedGuidesIpAndCredentials() {
+        // 토큰 발급은 OAuth2 형식({"error":"access_denied"})으로 응답한다 — 허용 IP 미등록이 대표 사유다.
+        String message = TossErrorMessages.message("access_denied");
+        org.junit.jupiter.api.Assertions.assertTrue(message.contains("허용 IP"), message);
+        org.junit.jupiter.api.Assertions.assertTrue(message.contains("Client ID"), message);
+    }
 }
