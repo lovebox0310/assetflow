@@ -32,8 +32,13 @@ class MonthlyExpenseTotalsTest {
 
     /** 승인일 2026-10 행 하나(금액만 다르게). */
     private void approvalRow(String rowKey, String cardCompany, long gross) {
+        approvalRowOn("2026-10-05", rowKey, cardCompany, gross);
+    }
+
+    /** 승인일을 지정한 카드내역 행 하나 — 월 버킷 경계를 확인할 때 쓴다. */
+    private void approvalRowOn(String approvedAt, String rowKey, String cardCompany, long gross) {
         cardLedger.addAll(java.util.List.of(new CardImportLedger.ImportedRow(
-                rowKey, "2026-10-05", "가맹점" + rowKey, gross, 0, gross,
+                rowKey, approvedAt, "가맹점" + rowKey, gross, 0, gross,
                 "", "", "", "", "", "", cardCompany)));
     }
 
@@ -132,5 +137,74 @@ class MonthlyExpenseTotalsTest {
         assertThat(t.cardSpend()).isZero();
         assertThat(t.cardSource()).isEqualTo(MonthlyExpenseTotals.CARD_SOURCE_APPROVAL);
         assertThat(t.statementCount()).isZero();
+    }
+
+    /*
+     * 이슈 #56 — 판단은 카드사별이다. 2026-09 실측: 삼성은 명세서(890,156)가 있고
+     * 현대는 명세서가 없어 승인일 합계(3,208,877)를 써야 한다. 종전 월 단위 판단은
+     * 명세서가 하나라도 있으면 승인일 합계 전체를 버려 현대분이 통째로 사라졌다.
+     * 항목 2,022,583 까지 더하면 지출 6,121,616 이다.
+     */
+    @Test
+    void mixesStatementAndApprovalPerCardCompany() {
+        approvalRowOn("2026-09-15", "m1", "현대카드", 3_000_000);
+        approvalRowOn("2026-09-20", "m2", "현대카드", 208_877);
+        approvalRowOn("2026-09-10", "m3", "삼성카드", 915_220);
+        statement("삼성카드", "billing", "2026-09", 890_156);
+        itemLedger.create("2026-09", "임대료", 2_022_583, true, 0, "교육");
+
+        MonthlyExpenseTotals.Totals t = totals.compute("2026-09");
+
+        assertThat(t.cardSource()).isEqualTo(MonthlyExpenseTotals.CARD_SOURCE_MIXED);
+        // 명세서 카드사(삼성 890,156) + 승인일 카드사(현대 3,208,877)
+        assertThat(t.cardSpend()).isEqualTo(4_099_033);
+        // 명세서가 있는 카드사만 — 현대 승인일 합계는 여기에 더하지 않는다.
+        assertThat(t.cardStatementTotal()).isEqualTo(890_156);
+        assertThat(t.statementCount()).isEqualTo(1);
+        assertThat(t.expenses()).isEqualTo(6_121_616);
+        assertThat(t.essential()).isEqualTo(2_022_583);
+    }
+
+    @Test
+    void allCompaniesWithStatementsAreStatementSource() {
+        approvalRowOn("2026-09-10", "n1", "현대카드", 2_500_000);
+        approvalRowOn("2026-09-11", "n2", "삼성카드", 900_000);
+        statement("현대카드", "billing", "2026-09", 2_400_000);
+        statement("삼성카드", "billing", "2026-09", 890_156);
+
+        MonthlyExpenseTotals.Totals t = totals.compute("2026-09");
+
+        assertThat(t.cardSource()).isEqualTo(MonthlyExpenseTotals.CARD_SOURCE_STATEMENT);
+        assertThat(t.cardSpend()).isEqualTo(3_290_156);
+        assertThat(t.cardStatementTotal()).isEqualTo(3_290_156);
+    }
+
+    @Test
+    void allCompaniesWithoutStatementsAreApprovalSource() {
+        approvalRowOn("2026-09-10", "o1", "현대카드", 1_000_000);
+        approvalRowOn("2026-09-11", "o2", "삼성카드", 500_000);
+        // 다른 달 명세서는 이 달 판단에 쓰이지 않는다.
+        statement("삼성카드", "billing", "2026-10", 700_000);
+
+        MonthlyExpenseTotals.Totals t = totals.compute("2026-09");
+
+        assertThat(t.cardSource()).isEqualTo(MonthlyExpenseTotals.CARD_SOURCE_APPROVAL);
+        assertThat(t.cardSpend()).isEqualTo(1_500_000);
+        assertThat(t.cardStatementTotal()).isZero();
+        assertThat(t.statementCount()).isZero();
+    }
+
+    @Test
+    void companyWithBothStatementAndApprovalUsesStatementWithoutDoubleCounting() {
+        // 같은 카드사에 승인일 행이 있어도 명세서가 있으면 그 카드사는 명세서 금액 하나만 쓴다.
+        approvalRowOn("2026-09-10", "p1", "삼성카드", 915_220);
+        statement("삼성카드", "billing", "2026-09", 890_156);
+
+        MonthlyExpenseTotals.Totals t = totals.compute("2026-09");
+
+        assertThat(t.cardSource()).isEqualTo(MonthlyExpenseTotals.CARD_SOURCE_STATEMENT);
+        assertThat(t.cardSpend()).isEqualTo(890_156);
+        assertThat(t.cardStatementTotal()).isEqualTo(890_156);
+        assertThat(t.statementCount()).isEqualTo(1);
     }
 }

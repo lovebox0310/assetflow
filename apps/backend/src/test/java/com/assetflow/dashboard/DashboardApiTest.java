@@ -202,7 +202,10 @@ class DashboardApiTest {
         String token = new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com");
         snapshotLedger.upsert(new ExpenseSnapshotLedger.Snapshot("2026-10", 0, 0, 9_000_000L, 0L, 0L, 0, true));
         // 승인일 합계(4,396,489)와 실제 청구(4,185,664)가 다르다 — 명세서가 이긴다.
-        cardLedger.addAll(java.util.List.of(card("x1", "2026-10-05", 4_396_489)));
+        // 이슈 #56: 출처 판단이 카드사별이므로 행의 카드사를 명세서와 맞춘다(빈 값은 "미확인" 버킷).
+        cardLedger.addAll(java.util.List.of(new CardImportLedger.ImportedRow(
+                "x1", "2026-10-05", "가맹점", 4_396_489, 0, 4_396_489,
+                "", "", "", "", "", "", "현대카드")));
         statementLedger.upsert(new com.assetflow.assets.CardStatementLedger.StatementRow(
                 0, "현대카드", "billing", "2026-10", "2026-10-02", "2026-11-03", 3_326_643));
         statementLedger.upsert(new com.assetflow.assets.CardStatementLedger.StatementRow(
@@ -214,6 +217,29 @@ class DashboardApiTest {
                 .andExpect(jsonPath("$.data.monthly.cardSource").value("statement"))
                 .andExpect(jsonPath("$.data.monthly.cardStatementTotal").value(4_185_664))
                 .andExpect(jsonPath("$.data.monthly.statementCount").value(2));
+    }
+
+    @Test
+    void cashflowUsesStatementAndApprovalPerCardCompany() throws Exception {
+        // 이슈 #56 회귀 고정 — 2026-09: 삼성은 명세서(890,156), 현대는 명세서가 없어
+        // 승인일 합계(3,208,877)를 더한다. 항목 2,022,583 까지 해 지출 6,121,616.
+        String token = new TokenService("test-secret-0123456789-0123456789-0123456789").issue("user@example.com");
+        snapshotLedger.upsert(new ExpenseSnapshotLedger.Snapshot("2026-09", 0, 0, 8_500_000L, 0L, 0L, 0, true));
+        cardLedger.addAll(java.util.List.of(
+                new CardImportLedger.ImportedRow("h1", "2026-09-15", "현대가맹점", 2_900_000, 308_877, 3_208_877,
+                        "", "", "", "", "", "", "현대카드"),
+                new CardImportLedger.ImportedRow("s1", "2026-09-20", "삼성가맹점", 830_000, 85_220, 915_220,
+                        "", "", "", "", "", "", "삼성카드")));
+        statementLedger.upsert(new com.assetflow.assets.CardStatementLedger.StatementRow(
+                0, "삼성카드", "billing", "2026-09", "2026-09-03", "2026-10-02", 890_156));
+        itemLedger.create("2026-09", "임대료", 2_022_583, true, 0, "교육");
+
+        mvc.perform(get("/api/v1/dashboard/cashflow?months=1").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].month").value("2026-09"))
+                // 명세서 카드사 + 승인일 카드사 + 항목
+                .andExpect(jsonPath("$.data[0].expenses").value(6_121_616))
+                .andExpect(jsonPath("$.data[0].balance").value(2_378_384));
     }
 
     @Test

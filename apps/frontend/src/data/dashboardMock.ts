@@ -37,11 +37,13 @@ export interface MonthlySummary {
   /** 수지 = income - vatSetAside - expenses */
   balance: number;
   /**
-   * 이슈 #51 — 지출에 더한 카드 금액의 출처.
-   * "statement" = 그 달 카드 명세서(billing) 합계, "approval" = 명세서가 없어 승인일 합계로 폴백.
+   * 이슈 #51·#56 — 지출에 더한 카드 금액의 출처.
+   * "statement" = 그 달 카드사 모두가 명세서(billing) 합계,
+   * "approval" = 명세서가 없어(또는 카드사 0개) 승인일 합계로 폴백,
+   * "mixed" = 일부 카드사만 명세서가 있어 카드사별로 명세서·승인일을 섞었다.
    * 모크 기준선·구 응답에는 없을 수 있다 — 화면은 값이 없으면 "추정" 배지를 그리지 않는다.
    */
-  cardSource?: "statement" | "approval";
+  cardSource?: "statement" | "approval" | "mixed";
   /** 그 달 billing 명세서 합계(폴백이면 0). */
   cardStatementTotal?: number;
   /** 그 달 billing 명세서 건수(카드사별 1건). */

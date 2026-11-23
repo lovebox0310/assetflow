@@ -4,7 +4,10 @@ import com.assetflow.assets.CardImportLedger;
 import com.assetflow.assets.CardStatementLedger;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * 지출 합계의 단일 출처.
@@ -14,8 +17,8 @@ import java.util.List;
  * 월 확정 여부와 무관하게 계산 가능해야 한다.</p>
  *
  * <pre>
- * card(month)      = Σ card_statements.total_amount(kind='billing', usage_month=month)   ← 명세서가 있으면
- *                    Σ card_imports.gross_amount(승인일이 그 달)                          ← 없으면 폴백
+ * card(month)      = Σ 카드사별 (그 카드사의 billing 명세서 합계 &gt; 0 ? 그 금액
+ *                                                              : 그 카드사의 승인일 합계)
  * expenses(month)  = card(month) + Σ monthly_expense_items.amount(그 달)
  * essential(month) = Σ monthly_expense_items.amount where is_essential
  * </pre>
@@ -23,6 +26,12 @@ import java.util.List;
  * <p>§72: 카드사 청구액은 승인일 달력 월 합계와 다르다(청구 주기 경계·취소 부호·중복).
  * 그래서 명세서 요약이 있으면 그 총액을 월 카드 금액으로 쓴다. 없으면 승인일 합계로
  * 폴백하되, {@link Totals#cardSource()} 로 <b>추정</b>임을 드러낸다 — 화면이 숨기지 않는다.</p>
+ *
+ * <p>이슈 #56: 판단은 <b>카드사별</b>이다. 종전에는 월 단위로 "명세서가 하나라도 있으면
+ * 승인일 합계 전체를 버렸다" — 2026-09 처럼 삼성만 명세서가 있고 현대는 없는 달에
+ * 현대 승인액이 통째로 사라졌다. 이제 카드사 집합(명세서 카드사 ∪ 승인일 카드사)을 만들고,
+ * 카드사마다 명세서가 있으면 그 금액, 없으면 <b>그 카드사의</b> 승인일 합계를 더한다.
+ * 일부만 명세서면 {@link #CARD_SOURCE_MIXED} 로 혼합임을 드러낸다.</p>
  *
  * <p><b>usage_month 해석</b>: 명세서의 {@code usage_month} 는 이용기간 <b>시작 월</b>이다
  * (§72 데이터 규칙). 예: 현대 10/02~11/03 → {@code 2026-10}, 삼성 9/3~10/2 → {@code 2026-09}.
@@ -41,13 +50,22 @@ public class MonthlyExpenseTotals {
     public static final String CARD_SOURCE_STATEMENT = "statement";
     /** 명세서가 없어 승인일 합계로 폴백했다 — 화면은 이 값을 "추정"으로 표시한다. */
     public static final String CARD_SOURCE_APPROVAL = "approval";
+    /**
+     * 일부 카드사만 명세서가 있어, 그 카드사는 명세서 금액·나머지는 승인일 합계로 더했다.
+     * 화면은 이 값을 "일부 추정"으로 표시한다(이슈 #56).
+     */
+    public static final String CARD_SOURCE_MIXED = "mixed";
+
+    /** 카드사 이름이 비었을 때의 묶음 키 — {@code CardImportController} 의 표기와 같다. */
+    private static final String UNKNOWN_CARD_COMPANY = "미확인";
 
     /**
      * @param expenses          월 총지출 = 카드 금액 + 월 지출 항목
      * @param essential         월 필수지출(항목만 — 카드 행에는 필수 여부가 없다)
-     * @param cardSpend         지출에 실제로 더한 카드 금액(명세서 또는 승인일 합계)
-     * @param cardSource        {@link #CARD_SOURCE_STATEMENT} 또는 {@link #CARD_SOURCE_APPROVAL}
-     * @param cardStatementTotal 그 달 billing 명세서 합계(폴백이면 0)
+     * @param cardSpend         지출에 실제로 더한 카드 금액(카드사별 명세서 또는 승인일 합계)
+     * @param cardSource        {@link #CARD_SOURCE_STATEMENT} · {@link #CARD_SOURCE_APPROVAL} ·
+     *                          {@link #CARD_SOURCE_MIXED}
+     * @param cardStatementTotal 그 달에 실제로 쓴 billing 명세서 합계(승인일로 폴백한 카드사는 제외)
      * @param statementCount    그 달 billing 명세서 건수(카드사별 1건씩)
      */
     public record Totals(long expenses, long essential, long cardSpend, String cardSource,
@@ -69,27 +87,43 @@ public class MonthlyExpenseTotals {
 
     /** @param month "YYYY-MM" (명세서는 usage_month = 이용기간 시작 월과 맞춘다) */
     public Totals compute(String month) {
-        long statementTotal = 0;
-        int statementCount = 0;
         // inRange(month, month): usage_month 가 정확히 그 달인 행만. 카드사가 둘이면 두 행이 온다.
-        List<CardStatementLedger.StatementRow> statements = statementLedger.inRange(month, month);
-        for (CardStatementLedger.StatementRow s : statements) {
+        Map<String, Long> statementByCompany = new LinkedHashMap<>();
+        int statementCount = 0;
+        for (CardStatementLedger.StatementRow s : statementLedger.inRange(month, month)) {
             // kind='detail'(이용상세내역서)은 기간을 지정해 요청한 것이라 월 전체를 대표하지 않는다.
             if (!BILLING.equals(s.kind())) {
                 continue;
             }
-            statementTotal += s.totalAmount();
+            statementByCompany.merge(companyOf(s.cardCompany()), s.totalAmount(), Long::sum);
             statementCount += 1;
         }
 
-        long approvalTotal = 0;
+        Map<String, Long> approvalByCompany = new LinkedHashMap<>();
         for (CardImportLedger.ImportedRow r : cardLedger.inMonth(month)) {
-            approvalTotal += r.grossAmount();
+            approvalByCompany.merge(companyOf(r.cardCompany()), r.grossAmount(), Long::sum);
         }
 
-        boolean fromStatement = statementCount > 0;
-        long cardSpend = fromStatement ? statementTotal : approvalTotal;
-        String cardSource = fromStatement ? CARD_SOURCE_STATEMENT : CARD_SOURCE_APPROVAL;
+        // 카드사 집합 = 명세서 카드사 ∪ 승인일 카드사. 승인액이 0 인 카드사도 키가 있으면 센다.
+        Set<String> companies = new LinkedHashSet<>(statementByCompany.keySet());
+        companies.addAll(approvalByCompany.keySet());
+
+        long cardSpend = 0;
+        // cardStatementTotal 은 승인일로 폴백한 카드사를 빼야 cardSpend 의 내역과 맞는다.
+        long statementUsedTotal = 0;
+        int statementCompanies = 0;
+        for (String company : companies) {
+            long statementAmount = statementByCompany.getOrDefault(company, 0L);
+            if (statementAmount > 0) {
+                cardSpend += statementAmount;
+                statementUsedTotal += statementAmount;
+                statementCompanies += 1;
+            } else {
+                // 이 카드사에는 이 달 명세서가 없다 — 그 카드사의 승인일 합계로만 더한다.
+                cardSpend += approvalByCompany.getOrDefault(company, 0L);
+            }
+        }
+        String cardSource = sourceOf(companies.size(), statementCompanies);
 
         long itemSpend = 0;
         long essential = 0;
@@ -99,6 +133,28 @@ public class MonthlyExpenseTotals {
                 essential += it.amount();
             }
         }
-        return new Totals(cardSpend + itemSpend, essential, cardSpend, cardSource, statementTotal, statementCount);
+        return new Totals(cardSpend + itemSpend, essential, cardSpend, cardSource, statementUsedTotal, statementCount);
+    }
+
+    /**
+     * 카드사 금액의 출처 판정.
+     *
+     * <ul>
+     *   <li>카드사 0개(카드 데이터 없음) → approval (기존 동작 유지)</li>
+     *   <li>모든 카드사가 명세서 → statement</li>
+     *   <li>명세서 카드사가 하나도 없음 → approval</li>
+     *   <li>그 외(일부만 명세서) → mixed</li>
+     * </ul>
+     */
+    private static String sourceOf(int companyCount, int statementCompanies) {
+        if (companyCount == 0 || statementCompanies == 0) {
+            return CARD_SOURCE_APPROVAL;
+        }
+        return statementCompanies == companyCount ? CARD_SOURCE_STATEMENT : CARD_SOURCE_MIXED;
+    }
+
+    /** 카드사 이름이 비면 하나의 묶음("미확인")으로 센다 — 업로드 규칙과 같은 표기. */
+    private static String companyOf(String cardCompany) {
+        return cardCompany == null || cardCompany.isBlank() ? UNKNOWN_CARD_COMPANY : cardCompany;
     }
 }

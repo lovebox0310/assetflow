@@ -246,19 +246,21 @@ test.describe("카드내역 모바일", () => {
 
   /**
    * A안: 명세서가 있는 달은 승인일 합계를 교체하지 않고 청구액을 함께 보여 준다.
-   * 320 에서 청구액·차이 줄이 보이고, 문서 넘침 0, 금액은 한 줄(nowrap)로 남는다.
+   * 목은 현대만 billing 이고 삼성은 detail 뿐이다 — 이슈 #56 의 카드사별 판단으로는
+   * "일부 추정" 달이므로 라벨에 "일부"가 붙고 기간 차이 줄은 숨긴다.
+   * 320 에서 청구액 줄이 보이고, 문서 넘침 0, 금액은 한 줄(nowrap)로 남는다.
    */
   test("명세서 청구액 행 — 320 에서 보이고 넘침 0, 금액 nowrap (A안)", async ({ page }) => {
     await openCardExpenses(page, 320, 800);
 
     const summary = page.getByRole("group", { name: "이 달 카드 카테고리별 합계" });
-    await expect(summary.getByText("카드 청구액 (명세서)")).toBeVisible();
-    // 목의 현대카드 billing 412,300원. 승인일 전체 합계(126,400원)와 달라 차이 줄이 붙는다
-    // (412,300 − 126,400 = 285,900).
+    await expect(summary.getByText("카드 청구액 (명세서, 일부)")).toBeVisible();
+    // 목의 현대카드 billing 412,300원.
     const amount = summary.getByText("412,300원");
     await expect(amount).toBeVisible();
-    await expect(summary.getByText("차이 (기간 차이)")).toBeVisible();
-    await expect(summary.getByText("285,900원")).toBeVisible();
+    // 혼합 달은 승인일 합계와 회사 범위가 달라 "기간 차이"를 보여 주지 않는다.
+    await expect(summary.getByText("차이 (기간 차이)")).toHaveCount(0);
+    await expect(summary.getByText("일부 추정")).toBeVisible();
 
     const style = await amount.evaluate((el) => {
       const s = getComputedStyle(el);

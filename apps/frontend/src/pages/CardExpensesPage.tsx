@@ -399,18 +399,27 @@ export function CardExpensesPage({
     [statements, month],
   );
   /**
-   * 이슈 #51 — 이 달 카드 금액의 근거.
-   * 서버(MonthlyExpenseTotals)와 같은 규칙을 쓴다: usage_month 가 이 달이고 kind='billing' 인
-   * 명세서가 하나라도 있으면 명세서 기준, 없으면 승인일 기준(추정). 계산의 단일 출처는 서버이고,
-   * 이 화면은 "무엇을 근거로 보는지"만 같은 규칙으로 표시한다. 조회 전·실패(null)에는 배지를
-   * 그리지 않는다 — 없는 근거로 "추정"이라고 단정하지 않는다.
+   * 이슈 #51·#56 — 이 달 카드 금액의 근거.
+   * 서버(MonthlyExpenseTotals)와 같은 규칙을 쓴다: 카드사마다 그 카드사의 billing 명세서가
+   * 있으면 명세서, 없으면 그 카드사의 승인일 합계. 전부 명세서면 "statement", 전부
+   * 승인일(카드사 0개 포함)이면 "approval", 섞이면 "mixed". 카드사 이름이 비면 서버와
+   * 같이 "미확인" 한 묶음으로 센다. 계산의 단일 출처는 서버이고, 이 화면은 "무엇을
+   * 근거로 보는지"만 같은 규칙으로 표시한다. 조회 전·실패(null)에는 배지를 그리지 않는다.
    */
-  const cardSource: "statement" | "approval" | null =
-    statementStatus !== "ready"
-      ? null
-      : monthStatements.some((s) => s.kind === "billing")
-        ? "statement"
-        : "approval";
+  type CardSource = "statement" | "approval" | "mixed";
+  const cardSource: CardSource | null = ((): CardSource | null => {
+    if (statementStatus !== "ready") return null;
+    const billing = monthStatements.filter((s) => s.kind === "billing");
+    // 카드 원장이 아직 오지 않았으면 승인일 카드사를 모른다 — 명세서만으로 기존 표기를 유지한다.
+    if (cardStatus !== "ready") return billing.length > 0 ? "statement" : "approval";
+    const statementCompanies = new Set(
+      billing.filter((s) => s.totalAmount > 0).map((s) => s.cardCompany || "미확인"),
+    );
+    const companies = new Set(statementCompanies);
+    for (const r of cardRows ?? []) companies.add(r.cardCompany || "미확인");
+    if (companies.size === 0 || statementCompanies.size === 0) return "approval";
+    return statementCompanies.size === companies.size ? "statement" : "mixed";
+  })();
   /**
    * A안: 이 달 billing 명세서의 **청구액 합계**. 승인일 합계와는 기간이 달라 금액이
    * 다를 수 있으므로 합계를 교체하지 않고 두 숫자를 라벨로 구분해 함께 보여 준다.
@@ -849,16 +858,21 @@ export function CardExpensesPage({
                     <span style={{ whiteSpace: "nowrap" }}>· {cardSpendingCount}건</span>
                     {/*
                      * 이슈 #51: 명세서가 없는 달은 승인일 합계로 계산한 값이다 — 숨기지 않고
-                     * "추정"으로 표시한다. 명세서가 있으면 배지 없이 기존 표기를 유지하고,
-                     * 청구액은 바로 아래 "카드 청구액 (명세서)" 행과 카드사별 표의
-                     * "명세서 금액" 열이 보여 준다(A안 — 합계를 교체하지 않는다).
+                     * "추정"으로 표시한다. 이슈 #56: 일부 카드사만 명세서가 없으면 "일부 추정".
+                     * 전부 명세서면 배지 없이 기존 표기를 유지하고, 청구액은 바로 아래
+                     * "카드 청구액 (명세서)" 행과 카드사별 표의 "명세서 금액" 열이 보여 준다
+                     * (A안 — 합계를 교체하지 않는다).
                      */}
-                    {cardSource === "approval" ? (
+                    {cardSource === "approval" || cardSource === "mixed" ? (
                       <span
                         className="af-badge af-badge--estimate"
-                        title="카드 명세서가 없어 승인일 기준으로 계산했습니다"
+                        title={
+                          cardSource === "mixed"
+                            ? "일부 카드사는 명세서가 없어 승인일 기준으로 계산했습니다"
+                            : "카드 명세서가 없어 승인일 기준으로 계산했습니다"
+                        }
                       >
-                        추정
+                        {cardSource === "mixed" ? "일부 추정" : "추정"}
                       </span>
                     ) : null}
                   </span>
@@ -867,8 +881,9 @@ export function CardExpensesPage({
                 {/*
                  * A안: 명세서가 있는 달은 청구액을 **지출 합계 바로 아래**에 함께 둔다.
                  * 두 숫자의 의미(승인일 vs 명세서 이용기간)가 달라 합계를 교체하지 않는다.
+                 * 이슈 #56: 일부 카드사만 명세서면 그 부분 합계임을 라벨에 "일부"로 밝힌다.
                  */}
-                {cardSource === "statement" ? (
+                {cardSource === "statement" || cardSource === "mixed" ? (
                   <>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
                       <Typography.Text
@@ -876,7 +891,7 @@ export function CardExpensesPage({
                         style={{ fontSize: 12, minWidth: 0, overflow: "hidden", wordBreak: "keep-all" }}
                         title="카드사 명세서 이용기간 총액입니다. 승인일 기준 합계와 기간이 달라 금액이 다를 수 있습니다."
                       >
-                        카드 청구액 (명세서)
+                        {cardSource === "mixed" ? "카드 청구액 (명세서, 일부)" : "카드 청구액 (명세서)"}
                       </Typography.Text>
                       <Typography.Text
                         type="secondary"
@@ -885,7 +900,12 @@ export function CardExpensesPage({
                         {formatKrwExact(statementBillingTotal)}
                       </Typography.Text>
                     </div>
-                    {statementBillingDiff !== 0 ? (
+                    {/*
+                     * 차이는 승인일 합계 **전체**와 명세서 총액을 비교한 값이다. 혼합 달에는
+                     * 명세서가 없는 카드사의 승인액까지 섞여 "기간 차이"로 읽을 수 없으므로
+                     * 전부 명세서인 달에서만 보여 준다.
+                     */}
+                    {cardSource === "statement" && statementBillingDiff !== 0 ? (
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, paddingLeft: 12 }}>
                         <Typography.Text
                           type="secondary"

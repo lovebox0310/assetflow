@@ -165,7 +165,7 @@ describe("CardExpensesPage (§58 카드내역 탭)", () => {
         },
       ]);
       if (path.includes("/assets/card-imports")) return apiResponse([
-        { rowKey: "k1", approvedAt: "2026-10-01", merchantName: "우아한형제들", supplyExVat: 37_273, vat: 3_727, grossAmount: 41_000, expenseKind: "식비", subCategory: "배달" },
+        { rowKey: "k1", approvedAt: "2026-10-01", merchantName: "우아한형제들", supplyExVat: 37_273, vat: 3_727, grossAmount: 41_000, expenseKind: "식비", subCategory: "배달", cardCompany: "현대카드" },
       ]);
       return apiResponse({}, false, 500);
     });
@@ -176,6 +176,75 @@ describe("CardExpensesPage (§58 카드내역 탭)", () => {
     const table = await screen.findByRole("table", { name: /카드사별 승인일 기준/ });
     expect((await within(table).findAllByText("3,326,643원")).length).toBeGreaterThan(0);
     expect(screen.queryByText("추정")).toBeNull();
+  });
+
+  /*
+   * 이슈 #56 — 판단은 카드사별이다. 현대는 명세서가 없고 삼성만 있어 "일부 추정"이다.
+   * 서버(MonthlyExpenseTotals)가 카드사별로 명세서/승인일을 섞어 계산한다.
+   */
+  it("일부 카드사만 명세서가 있으면 '일부 추정' 배지와 '일부' 라벨을 보여 준다 (이슈 #56)", async () => {
+    stubFetch((path) => {
+      if (path.includes("/card-imports/row-keys")) return apiResponse([]);
+      if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
+      if (path.includes("/card-imports/statements")) return apiResponse([
+        {
+          id: 1, cardCompany: "삼성카드", kind: "billing", usageMonth: "2026-10",
+          periodStart: "2026-09-03", periodEnd: "2026-10-02", totalAmount: 890_156,
+        },
+      ]);
+      if (path.includes("/assets/card-imports")) return apiResponse([
+        {
+          rowKey: "h1", approvedAt: "2026-10-15", merchantName: "현대가맹점",
+          supplyExVat: 2_900_000, vat: 308_877, grossAmount: 3_208_877, expenseKind: "식비",
+          cardCompany: "현대카드",
+        },
+        {
+          rowKey: "s1", approvedAt: "2026-10-20", merchantName: "삼성가맹점",
+          supplyExVat: 830_000, vat: 85_220, grossAmount: 915_220, expenseKind: "식비",
+          cardCompany: "삼성카드",
+        },
+      ]);
+      return apiResponse({}, false, 500);
+    });
+    renderPage();
+
+    const summary = await screen.findByLabelText("이 달 카드 카테고리별 합계");
+    const badge = await within(summary).findByText("일부 추정");
+    expect(badge.getAttribute("title")).toBe("일부 카드사는 명세서가 없어 승인일 기준으로 계산했습니다");
+    // 청구액 행은 명세서가 있는 카드사만의 합계다 — 라벨이 그 사실을 밝힌다.
+    expect(within(summary).getByText("카드 청구액 (명세서, 일부)")).toBeDefined();
+    expect(within(summary).getByText("890,156원")).toBeDefined();
+    // 혼합 달에서는 "기간 차이"가 회사 범위 차이와 섞여 의미가 없다 — 보여 주지 않는다.
+    expect(within(summary).queryByText("차이 (기간 차이)")).toBeNull();
+    // "일부 추정"만 있고 전체 추정("추정")은 아니다.
+    expect(within(summary).queryByText("추정")).toBeNull();
+  });
+
+  it("전부 명세서면 '일부 추정' 배지와 '일부' 라벨이 없다 (이슈 #56)", async () => {
+    stubFetch((path) => {
+      if (path.includes("/card-imports/row-keys")) return apiResponse([]);
+      if (path.includes("/assets/card-imports/unclassified")) return apiResponse([]);
+      if (path.includes("/card-imports/statements")) return apiResponse([
+        {
+          id: 1, cardCompany: "현대카드", kind: "billing", usageMonth: "2026-10",
+          periodStart: "2026-10-02", periodEnd: "2026-11-03", totalAmount: 3_326_643,
+        },
+      ]);
+      if (path.includes("/assets/card-imports")) return apiResponse([
+        {
+          rowKey: "k1", approvedAt: "2026-10-01", merchantName: "우아한형제들",
+          supplyExVat: 37_273, vat: 3_727, grossAmount: 41_000, expenseKind: "식비",
+          cardCompany: "현대카드",
+        },
+      ]);
+      return apiResponse({}, false, 500);
+    });
+    renderPage();
+
+    const summary = await screen.findByLabelText("이 달 카드 카테고리별 합계");
+    expect(await within(summary).findByText("카드 청구액 (명세서)")).toBeDefined();
+    expect(within(summary).queryByText("일부 추정")).toBeNull();
+    expect(within(summary).queryByText(/명세서, 일부/)).toBeNull();
   });
 
   /*
@@ -195,7 +264,7 @@ describe("CardExpensesPage (§58 카드내역 탭)", () => {
       if (path.includes("/assets/card-imports")) return apiResponse([
         {
           rowKey: "k1", approvedAt: "2026-10-01", merchantName: "우아한형제들",
-          supplyExVat: 90_909, vat: 9_091, grossAmount: 100_000, expenseKind: "식비",
+          supplyExVat: 90_909, vat: 9_091, grossAmount: 100_000, expenseKind: "식비", cardCompany: "현대카드",
         },
       ]);
       return apiResponse({}, false, 500);
@@ -228,11 +297,11 @@ describe("CardExpensesPage (§58 카드내역 탭)", () => {
       if (path.includes("/assets/card-imports")) return apiResponse([
         {
           rowKey: "k1", approvedAt: "2026-10-01", merchantName: "통신요금",
-          supplyExVat: 36_364, vat: 3_636, grossAmount: 40_000, expenseKind: "주거/통신", subCategory: "통신비",
+          supplyExVat: 36_364, vat: 3_636, grossAmount: 40_000, expenseKind: "주거/통신", subCategory: "통신비", cardCompany: "현대카드",
         },
         {
           rowKey: "k2", approvedAt: "2026-10-02", merchantName: "동네마트",
-          supplyExVat: 54_546, vat: 5_454, grossAmount: 60_000, expenseKind: "식비", subCategory: "장보기",
+          supplyExVat: 54_546, vat: 5_454, grossAmount: 60_000, expenseKind: "식비", subCategory: "장보기", cardCompany: "현대카드",
         },
       ]);
       return apiResponse({}, false, 500);
@@ -260,15 +329,15 @@ describe("CardExpensesPage (§58 카드내역 탭)", () => {
       if (path.includes("/assets/card-imports")) return apiResponse([
         {
           rowKey: "k1", approvedAt: "2026-10-01", merchantName: "통신요금",
-          supplyExVat: 22_727, vat: 2_273, grossAmount: 25_000, expenseKind: "주거/통신", subCategory: "통신비",
+          supplyExVat: 22_727, vat: 2_273, grossAmount: 25_000, expenseKind: "주거/통신", subCategory: "통신비", cardCompany: "현대카드",
         },
         {
           rowKey: "k2", approvedAt: "2026-10-01", merchantName: "우아한형제들",
-          supplyExVat: 27_273, vat: 2_727, grossAmount: 30_000, expenseKind: "식비", subCategory: "장보기",
+          supplyExVat: 27_273, vat: 2_727, grossAmount: 30_000, expenseKind: "식비", subCategory: "장보기", cardCompany: "현대카드",
         },
         {
           rowKey: "k3", approvedAt: "2026-10-02", merchantName: "미분류상점",
-          supplyExVat: 40_909, vat: 4_091, grossAmount: 45_000, expenseKind: "",
+          supplyExVat: 40_909, vat: 4_091, grossAmount: 45_000, expenseKind: "", cardCompany: "현대카드",
         },
       ]);
       return apiResponse({}, false, 500);

@@ -106,6 +106,31 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     expect(document.querySelectorAll(".ant-col-lg-8")).toHaveLength(3);
   });
 
+  it("카드 금액이 혼합(명세서+승인일)이면 월 수지 옆에 '일부 추정' 배지를 붙인다 (이슈 #56)", async () => {
+    stubFetch((path) => {
+      if (path.includes("/dashboard/summary")) {
+        return apiResponse({ ...dashboardMock, monthly: { ...dashboardMock.monthly, cardSource: "mixed" } });
+      }
+      return route(path);
+    });
+    render(<DashboardPage onLogout={() => {}} />);
+    const badge = await screen.findByText("일부 추정");
+    expect(badge.getAttribute("title")).toBe("일부 카드사는 명세서가 없어 승인일 기준으로 계산했습니다");
+  });
+
+  it("카드 금액이 전부 명세서면 '일부 추정' 배지가 없다 (이슈 #56)", async () => {
+    stubFetch((path) => {
+      if (path.includes("/dashboard/summary")) {
+        return apiResponse({ ...dashboardMock, monthly: { ...dashboardMock.monthly, cardSource: "statement" } });
+      }
+      return route(path);
+    });
+    render(<DashboardPage onLogout={() => {}} />);
+    // 지표가 그려진 뒤에 본다 — "아직 안 렌더됨"과 "정말 없음"을 구분한다.
+    await findByTextContent(document.body, "691,844,440원");
+    expect(screen.queryByText("일부 추정")).toBeNull();
+  });
+
   it("영역 순서가 정보구조와 일치한다 (지표→구성비→현금→카드→지출추이→현금흐름)", async () => {
     stubFetch(route);
     render(<DashboardPage onLogout={() => {}} />);

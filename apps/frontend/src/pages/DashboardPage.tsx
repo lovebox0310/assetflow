@@ -459,6 +459,18 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
                       {i < all.length - 1 ? `${part} · ` : part}
                     </span>
                   ))}
+                  {/*
+                   * 이슈 #56: 카드사 일부만 명세서가 있으면 지출에 승인일 기준 금액이 섞였다.
+                   * 지출 화면과 같은 문구로 배지를 붙인다(전부 명세서면 배지 없음).
+                   */}
+                  {summary.monthly.cardSource === "mixed" ? (
+                    <span
+                      className="af-badge af-badge--estimate"
+                      title="일부 카드사는 명세서가 없어 승인일 기준으로 계산했습니다"
+                    >
+                      일부 추정
+                    </span>
+                  ) : null}
                 </span>
               ) : undefined
             }

@@ -20,7 +20,7 @@ public final class MockDashboardSource {
 /**
      * @param vatSetAside 부가세통장 적립 이체(§57.9) — 지출이 아님.
      * @param balance     그 달 수지 = income - vatSetAside - expenses.
-     * @param cardSource  이슈 #51 — 카드 금액 출처("statement"|"approval"). 모크 기준선은 카드
+     * @param cardSource  이슈 #51·#56 — 카드 금액 출처("statement"|"approval"|"mixed"). 모크 기준선은 카드
      *                    원장을 읽지 않으므로 null 이다 — 화면은 null 을 "표시 없음"으로 본다.
      * @param cardStatementTotal 그 달 billing 명세서 합계(모크는 0).
      * @param statementCount     그 달 billing 명세서 건수(모크는 0).
