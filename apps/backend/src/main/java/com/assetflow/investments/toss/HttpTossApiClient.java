@@ -126,6 +126,13 @@ public class HttpTossApiClient implements TossApiClient {
                     .timeout(REQUEST_TIMEOUT)
                     .header("User-Agent", USER_AGENT)
                     .header("Accept", "application/json")
+                /*
+                 * 토스는 Accept-Encoding 을 생략해도 응답을 gzip 으로 압축해 보낸다.
+                 * Java HttpClient 는 자동 해제를 하지 않아 본문이 깨지고, envelope 파싱이
+                 * 실패해 403 이 `http-502` 로 뭉개졌다(실측: 토스 응답이 gzip).
+                 * identity 로 요청해 평문을 받는다.
+                 */
+                .header("Accept-Encoding", "identity")
                     .header("Authorization", token.authorization())
                     .GET();
             if (accountSeq != null) {
@@ -162,6 +169,13 @@ public class HttpTossApiClient implements TossApiClient {
                 .timeout(REQUEST_TIMEOUT)
                 .header("User-Agent", USER_AGENT)
                 .header("Accept", "application/json")
+                /*
+                 * 토스는 Accept-Encoding 을 생략해도 응답을 gzip 으로 압축해 보낸다.
+                 * Java HttpClient 는 자동 해제를 하지 않아 본문이 깨지고, envelope 파싱이
+                 * 실패해 403 이 `http-502` 로 뭉개졌다(실측: 토스 응답이 gzip).
+                 * identity 로 요청해 평문을 받는다.
+                 */
+                .header("Accept-Encoding", "identity")
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .POST(HttpRequest.BodyPublishers.ofString(form, StandardCharsets.UTF_8))
                 .build();
@@ -206,6 +220,13 @@ public class HttpTossApiClient implements TossApiClient {
                 .timeout(REQUEST_TIMEOUT)
                 .header("User-Agent", USER_AGENT)
                 .header("Accept", "application/json")
+                /*
+                 * 토스는 Accept-Encoding 을 생략해도 응답을 gzip 으로 압축해 보낸다.
+                 * Java HttpClient 는 자동 해제를 하지 않아 본문이 깨지고, envelope 파싱이
+                 * 실패해 403 이 `http-502` 로 뭉개졌다(실측: 토스 응답이 gzip).
+                 * identity 로 요청해 평문을 받는다.
+                 */
+                .header("Accept-Encoding", "identity")
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .POST(HttpRequest.BodyPublishers.ofString(form, StandardCharsets.UTF_8))
                 .build();

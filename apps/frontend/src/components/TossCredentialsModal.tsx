@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button, Form, Input, Modal, Popconfirm, Select, Typography } from "antd";
 import {
   deleteTossCredentials,
+  diagnoseTossToken,
   getTossStatus,
   listTossAccounts,
   saveTossCredentials,
@@ -59,6 +60,9 @@ export function TossCredentialsModal({ accountId, accountName, open, onClose, on
   /** 계좌 목록(실패도 200 + error). null 이면 아직 부르지 않았다. */
   const [accounts, setAccounts] = useState<TossAccountsResult | null>(null);
   const [accountsLoading, setAccountsLoading] = useState(false);
+  /** 토큰 진단(#55) — 403 사유를 화면에서 확인한다. Console 없이 폰에서도 된다. */
+  const [diag, setDiag] = useState<import("../api/investmentsApi").TossTokenDiagnosis | null>(null);
+  const [diagLoading, setDiagLoading] = useState(false);
 
   const refreshAccounts = useCallback(async () => {
     setAccountsLoading(true);
@@ -114,6 +118,27 @@ export function TossCredentialsModal({ accountId, accountName, open, onClose, on
       return false;
     } finally {
       setTesting(false);
+    }
+  };
+
+  /**
+   * 토큰 발급만 시도해 실패 사유를 본다(#55). `/test` 는 예외만 던져서
+   * "허용 IP 미등록"과 "자격증명 오류"를 구분할 수 없었다.
+   */
+  const runDiagnose = async () => {
+    setDiagLoading(true);
+    setDiag(null);
+    try {
+      setDiag(await diagnoseTossToken());
+    } catch (e) {
+      setDiag({
+        status: 0,
+        code: null,
+        error: describeTossError(e, "토스 토큰 진단에 실패했습니다"),
+        body: null,
+      });
+    } finally {
+      setDiagLoading(false);
     }
   };
 

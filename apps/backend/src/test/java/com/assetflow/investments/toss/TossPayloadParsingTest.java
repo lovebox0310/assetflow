@@ -127,4 +127,12 @@ class TossPayloadParsingTest {
         // 빈 본문은 빈 목록으로 둔다 — "손상"으로 단정해 시드를 되살리지 않는다.
         assertThat(client.parseAccounts("")).isEmpty();
     }
+
+    @Test
+    void gzipBodyIsNotMistakenForAnApiCode() {
+        // 토스는 Accept-Encoding 을 생략해도 gzip 으로 응답한다. 해제하지 못한 본문은
+        // JSON 이 아니므로 상태 기반 코드로 떨어진다 — 403 이 http-502 로 보이던 원인.
+        // 요청에 Accept-Encoding: identity 를 넣어 이 경로를 피한다(구현 주석 참조).
+        assertThat(client.errorCode(403, "\u001f\u008b\u0008garbage")).isEqualTo("http-403");
+    }
 }

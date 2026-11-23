@@ -464,6 +464,19 @@ export function listTossAccounts(): Promise<TossAccountsResult> {
 }
 
 /** 보유자산 원본 진단(읽기 전용). 실패도 200 + error. */
+/** 토큰 발급 진단(이슈 #55). 403 사유를 화면에서 볼 수 있게 상태·코드·본문을 돌려준다. */
+export interface TossTokenDiagnosis {
+  status: number;
+  code: string | null;
+  error: string | null;
+  /** 토스 응답 본문(자격증명 문자열은 서버가 *** 로 지운다). 성공이면 null. */
+  body: string | null;
+}
+
+export function diagnoseTossToken(): Promise<TossTokenDiagnosis> {
+  return apiFetch<TossTokenDiagnosis>("/api/v1/integrations/toss/token-preview");
+}
+
 export function previewToss(
   accountId: number,
 ): Promise<{ holdings: unknown | null; warning: string | null; error: string | null }> {
