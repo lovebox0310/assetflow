@@ -253,6 +253,11 @@ export function TossCredentialsModal({ accountId, accountName, open, onClose, on
           <Button onClick={() => void runTest()} loading={testing} disabled={saving || loading}>
             연결 테스트
           </Button>
+          {/* #55: 연결 테스트는 예외 문구만 준다 — 403 의 사유(허용 IP/자격증명)를
+              구분하려면 토큰 발급 진단이 필요하다. 폰에서도 누를 수 있게 버튼으로 둔다. */}
+          <Button onClick={() => void runDiagnose()} loading={diagLoading} disabled={saving || loading}>
+            진단
+          </Button>
           <Button
             type="primary"
             onClick={() => form.submit()}
@@ -359,6 +364,45 @@ export function TossCredentialsModal({ accountId, accountName, open, onClose, on
           >
             {testResult.message}
           </Typography.Paragraph>
+        )}
+
+        {diag && (
+          <div style={{ marginTop: 12 }} aria-live="polite">
+            <Typography.Text strong style={{ display: "block", marginBottom: 6, fontSize: 13 }}>
+              토큰 발급 진단
+            </Typography.Text>
+            <Typography.Paragraph type="secondary" style={{ margin: "0 0 4px", fontSize: 12 }}>
+              HTTP {diag.status}
+              {diag.code ? ` · code=${diag.code}` : ""}
+            </Typography.Paragraph>
+            {diag.error ? (
+              <Typography.Paragraph type="danger" style={{ margin: "0 0 6px", fontSize: 12 }}>
+                {diag.error}
+              </Typography.Paragraph>
+            ) : null}
+            {diag.body ? (
+              <pre
+                aria-label="토스 토큰 발급 응답 본문"
+                style={{
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-all",
+                  margin: 0,
+                  padding: 10,
+                  fontSize: 12,
+                  lineHeight: 1.5,
+                  background: "var(--af-secondary)",
+                  border: "1px solid var(--af-border)",
+                  borderRadius: 8,
+                }}
+              >
+                {diag.body}
+              </pre>
+            ) : null}
+            <Typography.Paragraph type="secondary" style={{ margin: "6px 0 0", fontSize: 12 }}>
+              자격증명은 *** 로 가려집니다. 403 이면 토스증권 WTS → 설정 → Open API →
+              허용 IP 관리에서 이 서버의 IP 등록을 확인하세요.
+            </Typography.Paragraph>
+          </div>
         )}
 
         {error && (

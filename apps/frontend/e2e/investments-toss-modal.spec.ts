@@ -36,6 +36,9 @@ async function mockInvestments(page: Page) {
       return ok({ configured: false, accessKeyMasked: null });
     }
     if (pathname === "/api/v1/integrations/toss") return ok(TOSS_STATUS);
+    if (pathname === "/api/v1/integrations/toss/token-preview") {
+      return ok({ status: 403, code: "access_denied", error: null, body: '{"error":"access_denied"}' });
+    }
     return route.fulfill({
       status: 404,
       json: { code: "NOT_FOUND", message: `not mocked: ${pathname}`, data: null },
