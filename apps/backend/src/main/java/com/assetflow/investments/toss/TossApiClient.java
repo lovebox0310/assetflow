@@ -21,6 +21,18 @@ public interface TossApiClient {
     void verify(TossCredentials credentials);
 
     /**
+     * 진단 — 토큰 발급만 시도하고 **실패 시 HTTP 상태와 응답 본문(마스킹)** 을 돌려준다.
+     *
+     * <p>{@code verify()} 는 실패를 예외로만 알려 주어 403 의 사유(허용 IP·자격증명)를
+     * 구분할 수 없다. 이 메서드는 화면에 원인을 보여 주기 위한 읽기 전용 경로다.
+     * 본문에 자격증명이 섞일 수 있는 필드는 지운다.</p>
+     */
+    TokenDiagnosis diagnoseToken(TossCredentials credentials);
+
+    /** 토큰 발급 진단 결과. 성공이면 {@code error == null}. */
+    record TokenDiagnosis(int status, String code, String error, String body) {}
+
+    /**
      * 계좌 목록. {@code accountSeq} 는 보유자산 조회 헤더 값이다.
      *
      * @throws TossApiException 토스가 오류 코드를 돌려줬을 때

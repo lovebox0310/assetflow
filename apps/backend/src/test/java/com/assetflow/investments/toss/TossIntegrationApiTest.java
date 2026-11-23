@@ -64,6 +64,11 @@ class TossIntegrationApiTest {
         public java.math.BigDecimal usdKrwRate(TossCredentials credentials) {
             throw new UnsupportedOperationException("not used in this test");
         }
+
+        @Override
+        public TossApiClient.TokenDiagnosis diagnoseToken(TossCredentials credentials) {
+            return new TossApiClient.TokenDiagnosis(200, null, null, null);
+        }
     }
 
     private InMemoryTossCredentialsLedger ledger;

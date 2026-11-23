@@ -42,4 +42,9 @@ public class TossApiClientFallback implements TossApiClient {
     private static TossNotConfiguredException notConfigured() {
         return new TossNotConfiguredException(MESSAGE);
     }
+
+    @Override
+    public TokenDiagnosis diagnoseToken(TossCredentials credentials) {
+        throw notConfigured();
+    }
 }

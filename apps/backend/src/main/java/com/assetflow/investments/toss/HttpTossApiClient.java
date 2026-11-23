@@ -145,6 +145,58 @@ public class HttpTossApiClient implements TossApiClient {
         }
     }
 
+    /**
+     * 진단용 토큰 발급 — 실패해도 예외를 던지지 않고 상태·본문을 돌려준다.
+     *
+     * <p>본문에서 자격증명이 섞일 수 있는 값(요청에 보낸 client_id/secret 과 같은 문자열)은
+     * 지우고 내보낸다. 성공하면 본문은 비우고 {@code error = null} 로 둔다.</p>
+     */
+    @Override
+    public TokenDiagnosis diagnoseToken(TossCredentials credentials) {
+        String clientId = credentials.clientId();
+        String clientSecret = credentials.clientSecret();
+        String form = "grant_type=client_credentials"
+                + "&client_id=" + encode(clientId)
+                + "&client_secret=" + encode(clientSecret);
+        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + TOKEN_PATH))
+                .timeout(REQUEST_TIMEOUT)
+                .header("User-Agent", USER_AGENT)
+                .header("Accept", "application/json")
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString(form, StandardCharsets.UTF_8))
+                .build();
+        try {
+            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            int status = response.statusCode();
+            String body = redact(response.body(), clientId, clientSecret);
+            if (status == 200) {
+                return new TokenDiagnosis(status, null, null, null);
+            }
+            return new TokenDiagnosis(status, errorCode(status, response.body()), null, body);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return new TokenDiagnosis(0, "interrupted", "요청이 중단되었습니다", null);
+        } catch (Exception e) {
+            // IOException(타임아웃 포함). 원인 문자열에 키가 섞일 수 있어 그대로 노출하지 않는다.
+            return new TokenDiagnosis(0, "unreachable", "토스 서버에 연결하지 못했습니다", null);
+        }
+    }
+
+    /** 본문에 요청 자격증명이 그대로 되돌아오는 경우를 지운다(응답 본문을 화면에 보여 주므로). */
+    private static String redact(String body, String clientId, String clientSecret) {
+        if (body == null) {
+            return null;
+        }
+        String out = body;
+        if (clientSecret != null && !clientSecret.isBlank()) {
+            out = out.replace(clientSecret, "***");
+        }
+        if (clientId != null && !clientId.isBlank()) {
+            out = out.replace(clientId, "***");
+        }
+        return out;
+    }
+
     /** 토큰 발급. 실패는 {@link TossApiException}. 응답의 access_token 은 로그에 남기지 않는다. */
     private TossToken requestToken(String clientId, String clientSecret) {
         String form = "grant_type=client_credentials"

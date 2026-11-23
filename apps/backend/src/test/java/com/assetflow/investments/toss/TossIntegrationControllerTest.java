@@ -69,6 +69,11 @@ class TossIntegrationControllerTest {
         public BigDecimal usdKrwRate(TossCredentials credentials) {
             return new BigDecimal("1380.5");
         }
+        @Override
+        public TossApiClient.TokenDiagnosis diagnoseToken(TossCredentials credentials) {
+            return new TossApiClient.TokenDiagnosis(200, null, null, null);
+        }
+
     }
 
     private InMemoryAssetLedger assets;

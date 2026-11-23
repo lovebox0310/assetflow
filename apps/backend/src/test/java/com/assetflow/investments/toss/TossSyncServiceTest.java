@@ -71,6 +71,11 @@ class TossSyncServiceTest {
             }
             return rate;
         }
+        @Override
+        public TossApiClient.TokenDiagnosis diagnoseToken(TossCredentials credentials) {
+            return new TossApiClient.TokenDiagnosis(200, null, null, null);
+        }
+
     }
 
     private InMemoryAssetLedger assets;

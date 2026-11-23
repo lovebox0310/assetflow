@@ -110,6 +110,23 @@ public class TossIntegrationController {
      * 토스 계좌 목록 진단. 실패(자격증명 없음·토스 오류)도 200 + error 로 돌려준다.
      * accountNo 는 마스킹해서만 내려보낸다.
      */
+    /**
+     * 토큰 발급 진단 — 403 의 사유를 화면에서 볼 수 있게 상태·오류 코드·응답 본문을 돌려준다.
+     *
+     * <p>{@code /test} 는 예외로만 알려 줘서 "허용 IP 미등록"과 "자격증명 오류"를 구분할 수
+     * 없었다. 진단은 **읽기 전용**이며 실패도 200 + error 로 돌려준다(DB 변경 없음).
+     * 응답 본문의 자격증명 문자열은 클라이언트가 지운다.</p>
+     */
+    @GetMapping("/integrations/toss/token-preview")
+    public ApiResponse<TossApiClient.TokenDiagnosis> tokenPreview() {
+        if (!properties.isEnabled()) {
+            throw new TossNotConfiguredException("토스 연동이 비활성화되어 있습니다(app.toss.enabled)");
+        }
+        TossCredentials creds = credentials.findDecrypted(currentUserId())
+                .orElseThrow(() -> new NotFoundException("토스 자격증명이 없습니다"));
+        return new ApiResponse<>("OK", "Toss token diagnosis", client.diagnoseToken(creds));
+    }
+
     @GetMapping("/integrations/toss/accounts")
     public ApiResponse<TossAccountsResult> accounts() {
         Optional<TossCredentials> found = credentials.findDecrypted(currentUserId())
