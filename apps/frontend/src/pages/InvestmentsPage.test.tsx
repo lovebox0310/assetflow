@@ -226,6 +226,51 @@ describe("InvestmentsPage (§54 E2)", () => {
     expect(screen.getByText("잔고 동기화")).toBeDefined();
   });
 
+  /* ── 이슈 #55 Stage 3: 토스 메뉴는 토스증권 계좌에서만 ───────────── */
+  function accountsFixture(account: { accountId: number; accountName: string; institutionName: string }) {
+    return Promise.resolve(apiResponse({
+      holdings: [],
+      accounts: [{ ...account, cashBalance: 0, holdingsValue: 0, totalValue: 0 }],
+    }));
+  }
+
+  it("토스증권 계좌에는 토스 메뉴 3개만 보이고 KIS 메뉴는 없다", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.includes("/integrations/upbit")) {
+        return Promise.resolve(apiResponse({ configured: false, accessKeyMasked: null }));
+      }
+      return accountsFixture({ accountId: 7, accountName: "토스 주식", institutionName: "토스증권" });
+    }));
+    render(<InvestmentsPage />);
+    await screen.findByText("토스 주식 · 토스증권");
+
+    fireEvent.click(screen.getByRole("button", { name: "토스 주식 메뉴" }));
+    expect(await screen.findByRole("menuitem", { name: "토스 연결 설정" })).toBeDefined();
+    expect(screen.getByRole("menuitem", { name: "잔고 동기화" })).toBeDefined();
+    expect(screen.getByRole("menuitem", { name: "토스 진단" })).toBeDefined();
+    // KIS 전용 항목은 토스 계좌에 없다.
+    expect(screen.queryByRole("menuitem", { name: "한국투자 연결 설정" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "채권 진단" })).toBeNull();
+  });
+
+  it("'토스뱅크' 계좌에는 토스 메뉴가 없다(다른 회사)", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.includes("/integrations/upbit")) {
+        return Promise.resolve(apiResponse({ configured: false, accessKeyMasked: null }));
+      }
+      return accountsFixture({ accountId: 8, accountName: "토스뱅크 파킹", institutionName: "토스뱅크" });
+    }));
+    render(<InvestmentsPage />);
+    await screen.findByText("토스뱅크 파킹 · 토스뱅크");
+
+    fireEvent.click(screen.getByRole("button", { name: "토스뱅크 파킹 메뉴" }));
+    expect(await screen.findByRole("menuitem", { name: "계좌 편집" })).toBeDefined();
+    expect(screen.queryByRole("menuitem", { name: "토스 연결 설정" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "토스 진단" })).toBeNull();
+  });
+
   it("보유종목이 없으면 빈 상태를 보여 주고, 추가 폼을 열 수 있다", async () => {
     vi.stubGlobal("fetch", vi.fn(() =>
       Promise.resolve(apiResponse({

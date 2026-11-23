@@ -393,3 +393,90 @@ export function clearKisBalance(accountId: number): Promise<Portfolio> {
     body: JSON.stringify({ accountId }),
   });
 }
+
+/* ── 이슈 #55 토스증권 연동 (Stage 3 UI) ────────────────────────────────
+ * 서버는 clientSecret 평문을 어떤 응답에도 담지 않는다(TossIntegrationController).
+ * 그래서 아래 타입에는 secret 계열 필드가 없다 — 저장 후에는 마스킹조차 오지 않고
+ * "설정됨/안 됨" 만 온다. 저장 API 는 두 키를 항상 다시 받는다(서버 계약). */
+
+/** 토스 연동 상태. secret·clientId 는 내려오지 않는다. */
+export interface TossStatus {
+  configured: boolean;
+  accountId: number | null;
+  hasAccountSeq: boolean;
+}
+
+/** 토스 계좌 1건 — accountNo 는 서버가 마스킹한 값만 온다. */
+export interface TossAccountView {
+  accountSeq: number;
+  accountNo: string;
+  accountType: string;
+}
+
+/** 계좌 목록. 실패도 200 이므로 사유는 error 에 담긴다(성공이면 null). */
+export interface TossAccountsResult {
+  accounts: TossAccountView[];
+  error: string | null;
+}
+
+/** 동기화 결과. warning 은 일부 값만 갱신했을 때(예: 환율 실패)의 사유다. */
+export interface TossSyncResult {
+  accountId: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  warning: string | null;
+}
+
+export interface TossCredentialsInput {
+  accountId?: number | null;
+  clientId: string;
+  clientSecret: string;
+  /** 백엔드는 String 으로 받는다(Select·직접 입력 모두 문자열로 보낸다). */
+  tossAccountSeq?: string | null;
+}
+
+export function getTossStatus(): Promise<TossStatus> {
+  return apiFetch<TossStatus>("/api/v1/integrations/toss");
+}
+
+/** 서버는 두 키를 항상 새로 받는다(기존 키와 병합하지 않는다). */
+export function saveTossCredentials(body: TossCredentialsInput): Promise<TossStatus> {
+  return apiFetch<TossStatus>("/api/v1/integrations/toss", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteTossCredentials(): Promise<TossStatus> {
+  return apiFetch<TossStatus>("/api/v1/integrations/toss", { method: "DELETE" });
+}
+
+/** 저장된 키로 토스 API 를 한 번 호출한다. 실패는 502/503 ApiError 로 온다. */
+export function testTossConnection(): Promise<{ ok: boolean }> {
+  return apiFetch<{ ok: boolean }>("/api/v1/integrations/toss/test", { method: "POST" });
+}
+
+/** 토스 계좌 목록(마스킹). 실패해도 200 이고 error 에 사유가 들어온다. */
+export function listTossAccounts(): Promise<TossAccountsResult> {
+  return apiFetch<TossAccountsResult>("/api/v1/integrations/toss/accounts");
+}
+
+/** 보유자산 원본 진단(읽기 전용). 실패도 200 + error. */
+export function previewToss(
+  accountId: number,
+): Promise<{ holdings: unknown | null; warning: string | null; error: string | null }> {
+  return apiFetch<{ holdings: unknown | null; warning: string | null; error: string | null }>(
+    `/api/v1/accounts/${accountId}/toss-preview`,
+    { method: "POST" },
+  );
+}
+
+/**
+ * 토스증권 보유자산을 연동 계좌로 동기화한다.
+ * 빈 보유 목록은 "보유 0"일 뿐 삭제 신호가 아니다 — 서버도 기존 행을 지우지 않는다(§31.4).
+ */
+export function syncToss(): Promise<TossSyncResult> {
+  return apiFetch<TossSyncResult>("/api/v1/investments/toss/sync", { method: "POST" });
+}

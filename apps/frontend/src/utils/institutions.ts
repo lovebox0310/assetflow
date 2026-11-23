@@ -21,6 +21,12 @@ function normalizeInstitutionName(name: string | null | undefined): string {
 const KIS_INSTITUTION_KEYS: ReadonlySet<string> = new Set(["한국투자", "한국투자증권"]);
 
 /**
+ * 토스증권으로 인정하는 기관명 (이슈 #55 Stage 3). `토스뱅크`·`토스페이먼츠` 는
+ * 이름만 겹치는 다른 회사라 정확 일치로만 본다.
+ */
+const TOSS_INSTITUTION_KEYS: ReadonlySet<string> = new Set(["토스", "토스증권"]);
+
+/**
  * 기관명 표기 흔들림을 흡수한다. 정확히 한국투자/한국투자증권만 KIS 로 본다.
  * `null`·`undefined`·빈 문자열·공백만 있는 값은 false.
  */
@@ -28,4 +34,14 @@ export function isKisInstitution(name: string | null | undefined): boolean {
   const normalized = normalizeInstitutionName(name);
   if (!normalized) return false;
   return KIS_INSTITUTION_KEYS.has(normalized.replace(/\s+/g, ""));
+}
+
+/**
+ * 토스증권 계좌인가. `토스`·`토스증권` 만 true 이고 `토스뱅크`·`토스페이먼츠` 는
+ * 다른 회사라 false 다(부분 문자열 판정 금지).
+ */
+export function isTossInstitution(name: string | null | undefined): boolean {
+  const normalized = normalizeInstitutionName(name);
+  if (!normalized) return false;
+  return TOSS_INSTITUTION_KEYS.has(normalized.replace(/\s+/g, ""));
 }

@@ -1607,6 +1607,32 @@ button {
   }
 }
 
+/* ── 이슈 #55 Stage 3: 토스 연동 모달 입력 터치 44 ──────────────────
+ * 포털 모달이라 화면 클래스(.af-investments)가 닿지 않는다. 이 모달의 루트
+ * 클래스(`.af-toss-modal`)로만 좁힌다 — 다른 모달은 기존 값 그대로다.
+ * 높이는 기존 토큰(--af-control-h-lg = 44, §78)만 쓴다. */
+@media (pointer: coarse) {
+  .af-toss-modal .ant-input,
+  .af-toss-modal .ant-input-number,
+  .af-toss-modal .ant-select {
+    min-height: var(--af-control-h-lg);
+  }
+
+  .af-toss-modal .ant-select {
+    align-items: center;
+  }
+
+  /* Password 는 affix 래퍼가 히트를 소유한다 — 안쪽 input 에 44 를 그대로 주면
+   * 래퍼 패딩이 더해져 58 로 부푼다(§124 C-05 교훈). 래퍼만 44 로 둔다. */
+  .af-toss-modal .ant-input-affix-wrapper {
+    min-height: var(--af-control-h-lg);
+  }
+
+  .af-toss-modal .ant-input-affix-wrapper > input.ant-input {
+    min-height: 0;
+  }
+}
+
 /* ── §128 이슈 #36 P2 — AS-05: 자산 폼·은행 모달 터치 44 ──────────────
  * coarse 에서 자산 폼 Input·InputNumber·Select 36, 은행 모달 컨트롤 36 이었다
  * (감사 실측 잔액 214×34 · 투자 화면은 44). 조건은 `pointer: coarse` 하나 —

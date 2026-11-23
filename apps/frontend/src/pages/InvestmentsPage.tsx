@@ -25,6 +25,8 @@ import { KisCredentialsModal } from "../components/KisCredentialsModal";
 import { KisBondPreviewModal } from "../components/KisBondPreviewModal";
 import { KisPensionPreviewModal } from "../components/KisPensionPreviewModal";
 import { UpbitCredentialsModal } from "../components/UpbitCredentialsModal";
+import { TossCredentialsModal } from "../components/TossCredentialsModal";
+import { TossPreviewModal } from "../components/TossPreviewModal";
 import {
   clearKisBalance,
   createHolding,
@@ -38,6 +40,7 @@ import {
   refreshHoldingPrices,
   searchBonds,
   syncKisBalance,
+  syncToss,
   syncUpbit,
   updateHolding,
   type AssetClass,
@@ -53,7 +56,7 @@ import { clearToken } from "../auth/authStore";
 import { useMinWidth } from "../hooks/useMinWidth";
 import { SPACE } from "../theme/tokens";
 import { formatKrwExact, formatPercent, formatSignedKrw } from "../utils/formatters";
-import { isKisInstitution } from "../utils/institutions";
+import { isKisInstitution, isTossInstitution } from "../utils/institutions";
 
 interface InvestmentsPageProps {
   onOpenDashboard?: () => void;
@@ -195,6 +198,12 @@ export function InvestmentsPage({
   const [bondPreviewAccount, setBondPreviewAccount] = useState<{ id: number; name: string } | null>(null);
   /** 개인연금/IRP 퇴직연금 잔고 읽기 전용 원본 진단 모달. */
   const [pensionPreviewAccount, setPensionPreviewAccount] =
+    useState<{ id: number; name: string } | null>(null);
+  /** 이슈 #55 Stage 3 토스증권 연동 — 동기화·설정·진단. */
+  const [tossSyncingAccountId, setTossSyncingAccountId] = useState<number | null>(null);
+  const [tossCredentialsAccount, setTossCredentialsAccount] =
+    useState<{ id: number; name: string } | null>(null);
+  const [tossPreviewAccount, setTossPreviewAccount] =
     useState<{ id: number; name: string } | null>(null);
   /** 계좌 헤더의 `⋯` 메뉴는 한 번에 하나만 열린다 — aria-expanded 도 이 값으로 동기화한다. */
   const [openAccountMenu, setOpenAccountMenu] = useState<number | null>(null);
@@ -767,6 +776,32 @@ export function InvestmentsPage({
     }
   };
 
+  /**
+   * 이슈 #55 Stage 3 토스증권 보유자산 동기화.
+   * 동기화 응답은 portfolio 를 담지 않으므로 화면은 서버에서 다시 읽는다 — 한 화면에서
+   * 계산한 값을 캐시하면 다른 화면의 변경이 반영되지 않는다(§31.5).
+   * warning(예: 환율 실패)은 기존 동기화 경고 자리에 그대로 보여 준다.
+   */
+  const doTossSync = async (accountId: number) => {
+    setTossSyncingAccountId(accountId);
+    setActionError("");
+    setActionWarning("");
+    setActionMessage("");
+    try {
+      const result = await syncToss();
+      setActionMessage(
+        `토스증권에서 가져왔습니다 — 새로 ${result.created}개, 갱신 ${result.updated}개` +
+          (result.skipped ? `, 건너뜀 ${result.skipped}개` : ""),
+      );
+      setActionWarning(result.warning ?? "");
+      await load();
+    } catch (e) {
+      setActionError(describeError(e, "토스증권 동기화에 실패했습니다"));
+    } finally {
+      setTossSyncingAccountId(null);
+    }
+  };
+
   const filterButton = (key: AssetClass | "all", label: string) => (
     <Button
       key={key}
@@ -1189,6 +1224,7 @@ export function InvestmentsPage({
                   const rows = visible.filter((h) => h.accountId === account.accountId);
                   const accountHoldings = holdings.filter((h) => h.accountId === account.accountId);
                   const isKisAccount = isKisInstitution(account.institutionName);
+                  const isTossAccount = isTossInstitution(account.institutionName);
                   const isUpbitAccount =
                     account.institutionName === "업비트" || account.accountName === "업비트";
                   /**
@@ -1198,7 +1234,7 @@ export function InvestmentsPage({
                    */
                   const accountActionDisabled =
                     editingId !== null || priceMode || accountBusy
-                    || kisSyncingAccountId !== null || upbitSyncing;
+                    || kisSyncingAccountId !== null || tossSyncingAccountId !== null || upbitSyncing;
                   const kisMenuItems: NonNullable<MenuProps["items"]> = isKisAccount
                     ? [
                         { key: "kis", label: "한국투자 연결 설정", disabled: accountActionDisabled },
@@ -1219,15 +1255,23 @@ export function InvestmentsPage({
                         },
                       ]
                     : [];
+                  const tossMenuItems: NonNullable<MenuProps["items"]> = isTossAccount
+                    ? [
+                        { key: "toss-settings", label: "토스 연결 설정", disabled: accountActionDisabled },
+                        { key: "toss-sync", label: "잔고 동기화", disabled: accountActionDisabled },
+                        { key: "toss-preview", label: "토스 진단", disabled: accountActionDisabled },
+                      ]
+                    : [];
                   const accountMenuItems: NonNullable<MenuProps["items"]> = [
                     { key: "edit", label: "계좌 편집", disabled: accountActionDisabled },
                     ...kisMenuItems,
                     ...upbitMenuItems,
+                    ...tossMenuItems,
                     {
                       key: "delete",
                       label: "계좌 삭제",
                       danger: true,
-                      disabled: accountBusy || kisSyncingAccountId !== null || upbitSyncing,
+                      disabled: accountBusy || kisSyncingAccountId !== null || tossSyncingAccountId !== null || upbitSyncing,
                     },
                   ];
                   const onAccountMenuClick: MenuProps["onClick"] = ({ key }) => {
@@ -1241,6 +1285,11 @@ export function InvestmentsPage({
                       setPensionPreviewAccount({ id: account.accountId, name: account.accountName });
                     else if (key === "upbit-settings") setUpbitOpen(true);
                     else if (key === "upbit-sync") void handleUpbitSync();
+                    else if (key === "toss-settings")
+                      setTossCredentialsAccount({ id: account.accountId, name: account.accountName });
+                    else if (key === "toss-sync") void doTossSync(account.accountId);
+                    else if (key === "toss-preview")
+                      setTossPreviewAccount({ id: account.accountId, name: account.accountName });
                     // 확인이 필요한 동작은 앵커 Popconfirm 을 연다(메뉴는 antd 가 닫는다).
                     else if (key === "clear" || key === "delete")
                       setAccountConfirm({ accountId: account.accountId, action: key });
@@ -1375,6 +1424,15 @@ export function InvestmentsPage({
                           style={{ marginBottom: 12, padding: 12, background: "var(--af-secondary)", borderRadius: 8 }}
                         >
                           <Typography.Text type="secondary">한국투자증권 잔고를 가져오는 중...</Typography.Text>
+                        </div>
+                      ) : null}
+                      {tossSyncingAccountId === account.accountId ? (
+                        <div
+                          role="status"
+                          aria-live="polite"
+                          style={{ marginBottom: 12, padding: 12, background: "var(--af-secondary)", borderRadius: 8 }}
+                        >
+                          <Typography.Text type="secondary">토스증권 잔고를 가져오는 중...</Typography.Text>
                         </div>
                       ) : null}
                       {rows.length === 0 ? (
@@ -1522,6 +1580,27 @@ export function InvestmentsPage({
           onClose={() =>
             closeAccountModal(pensionPreviewAccount.id, () => setPensionPreviewAccount(null))
           }
+        />
+      )}
+
+      {tossCredentialsAccount && (
+        <TossCredentialsModal
+          accountId={tossCredentialsAccount.id}
+          accountName={tossCredentialsAccount.name}
+          open={tossCredentialsAccount !== null}
+          onClose={() =>
+            closeAccountModal(tossCredentialsAccount.id, () => setTossCredentialsAccount(null))
+          }
+          onSaved={() => void load()}
+        />
+      )}
+
+      {tossPreviewAccount && (
+        <TossPreviewModal
+          accountId={tossPreviewAccount.id}
+          accountName={tossPreviewAccount.name}
+          open={tossPreviewAccount !== null}
+          onClose={() => closeAccountModal(tossPreviewAccount.id, () => setTossPreviewAccount(null))}
         />
       )}
 
