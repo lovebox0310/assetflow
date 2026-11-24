@@ -6461,3 +6461,47 @@ footer 위치·순서** 처럼 조건과 무관하게 참인 성질로 쓴다.
 - IRP(29) 진단은 체결기준잔고·채권 부가 조회 때문에 5회.
 - 마스킹이 **필드명 기반**이라 미지의 식별 필드는 통과 가능. 채권 진단 모달은 미적용.
 - `.af-settings` 토글 히트는 이 빌드에서 이미 44(아이콘 16px). 이슈 기록의 42는 14px 아이콘 구성 기준.
+
+## 133) 토스증권 Open API 연동 (#55, 2026-11-23~24)
+
+토스 Open API 로 국내·미국 주식 보유자산을 동기화한다. KIS·업비트와 같은 자리(투자 계좌 `⋯`)에 붙였다.
+
+**확정 스펙 (OpenAPI JSON 실측 — 추측 금지)**
+| 항목 | 내용 |
+|---|---|
+| Base | `https://openapi.tossinvest.com` |
+| 토큰 | `POST /oauth2/token`, Client Credentials, **클라이언트당 1개만 유효**(재발급 시 이전 토큰 `token-revoked`) |
+| 계좌 헤더 | `X-Tossinvest-Account: {accountSeq}` — **accountNo(11자리 실계좌번호)가 아니라 순번** |
+| 계좌 | `GET /api/v1/accounts` → `{accountNo, accountSeq, accountType:"BROKERAGE"}` |
+| 보유 | `GET /api/v1/holdings` → `items[{symbol,name,marketCountry:KR\|US,currency,quantity,lastPrice,averagePurchasePrice,...}]`, **모든 숫자가 문자열** |
+| 환율 | `GET /api/v1/exchange-rate?baseCurrency=USD&quoteCurrency=KRW` — **두 파라미터 모두 필수** |
+| IP 제한 | 허용 IP 미등록 시 토큰 발급이 **403 + OAuth2 형식 `{"error":"access_denied"}`** |
+
+**구현**
+| 단계 | 내용 |
+|---|---|
+| 스키마 | `toss_credentials`(계좌별 1행, `toss_account_seq`), AES/GCM 암복호화(기존 cipher 재사용) |
+| API | `GET/PUT/DELETE /integrations/toss`, `/test`, `/accounts`, `/token-preview`, `POST /investments/toss/sync`, `POST /accounts/{id}/toss-preview` |
+| 클라이언트 | 토큰 캐시(동시 요청 발급 1회, 만료 60초 전 재발급), 401·429 1회 재시도, 키·토큰 로그 금지 |
+| 동기화 | 계좌 소유·invest 검증(400), accountSeq 자동선택(다수면 400+후보), USD 환율, **삭제하지 않음** |
+| UI | `TossCredentialsModal`(KIS 모달과 셸 byte-identical), `TossPreviewModal`, `⋯` 메뉴 3항목, `진단` 버튼 |
+| 기관 판정 | `isTossInstitution` — `토스`/`토스증권` 정확 일치(`토스뱅크`·`토스페이먼츠` 제외) |
+
+**디버깅에서 잡은 것 (모두 실측 근거)**
+1. **gzip** — 토스는 `Accept-Encoding` 을 생략해도 gzip 으로 응답한다. Java HttpClient 는 자동 해제하지 않아
+   본문이 깨지고 envelope 파싱이 실패 → **403 이 `http-502` 로 뭉개졌다**. `Accept-Encoding: identity` 로 해결.
+2. **OAuth2 오류 형식** — 토큰 엔드포인트만 `{"error":"access_denied"}`(문자열)로 응답한다.
+   `{"error":{"code":...}}` 만 읽던 파서가 원인을 못 밝혔다.
+3. **환율 필수 파라미터** — `baseCurrency`·`quoteCurrency` 없이 호출해 환율 조회 실패 →
+   `fxRate=1` 폴백으로 **USD 자산이 1:1 표시**됐다.
+4. **503 TOSS_NOT_CONFIGURED** — `TOSS_ENABLED` 기본값이 false. 운영 env 에 명시해야 한다.
+
+**검증**: 백엔드 467, 프론트 363, e2e 235, 디자인 스냅샷 102(갱신 0).
+**실계좌 확인**: 연결 테스트 성공 → 잔고 동기화 **오류 없이 완료**(환율 적용).
+
+**한계 / 후속**
+- `accountSeq` 자동선택 결과를 저장하지 않아 매 동기화마다 `accounts()` 1회 추가 호출.
+- `toss-preview` 는 파싱된 값만 반환(원문 보관 필드 없음).
+- 429 재시도·토큰 재발급 경로는 fake 테스트로만 검증(실계좌 미확인).
+- ETF 판별 미구현 — 국내·미국 모두 `stock` 으로 매핑.
+- 실제 토스 계좌에 없는 종목은 삭제하지 않는다(의도). 사용자가 수동 입력한 행과 중복될 수 있다.
