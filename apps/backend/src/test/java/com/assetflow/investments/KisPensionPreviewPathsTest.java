@@ -27,6 +27,7 @@ import java.util.function.Function;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import com.assetflow.investments.sync.KisSyncService;
 
 /**
  * 연금 진단이 <b>세 경로 원본</b>과 <b>동기화가 쓸 경로(usedPath)</b>를 함께 돌려주는지 확인한다.
@@ -125,7 +126,8 @@ class KisPensionPreviewPathsTest {
         return MockMvcBuilders
                 .standaloneSetup(new InvestmentController(ledger, assets,
                         new PortfolioService(assets, ledger), new KisBalanceService(client), null,
-                        credentialsService))
+                        credentialsService,
+                        new KisSyncService(ledger, assets, new PortfolioService(assets, ledger), new KisBalanceService(client), credentialsService)))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .addInterceptors(new BearerTokenInterceptor(new TokenService(SECRET)))
                 .build();

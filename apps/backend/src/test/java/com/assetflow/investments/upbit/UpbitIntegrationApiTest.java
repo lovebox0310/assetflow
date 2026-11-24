@@ -81,7 +81,7 @@ class UpbitIntegrationApiTest {
 
         mvc = MockMvcBuilders
                 .standaloneSetup(new UpbitIntegrationController(credentials, client, syncService,
-                        new InMemoryUserSettingsLedger(), new AuthEmailResolver()))
+                        new InMemoryUserSettingsLedger(), new AuthEmailResolver(), new com.assetflow.investments.sync.InMemoryProviderSyncStatusLedger()))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .addInterceptors(new BearerTokenInterceptor(new TokenService(SECRET)))
                 .build();

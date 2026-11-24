@@ -28,6 +28,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import com.assetflow.investments.sync.KisSyncService;
 
 /**
  * §62.3 회귀: KIS 동기화가 예수금을 못 읽었을 때 기존 잔액을 0 으로 덮어쓰면
@@ -57,7 +58,8 @@ class KisSyncCashTest {
         kisBalanceService = mock(KisBalanceService.class);
         mvc = MockMvcBuilders
                 .standaloneSetup(new InvestmentController(ledger, assets,
-                        new PortfolioService(assets, ledger), kisBalanceService, null, credentialsService))
+                        new PortfolioService(assets, ledger), kisBalanceService, null, credentialsService,
+                        new KisSyncService(ledger, assets, new PortfolioService(assets, ledger), kisBalanceService, credentialsService)))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .addInterceptors(new BearerTokenInterceptor(new TokenService(SECRET)))
                 .build();

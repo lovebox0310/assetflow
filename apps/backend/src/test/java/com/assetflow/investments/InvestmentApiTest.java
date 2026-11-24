@@ -22,6 +22,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import com.assetflow.investments.sync.KisSyncService;
 
 /**
  * §54.2 E1 smoke: 보유종목 CRUD·계좌 총액 계산·검증.
@@ -43,7 +44,8 @@ class InvestmentApiTest {
         mvc = MockMvcBuilders
                 .standaloneSetup(new InvestmentController(ledger, assets,
                         new PortfolioService(assets, ledger), null,
-                        new KisAccountMappingService(assets, kisCredentialsService), kisCredentialsService))
+                        new KisAccountMappingService(assets, kisCredentialsService), kisCredentialsService,
+                        new KisSyncService(ledger, assets, new PortfolioService(assets, ledger), null, kisCredentialsService)))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .addInterceptors(new BearerTokenInterceptor(new TokenService(SECRET)))
                 .build();

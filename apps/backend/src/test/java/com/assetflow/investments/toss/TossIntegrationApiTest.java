@@ -91,7 +91,7 @@ class TossIntegrationApiTest {
                         new TossSyncService(credentials, client, assets, holdings,
                                 new PortfolioService(assets, holdings)),
                         properties,
-                        new InMemoryUserSettingsLedger(), new AuthEmailResolver()))
+                        new InMemoryUserSettingsLedger(), new AuthEmailResolver(), new com.assetflow.investments.sync.InMemoryProviderSyncStatusLedger()))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .addInterceptors(new BearerTokenInterceptor(new TokenService(JWT_SECRET)))
                 .build();

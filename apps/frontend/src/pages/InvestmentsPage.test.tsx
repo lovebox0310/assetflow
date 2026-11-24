@@ -19,6 +19,13 @@ vi.mock("../api/investmentsApi", async (importOriginal) => {
     searchBonds: searchBondsMock,
     fetchBondIssueInfo: fetchBondIssueInfoMock,
     fetchBondValuation: fetchBondValuationMock,
+    /*
+     * #58: 화면이 진입 시 sync-status 를 확인한다. 테스트 기본값은 "대상 없음" —
+     * 자동 동기화가 끼어들어 기존 단언(모달·포커스)의 타이밍을 흔들지 않게 한다.
+     * 대상이 있는 경우는 이 파일의 전용 테스트에서 개별로 덮어쓴다.
+     */
+    getSyncStatus: vi.fn().mockResolvedValue({ due: 0, providers: [] }),
+    syncDue: vi.fn().mockResolvedValue({ due: 0, outcomes: [] }),
   };
 });
 
@@ -1225,5 +1232,37 @@ describe("InvestmentsPage (§54 E2)", () => {
     fireEvent.mouseDown(wrap);
     fireEvent.click(wrap);
     await waitFor(() => expect(document.activeElement).toBe(second));
+  });
+
+  describe("#58 접속 시 자동 동기화", () => {
+    it("오래된 계좌가 없으면 sync-due 를 호출하지 않는다", async () => {
+      const { getSyncStatus, syncDue } = await import("../api/investmentsApi");
+      vi.mocked(getSyncStatus).mockResolvedValue({ due: 0, providers: [] });
+      render(<InvestmentsPage />);
+      await waitFor(() => expect(vi.mocked(getSyncStatus)).toHaveBeenCalled());
+      expect(vi.mocked(syncDue)).not.toHaveBeenCalled();
+    });
+
+    it("오래된 계좌가 있으면 1회 동기화하고 목록을 다시 읽는다", async () => {
+      const { getSyncStatus, syncDue } = await import("../api/investmentsApi");
+      vi.mocked(getSyncStatus).mockResolvedValue({
+        due: 1,
+        providers: [
+          { provider: "toss", accountId: 7, accountName: "토스", lastStatus: "ok", lastSyncedAt: null, stale: true },
+        ],
+      });
+      render(<InvestmentsPage />);
+      await waitFor(() => expect(vi.mocked(syncDue)).toHaveBeenCalledTimes(1));
+    });
+
+    it("자동 동기화가 실패해도 화면이 깨지지 않는다", async () => {
+      const { getSyncStatus, syncDue } = await import("../api/investmentsApi");
+      vi.mocked(getSyncStatus).mockRejectedValue(new Error("network"));
+      vi.mocked(syncDue).mockRejectedValue(new Error("boom"));
+      render(<InvestmentsPage />);
+      // 화면은 정상 렌더되고, 사용자에게 오류를 띄우지 않는다.
+      expect(await screen.findByRole("heading", { level: 1, name: "투자" })).toBeDefined();
+      expect(screen.queryByText(/동기화에 실패/)).toBeNull();
+    });
   });
 });

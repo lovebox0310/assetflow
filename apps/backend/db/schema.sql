@@ -561,3 +561,22 @@ CREATE TABLE IF NOT EXISTS toss_credentials (
 );
 
 CREATE INDEX IF NOT EXISTS ix_toss_credentials_user ON toss_credentials (user_id);
+
+-- ---------------------------------------------------------------------------
+-- provider_sync_status: API 연동 계좌의 마지막 동기화 시각·결과 (이슈 #58).
+-- 투자 화면 접속 시 "10분 이상 지난 계좌만" 자동 동기화하기 위한 판단 근거다.
+-- KIS·토스는 계좌 단위(account_id), 업비트는 계정 단위(account_id NULL)로 1행.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS provider_sync_status (
+    id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id        BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    provider       VARCHAR(16) NOT NULL CHECK (provider IN ('kis', 'toss', 'upbit')),
+    account_id     BIGINT REFERENCES asset_accounts (id) ON DELETE CASCADE,
+    last_synced_at TIMESTAMPTZ,
+    last_status    VARCHAR(16) NOT NULL DEFAULT 'unknown'
+                   CHECK (last_status IN ('ok', 'error', 'unknown')),
+    last_error     VARCHAR(500),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_provider_sync UNIQUE (user_id, provider, account_id)
+);
+CREATE INDEX IF NOT EXISTS ix_provider_sync_user ON provider_sync_status (user_id);

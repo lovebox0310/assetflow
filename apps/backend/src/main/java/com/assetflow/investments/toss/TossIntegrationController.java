@@ -41,17 +41,20 @@ public class TossIntegrationController {
     private final TossProperties properties;
     private final UserSettingsLedger settingsLedger;
     private final AuthEmailResolver emailResolver;
+    private final com.assetflow.investments.sync.ProviderSyncStatusLedger syncStatus;
 
     public TossIntegrationController(TossCredentialsService credentials, TossApiClient client,
                                      TossSyncService syncService, TossProperties properties,
                                      UserSettingsLedger settingsLedger,
-                                     AuthEmailResolver emailResolver) {
+                                     AuthEmailResolver emailResolver,
+                                     com.assetflow.investments.sync.ProviderSyncStatusLedger syncStatus) {
         this.credentials = credentials;
         this.client = client;
         this.syncService = syncService;
         this.properties = properties;
         this.settingsLedger = settingsLedger;
         this.emailResolver = emailResolver;
+        this.syncStatus = syncStatus;
     }
 
     /** 연결 상태. secret 은 어떤 형태로도 내려보내지 않는다. */
@@ -150,7 +153,16 @@ public class TossIntegrationController {
     /** 보유자산 동기화. 계좌 검증 실패는 400, 토스 오류는 502 로 매핑된다. */
     @PostMapping("/investments/toss/sync")
     public ApiResponse<TossSyncService.SyncResult> sync() {
-        return new ApiResponse<>("OK", "Toss holdings synced", syncService.sync(currentUserId()));
+        long userId = currentUserId();
+        try {
+            TossSyncService.SyncResult result = syncService.sync(userId);
+            // 이슈 #58: 수동 동기화도 상태를 남겨야 자동 동기화가 곧바로 재호출하지 않는다.
+            syncStatus.recordOk(userId, "toss", result.accountId());
+            return new ApiResponse<>("OK", "Toss holdings synced", result);
+        } catch (RuntimeException e) {
+            syncStatus.recordError(userId, "toss", null, e.getMessage());
+            throw e;
+        }
     }
 
     /** 보유자산 원본 진단(읽기 전용, DB 변경 없음). 실패도 200 + error. */

@@ -27,6 +27,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import com.assetflow.investments.sync.KisSyncService;
 
 /**
  * §40 smoke: 자산 행 CRUD가 원장에 반영되고, §31.1 에 따라 대시보드 summary 가
@@ -57,7 +58,8 @@ class AssetAccountApiTest {
                                 java.time.Clock.fixed(java.time.Instant.parse("2026-10-15T03:00:00Z"),
                                         java.time.ZoneId.of("Asia/Seoul")))),
                         new InvestmentController(investmentLedger, ledger, portfolioService, null,
-                                new KisAccountMappingService(ledger, kisCredentialsService), kisCredentialsService))
+                                new KisAccountMappingService(ledger, kisCredentialsService), kisCredentialsService,
+                        new KisSyncService(investmentLedger, ledger, portfolioService, null, kisCredentialsService)))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .addInterceptors(new BearerTokenInterceptor(new TokenService("test-secret-0123456789-0123456789-0123456789")))
                 .build();

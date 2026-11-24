@@ -35,16 +35,19 @@ public class UpbitIntegrationController {
     private final UpbitSyncService syncService;
     private final UserSettingsLedger settingsLedger;
     private final AuthEmailResolver emailResolver;
+    private final com.assetflow.investments.sync.ProviderSyncStatusLedger syncStatus;
 
     public UpbitIntegrationController(UpbitCredentialsService credentials, UpbitAccountClient client,
                                       UpbitSyncService syncService,
                                       UserSettingsLedger settingsLedger,
-                                      AuthEmailResolver emailResolver) {
+                                      AuthEmailResolver emailResolver,
+                                      com.assetflow.investments.sync.ProviderSyncStatusLedger syncStatus) {
         this.credentials = credentials;
         this.client = client;
         this.syncService = syncService;
         this.settingsLedger = settingsLedger;
         this.emailResolver = emailResolver;
+        this.syncStatus = syncStatus;
     }
 
     public record UpbitStatus(boolean configured, String accessKeyMasked) {}
@@ -86,7 +89,16 @@ public class UpbitIntegrationController {
 
     @PostMapping("/investments/upbit/sync")
     public ApiResponse<UpbitSyncService.SyncResult> sync() {
-        return new ApiResponse<>("OK", "Upbit holdings synced", syncService.sync(currentUserId()));
+        long userId = currentUserId();
+        try {
+            UpbitSyncService.SyncResult result = syncService.sync(userId);
+            // 이슈 #58: 수동 동기화도 상태를 남겨야 자동 동기화가 곧바로 재호출하지 않는다.
+            syncStatus.recordOk(userId, "upbit", null);
+            return new ApiResponse<>("OK", "Upbit holdings synced", result);
+        } catch (RuntimeException e) {
+            syncStatus.recordError(userId, "upbit", null, e.getMessage());
+            throw e;
+        }
     }
 
     private UpbitStatus statusOf(long userId) {

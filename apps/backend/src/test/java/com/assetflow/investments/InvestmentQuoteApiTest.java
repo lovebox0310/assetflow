@@ -25,6 +25,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import com.assetflow.investments.sync.KisSyncService;
 
 /**
  * §54.4 시세 API: 외부 호출은 {@link QuoteService}·{@link CryptoQuoteService} 뒤에 있으므로
@@ -80,7 +81,9 @@ class InvestmentQuoteApiTest {
         mvc = MockMvcBuilders
                 .standaloneSetup(new InvestmentController(ledger, assets,
                                 new PortfolioService(assets, ledger), null,
-                                new KisAccountMappingService(assets, kisCredentialsService), kisCredentialsService),
+                                new KisAccountMappingService(assets, kisCredentialsService), kisCredentialsService,
+                                new KisSyncService(ledger, assets, new PortfolioService(assets, ledger), null,
+                                        kisCredentialsService)),
                         new InvestmentQuoteController(new FakeQuotes(), new FakeCryptoQuotes(), ledger,
                                 new PortfolioService(assets, ledger)))
                 .setControllerAdvice(new ApiExceptionHandler())

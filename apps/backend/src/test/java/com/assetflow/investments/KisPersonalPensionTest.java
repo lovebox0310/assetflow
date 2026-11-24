@@ -31,6 +31,7 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import com.assetflow.investments.sync.KisSyncService;
 
 /**
  * §62.3 개인연금(22) 빈 잔고 응답 회귀.
@@ -92,7 +93,8 @@ class KisPersonalPensionTest {
         mvc = MockMvcBuilders
                 .standaloneSetup(new InvestmentController(ledger, assets,
                         new PortfolioService(assets, ledger), new KisBalanceService(client), null,
-                        credentialsService))
+                        credentialsService,
+                        new KisSyncService(ledger, assets, new PortfolioService(assets, ledger), new KisBalanceService(client), credentialsService)))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .addInterceptors(new BearerTokenInterceptor(new TokenService(SECRET)))
                 .build();

@@ -12,6 +12,7 @@ import com.assetflow.investments.kis.KisBalanceResponse;
 import com.assetflow.investments.kis.KisBalanceService;
 import com.assetflow.investments.kis.KisCredentials;
 import com.assetflow.investments.kis.KisCredentialsService;
+import com.assetflow.investments.sync.KisSyncService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -51,18 +52,21 @@ public class InvestmentController {
     private final KisBalanceService kisBalanceService;
     private final KisAccountMappingService kisMappingService;
     private final KisCredentialsService kisCredentialsService;
+    private final KisSyncService kisSyncService;
 
     public InvestmentController(InvestmentLedger ledger, AssetLedger assetLedger,
                                 PortfolioService portfolioService,
                                 KisBalanceService kisBalanceService,
                                 KisAccountMappingService kisMappingService,
-                                KisCredentialsService kisCredentialsService) {
+                                KisCredentialsService kisCredentialsService,
+                                KisSyncService kisSyncService) {
         this.ledger = ledger;
         this.assetLedger = assetLedger;
         this.portfolioService = portfolioService;
         this.kisBalanceService = kisBalanceService;
         this.kisMappingService = kisMappingService;
         this.kisCredentialsService = kisCredentialsService;
+        this.kisSyncService = kisSyncService;
     }
 
     public record UpsertRequest(Long accountId, String assetClass, String symbol, String name,
@@ -98,75 +102,9 @@ public class InvestmentController {
         if (request.accountId() == null) {
             throw new IllegalArgumentException("accountId is required");
         }
-        AssetRow account = assetLedger.byId(request.accountId());
-        if (account == null) {
-            throw new IllegalArgumentException("account not found: " + request.accountId());
-        }
-        if (!"invest".equals(account.accountType())) {
-            throw new IllegalArgumentException("account must be an invest account");
-        }
-
-        KisCredentials credentials = kisCredentialsService.findDecrypted(account.id());
-        if (credentials == null) {
-            throw new IllegalArgumentException("KIS credentials not configured for account: " + account.id());
-        }
-
-        KisBalanceResponse balance = kisBalanceService.fetchBalance(credentials);
-        String priceAsOf = LocalDate.now().toString();
-
-        // §62 CMA 계좌처럼 보유종목은 없고 현금만 있는 경우, 예수금도 동기화한다.
-        // 단 예수금을 **읽지 못한 0 은 쓰지 않는다** — 계좌가 비어서 0 인 것과
-        // API/자격증명 문제로 값을 못 받은 것은 구분할 수 없으므로, 보수적으로
-        // 기존 잔액을 유지하고 경고를 돌려준다(§62.3).
-        // 채권 잔고 부분 실패 등 서비스가 준 경고를 먼저 싣고, 예수금 미확인 경고는 뒤에 합친다.
-        String warning = balance.warning();
-        boolean cashKnown = balance.summary() != null && balance.summary().cashKnown();
-        BigDecimal cashAmount = balance.summary() == null ? null : balance.summary().dncaTotAmt();
-        if (cashKnown) {
-            // IRP(상품코드 29) 전용 조회는 예수금 0 도 정상값이다 — 그대로 반영한다.
-            long cash = cashAmount == null ? 0L : cashAmount.longValue();
-            assetLedger.update(account.id(), account.accountType(), account.name(),
-                    account.institutionName(), cash, account.isDebt(), account.openedAt());
-            log.info("KIS sync updated cash balance for account {} to {}", account.id(), cash);
-        } else if (cashAmount != null && cashAmount.compareTo(BigDecimal.ZERO) > 0) {
-            long cash = cashAmount.longValue();
-            assetLedger.update(account.id(), account.accountType(), account.name(),
-                    account.institutionName(), cash, account.isDebt(), account.openedAt());
-            log.info("KIS sync updated cash balance for account {} to {}", account.id(), cash);
-        } else {
-            String cashWarning = "KIS에서 예수금을 읽지 못해 계좌 잔액을 유지했습니다. "
-                    + "App Key/App Secret이 실전·모의 중 어느 용인지, CANO·상품코드·API 환경이 "
-                    + "해당 계좌와 맞는지 확인하세요. IRP는 상품코드 29, 개인연금은 22입니다.";
-            warning = warning == null || warning.isBlank() ? cashWarning : warning + " | " + cashWarning;
-            log.warn("KIS sync could not resolve cash for account {} — keeping balance {}",
-                    account.id(), account.balance());
-        }
-
-        List<String> syncedSymbols = new ArrayList<>();
-        for (KisBalanceResponse.Holding h : balance.holdings()) {
-            String symbol = h.pdno();
-            if (symbol == null || symbol.isBlank()) {
-                continue;
-            }
-            HoldingRow row = new HoldingRow(
-                    0, request.accountId(), h.assetClass(), symbol, h.prdtName(), "KRW",
-                    h.hldgQty(), h.pchsAvgPric(), h.prpr(), BigDecimal.ONE, priceAsOf);
-            // §70 사용자가 수동으로 넣은 같은 종목이 있으면 그 행을 덮어쓴다.
-            ledger.upsertKis(row);
-            syncedSymbols.add(symbol);
-        }
-
-        // §70 완전히 성공한 경우에만 KIS 에서 사라진 종목을 정리한다.
-        // 예수금을 못 읽은 부분 성공에서 지우면 사용자가 입력한 것까지 잃을 수 있다.
-        if (warning == null) {
-            int removed = ledger.deleteKisOnly(request.accountId(), syncedSymbols);
-            if (removed > 0) {
-                log.info("KIS sync removed {} stale holding(s) for account {}", removed, request.accountId());
-            }
-        }
-
-        return new ApiResponse<>("OK", "KIS balance synced",
-                warning == null ? portfolioService.portfolio() : portfolioService.withWarning(warning));
+        // 이슈 #58: 동기화 로직을 KisSyncService 로 옮겼다(자동 동기화와 공유).
+        // 컨트롤러는 위임만 한다 — 응답 형태는 그대로다.
+        return new ApiResponse<>("OK", "KIS balance synced", kisSyncService.sync(request.accountId()));
     }
 
     /**

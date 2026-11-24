@@ -28,6 +28,8 @@ import { UpbitCredentialsModal } from "../components/UpbitCredentialsModal";
 import { TossCredentialsModal } from "../components/TossCredentialsModal";
 import { TossPreviewModal } from "../components/TossPreviewModal";
 import {
+  getSyncStatus,
+  syncDue,
   clearKisBalance,
   createHolding,
   deleteHolding,
@@ -292,11 +294,37 @@ export function InvestmentsPage({
     }
   }, []);
 
+  /**
+   * 이슈 #58: 접속 시 자동 동기화.
+   *
+   * 서버가 "10분 이상 지난 연동 계좌"를 판정해 주면 그때만 동기화한다.
+   * 화면은 기존 값을 먼저 보여 주고, 끝나면 **조용히** 다시 읽는다 —
+   * 스켈레톤·토스트를 쓰지 않는다(사용자가 방해받지 않게).
+   * 실패도 조용히 넘긴다(사유는 서버 원장에 남는다).
+   * 마운트당 1회만 시도한다.
+   */
+  const autoSyncTried = useRef(false);
+  const runAutoSync = useCallback(async () => {
+    if (autoSyncTried.current) return;
+    autoSyncTried.current = true;
+    try {
+      const status = await getSyncStatus();
+      if (status.due <= 0) return;
+      await syncDue();
+      // 동기화 결과를 조용히 반영한다(실패해도 기존 화면 유지).
+      await load();
+    } catch {
+      // 자동 동기화는 사용자에게 알리지 않는다 — 수동 동기화로 재시도할 수 있다.
+    }
+  }, [load]);
+
   useEffect(() => {
     if (mountedRef.current) return;
     mountedRef.current = true;
-    void load().then(() => refreshPrices(true));
-  }, [load, refreshPrices]);
+    void load()
+      .then(() => refreshPrices(true))
+      .then(() => runAutoSync());
+  }, [load, refreshPrices, runAutoSync]);
 
   // 업비트 설정 여부는 화면을 막지 않는다 — 실패해도 '미설정'으로 두고 조용히 넘어간다.
   useEffect(() => {

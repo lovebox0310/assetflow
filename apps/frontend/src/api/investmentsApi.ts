@@ -464,6 +464,43 @@ export function listTossAccounts(): Promise<TossAccountsResult> {
 }
 
 /** 보유자산 원본 진단(읽기 전용). 실패도 200 + error. */
+/** 접속 시 자동 동기화(#58) — 대상 1건. */
+export interface SyncDue {
+  provider: "kis" | "toss" | "upbit";
+  accountId: number | null;
+  accountName: string | null;
+  lastStatus: "ok" | "error" | "unknown";
+  lastSyncedAt: string | null;
+  stale: boolean;
+}
+
+export interface SyncStatus {
+  due: number;
+  providers: SyncDue[];
+}
+
+export interface SyncOutcome {
+  provider: string;
+  accountId: number | null;
+  ok: boolean;
+  error: string | null;
+}
+
+export interface SyncDueResult {
+  due: number;
+  outcomes: SyncOutcome[];
+}
+
+/** 지금 동기화해야 하는 계좌가 있는지. 0 이면 호출하지 않는다. */
+export function getSyncStatus(): Promise<SyncStatus> {
+  return apiFetch<SyncStatus>("/api/v1/investments/sync-status");
+}
+
+/** 오래된 계좌만 동기화한다(서버가 10분 stale 을 판정). */
+export function syncDue(): Promise<SyncDueResult> {
+  return apiFetch<SyncDueResult>("/api/v1/investments/sync-due", { method: "POST" });
+}
+
 /** 토큰 발급 진단(이슈 #55). 403 사유를 화면에서 볼 수 있게 상태·코드·본문을 돌려준다. */
 export interface TossTokenDiagnosis {
   status: number;
