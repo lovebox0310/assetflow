@@ -111,7 +111,10 @@ public class HttpTossApiClient implements TossApiClient {
 
     @Override
     public BigDecimal usdKrwRate(TossCredentials credentials) {
-        return parseUsdKrwRate(get(EXCHANGE_RATE_PATH, credentials, null));
+        // 토스 문서: baseCurrency/quoteCurrency 는 **필수** 쿼리다(둘 다 없으면 400).
+        // 빠뜨리면 환율 조회가 실패해 USD 자산이 1:1 로 표시된다.
+        return parseUsdKrwRate(
+                get(EXCHANGE_RATE_PATH + "?baseCurrency=USD&quoteCurrency=KRW", credentials, null));
     }
 
     // ---------------------------------------------------------------- HTTP

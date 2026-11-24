@@ -135,4 +135,14 @@ class TossPayloadParsingTest {
         // 요청에 Accept-Encoding: identity 를 넣어 이 경로를 피한다(구현 주석 참조).
         assertThat(client.errorCode(403, "\u001f\u008b\u0008garbage")).isEqualTo("http-403");
     }
+
+    @Test
+    void parsesExchangeRateFromResult() {
+        // 토스 응답: {"result":{"baseCurrency":"USD","quoteCurrency":"KRW","rate":"1380.5",...}}
+        String body = """
+                {"result":{"baseCurrency":"USD","quoteCurrency":"KRW","rate":"1380.5",
+                           "midRate":"1375","basisPoint":"40","rateChangeType":"UP"}}
+                """;
+        assertThat(client.parseUsdKrwRate(body)).isEqualByComparingTo("1380.5");
+    }
 }
