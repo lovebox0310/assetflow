@@ -30,7 +30,7 @@ class AutoSyncServiceTest {
     /** isStale 만 검증하기 위한 최소 구성 — 동기화 서비스는 호출되지 않는다. */
     private AutoSyncService serviceAt(Instant now) {
         Clock clock = Clock.fixed(now, SEOUL);
-        return new AutoSyncService(statuses, null, null, null, null, null, null, null, clock);
+        return new AutoSyncService(statuses, null, null, null, null, null, null, null, null, clock);
     }
 
     private ProviderSyncStatusLedger.SyncStatus ok(Instant syncedAt) {

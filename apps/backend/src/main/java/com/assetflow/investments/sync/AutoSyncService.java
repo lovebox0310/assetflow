@@ -63,6 +63,7 @@ public class AutoSyncService {
     private final KisSyncService kisSync;
     private final UpbitSyncService upbitSync;
     private final Clock clock;
+    private final com.assetflow.investments.snapshot.PortfolioSnapshotService snapshots;
 
     /** 사용자별 실행 중 표시 — 접속이 겹쳐도 동기화는 1회. */
     private final Set<Long> running = ConcurrentHashMap.newKeySet();
@@ -71,7 +72,9 @@ public class AutoSyncService {
                            KisCredentialsLedger kisCredentials, TossCredentialsLedger tossCredentials,
                            UpbitCredentialsLedger upbitCredentials,
                            TossSyncService tossSync, KisSyncService kisSync,
-                           UpbitSyncService upbitSync, Clock clock) {
+                           UpbitSyncService upbitSync,
+                           com.assetflow.investments.snapshot.PortfolioSnapshotService snapshots,
+                           Clock clock) {
         this.statuses = statuses;
         this.assets = assets;
         this.kisCredentials = kisCredentials;
@@ -80,6 +83,7 @@ public class AutoSyncService {
         this.tossSync = tossSync;
         this.kisSync = kisSync;
         this.upbitSync = upbitSync;
+        this.snapshots = snapshots;
         this.clock = clock;
     }
 
@@ -139,6 +143,8 @@ public class AutoSyncService {
                 kisSync.sync(target.accountId());
             }
             statuses.recordOk(userId, target.provider(), target.accountId());
+            // 이슈 #52: 동기화가 성공한 시점의 총액을 남긴다(추이 차트의 점).
+            snapshots.capture(userId, "auto");
             return new SyncOutcome(target.provider(), target.accountId(), true, null);
         } catch (RuntimeException e) {
             String message = e.getMessage() == null ? e.toString() : e.getMessage();

@@ -464,6 +464,21 @@ export function listTossAccounts(): Promise<TossAccountsResult> {
 }
 
 /** 보유자산 원본 진단(읽기 전용). 실패도 200 + error. */
+/** 투자 추이 스냅샷 한 점(#52) — 총액만 저장한다. */
+export interface PortfolioSnapshot {
+  takenOn: string;
+  totalCost: number;
+  totalValue: number;
+  cash: number;
+  source: string;
+}
+
+/** from~to (YYYY-MM-DD, 양끝 포함). 최대 731일. */
+export function getPortfolioSnapshots(from: string, to: string): Promise<PortfolioSnapshot[]> {
+  const q = new URLSearchParams({ from, to });
+  return apiFetch<PortfolioSnapshot[]>(`/api/v1/investments/snapshots?${q.toString()}`);
+}
+
 /** 접속 시 자동 동기화(#58) — 대상 1건. */
 export interface SyncDue {
   provider: "kis" | "toss" | "upbit";

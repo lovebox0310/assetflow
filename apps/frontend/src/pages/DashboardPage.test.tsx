@@ -131,7 +131,7 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
     expect(screen.queryByText("일부 추정")).toBeNull();
   });
 
-  it("영역 순서가 정보구조와 일치한다 (지표→구성비→현금→카드→지출추이→현금흐름)", async () => {
+  it("영역 순서가 정보구조와 일치한다 (지표→구성비→현금→카드→지출추이→투자추이→현금흐름)", async () => {
     stubFetch(route);
     render(<DashboardPage onLogout={() => {}} />);
     // 로딩이 끝나야 컨테이너에 실측 가능한 콘텐츠가 채워진다.
@@ -144,6 +144,8 @@ describe("DashboardPage FE-BE 연동 (Issue 7)", () => {
       expect.stringMatching(/^비상금/),
       "카드별 본인·가족 사용 내역",
       "지출 추이",
+      // 이슈 #52: 투자 추이는 현금흐름 앞에 온다(투자 → 현금 순서).
+      "투자 추이",
       "월별 현금흐름",
     ]);
   });

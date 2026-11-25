@@ -1,6 +1,6 @@
 import { useCallback, Suspense, lazy, useEffect, useRef, useState, type ReactNode } from "react";
 import dayjs from "dayjs";
-import { Alert, Button, Card, DatePicker, Skeleton, Switch, Typography } from "antd";
+import { Alert, Button, Card, DatePicker, Segmented, Skeleton, Switch, Typography } from "antd";
 import { AfListTable, type AfListColumn } from "../components/AfListTable";
 import { AppLayout } from "../layout/AppLayout";
 import { ResponsiveGrid } from "../layout/ResponsiveGrid";
@@ -10,6 +10,7 @@ import { MetricCard } from "../components/MetricCard";
 import { EmergencyFundSettingsModal } from "../components/EmergencyFundSettingsModal";
 import { CompositionBasisModal } from "../components/CompositionBasisModal";
 import type { DashboardData } from "../data/dashboardMock";
+import { getPortfolioSnapshots, type PortfolioSnapshot } from "../api/investmentsApi";
 import {
   fetchCashflow,
   fetchDashboardSummary,
@@ -44,6 +45,8 @@ import { clearToken } from "../auth/authStore";
 
 const CompositionDonut = lazy(() => import("../components/CompositionDonut").then(m => ({ default: m.CompositionDonut })));
 const ExpenseTrendChart = lazy(() => import("../components/ExpenseTrendChart").then(m => ({ default: m.ExpenseTrendChart })));
+/** 이슈 #52: 투자 추이 차트는 초기 번들에 넣지 않는다(다른 차트와 같은 규칙). */
+const PortfolioTrendChart = lazy(() => import("../components/PortfolioTrendChart").then(m => ({ default: m.PortfolioTrendChart })));
 
 /** §57: 지출 추이 기본 조회 범위 — 최근 12개월. 모듈 로드 시 한 번만 계산한다. */
 const DEFAULT_TREND_RANGE = lastMonthsRange(12);
@@ -189,7 +192,26 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
   const [income, setIncome] = useState<MonthlyIncome[]>([]);
   const [trendStatus, setTrendStatus] = useState<SurfaceStatus>("loading");
   const [trendError, setTrendError] = useState("");
-  const [trendRangeNotice, setTrendRangeNotice] = useState("");
+  /**
+   * 이슈 #52: 투자 추이. 스냅샷은 총액만 쌓이므로 기간만 고르면 된다.
+   * 기본 3개월 — 데이터가 며칠치뿐일 때도 빈 화면이 되지 않는다.
+   */
+  const [portfolioRange, setPortfolioRange] = useState<"1m" | "3m" | "6m" | "1y">("3m");
+  const [portfolioSnapshots, setPortfolioSnapshots] = useState<PortfolioSnapshot[]>([]);
+  const [portfolioStatus, setPortfolioStatus] = useState<SurfaceStatus>("loading");
+
+  const loadPortfolioSnapshots = useCallback(async (range: "1m" | "3m" | "6m" | "1y") => {
+    const months = range === "1m" ? 1 : range === "3m" ? 3 : range === "6m" ? 6 : 12;
+    const to = dayjs().format("YYYY-MM-DD");
+    const from = dayjs().subtract(months, "month").format("YYYY-MM-DD");
+    setPortfolioStatus("loading");
+    try {
+      setPortfolioSnapshots(await getPortfolioSnapshots(from, to));
+      setPortfolioStatus("ready");
+    } catch {
+      setPortfolioStatus("error");
+    }
+  }, []);  const [trendRangeNotice, setTrendRangeNotice] = useState("");
 
   // React 18 StrictMode 더블 마운트 + 리마운트에서도 중복 호출이 없어야 한다.
   // dedupe 가 네트워크 중복을 막지만, 마운트마다 재요청 자체도 마운트 플래그로 막는다.
@@ -281,6 +303,10 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
         setCashflowStatus("error");
       });
   }, []);
+
+  useEffect(() => {
+    void loadPortfolioSnapshots(portfolioRange);
+  }, [loadPortfolioSnapshots, portfolioRange]);
 
   useEffect(() => {
     if (mountedRef.current) return;
@@ -728,6 +754,34 @@ export function DashboardPage({ onLogout, onOpenAssets, onOpenExpenses, onOpenSe
                 <ExpenseTrendChart series={trendSeries} from={trendRange.from} to={trendRange.to} />
               </Suspense>
             ) : null}
+          </StateBlock>
+        </Card>
+      </section>
+
+<section aria-labelledby="h-portfolio-trend">
+        {/* 대시보드에는 투자 화면으로 가는 진입점이 없다(네비가 담당) — 링크를 두지 않는다. */}
+        <SectionHeader id="h-portfolio-trend" title="투자 추이" />
+        <Card>
+          <div style={{ marginBottom: 12 }}>
+            <Segmented
+              aria-label="투자 추이 기간"
+              value={portfolioRange}
+              onChange={(value) => setPortfolioRange(value as "1m" | "3m" | "6m" | "1y")}
+              options={[
+                { label: "1개월", value: "1m" },
+                { label: "3개월", value: "3m" },
+                { label: "6개월", value: "6m" },
+                { label: "1년", value: "1y" },
+              ]}
+            />
+          </div>
+          <StateBlock
+            status={portfolioStatus}
+            onRetry={() => void loadPortfolioSnapshots(portfolioRange)}
+          >
+            <Suspense fallback={<Skeleton active paragraph={{ rows: 3 }} />}>
+              <PortfolioTrendChart snapshots={portfolioSnapshots} />
+            </Suspense>
           </StateBlock>
         </Card>
       </section>

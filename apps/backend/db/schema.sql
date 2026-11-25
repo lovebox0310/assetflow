@@ -580,3 +580,22 @@ CREATE TABLE IF NOT EXISTS provider_sync_status (
     CONSTRAINT uq_provider_sync UNIQUE (user_id, provider, account_id)
 );
 CREATE INDEX IF NOT EXISTS ix_provider_sync_user ON provider_sync_status (user_id);
+
+-- ---------------------------------------------------------------------------
+-- portfolio_snapshots: 투자 추이 스냅샷 (이슈 #52).
+-- 동기화 성공 시점의 총 원금·총 평가액을 남긴다. 종목별 이력은 저장하지 않는다(총액만).
+-- 같은 날 여러 점(09:05·15:35·수동)을 허용하므로 (user, taken_on) 유니크를 두지 않는다.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+    id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id    BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    taken_on   DATE NOT NULL,
+    taken_at   TIMESTAMPTZ NOT NULL,
+    total_cost BIGINT NOT NULL,
+    total_value BIGINT NOT NULL,
+    cash       BIGINT NOT NULL DEFAULT 0,
+    source     VARCHAR(16) NOT NULL DEFAULT 'manual'
+               CHECK (source IN ('manual', 'schedule', 'auto')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_portfolio_snapshots_day ON portfolio_snapshots (user_id, taken_on);

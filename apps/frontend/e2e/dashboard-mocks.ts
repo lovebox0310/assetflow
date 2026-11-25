@@ -23,6 +23,19 @@ export async function mockDashboardApi(page: Page) {
     if (pathname === "/api/v1/dashboard/cashflow") {
       return route.fulfill({ json: cashflowResponse() });
     }
+    // 이슈 #52: 투자 추이 — 점 2개(원금 고정, 평가 상승).
+    if (pathname === "/api/v1/investments/snapshots") {
+      return route.fulfill({
+        json: {
+          code: "OK",
+          message: "Portfolio snapshots loaded",
+          data: [
+            { takenOn: "2026-11-24", totalCost: 12_000_000, totalValue: 12_600_000, cash: 1_200_000, source: "schedule" },
+            { takenOn: "2026-11-25", totalCost: 12_000_000, totalValue: 13_140_000, cash: 1_200_000, source: "schedule" },
+          ],
+        },
+      });
+    }
     if (pathname === "/api/v1/dashboard/monthly-income") {
       return route.fulfill({ json: monthlyIncomeResponse() });
     }
